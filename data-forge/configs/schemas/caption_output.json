@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CaptionOutput",
+  "type": "object",
+  "required": ["caption", "ui_elements_mentioned", "confidence"],
+  "properties": {
+    "caption": { "type": "string", "minLength": 20, "maxLength": 2000 },
+    "ui_elements_mentioned": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+  },
+  "additionalProperties": false
+}

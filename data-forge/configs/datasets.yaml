@@ -1,0 +1,86 @@
+# =============================================================================
+# Source Dataset Registry (v13)
+# =============================================================================
+# Every dataset the pipeline fetches is registered here. The License
+# Verification Agent (Stage 1) processes entries with license_status: unverified.
+# =============================================================================
+
+datasets:
+  # -------------------------------------------------------------------------
+  # RICO — Mobile App UI Screenshots + Metadata
+  # -------------------------------------------------------------------------
+  rico_core:
+    display_name: "RICO (Core UI Screenshots)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/Rico"
+    revision: "main"
+    subset: null                        # Full dataset
+    category: "mobile_ui"
+    expected_record_count: 66000        # ~66k unique UIs
+    license_url: "http://www.interactionmining.org/rico.html"
+    license_status: "unverified"
+    license_notes: >
+      Original RICO license status is listed as "Unknown" in most HuggingFace repos.
+      The dataset contains third-party app screenshots — IP/privacy implications
+      for commercial use. The license agent will likely route this to
+      excluded_pending_review on first run.
+    fetch_config:
+      file_patterns: ["*.jpg", "*.png", "*.json"]
+      max_files: null                   # No limit
+
+  rico_semantic:
+    display_name: "RICO Semantic Annotations"
+    source_type: "huggingface"
+    repo_id: "Voxel51/rico"
+    revision: "main"
+    category: "mobile_ui"
+    expected_record_count: 66000
+    license_url: "https://huggingface.co/datasets/Voxel51/rico"
+    license_status: "unverified"
+    license_notes: "Semantic annotations layer — CC BY 4.0 for Google-added labels."
+    fetch_config:
+      file_patterns: ["*.json"]
+
+  # -------------------------------------------------------------------------
+  # CLAY — Mobile UI Layouts (Google Research)
+  # -------------------------------------------------------------------------
+  clay:
+    display_name: "CLAY (Mobile UI Layouts)"
+    source_type: "github"
+    repo_url: "https://github.com/google-research-datasets/clay"
+    branch: "main"
+    category: "mobile_ui"
+    expected_record_count: 60000        # Approximate
+    license_url: null                   # Archived repo, no explicit license file
+    license_status: "unverified"
+    license_notes: >
+      Repository archived April 2026, read-only. License status unclear.
+      Contains human-annotated screen layouts from Android apps.
+      Likely to route to excluded_pending_review.
+    fetch_config:
+      file_patterns: ["*.csv", "*.json"]
+
+  # -------------------------------------------------------------------------
+  # WebUI — Web Interface Screenshots (if available)
+  # -------------------------------------------------------------------------
+  # webui:
+  #   display_name: "WebUI Dataset"
+  #   source_type: "huggingface"
+  #   repo_id: "TBD"
+  #   category: "web_ui"
+  #   license_status: "unverified"
+  #   enabled: false                   # Placeholder for registry watcher discovery
+
+# ---------------------------------------------------------------------------
+# Registry Watcher: datasets to scan for new releases
+# ---------------------------------------------------------------------------
+watcher_scan_targets:
+  - query: "UI design dataset"
+    platforms: ["huggingface", "github", "paperswithcode"]
+    min_records: 1000
+  - query: "mobile app screenshot dataset"
+    platforms: ["huggingface"]
+    min_records: 5000
+  - query: "web interface design dataset"
+    platforms: ["huggingface"]
+    min_records: 1000

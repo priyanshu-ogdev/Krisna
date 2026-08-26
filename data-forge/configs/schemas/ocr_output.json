@@ -1,0 +1,36 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OCROutput",
+  "type": "object",
+  "required": ["text_regions", "primary_language", "total_text_regions", "confidence"],
+  "properties": {
+    "text_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["text", "bbox", "role"],
+        "properties": {
+          "text": { "type": "string" },
+          "bbox": {
+            "type": "array",
+            "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "role": {
+            "type": "string",
+            "enum": ["heading", "body", "button_label", "input_placeholder", "menu_item", "tab_label", "status_text", "caption", "tooltip", "error_message", "notification", "other"]
+          },
+          "font_size_class": {
+            "type": "string",
+            "enum": ["small", "medium", "large", "xlarge"]
+          }
+        }
+      }
+    },
+    "primary_language": { "type": "string", "minLength": 2, "maxLength": 5 },
+    "total_text_regions": { "type": "integer", "minimum": 0 },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 }
+  },
+  "additionalProperties": false
+}
