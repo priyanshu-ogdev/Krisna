@@ -10,7 +10,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 # ── Caption Output ──────────────────────────────────────────────────────
 
 class CaptionOutput(BaseModel):
@@ -41,7 +40,7 @@ class UIElement(BaseModel):
         description="Bounding box [x_min, y_min, x_max, y_max] normalized to 0-1"
     )
     label: str | None = Field(None, description="Brief description of the element")
-    children: list["UIElement"] = Field(
+    children: list[UIElement] = Field(
         default_factory=list, description="Nested child elements"
     )
 

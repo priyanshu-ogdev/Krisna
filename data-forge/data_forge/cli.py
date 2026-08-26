@@ -43,8 +43,8 @@ def _validate_environment() -> None:
         console.print(f"[bold yellow]WARNING:[/] Could not validate HF token: {e}")
 
 
-def _load_pipeline_config() -> "PipelineConfig":  # type: ignore[name-defined]
-    from data_forge.config import load_config
+def _load_pipeline_config() -> "PipelineConfig":
+    from data_forge.config import PipelineConfig, load_config
 
     # Find configs relative to the package or CWD
     base = Path.cwd()
@@ -137,7 +137,7 @@ def run(
 
     try:
         orch = Orchestrator(config, manifest)
-        results = asyncio.run(
+        asyncio.run(
             orch.execute_pipeline(
                 stages_filter=stages_filter,
                 dry_run=dry_run,

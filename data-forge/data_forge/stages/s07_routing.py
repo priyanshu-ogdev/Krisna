@@ -1,7 +1,9 @@
 """Stage 7: Routing — domain tagging and ratio-enforced shard assignment."""
 
 from __future__ import annotations
+
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.data.domain_tagger import tag_domain
 from data_forge.data.shard_router import ShardRouter

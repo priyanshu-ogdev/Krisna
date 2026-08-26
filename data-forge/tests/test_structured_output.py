@@ -1,10 +1,13 @@
 """Tests for structured output Pydantic models."""
 
-import json
 import pytest
+
 from data_forge.inference.structured_output import (
-    CaptionOutput, StructureOutput, SafetyOutput,
-    LicenseOutput, AuditOutput, OCROutput, QualityOutput, UIElement,
+    CaptionOutput,
+    LicenseOutput,
+    QualityOutput,
+    SafetyOutput,
+    StructureOutput,
 )
 
 

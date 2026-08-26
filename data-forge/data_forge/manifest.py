@@ -12,11 +12,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Generator, Iterator
+from typing import Any
 
 from data_forge.logging_setup import get_logger
 

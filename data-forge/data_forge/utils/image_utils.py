@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
 from PIL import Image
+
+if TYPE_CHECKING:
+    import torch
 
 from data_forge.logging_setup import get_logger
 
@@ -47,7 +49,6 @@ def resize_for_model(
 
 def image_to_tensor(image: Image.Image) -> "torch.Tensor":
     """Convert PIL image to normalized torch tensor (C, H, W), float32."""
-    import torch
     import torchvision.transforms.functional as TF
 
     tensor = TF.to_tensor(image)  # (C, H, W), [0, 1]
