@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.agents.license_agent import LicenseVerificationAgent
 from data_forge.config import PipelineConfig
@@ -19,7 +19,7 @@ log = get_logger("stages.s01")
 @register_stage("s01_fetch")
 class FetchStage(Stage):
     name = "s01_fetch"
-    requires = ["s00_manifest_planning"]
+    requires: ClassVar[tuple[str, ...]] = ("s00_manifest_planning",)
 
     async def run(
         self,

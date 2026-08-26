@@ -14,6 +14,9 @@ import os
 import sys
 from pathlib import Path
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -32,12 +35,11 @@ def _validate_environment() -> None:
         )
         sys.exit(1)
 
-    # Validate HF token has read access
+    # Validate HF token has read access via whoami-v2
     try:
-        from huggingface_hub import HfApi
-
-        api = HfApi(token=hf_token)
-        api.whoami()
+        import httpx
+        resp = httpx.get("https://huggingface.co/api/whoami-v2", headers={"Authorization": f"Bearer {hf_token}"}, timeout=5)
+        resp.raise_for_status()
         console.print("[green]✓[/] HuggingFace token validated")
     except Exception as e:
         console.print(f"[bold yellow]WARNING:[/] Could not validate HF token: {e}")
@@ -60,7 +62,10 @@ def _load_pipeline_config() -> "PipelineConfig":
 @click.version_option(version="0.13.0", prog_name="data-forge")
 def main() -> None:
     """Data-Forge: Zero-touch data pipeline for the Krisna project (v13)."""
-    pass
+    import multiprocessing
+    import sys
+    if sys.platform == 'win32':
+        multiprocessing.set_start_method('spawn', force=True)
 
 
 @main.command()

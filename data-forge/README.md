@@ -38,42 +38,59 @@
 - **RAM**: 128GB system RAM recommended
 - **Disk**: ≥3TB at `DATA_ROOT`
 
-## Setup
+## Setup & Verification
 
-```bash
-# Clone / navigate to the project
+To properly run the data-forge on Windows, you must use the provided bootstrap script. The script resolves pip compatibility issues by using Conda to install `faiss-gpu` and the correct CUDA 12.4 PyTorch wheels.
+
+### 1. Environment Bootstrap
+```powershell
+# Navigate to the project root
 cd data-forge
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux
-# .venv\Scripts\activate   # Windows
+# Run the Windows environment setup script (requires Conda installed)
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\setup_env.ps1
 
-# Install with dev dependencies
-pip install -e ".[dev]"
+# The script creates the environment. You must manually activate it before proceeding:
+conda activate krisna-forge
+```
+*Linkage*: The script handles Python 3.10 initialization, `torch+cu124`, `faiss-gpu`, and finally executes `pip install -e .[dev]` to link the `data-forge` CLI commands globally to this environment.
 
-# Set environment variables
-export DATA_ROOT=/data_krisna
-export HF_TOKEN=hf_...
-export CUDA_VISIBLE_DEVICES=0
+### 2. Pre-Flight Schema Verification
+Before loading any heavy GPU models, validate that your YAML configurations meet the strict Pydantic requirements of the v13 spec.
+```powershell
+python scripts/verify_schemas.py
+```
+
+### 3. Pipeline Dry-Run Validation
+Verify the SQLite manifest connection (WAL-mode locking) and storage quota limits without spinning up the inference engine.
+```powershell
+$env:DATA_ROOT="D:\kf_data"
+data-forge run --dry-run
 ```
 
 ## Usage
 
-```bash
+Once setup and verification are complete, you can execute the pipeline natively.
+
+```powershell
+# Set required credentials
+$env:DATA_ROOT="D:\kf_data"
+$env:HF_TOKEN="your_huggingface_token"
+
+# Execute the Smoke Test (100-record micro-batch)
+data-forge run --chunk-size 100 --limit 100
+
 # Full pipeline run
 data-forge run
-
-# Dry-run (validates config, checks storage, no inference)
-data-forge run --dry-run
-
-# Run specific stages
-data-forge run --stages 0,1,2
 
 # Resume from checkpoint
 data-forge run --resume
 
-# Registry watcher (triggered by external cron)
+# Run specific stages (e.g., fetch, dedup, quality)
+data-forge run --stages 0,1,2
+
+# Registry watcher (schedule this via Windows Task Scheduler)
 data-forge registry check
 
 # Inspect manifest

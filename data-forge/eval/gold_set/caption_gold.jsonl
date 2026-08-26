@@ -1,0 +1,2 @@
+{"id": "rico_001", "image_path": "rico/001.png", "gold_caption": "A login screen with a blue background.", "ui_elements_mentioned": ["login button", "username field", "password field"]}
+{"id": "clay_001", "image_path": "clay/001.png", "gold_caption": "An e-commerce product page showing a red shoe.", "ui_elements_mentioned": ["add to cart button", "product image", "price text"]}

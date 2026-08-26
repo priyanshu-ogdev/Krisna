@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.data.domain_tagger import tag_domain
@@ -18,7 +18,7 @@ log = get_logger("stages.s07")
 @register_stage("s07_routing")
 class RoutingStage(Stage):
     name = "s07_routing"
-    requires = ["s06_structure"]
+    requires: ClassVar[tuple[str, ...]] = ("s06_structure",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:

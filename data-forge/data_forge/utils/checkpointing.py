@@ -39,8 +39,11 @@ class CheckpointManager:
         """Clear all checkpoints for a stage. Returns count cleared."""
         count = 0
         for f in self._dir.glob(f"{stage}_*.done"):
-            f.unlink()
-            count += 1
+            try:
+                f.unlink()
+                count += 1
+            except PermissionError:
+                log.warning("checkpoint_clear_failed_permission", file=f.name)
         log.info("checkpoints_cleared", stage=stage, count=count)
         return count
 
@@ -48,8 +51,11 @@ class CheckpointManager:
         """Clear all checkpoints. Returns count cleared."""
         count = 0
         for f in self._dir.glob("*.done"):
-            f.unlink()
-            count += 1
+            try:
+                f.unlink()
+                count += 1
+            except PermissionError:
+                log.warning("checkpoint_clear_failed_permission", file=f.name)
         log.info("all_checkpoints_cleared", count=count)
         return count
 

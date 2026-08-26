@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 import shutil
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.logging_setup import get_logger
@@ -22,7 +22,7 @@ log = get_logger("stages.s03_5")
 @register_stage("s03_5_pii_scrub")
 class PIIScrubStage(Stage):
     name = "s03_5_pii_scrub"
-    requires = ["s03_quality"]
+    requires: ClassVar[tuple[str, ...]] = ("s03_quality",)
 
     async def run(
         self, manifest: Manifest, config: PipelineConfig,
@@ -70,7 +70,8 @@ class PIIScrubStage(Stage):
                 if not img_path.exists():
                     manifest.update_record(rec.id, "pii_scrub", new_status="excluded_failed",
                                            reason="Image not found", exclusion_reason="image_missing")
-                    failed += 1; continue
+                    failed += 1
+                    continue
 
                 detections: list[str] = []
                 scrubbed_path = scrubbed_dir / rec.source_dataset / img_path.name

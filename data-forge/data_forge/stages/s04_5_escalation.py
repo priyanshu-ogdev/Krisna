@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier2 import Tier2Engine
@@ -17,7 +17,7 @@ log = get_logger("stages.s04_5")
 @register_stage("s04_5_escalation")
 class EscalationStage(Stage):
     name = "s04_5_escalation"
-    requires = ["s04_safety"]
+    requires: ClassVar[tuple[str, ...]] = ("s04_safety",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -42,7 +42,8 @@ class EscalationStage(Stage):
                 # Can't get second opinion — leave as pending review
                 manifest.update_record(rec.id, "escalation", new_status="excluded_pending_review",
                                        reason="Tier-2 inference failed", exclusion_reason="escalation_failed")
-                escalated += 1; continue
+                escalated += 1
+                continue
 
             # Two-model agreement logic
             t1_tier = tier1_output.get("tier", "borderline")

@@ -8,6 +8,7 @@ from data_forge.inference.structured_output import (
     QualityOutput,
     SafetyOutput,
     StructureOutput,
+    OCROutput,
 )
 
 
@@ -18,7 +19,8 @@ class TestCaptionOutput:
         assert out.confidence == 0.9
 
     def test_caption_too_short(self):
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
             CaptionOutput(caption="short", ui_elements_mentioned=["b"], confidence=0.5)
 
     def test_schema_generation(self):
@@ -42,6 +44,24 @@ class TestStructureOutput:
         assert len(out.elements) == 1
         assert len(out.elements[0].children) == 1
 
+    def test_empty_elements(self):
+        data = {
+            "elements": [],
+            "layout_type": "unknown",
+            "hierarchy_depth": 0,
+        }
+        out = StructureOutput.model_validate(data)
+        assert len(out.elements) == 0
+
+class TestOCROutput:
+    def test_empty_regions(self):
+        data = {
+            "text_regions": [],
+            "language": "en"
+        }
+        out = OCROutput.model_validate(data)
+        assert len(out.text_regions) == 0
+
 
 class TestSafetyOutput:
     def test_valid_tiers(self):
@@ -53,7 +73,8 @@ class TestSafetyOutput:
             assert out.tier == tier
 
     def test_invalid_tier(self):
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
             SafetyOutput(tier="maybe", confidence=0.5, rationale="Hmm not sure about this.", flags=[])
 
 

@@ -129,8 +129,15 @@ class ModelEngine:
                 self._vllm_process.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 log.warning("vllm_force_kill", model=self._current_model)
-                self._vllm_process.kill()
-                self._vllm_process.wait(timeout=10)
+                import psutil
+                try:
+                    parent = psutil.Process(self._vllm_process.pid)
+                    for child in parent.children(recursive=True):
+                        child.kill()
+                    parent.kill()
+                    parent.wait(timeout=10)
+                except psutil.NoSuchProcess:
+                    pass
         except Exception as e:
             log.error("vllm_stop_error", error=str(e))
 
@@ -138,6 +145,12 @@ class ModelEngine:
         self._current_model = None
 
         # Give CUDA time to release memory
+        import gc
+        import torch
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
         await asyncio.sleep(2)
         log.info("vllm_stopped")
 

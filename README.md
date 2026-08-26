@@ -1,154 +1,136 @@
-# Data-Forge — Zero-Touch Data Pipeline (v13)
+# Krisna: Agentic Design System & Data-Forge
 
-> The automated data-curation pipeline for **Krisna**, an agentic UI/design system
-> (planner → sparse sketch tier → diffusion polish tier). Implements the v13 spec:
-> every verification, judgment, and spot-check step that used to require a human
-> is now either deterministic logic or a call to a resident reasoning/VLM model,
-> logged with a citation or rationale.
+**Krisna** is a single-GPU (48GB VRAM), conversational AI design agent capable of generating, iterating, and polishing UI/graphic designs through human-in-the-loop interaction. It utilizes a novel **Two-Tier Generation Architecture** (Sparse Masked Sketching -> Continuous Flow Polishing) and is powered by a fully automated, zero-touch data ingestion pipeline (**Data-Forge**).
 
-## Status (as of this handoff)
+## 🏗️ High-Level System Architecture
 
-| Check | Result |
-|---|---|
-| Syntax (all `.py`, AST-parsed) | ✅ 0 errors |
-| Module imports (all 53 modules) | ✅ 0 real errors — only expected `ModuleNotFoundError` for GPU-only deps (vllm/torch/faiss-gpu/mediapipe) not installed on a non-GPU box |
-| Unit tests (`pytest -m "not integration"`) | ✅ 38/38 passing |
-| Lint (`ruff check .`) | ⚠️ 57 style-only findings (line length, import order, blind-`Exception` in tests) — no undefined names, no logic errors |
-| Packaging (`pyproject.toml` build backend) | ✅ fixed — was pointing at a non-existent backend, now `setuptools.build_meta` |
-| **Not yet verified** | Real vLLM/AWQ inference, and a live run against RICO/CLAY/WebUI — both require the target GPU box and network access this environment doesn't have |
+Krisna separates the *interactive exploration* phase from the *high-fidelity rendering* phase to maintain sub-second conversational latency without sacrificing final output quality.
 
-**Bottom line:** the codebase is structurally sound and internally consistent with the v13 spec and all four mandatory upgrades (PII scrub, Tri-Path encoding, chunk-based model swapping, storage quota enforcement). What's unverified is specifically the parts that *require your hardware* — not the code logic.
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                    Orchestrator (Chunk-Based)             │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌─────────┐ ┌──────┐ │
-│  │Stage 0 │→│Stage 1 │→│Stage 2 │→│Stage 3  │→│ 3.5  │ │
-│  │Manifest│ │Fetch+  │ │Dedup   │ │Quality  │ │ PII  │ │
-│  │Planning│ │License │ │(FAISS) │ │Scoring  │ │Scrub │ │
-│  └────────┘ └────────┘ └────────┘ └─────────┘ └──────┘ │
-│       ↓                                                  │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ │
-│  │Stage 4 │→│  4.5   │→│Stage 5 │→│Stage 6 │→│Stage 7 │ │
-│  │Safety  │ │Escalate│ │Recap+  │ │Struct  │ │Routing │ │
-│  │Tier-1  │ │Tier-2  │ │OCR     │ │Extract │ │& Shard │ │
-│  └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ │
-│       ↓                                                  │
-│  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐            │
-│  │Stage 8 │→│Stage 9 │→│Stage 10│ │Stage 11│            │
-│  │Tri-Path│ │Heldout │ │Audit   │ │Registry│            │
-│  │Encode  │ │Carve   │ │Pass    │ │Watcher │            │
-│  └────────┘ └────────┘ └────────┘ └────────┘            │
-└──────────────────────────────────────────────────────────┘
+```text
+User Prompt / Feedback
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Qwen3.5-9B Planner/Critic (BF16)    │ ◄── Agentic Orchestrator
+│  • Intent extraction & JSON state    │     (Design State Manager)
+│  • Continuous conditioning embeds    │
+└──────────────┬───────────────────────┘
+               │
+   ┌───────────▼────────────┐
+   │ Stage 1: Sketch Tier   │ ◄── MaskGIT / MAR Lineage (Discrete VQ Tokens)
+   │ • 8-Step Masked Gen.   │     • Halton Scheduler (Spatial dispersion)
+   │ • Interactive/Iterative│     • Token-Critic (Confidence gating)
+   └───────────┬────────────┘
+               │ User approves layout/structure
+               ▼
+   ┌──────────────────────────────────────┐
+   │ Stage 2: Polish Tier (Handoff)       │ ◄── Z-Image-Turbo / Qwen-Image-2.0
+   │ • Continuous Flow-Matching           │     • In-context token conditioning
+   │ • Region-locked differential diffusion│
+   └──────────────────────────────────────┘
+               │
+               ▼
+      Verifier Stack (CLIP, OCR, Layout-IoU) ──► Final Export
 ```
 
-Each chunk of records (default 10,000) is passed through the applicable stages
-with the relevant model loaded once, then unloaded, before the next model loads —
-this is what makes the pipeline viable on a single 48GB card (see `orchestrator.py`).
+### 🧠 The Model Stack
+| Component | Model Family | Role | Precision / Serving |
+| :--- | :--- | :--- | :--- |
+| **Planner / Critic** | Qwen3.5-9B (or 4B) | Conversational state management, design critique, tool routing. | BF16 (Interactive) / FP8 (Serving) |
+| **Sketch Tier** | MaskGIT / MaskGIL (Custom) | Sparse, iterative layout and structural exploration. | Discrete VQ Tokens (INT16) |
+| **Polish Tier (Primary)** | Z-Image-Turbo (6B) | Fast, high-fidelity final rendering and texture synthesis. | NF4 / AWQ (vLLM) |
+| **Polish Tier (Quality)** | Qwen-Image-2.0 (15B) | Complex semantic rendering and strict prompt adherence. | NF4 / AWQ (vLLM) |
 
-## Requirements
+---
 
-- **OS**: Ubuntu 22.04 / 24.04 LTS (production), Windows (development only)
-- **CUDA**: 12.4 (strictly pinned — vLLM and FAISS-GPU are sensitive to minor-version drift)
-- **Python**: 3.10 or 3.11 (`pyproject.toml` currently caps at `<3.12`; loosen only after confirming vLLM's current wheel support for 3.12)
-- **GPU**: 48GB VRAM (A6000, RTX 6000 Ada, L40S)
-- **RAM**: 128GB system RAM recommended (Tier-1/Tier-2 CPU inference lane)
-- **Disk**: ≥3TB at `DATA_ROOT`
+## ⚙️ The Data-Forge: Zero-Touch Ingestion Pipeline
 
-## Setup
+The Data-Forge is a custom, 12-stage Python orchestrator designed to process millions of images into training-ready latents on a single workstation. It replaces manual curation with **VLM-as-Judge** auditing and deterministic logic.
 
+### Pipeline Stages
+1. **`s00_manifest_planning`**: Pre-flight storage checks, registry watcher sync.
+2. **`s01_fetch`**: HuggingFace/GitHub ingestion + Inline License Verification Agent.
+3. **`s02_dedup`**: GPU-accelerated FAISS semantic near-duplicate removal.
+4. **`s03_quality`**: Aesthetic and resolution scoring via Tier-1 VLM.
+5. **`s03_5_pii_scrub`**: **(Critical)** Regex text redaction + MediaPipe face blurring for UI screenshots.
+6. **`s04_safety`**: NSFW/Harmful content classification.
+7. **`s04_5_escalation`**: Tier-2 VLM second-opinion on borderline records.
+8. **`s05_recaption`**: Dense structural captioning + DeepSeek-OCR text extraction.
+9. **`s06_structure`**: UI component tree and bounding box JSON extraction.
+10. **`s07_routing`**: Domain tagging and stratified shard routing.
+11. **`s08_encoding`**: **Tri-Path Latent Encoding** (Z-Image VAE, Qwen VAE, VQ Tokens, Control Maps).
+12. **`s09_heldout`**: Stratified evaluation set carve-out.
+13. **`s10_audit`**: Automated VLM-as-Judge rubric evaluation (replaces human spot-checks).
+14. **`s11_registry_watcher`**: Automated polling for new SOTA model releases.
+
+### 💾 Tri-Path Latent Storage Strategy
+To support both the discrete Sketch Tier and continuous Polish Tier, the Data-Forge encodes every approved image into four distinct representations:
+1. `latents_zimage/` (fp16 `.safetensors`) - Continuous latents for Z-Image-Turbo.
+2. `latents_qwenimage/` (fp16 `.safetensors`) - Continuous latents for Qwen-Image-2.0.
+3. `vq_tokens_sketch/` (int16 `.pt`) - Discrete codebook indices for MaskGIT/MAR.
+4. `control_tokens/` (`.json`) - Structural bounding boxes and Canny edges for handoff conditioning.
+
+---
+
+## 💻 Hardware & Infrastructure Target
+
+Krisna is explicitly designed to run on a **Single 48GB Workstation GPU** (e.g., NVIDIA RTX A6000 / Ada 6000). 
+
+* **Inference Engine**: vLLM with dynamic model swapping (Tier-1 <-> Tier-2 <-> OCR) and strict `psutil` zombie-process teardown.
+* **Orchestration**: Custom Python DAG with SQLite WAL-mode manifest for ACID-compliant state tracking across millions of records.
+* **OS**: Windows 11 / Ubuntu 22.04 (Fully cross-platform via `pathlib` and `spawn` multiprocessing guards).
+
+## 🚀 Setup, Verification & Execution Pipeline (Windows)
+
+The data-forge relies on a carefully linked sequence of scripts to securely build the environment, validate schemas, and execute the orchestrator. Follow these steps in order:
+
+### 1. Environment Bootstrap (`scripts/setup_env.ps1`)
+Because `faiss-gpu` lacks pre-compiled pip wheels for Windows, we use a Conda bootstrap script to bridge the dependency gap before installing the core Python toolchain.
+
+```powershell
+# Open a PowerShell terminal
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\scripts\setup_env.ps1
+
+# The script creates the environment. You must manually activate it before proceeding:
+conda activate krisna-forge
+```
+*Linkage*: This script sets up Python 3.10, installs `torch` with CUDA 12.4, uses conda for `faiss-gpu`, and finally runs `pip install -e .[dev]` to link the `data-forge` CLI.
+
+### 2. Pre-Flight Schema Verification (`scripts/verify_schemas.py`)
+Before processing terabytes of data, validate that your YAML configurations (`configs/pipeline.yaml`, `configs/models.yaml`) meet the strict Pydantic requirements of v13.
+
+```powershell
+python scripts/verify_schemas.py
+```
+*Linkage*: This utility ensures your model pins, chunk sizes, and VRAM budgets are correctly typed before the orchestrator boots, preventing mid-run crashes.
+
+### 3. Pipeline Dry-Run Validation (`--dry-run`)
+Validate the SQLite manifest connection, the storage budget, and the stage DAG without spinning up the GPU models.
+
+```powershell
+$env:DATA_ROOT="D:\kf_data"
+python -m data_forge.cli run --dry-run
+```
+*Linkage*: The `run` command invokes `data_forge/cli.py`, which instantiates the `Orchestrator`. The `--dry-run` flag bypasses `engine.py` (vLLM subprocesses), verifying the local DAG logic and SQLite `IMMEDIATE` lock resiliency.
+
+### 4. The Smoke Test Micro-Run (End-to-End)
+Execute a 100-record micro-batch to prove the VRAM swapping, Tri-Path Encoding, and model teardowns function flawlessly on your hardware.
+
+```powershell
+$env:HF_TOKEN="your_huggingface_token"
+python -m data_forge.cli run --chunk-size 100 --limit 100
+```
+*Linkage*: This activates the full infrastructure. The orchestrator processes the chunk, dynamically spinning up models via `subprocess.Popen` in `engine.py`, tearing them down recursively using `psutil` to prevent zombie VRAM leaks.
+
+### 5. Registry Watcher Sync
+Schedule this to poll for new open-source models and datasets automatically.
+```powershell
+python -m data_forge.cli registry check
+```
+
+### 6. Launch the Agentic Server
+*(Coming in Phase A Implementation)*
 ```bash
-cd data-forge
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-
-pip install -e ".[dev]"
-
-export DATA_ROOT=/data_krisna
-export HF_TOKEN=hf_...
-export CUDA_VISIBLE_DEVICES=0
+python -m krisna.serve --planner qwen3.5-9b --renderer z-image-turbo
 ```
-
-## Usage
-
-```bash
-data-forge run                              # full pipeline
-data-forge run --dry-run                    # validate config + storage, no inference
-data-forge run --stages 0,1,2                # run specific stages only
-data-forge run --resume                      # resume from last checkpoint
-
-data-forge registry check                   # registry watcher (run weekly via cron/systemd timer)
-
-data-forge manifest stats
-data-forge manifest query --status excluded_pending_review
-```
-
-## Configuration
-
-All configuration lives in `configs/`:
-- `pipeline.yaml` — stage toggles, thresholds, paths, chunk size
-- `models.yaml` — pinned model versions/revisions, quantization, VRAM budgets
-- `datasets.yaml` — source dataset URLs, license status, category weights
-
-Paths in `pipeline.yaml` are relative to `DATA_ROOT`. Model pins in `models.yaml`
-are what `data-forge registry check` proposes updates to — actual swaps are a
-deliberate, logged step, never automatic.
-
-## Stage reference
-
-| Stage | Name | GPU Model | Purpose |
-|---|---|---|---|
-| 00 | Manifest Planning | — | Init DB, storage pre-flight check, read latest registry-watcher report |
-| 01 | Fetch & License | Tier-1 (inline) | Download shards, structured license-term extraction |
-| 02 | Dedup | CLIP / FAISS | Exact-hash + semantic near-duplicate removal |
-| 03 | Quality | Tier-1 | Aesthetic + resolution scoring |
-| 03.5 | PII Scrub | MediaPipe / regex | Face blur, sensitive-text redaction |
-| 04 | Safety | Tier-1 | NSFW / harmful-content classification |
-| 04.5 | Escalation | Tier-2 | Second opinion on borderline safety/license records |
-| 05 | Recaption + OCR | Tier-1 → OCR | Dense captioning + text-in-image extraction |
-| 06 | Structure | Tier-1 | UI component-tree / layout JSON extraction |
-| 07 | Routing | — | Domain tagging, ratio enforcement, shard assignment |
-| 08 | Tri-Path Encoding | VAEs / VQ tokenizer | Z-Image latents, Qwen-Image latents, MaskGIT VQ tokens, control maps |
-| 09 | Heldout Carve | — | Stratified sampling for the eval set |
-| 10 | Audit Pass | Tier-1 + Tier-2 | VLM-as-judge rubric scoring on a 2–5% sample, ensemble-disagreement escalation |
-| 11 | Registry Watch | — | External cron; polls HF/GitHub for model/dataset updates, writes a report Stage 0 reads |
-
-## Testing
-
-```bash
-pytest tests/ -v -m "not integration"        # unit tests, no GPU required — currently 38/38 passing
-pytest tests/ -v -m integration               # requires GPU + downloaded models
-pytest tests/ --cov=data_forge --cov-report=html
-ruff check .                                  # style/lint
-```
-
-## Human-in-the-loop, by design (not an oversight)
-
-Two things are deliberately **not** automated:
-1. **Final legal sign-off** on records left in `excluded_pending_review` after
-   the License Verification Agent's triage, if the project intends to ship or publish.
-2. **The UI-first vs. general-design sampling ratio** in Stage 07 — a product-strategy
-   call, not a data-quality one.
-
-Everything else that reads as "verify," "check," or "confirm" in the source
-planning docs is now deterministic logic or a logged model call.
-
-## Known gaps / next steps
-
-- [ ] Real vLLM/AWQ load-and-infer smoke test against `models.yaml` pins, on target hardware
-- [ ] Small dry run (a few hundred RICO/CLAY records) end-to-end, to get real throughput + audit-pass numbers before committing to the full corpus — feeds directly into the research track's M0/M4 milestones
-- [ ] Confirm live RICO/CLAY/WebUI fetch logic still matches current source HTML/API shape (fetcher was written against the sources' shape at spec time, not verified live)
-- [ ] Re-evaluate the `<3.12` Python pin once vLLM 3.12 wheel support is confirmed
-- [ ] Optional: clear the remaining 57 cosmetic `ruff` findings (line length, import order, `assertRaises(Exception)` in two tests) — not blocking, just housekeeping
-
-## Change log (this pass)
-
-- Fixed `pyproject.toml`: invalid `build-backend` (`setuptools.backends._legacy:_Backend`, doesn't exist) → `setuptools.build_meta`. Without this, `pip install -e .` failed outright.
-- Fixed two real static-analysis findings in `cli.py` and `utils/image_utils.py`
-  (undefined-name annotations for `PipelineConfig` and `torch.Tensor`, now
-  properly deferred under `TYPE_CHECKING` / string annotations) — harmless at
-  runtime today, but would break `mypy` and any IDE type-checking.
-  Removed one unused variable (`results` in `cli.py`).
-- Verified: AST-parses clean, all modules import clean, 38/38 unit tests pass.

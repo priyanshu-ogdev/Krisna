@@ -141,6 +141,23 @@ class DedupEngine:
             self._id_map = json.loads(id_map_path.read_text(encoding="utf-8"))
         log.info("index_loaded", path=str(path), vectors=self._index.ntotal)
 
+    def cleanup(self) -> None:
+        """Release FAISS GPU memory if applicable and explicitly destroy index."""
+        if self._index is not None:
+            import faiss
+            # Downcast to CPU if it was on GPU (assuming faiss-gpu)
+            try:
+                if hasattr(faiss, "index_gpu_to_cpu"):
+                    self._index = faiss.index_gpu_to_cpu(self._index)
+            except Exception as e:
+                log.debug("faiss_gpu_cleanup_skipped", error=str(e))
+            self._index = None
+            
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        log.info("dedup_engine_cleaned_up")
+
     @staticmethod
     def generate_embeddings(
         image_paths: list[Path],

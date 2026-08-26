@@ -33,6 +33,13 @@ class StorageManager:
 
         Raises StorageQuotaExceeded if projected > (available * (1 - safety_margin)).
         """
+        if len(str(self._data_root)) >= 50:
+            raise StorageQuotaExceeded(
+                f"Windows MAX_PATH limitation: DATA_ROOT '{self._data_root}' is too long "
+                f"({len(str(self._data_root))} chars). It must be < 50 chars to prevent "
+                "FileNotFoundError crashes during deep directory creation in Stage 8."
+            )
+
         projected = self.calculate_projected_size(manifest_count)
         available = self.get_available_bytes()
         safe_limit = int(available * (1.0 - self._safety_margin))

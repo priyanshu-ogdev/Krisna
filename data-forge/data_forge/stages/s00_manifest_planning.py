@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.data.storage import StorageManager
@@ -17,7 +17,7 @@ log = get_logger("stages.s00")
 @register_stage("s00_manifest_planning")
 class ManifestPlanningStage(Stage):
     name = "s00_manifest_planning"
-    requires = []
+    requires: ClassVar[tuple[str, ...]] = ()
 
     async def run(
         self,
