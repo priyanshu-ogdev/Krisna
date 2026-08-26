@@ -1,6 +1,5 @@
 """Tests for the shard router."""
 
-import pytest
 from data_forge.data.shard_router import ShardRouter
 from data_forge.manifest import ManifestRecord
 

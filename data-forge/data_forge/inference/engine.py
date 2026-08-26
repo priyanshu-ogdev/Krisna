@@ -10,17 +10,16 @@ via torch/transformers.
 from __future__ import annotations
 
 import asyncio
-import signal
 import subprocess
 import sys
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 import httpx
 
-from data_forge.config import ModelSpec, PipelineConfig
+from data_forge.config import PipelineConfig
 from data_forge.logging_setup import get_logger
 
 log = get_logger("inference.engine")
@@ -211,6 +210,7 @@ class ModelEngine:
             return
 
         import gc
+
         import torch
 
         del self._clip_model
@@ -247,16 +247,7 @@ class ModelEngine:
             log.info("encoder_loading", key=key, model_id=spec.model_id)
 
             dtype = getattr(torch, spec.dtype.replace("float", "float"))
-            if key == "z_image_vae":
-                from diffusers import AutoencoderKL
-
-                model = AutoencoderKL.from_pretrained(
-                    spec.model_id,
-                    torch_dtype=dtype,
-                    revision=spec.revision,
-                ).to(spec.device).eval()
-
-            elif key == "qwen_image_vae":
+            if key == "z_image_vae" or key == "qwen_image_vae":
                 from diffusers import AutoencoderKL
 
                 model = AutoencoderKL.from_pretrained(
@@ -286,6 +277,7 @@ class ModelEngine:
     def unload_encoders(self) -> None:
         """Unload all encoder models."""
         import gc
+
         import torch
 
         for key in list(self._encoders.keys()):
@@ -307,7 +299,7 @@ class ModelEngine:
     @asynccontextmanager
     async def vllm_session(
         config: PipelineConfig, model_key: str
-    ) -> AsyncGenerator["ModelEngine", None]:
+    ) -> AsyncGenerator[ModelEngine, None]:
         """Context manager that starts vLLM, yields the engine, and stops on exit."""
         engine = ModelEngine()
         try:
@@ -320,7 +312,7 @@ class ModelEngine:
     @asynccontextmanager
     async def clip_session(
         config: PipelineConfig,
-    ) -> AsyncGenerator["ModelEngine", None]:
+    ) -> AsyncGenerator[ModelEngine, None]:
         """Context manager for CLIP embedding model."""
         engine = ModelEngine()
         try:
@@ -333,7 +325,7 @@ class ModelEngine:
     @asynccontextmanager
     async def encoder_session(
         config: PipelineConfig,
-    ) -> AsyncGenerator["ModelEngine", None]:
+    ) -> AsyncGenerator[ModelEngine, None]:
         """Context manager for tri-path encoder models."""
         engine = ModelEngine()
         try:

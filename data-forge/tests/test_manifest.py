@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from data_forge.manifest import Manifest, VALID_STATUSES, TERMINAL_STATUSES
+from data_forge.manifest import Manifest
 
 
 class TestManifestCreation:

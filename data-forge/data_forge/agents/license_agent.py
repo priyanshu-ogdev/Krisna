@@ -5,7 +5,6 @@ Replaces the manual "must be checked directly, not assumed" gate from v10 §1.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 

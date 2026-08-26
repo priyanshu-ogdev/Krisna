@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 from data_forge.config import PipelineConfig
 from data_forge.data.dedup import DedupEngine

@@ -1,7 +1,9 @@
 """Stage 5: Recaption + OCR — dense captioning via Tier-1, text extraction via OCR model."""
 
 from __future__ import annotations
+
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
 from data_forge.logging_setup import get_logger

@@ -1,9 +1,11 @@
 """Stage 9: Heldout Carve — stratified sampling for eval set."""
 
 from __future__ import annotations
+
 import random
 from collections import defaultdict
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest

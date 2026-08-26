@@ -1,8 +1,9 @@
 """Stage 6: Structure — UI component tree / layout JSON extraction."""
 
 from __future__ import annotations
-import json
+
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.data.schema_validator import SchemaValidator
 from data_forge.inference.tier1 import Tier1Engine

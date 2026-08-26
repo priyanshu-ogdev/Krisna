@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 import shutil
-from pathlib import Path
 from typing import Any
 
 from data_forge.config import PipelineConfig
@@ -77,8 +76,8 @@ class PIIScrubStage(Stage):
                 scrubbed_path = scrubbed_dir / rec.source_dataset / img_path.name
 
                 # Load image
-                from PIL import Image, ImageFilter
                 import numpy as np
+                from PIL import Image, ImageFilter
 
                 img = Image.open(img_path).convert("RGB")
                 img_array = np.array(img)

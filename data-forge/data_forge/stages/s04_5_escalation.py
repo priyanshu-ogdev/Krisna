@@ -1,7 +1,9 @@
 """Stage 4.5: Escalation — Tier-2 second opinion on borderline records."""
 
 from __future__ import annotations
+
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier2 import Tier2Engine
 from data_forge.logging_setup import get_logger

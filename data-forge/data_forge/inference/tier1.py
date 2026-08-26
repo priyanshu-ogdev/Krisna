@@ -7,7 +7,6 @@ safety classification (first pass), license text parsing, audit pass.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.client import InferenceClient

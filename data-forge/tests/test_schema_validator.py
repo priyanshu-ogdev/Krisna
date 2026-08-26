@@ -1,7 +1,9 @@
 """Tests for the schema validator."""
 
-import pytest
 from pathlib import Path
+
+import pytest
+
 from data_forge.data.schema_validator import SchemaValidator
 
 

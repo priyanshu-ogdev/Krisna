@@ -1,7 +1,9 @@
 """Stage 4: Safety — NSFW/harmful content classification via Tier-1."""
 
 from __future__ import annotations
+
 from typing import Any
+
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
 from data_forge.logging_setup import get_logger

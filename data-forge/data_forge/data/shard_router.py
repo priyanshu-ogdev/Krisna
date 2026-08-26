@@ -7,11 +7,10 @@ not auto-determined — v12 Stage 6).
 from __future__ import annotations
 
 import math
-import uuid
 from typing import Any
 
 from data_forge.logging_setup import get_logger
-from data_forge.manifest import Manifest, ManifestRecord
+from data_forge.manifest import ManifestRecord
 
 log = get_logger("data.shard_router")
 

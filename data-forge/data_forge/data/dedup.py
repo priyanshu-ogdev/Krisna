@@ -112,8 +112,9 @@ class DedupEngine:
 
     def save_index(self, path: Path) -> None:
         """Persist FAISS index to disk."""
-        import faiss
         import json
+
+        import faiss
 
         if self._index is None:
             return
@@ -130,8 +131,9 @@ class DedupEngine:
 
     def load_index(self, path: Path) -> None:
         """Load a previously saved FAISS index."""
-        import faiss
         import json
+
+        import faiss
 
         self._index = faiss.read_index(str(path))
         id_map_path = path.with_suffix(".ids.json")

@@ -1,9 +1,11 @@
 """Internal eval set runner for model comparison (registry watcher §5)."""
 
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
+
 from data_forge.logging_setup import get_logger
 
 log = get_logger("registry.evaluator")
