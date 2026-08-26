@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LicenseOutput",
+  "type": "object",
+  "required": ["license_type", "redistribution_allowed", "commercial_use_allowed", "attribution_required", "research_only", "confidence", "source_citation"],
+  "properties": {
+    "license_type": { "type": "string" },
+    "redistribution_allowed": { "type": "boolean" },
+    "commercial_use_allowed": { "type": "boolean" },
+    "attribution_required": { "type": "boolean" },
+    "research_only": { "type": "boolean" },
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "source_citation": { "type": "string", "minLength": 10 },
+    "key_restrictions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,130 @@
+# =============================================================================
+# Model Registry — Pinned Versions (v13)
+# =============================================================================
+# Every model used in the pipeline is pinned here with its exact HuggingFace
+# revision. The Registry Watcher (Stage 11 / `data-forge registry check`)
+# proposes updates to these pins; actual swaps are deliberate, logged events.
+# =============================================================================
+
+models:
+  # -------------------------------------------------------------------------
+  # Tier-1: Bulk Pipeline Engine
+  # Recaptioning, structural extraction, aesthetic scoring, safety Tier-1,
+  # license parsing, audit pass.
+  # -------------------------------------------------------------------------
+  tier1:
+    model_id: "Qwen/Qwen3.6-35B-A3B-AWQ"
+    revision: "main"                    # Pin to commit hash for prod
+    quantization: "awq"
+    dtype: "auto"
+    max_model_len: 32768
+    gpu_memory_utilization: 0.85
+    trust_remote_code: true
+    role: "bulk_pipeline_engine"
+    capabilities:
+      - text
+      - vision
+    vram_estimate_gb: 20
+
+  # -------------------------------------------------------------------------
+  # Tier-2: Escalation Engine
+  # Borderline safety, ambiguous license, Tier-1 disagreement cross-check.
+  # Loaded on-demand only for escalated records.
+  # -------------------------------------------------------------------------
+  tier2:
+    model_id: "Qwen/Qwen3.6-27B-AWQ"
+    revision: "main"
+    quantization: "awq"
+    dtype: "auto"
+    max_model_len: 16384
+    gpu_memory_utilization: 0.85
+    trust_remote_code: true
+    role: "escalation_engine"
+    load_on_demand: true
+    capabilities:
+      - text
+      - vision
+    vram_estimate_gb: 14
+
+  # -------------------------------------------------------------------------
+  # OCR: Dedicated Text-in-Image Extraction
+  # Runs as a separate model swap after Tier-1 stages complete for a chunk.
+  # -------------------------------------------------------------------------
+  ocr:
+    model_id: "deepseek-ai/DeepSeek-OCR-2"
+    revision: "main"
+    quantization: null                  # Small enough to run at fp16 (~6GB)
+    dtype: "float16"
+    max_model_len: 8192
+    gpu_memory_utilization: 0.85
+    trust_remote_code: true
+    role: "dedicated_ocr"
+    load_on_demand: true
+    capabilities:
+      - text
+      - vision
+    vram_estimate_gb: 6
+
+  # -------------------------------------------------------------------------
+  # Embedding: CLIP for FAISS Deduplication
+  # Loaded separately from vLLM — uses transformers directly.
+  # -------------------------------------------------------------------------
+  embeddings:
+    model_id: "openai/clip-vit-large-patch14-336"
+    revision: "main"
+    dtype: "float16"
+    device: "cuda"
+    role: "image_embeddings"
+    vram_estimate_gb: 2
+
+  # -------------------------------------------------------------------------
+  # Product Planner (NOT used by the pipeline — listed for reference only)
+  # Qwen3.5-9B, BF16 LoRA, Gated DeltaNet — locked architecture decision.
+  # -------------------------------------------------------------------------
+  product_planner:
+    model_id: "Qwen/Qwen3.5-9B"
+    role: "product_planner"
+    note: "NOT used by data-forge. Documented for architecture clarity."
+    managed_by: "product training pipeline, not data-forge"
+
+# ---------------------------------------------------------------------------
+# Encoding Models (Stage 8 Tri-Path)
+# These are VAEs / VQ tokenizers, NOT LLMs. Loaded via torch/transformers.
+# ---------------------------------------------------------------------------
+encoders:
+  z_image_vae:
+    model_id: "stabilityai/z-image-turbo-v1"
+    revision: "main"
+    dtype: "float16"
+    device: "cuda"
+    role: "z_image_continuous_latents"
+    vram_estimate_gb: 2
+
+  qwen_image_vae:
+    model_id: "Qwen/Qwen-Image-2.0-VAE"
+    revision: "main"
+    dtype: "float16"
+    device: "cuda"
+    role: "qwen_image_continuous_latents"
+    expected_channels: 64
+    expected_downsample: 16
+    vram_estimate_gb: 3
+
+  maskgit_vq:
+    model_id: "TencentARC/Open-MAGVIT2"
+    revision: "main"
+    dtype: "float16"
+    device: "cuda"
+    role: "sketch_tier_vq_tokens"
+    vram_estimate_gb: 2
+
+# ---------------------------------------------------------------------------
+# vLLM Server Settings (shared across Tier-1, Tier-2, OCR)
+# ---------------------------------------------------------------------------
+vllm_server:
+  host: "127.0.0.1"
+  port: 8000
+  api_key: "data-forge-internal"       # Local only; not exposed externally
+  startup_timeout_seconds: 120
+  health_check_interval_seconds: 5
+  graceful_shutdown_timeout_seconds: 30

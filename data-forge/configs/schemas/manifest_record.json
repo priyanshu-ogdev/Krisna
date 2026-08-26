@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ManifestRecord",
+  "description": "Schema for a single record in the data-forge manifest database.",
+  "type": "object",
+  "required": ["id", "source_dataset", "status", "created_at", "updated_at"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique record identifier (UUID4)"
+    },
+    "source_dataset": {
+      "type": "string",
+      "description": "Key from datasets.yaml (e.g., 'rico_core', 'clay')"
+    },
+    "source_file": {
+      "type": "string",
+      "description": "Original filename or path within the source dataset"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "fetched",
+        "deduped",
+        "quality_scored",
+        "pii_scrubbed",
+        "safety_classified",
+        "recaptioned",
+        "structured",
+        "routed",
+        "encoded",
+        "audited",
+        "training_pool",
+        "heldout",
+        "excluded_duplicate",
+        "excluded_low_quality",
+        "excluded_unsafe",
+        "excluded_pending_review",
+        "excluded_failed",
+        "overflow_excluded"
+      ]
+    },
+    "image_path": {
+      "type": ["string", "null"],
+      "description": "Path to raw image (relative to DATA_ROOT)"
+    },
+    "scrubbed_image_path": {
+      "type": ["string", "null"],
+      "description": "Path to PII-scrubbed image (relative to DATA_ROOT)"
+    },
+    "content_hash_sha256": {
+      "type": ["string", "null"],
+      "description": "SHA-256 hash of raw image bytes"
+    },
+    "perceptual_hash": {
+      "type": ["string", "null"],
+      "description": "Perceptual hash for near-duplicate detection"
+    },
+    "image_width": { "type": ["integer", "null"] },
+    "image_height": { "type": ["integer", "null"] },
+    "file_size_bytes": { "type": ["integer", "null"] },
+    "license_verified": { "type": ["boolean", "null"] },
+    "license_output": {
+      "oneOf": [{ "$ref": "license_output.json" }, { "type": "null" }]
+    },
+    "aesthetic_score": {
+      "type": ["number", "null"],
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "quality_output": { "type": ["object", "null"] },
+    "pii_scrubbed": { "type": ["boolean", "null"] },
+    "pii_detections": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    },
+    "safety_tier": {
+      "type": ["string", "null"],
+      "enum": ["safe", "borderline", "unsafe", null]
+    },
+    "safety_output": {
+      "oneOf": [{ "$ref": "safety_output.json" }, { "type": "null" }]
+    },
+    "caption": { "type": ["string", "null"] },
+    "caption_output": {
+      "oneOf": [{ "$ref": "caption_output.json" }, { "type": "null" }]
+    },
+    "ocr_output": {
+      "oneOf": [{ "$ref": "ocr_output.json" }, { "type": "null" }]
+    },
+    "structure_output": {
+      "oneOf": [{ "$ref": "structure_output.json" }, { "type": "null" }]
+    },
+    "domain": {
+      "type": ["string", "null"],
+      "enum": ["ui_first", "general_design", null]
+    },
+    "shard_id": { "type": ["string", "null"] },
+    "encoding_paths": {
+      "type": ["object", "null"],
+      "properties": {
+        "z_image_latent": { "type": "string" },
+        "qwen_image_latent": { "type": "string" },
+        "vq_tokens": { "type": "string" },
+        "control_map": { "type": "string" }
+      }
+    },
+    "audit_output": {
+      "oneOf": [{ "$ref": "audit_output.json" }, { "type": "null" }]
+    },
+    "exclusion_reason": { "type": ["string", "null"] },
+    "duplicate_of": {
+      "type": ["string", "null"],
+      "description": "ID of the retained record if this is a duplicate"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "stage_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "stage": { "type": "string" },
+          "status": { "type": "string" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "reason": { "type": ["string", "null"] }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,158 @@
+# =============================================================================
+# Data-Forge Pipeline Configuration (v13)
+# =============================================================================
+# All paths are RELATIVE to DATA_ROOT (env var, default: /data_krisna or D:\data_krisna).
+# The orchestrator resolves them at runtime.
+# =============================================================================
+
+pipeline:
+  version: "0.13.0"
+  dataset_version_prefix: "krisna_v"  # Auto-incremented: krisna_v001, krisna_v002, ...
+
+# ---------------------------------------------------------------------------
+# Directory layout (all relative to DATA_ROOT)
+# ---------------------------------------------------------------------------
+paths:
+  raw: "raw/"                                    # Stage 1 downloads land here
+  scrubbed: "scrubbed/"                          # Stage 3.5 PII-scrubbed images
+  processed:
+    root: "processed/"
+    latents_zimage: "processed/latents_zimage/"  # Stage 8 branch 1
+    latents_qwenimage: "processed/latents_qwenimage/"  # Stage 8 branch 2
+    vq_tokens_sketch: "processed/vq_tokens_sketch/"    # Stage 8 branch 3
+    control_tokens: "processed/control_tokens/"        # Stage 8 branch 4
+  training_pool: "training_pool/"                # Final training-ready records
+  heldout: "heldout/"                            # Stage 9 eval set
+  manifests: "manifests/"                        # SQLite DB + version snapshots
+  checkpoints: ".checkpoints/"                   # Stage completion markers
+  logs: "logs/"                                  # Structured JSON-lines logs
+  registry_reports: "registry_reports/"          # Stage 11 watcher output
+  audit_reports: "audit_reports/"                # Stage 10 audit summaries
+  compliance_briefs: "compliance_briefs/"         # License agent output for review
+
+# ---------------------------------------------------------------------------
+# Orchestrator settings
+# ---------------------------------------------------------------------------
+orchestrator:
+  chunk_size: 10000          # Records per processing chunk
+  max_retries_per_record: 2  # Per-record retry before marking failed
+  fail_fast: false           # If true, halt pipeline on first stage error
+  checkpoint_enabled: true   # Write stage completion markers for resume
+
+# ---------------------------------------------------------------------------
+# Stage-specific thresholds
+# ---------------------------------------------------------------------------
+stages:
+  s00_manifest_planning:
+    enabled: true
+    vae_expected_channels: 64       # Qwen-Image-2.0 f16c64 config
+    vae_expected_downsample: 16     # Spatial downsampling ratio
+
+  s01_fetch:
+    enabled: true
+    max_concurrent_downloads: 4
+    download_timeout_seconds: 3600
+    license_confidence_threshold: 0.85  # Below this → excluded_pending_review
+
+  s02_dedup:
+    enabled: true
+    embedding_model: "openai/clip-vit-large-patch14-336"
+    embedding_batch_size: 256
+    faiss_index_type: "IVF4096,Flat"   # Switch to HNSW for < 50k records
+    faiss_nprobe: 64
+    similarity_threshold: 0.95         # Cosine sim above this = duplicate
+    exact_hash_dedup: true             # Also do SHA-256 exact match first
+
+  s03_quality:
+    enabled: true
+    aesthetic_score_threshold: 0.4     # 0.0–1.0; below this = excluded_low_quality
+    min_resolution: [256, 256]         # Width, Height minimum
+    max_resolution: [8192, 8192]       # Reject absurdly large images
+    batch_size: 64
+
+  s03_5_pii_scrub:
+    enabled: true
+    face_detection_confidence: 0.5     # MediaPipe face detection threshold
+    blur_kernel_size: 99               # Gaussian blur kernel for faces
+    regex_patterns:
+      email: '[\w.+-]+@[\w-]+\.[\w.]+'
+      phone: '\+?[\d\s\-\(\)]{7,15}'
+      ssn: '\b\d{3}-\d{2}-\d{4}\b'
+      credit_card: '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+    redaction_token: "[REDACTED]"
+
+  s04_safety:
+    enabled: true
+    confidence_threshold: 0.8          # Below this = borderline → escalation
+    batch_size: 64
+
+  s04_5_escalation:
+    enabled: true
+    # No extra config — Tier-2 model defined in models.yaml
+
+  s05_recaption:
+    enabled: true
+    batch_size: 32                     # Lower than quality/safety (longer outputs)
+    max_caption_tokens: 512
+    ocr_enrichment: true               # Run DeepSeek-OCR pass to enrich captions
+
+  s06_structure:
+    enabled: true
+    batch_size: 32
+    max_retries_on_schema_fail: 1      # Retry with error feedback in prompt
+    max_structure_tokens: 2048
+
+  s07_routing:
+    enabled: true
+    # The ui_first_ratio is a HUMAN DECISION — set explicitly, not auto-determined.
+    # v12 Stage 6: "state this as a decision to make explicitly, not a default."
+    ui_first_ratio: 0.70               # 70% UI-first, 30% general design
+    overflow_action: "exclude"         # "exclude" or "keep_unrouted"
+
+  s08_encoding:
+    enabled: true
+    # Tri-Path encoding targets
+    z_image_vae:
+      model_id: "stabilityai/z-image-turbo-v1"
+      dtype: "float16"
+    qwen_image_vae:
+      model_id: "Qwen/Qwen-Image-2.0-VAE"
+      dtype: "float16"
+    maskgit_vq:
+      model_id: "TencentARC/Open-MAGVIT2"
+      dtype: "float16"
+    # Control maps
+    canny_low_threshold: 50
+    canny_high_threshold: 150
+
+  s09_heldout:
+    enabled: true
+    heldout_fraction: 0.05             # 5% carve-out
+    stratify_by: ["domain", "source", "quality_score_bucket"]
+
+  s10_audit:
+    enabled: true
+    sample_rate: 0.03                  # 3% of training pool
+    min_samples: 200                   # Floor: at least 200 even for small sets
+    pass_rate_threshold: 0.95          # Pipeline fails if audit pass rate < 95%
+    ensemble_escalation: true          # Disagreements → Tier-2
+
+  s11_registry_watcher:
+    enabled: true
+    # This stage reads from {DATA_ROOT}/registry_reports/latest.json
+    # The JSON is written by `data-forge registry check` (external cron)
+
+# ---------------------------------------------------------------------------
+# Storage quota enforcement
+# ---------------------------------------------------------------------------
+storage:
+  safety_margin: 0.10                  # Keep 10% disk free
+  # Estimated per-record byte budgets (used for pre-flight projection)
+  per_record_estimates:
+    raw_image_bytes: 500_000           # ~500KB average raw image
+    scrubbed_image_bytes: 500_000
+    z_image_latent_bytes: 131_072      # 64ch × 32×32 × fp16 = 128KB
+    qwen_image_latent_bytes: 131_072
+    vq_tokens_bytes: 8_192             # Variable, ~8KB average
+    control_map_bytes: 4_096           # JSON + edges ~4KB
+    metadata_bytes: 2_048              # Manifest row + logs

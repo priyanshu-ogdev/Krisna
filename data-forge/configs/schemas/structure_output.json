@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StructureOutput",
+  "type": "object",
+  "required": ["elements", "layout_type", "hierarchy_depth"],
+  "properties": {
+    "elements": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/UIElement" }
+    },
+    "layout_type": {
+      "type": "string",
+      "enum": ["grid", "list", "form", "navigation", "dashboard", "detail", "modal", "split", "tabbed", "freeform"]
+    },
+    "hierarchy_depth": { "type": "integer", "minimum": 1 },
+    "background_style": {
+      "type": "string",
+      "enum": ["solid_light", "solid_dark", "gradient", "image", "blurred"]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "UIElement": {
+      "type": "object",
+      "required": ["type", "bbox"],
+      "properties": {
+        "type": { "type": "string" },
+        "bbox": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "label": { "type": ["string", "null"] },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UIElement" }
+        }
+      }
+    }
+  }
+}
