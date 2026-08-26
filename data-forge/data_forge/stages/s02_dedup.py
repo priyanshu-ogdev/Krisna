@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.data.dedup import DedupEngine
@@ -17,7 +17,7 @@ log = get_logger("stages.s02")
 @register_stage("s02_dedup")
 class DedupStage(Stage):
     name = "s02_dedup"
-    requires = ["s01_fetch"]
+    requires: ClassVar[tuple[str, ...]] = ("s01_fetch",)
 
     async def run(
         self,
@@ -135,4 +135,5 @@ class DedupStage(Stage):
             semantic_dupes=semantic_dupes,
             surviving=len(records) - total_excluded,
         )
+        dedup_engine.cleanup()
         return result

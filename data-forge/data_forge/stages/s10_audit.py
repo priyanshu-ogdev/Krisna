@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.agents.audit_agent import AuditAgent
 from data_forge.config import PipelineConfig
@@ -19,7 +19,7 @@ log = get_logger("stages.s10")
 @register_stage("s10_audit")
 class AuditStage(Stage):
     name = "s10_audit"
-    requires = ["s09_heldout"]
+    requires: ClassVar[tuple[str, ...]] = ("s09_heldout",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -56,9 +56,8 @@ class AuditStage(Stage):
                                        audit_output=audit_out.model_dump())
 
                 # Check for ensemble disagreement
-                if not audit_out.overall_pass:
-                    if agent.check_ensemble_disagreement(rec, audit_out):
-                        escalation_ids.append(rec.id)
+                if not audit_out.overall_pass and agent.check_ensemble_disagreement(rec, audit_out):
+                    escalation_ids.append(rec.id)
 
         # Compute stats
         stats = agent.compute_audit_stats(audit_results)

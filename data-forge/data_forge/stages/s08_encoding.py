@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 import torch
 
@@ -25,7 +25,7 @@ log = get_logger("stages.s08")
 @register_stage("s08_encoding")
 class EncodingStage(Stage):
     name = "s08_encoding"
-    requires = ["s07_routing"]
+    requires: ClassVar[tuple[str, ...]] = ("s07_routing",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -55,9 +55,30 @@ class EncodingStage(Stage):
                 if not img_path.exists():
                     manifest.update_record(rec.id, "encoding", new_status="excluded_failed",
                                            reason="Image missing", exclusion_reason="image_missing")
-                    failed += 1; continue
+                    failed += 1
+                    continue
 
-                image = load_image(img_path)
+                try:
+                    from PIL import UnidentifiedImageError
+                    image = load_image(img_path)
+                except UnidentifiedImageError:
+                    manifest.update_record(rec.id, "encoding", new_status="excluded_failed",
+                                           reason="Corrupt image", exclusion_reason="image_corrupt")
+                    failed += 1
+                    continue
+                except Exception as e:
+                    manifest.update_record(rec.id, "encoding", new_status="excluded_failed",
+                                           reason=f"Image load error: {e}", exclusion_reason="image_error")
+                    failed += 1
+                    continue
+                
+                w, h = image.size
+                if max(w, h) > 2048 or max(w, h) / max(min(w, h), 1) > 4.0:
+                    manifest.update_record(rec.id, "encoding", new_status="excluded_low_quality",
+                                           reason="Extreme aspect ratio or size", exclusion_reason="extreme_aspect_ratio")
+                    failed += 1
+                    continue
+
                 image = pad_to_multiple(image, 16)
 
                 encoding_paths: dict[str, str] = {}

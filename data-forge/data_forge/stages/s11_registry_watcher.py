@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.logging_setup import get_logger
@@ -18,7 +18,7 @@ log = get_logger("stages.s11")
 class RegistryWatcherStage(Stage):
     """Reads the registry watcher report. Actual watching is done externally."""
     name = "s11_registry_watcher"
-    requires = []
+    requires: ClassVar[tuple[str, ...]] = ()
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:

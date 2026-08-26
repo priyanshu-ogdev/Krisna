@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
@@ -17,7 +17,7 @@ log = get_logger("stages.s03")
 @register_stage("s03_quality")
 class QualityStage(Stage):
     name = "s03_quality"
-    requires = ["s02_dedup"]
+    requires: ClassVar[tuple[str, ...]] = ("s02_dedup",)
 
     async def run(
         self, manifest: Manifest, config: PipelineConfig,
@@ -45,24 +45,28 @@ class QualityStage(Stage):
             if w < min_res[0] or h < min_res[1]:
                 manifest.update_record(rec.id, "quality", new_status="excluded_low_quality",
                                        reason=f"Below min resolution: {w}x{h}", exclusion_reason="below_min_resolution")
-                excluded += 1; continue
+                excluded += 1
+                continue
             if w > max_res[0] or h > max_res[1]:
                 manifest.update_record(rec.id, "quality", new_status="excluded_low_quality",
                                        reason=f"Above max resolution: {w}x{h}", exclusion_reason="above_max_resolution")
-                excluded += 1; continue
+                excluded += 1
+                continue
 
             # Aesthetic scoring via Tier-1
             img_path = config.data_root / (rec.image_path or "")
             if not img_path.exists():
                 manifest.update_record(rec.id, "quality", new_status="excluded_failed",
                                        reason="Image file not found", exclusion_reason="image_missing")
-                failed += 1; continue
+                failed += 1
+                continue
 
             quality_out = await tier1.score_quality(img_path)
             if quality_out is None:
                 manifest.update_record(rec.id, "quality", new_status="excluded_failed",
                                        reason="Quality scoring failed", exclusion_reason="inference_failed")
-                failed += 1; continue
+                failed += 1
+                continue
 
             if quality_out.aesthetic_score < threshold:
                 manifest.update_record(rec.id, "quality", new_status="excluded_low_quality",

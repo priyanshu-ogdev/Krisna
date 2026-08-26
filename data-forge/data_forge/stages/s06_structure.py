@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.data.schema_validator import SchemaValidator
@@ -18,7 +18,7 @@ log = get_logger("stages.s06")
 @register_stage("s06_structure")
 class StructureStage(Stage):
     name = "s06_structure"
-    requires = ["s05_recaption"]
+    requires: ClassVar[tuple[str, ...]] = ("s05_recaption",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -40,23 +40,43 @@ class StructureStage(Stage):
             if not img_path.exists():
                 manifest.update_record(rec.id, "structure", new_status="excluded_failed",
                                        reason="Image missing", exclusion_reason="image_missing")
-                failed += 1; continue
+                failed += 1
+                continue
+
+            try:
+                from PIL import UnidentifiedImageError
+                from data_forge.utils.image_utils import load_image
+                _ = load_image(img_path)
+            except UnidentifiedImageError:
+                manifest.update_record(rec.id, "structure", new_status="excluded_failed",
+                                       reason="Corrupt image", exclusion_reason="image_corrupt")
+                failed += 1
+                continue
+            except Exception as e:
+                manifest.update_record(rec.id, "structure", new_status="excluded_failed",
+                                       reason=f"Image load error: {e}", exclusion_reason="image_error")
+                failed += 1
+                continue
 
             structure_out = None
-            for attempt in range(max_retries + 1):
-                structure_out = await tier1.extract_structure(img_path)
-                if structure_out is not None:
-                    out_dict = structure_out.model_dump()
-                    valid, errors = validator.validate_structure(out_dict)
-                    if valid:
-                        break
-                    log.warning("structure_schema_invalid", record_id=rec.id,
-                                attempt=attempt, errors=errors[:3])
-                    structure_out = None  # Retry
+            try:
+                for attempt in range(max_retries + 1):
+                    structure_out = await tier1.extract_structure(img_path)
+                    if structure_out is not None:
+                        out_dict = structure_out.model_dump()
+                        valid, errors = validator.validate_structure(out_dict)
+                        if valid:
+                            break
+                        log.warning("structure_schema_invalid", record_id=rec.id,
+                                    attempt=attempt, errors=errors[:3])
+                        structure_out = None  # Retry
+            except RuntimeError as e:
+                log.error("structure_timeout_or_crash", record_id=rec.id, error=str(e))
+                # structure_out remains None, handled below
 
             if structure_out is None:
                 manifest.update_record(rec.id, "structure", new_status="excluded_failed",
-                                       reason="Structure extraction failed after retries",
+                                       reason="Structure extraction failed after retries or timeout",
                                        exclusion_reason="structure_extraction_failed")
                 failed += 1
             else:

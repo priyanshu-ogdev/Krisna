@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
@@ -17,7 +17,7 @@ log = get_logger("stages.s04")
 @register_stage("s04_safety")
 class SafetyStage(Stage):
     name = "s04_safety"
-    requires = ["s03_5_pii_scrub"]
+    requires: ClassVar[tuple[str, ...]] = ("s03_5_pii_scrub",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -38,13 +38,15 @@ class SafetyStage(Stage):
             if not img_path.exists():
                 manifest.update_record(rec.id, "safety", new_status="excluded_failed",
                                        reason="Image missing", exclusion_reason="image_missing")
-                failed += 1; continue
+                failed += 1
+                continue
 
             safety_out = await tier1.classify_safety(img_path)
             if safety_out is None:
                 manifest.update_record(rec.id, "safety", new_status="excluded_failed",
                                        reason="Safety inference failed", exclusion_reason="inference_failed")
-                failed += 1; continue
+                failed += 1
+                continue
 
             out_dict = safety_out.model_dump()
 

@@ -221,11 +221,11 @@ class Manifest:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(db_path), timeout=30)
+        self._conn = sqlite3.connect(str(db_path), timeout=30.0, isolation_level="IMMEDIATE")
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.execute("PRAGMA busy_timeout=10000")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
         log.info("manifest_opened", db_path=str(db_path))

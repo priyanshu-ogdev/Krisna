@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from collections import defaultdict
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.logging_setup import get_logger
@@ -18,7 +18,7 @@ log = get_logger("stages.s09")
 @register_stage("s09_heldout")
 class HeldoutStage(Stage):
     name = "s09_heldout"
-    requires = ["s08_encoding"]
+    requires: ClassVar[tuple[str, ...]] = ("s08_encoding",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -45,7 +45,7 @@ class HeldoutStage(Stage):
             strata[key].append(rec)
 
         heldout_ids: set[str] = set()
-        for key, stratum in strata.items():
+        for _key, stratum in strata.items():
             n_heldout = max(1, int(len(stratum) * fraction))
             selected = random.sample(stratum, min(n_heldout, len(stratum)))
             for rec in selected:

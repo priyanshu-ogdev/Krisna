@@ -20,7 +20,7 @@ dependencies = [
     "safetensors>=0.4.5",
 
     # --- Data / ML ---
-    "faiss-gpu>=1.8.0",
+    "faiss-gpu>=1.8.0; sys_platform == 'linux'",
     "Pillow>=10.4",
     "numpy>=1.26",
     "scipy>=1.14",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
@@ -17,7 +17,7 @@ log = get_logger("stages.s05")
 @register_stage("s05_recaption")
 class RecaptionStage(Stage):
     name = "s05_recaption"
-    requires = ["s04_safety"]
+    requires: ClassVar[tuple[str, ...]] = ("s04_safety",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -35,13 +35,30 @@ class RecaptionStage(Stage):
             if not img_path.exists():
                 manifest.update_record(rec.id, "recaption", new_status="excluded_failed",
                                        reason="Image missing", exclusion_reason="image_missing")
-                failed += 1; continue
+                failed += 1
+                continue
+
+            try:
+                from PIL import UnidentifiedImageError
+                from data_forge.utils.image_utils import load_image
+                _ = load_image(img_path)
+            except UnidentifiedImageError:
+                manifest.update_record(rec.id, "recaption", new_status="excluded_failed",
+                                       reason="Corrupt image", exclusion_reason="image_corrupt")
+                failed += 1
+                continue
+            except Exception as e:
+                manifest.update_record(rec.id, "recaption", new_status="excluded_failed",
+                                       reason=f"Image load error: {e}", exclusion_reason="image_error")
+                failed += 1
+                continue
 
             caption_out = await tier1.generate_caption(img_path)
             if caption_out is None:
                 manifest.update_record(rec.id, "recaption", new_status="excluded_failed",
                                        reason="Caption inference failed", exclusion_reason="inference_failed")
-                failed += 1; continue
+                failed += 1
+                continue
 
             manifest.update_record(rec.id, "recaption", new_status="recaptioned",
                                    caption=caption_out.caption,
@@ -57,7 +74,7 @@ class RecaptionStage(Stage):
 class OCREnrichmentStage(Stage):
     """Sub-stage: OCR text extraction (runs in a separate model swap phase)."""
     name = "s05_ocr_enrichment"
-    requires = ["s05_recaption"]
+    requires: ClassVar[tuple[str, ...]] = ("s05_recaption",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
@@ -74,6 +91,13 @@ class OCREnrichmentStage(Stage):
         for rec in records:
             img_path = config.data_root / (rec.scrubbed_image_path or rec.image_path or "")
             if not img_path.exists():
+                continue
+
+            try:
+                from PIL import UnidentifiedImageError
+                from data_forge.utils.image_utils import load_image
+                _ = load_image(img_path)
+            except Exception:
                 continue
 
             ocr_out = await ocr.extract_text(img_path)
