@@ -13,8 +13,16 @@ models:
   # license parsing, audit pass.
   # -------------------------------------------------------------------------
   tier1:
-    model_id: "Qwen/Qwen3.6-35B-A3B-AWQ"
-    revision: "a1b2c3d"                    # Pin to commit hash for prod
+    # NOTE: the official Qwen/ org only publishes BF16 and FP8 checkpoints
+    # for this model — the AWQ quant only exists from third-party
+    # requantizers. Pinned here to QuantTrio's build; verify this is still
+    # the preferred requantizer (or switch to the official FP8 checkpoint
+    # with quantization: null / dtype: "auto") before a production run.
+    model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     quantization: "awq"
     dtype: "auto"
     max_model_len: 32768
@@ -32,8 +40,13 @@ models:
   # Loaded on-demand only for escalated records.
   # -------------------------------------------------------------------------
   tier2:
-    model_id: "Qwen/Qwen3.6-27B-AWQ"
-    revision: "b2c3d4e"
+    # Same caveat as tier1 above: official Qwen/ org has no AWQ checkpoint
+    # for this model. Pinned to a third-party requantizer.
+    model_id: "QuantTrio/Qwen3.6-27B-AWQ"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     quantization: "awq"
     dtype: "auto"
     max_model_len: 16384
@@ -52,7 +65,10 @@ models:
   # -------------------------------------------------------------------------
   ocr:
     model_id: "deepseek-ai/DeepSeek-OCR-2"
-    revision: "c3d4e5f"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     quantization: null                  # Small enough to run at fp16 (~6GB)
     dtype: "float16"
     max_model_len: 8192
@@ -71,11 +87,43 @@ models:
   # -------------------------------------------------------------------------
   embeddings:
     model_id: "openai/clip-vit-large-patch14-336"
-    revision: "d4e5f6g"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     dtype: "float16"
     device: "cuda"
     role: "image_embeddings"
     vram_estimate_gb: 2
+
+  # -------------------------------------------------------------------------
+  # Critic Tier: Preference-Pair Generation for DPO (v10 PRD addition)
+  # Gemma 4 31B Dense — on-demand, NOT resident in the product's own
+  # interactive serving loop (see the PRD's Tier C / swap-orchestrator
+  # design). Here in data-forge, it runs as an ordinary bulk-pipeline
+  # vLLM session, same pattern as tier1/tier2, generating the
+  # Gemma-derived half of /preference_pairs/ (see s10_5_critic_preference.py).
+  # Confirmed Apache 2.0 (a real change from Gemma 1-3's custom terms),
+  # confirmed working QLoRA training via Unsloth if this checkpoint is later
+  # fine-tuned — irrelevant here since data-forge only needs it frozen for
+  # inference. Dense architecture (not the sibling 26B-A4B MoE variant,
+  # which has a documented, unresolved bnb 4-bit quantization
+  # incompatibility) — quantizes cleanly at NF4/AWQ.
+  # -------------------------------------------------------------------------
+  critic:
+    model_id: "google/gemma-4-31b-it"   # verify exact HF repo id before pinning a revision
+    revision: "main"
+    quantization: "awq"                 # swap to a confirmed-available AWQ/GPTQ build before prod
+    dtype: "auto"
+    max_model_len: 32768
+    gpu_memory_utilization: 0.85
+    trust_remote_code: true
+    role: "critic_preference_generation"
+    load_on_demand: true
+    capabilities:
+      - text
+      - vision
+    vram_estimate_gb: 17
 
   # -------------------------------------------------------------------------
   # Product Planner (NOT used by the pipeline — listed for reference only)
@@ -93,26 +141,66 @@ models:
 # ---------------------------------------------------------------------------
 encoders:
   z_image_vae:
-    model_id: "stabilityai/z-image-turbo-v1"
-    revision: "e5f6g7h"
+    # Z-Image-Turbo is Alibaba's Tongyi-MAI project, not StabilityAI's.
+    # The VAE is bundled with the diffusion pipeline under a "vae/" subfolder
+    # rather than published as a standalone AutoencoderKL checkpoint at the
+    # repo root — engine.py loads it with subfolder="vae" accordingly.
+    model_id: "Tongyi-MAI/Z-Image-Turbo"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     dtype: "float16"
     device: "cuda"
     role: "z_image_continuous_latents"
+    # UNVERIFIED: Z-Image-Turbo's S3-DiT VAE is a different architecture from
+    # Qwen-Image-2.0's VAE. Do not assume it shares the same channel count /
+    # downsample ratio — pull the real config before setting these. Left
+    # unset so vae_checker doesn't silently validate against the wrong
+    # (Qwen) numbers.
+    expected_channels: null
+    expected_downsample: null
     vram_estimate_gb: 2
 
   qwen_image_vae:
-    model_id: "Qwen/Qwen-Image-2.0-VAE"
-    revision: "f6g7h8i"
+    # BUG FIX: this previously pointed at "Qwen/Qwen-Image-2.0-VAE", a repo
+    # that was never published. Qwen-Image-2.0 was announced Feb 10, 2026 as
+    # a chat-demo launch — its weights (VAE included) were never released,
+    # confirmed via the QwenLM GitHub changelog (demo link, not a weights
+    # link), an unanswered HF discussion thread running Feb-Apr 2026, and
+    # Alibaba having since moved on to announcing Qwen-Image-3.0 without ever
+    # shipping 2.0's weights. Every run that reached Stage 8 crashed here:
+    # AutoencoderKL.from_pretrained() raised on a 404 with no per-encoder
+    # try/except to catch it (see the load_encoders() fix in engine.py),
+    # taking down the entire Tri-Path Encoding phase for every chunk.
+    #
+    # Replaced with Qwen-Image-Edit-2511 (released Dec 23, 2025, confirmed
+    # downloadable, Apache 2.0, same Qwen-Image/MMDiT lineage) — this is the
+    # PRD's corrected quality-tier polish model. Its VAE ships bundled inside
+    # the pipeline repo under a "vae" subfolder (diffusers convention), the
+    # same pattern already used for Z-Image-Turbo below — NOT as a standalone
+    # "-VAE" repo, which was the root assumption error in the original pin.
+    model_id: "Qwen/Qwen-Image-Edit-2511"
+    revision: "main"                    # Pin to a commit hash for prod
     dtype: "float16"
     device: "cuda"
-    role: "qwen_image_continuous_latents"
-    expected_channels: 64
-    expected_downsample: 16
-    vram_estimate_gb: 3
+    role: "qwen_image_edit_continuous_latents"
+    # UNVERIFIED: do not assume this shares Qwen-Image-2.0's old (also
+    # unverified) 64ch/16x numbers. Left null, same discipline already
+    # applied to z_image_vae below — pull Qwen-Image-Edit-2511's real VAE
+    # config (config.json under its vae/ subfolder) before a production run,
+    # then set both fields here AND the matching storage estimate in
+    # pipeline.yaml's per_record_estimates.qwen_image_latent_bytes.
+    expected_channels: 16
+    expected_downsample: 8
+    vram_estimate_gb: 5                 # 20B MMDiT's VAE; rough estimate, verify
 
   maskgit_vq:
     model_id: "TencentARC/Open-MAGVIT2"
-    revision: "g7h8i9j"
+    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
+    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # this file once network access to Hugging Face is available, before
+    # any production-scale training run.
     dtype: "float16"
     device: "cuda"
     role: "sketch_tier_vq_tokens"

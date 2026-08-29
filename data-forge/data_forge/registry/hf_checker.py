@@ -39,16 +39,26 @@ async def check_model_updates(
             resp.raise_for_status()
             data = resp.json()
 
-        # Check last modified
-        last_modified = data.get("lastModified", "")
+            # Check last modified
+            last_modified = data.get("lastModified", "")
 
-        # Check tags/siblings for version info
-        tags = data.get("tags", [])
-        sha = data.get("sha", "")
+            # Check tags/siblings for version info
+            tags = data.get("tags", [])
+            sha = data.get("sha", "")
 
-        # Check if there are newer refs
-        refs_url = f"https://huggingface.co/api/models/{model_id}/refs"
-        refs_resp = await httpx.AsyncClient(timeout=15, headers=headers).get(refs_url)
+            # Check if there are newer refs
+            # BUG FIX: this previously constructed a SECOND
+            # httpx.AsyncClient here and called .get() on it directly,
+            # without `async with` or an explicit .aclose() — that client
+            # (and its underlying connection pool) was never released.
+            # check_model_updates() runs periodically per model in
+            # models.yaml (registry/watcher.py), so this leaked one
+            # unclosed client's worth of file descriptors per model per
+            # check cycle, accumulating over the life of a long-running
+            # registry-watch process. Moved inside the existing `client`'s
+            # `async with` block and reused instead of opening a second one.
+            refs_url = f"https://huggingface.co/api/models/{model_id}/refs"
+            refs_resp = await client.get(refs_url)
 
         latest_tag = None
         if refs_resp.status_code == 200:

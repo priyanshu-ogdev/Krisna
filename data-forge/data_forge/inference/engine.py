@@ -259,33 +259,114 @@ class ModelEngine:
 
             log.info("encoder_loading", key=key, model_id=spec.model_id)
 
-            dtype = getattr(torch, spec.dtype.replace("float", "float"))
-            if key == "z_image_vae" or key == "qwen_image_vae":
-                from diffusers import AutoencoderKL
+            # BUG FIX: this loop previously let any single encoder's
+            # from_pretrained() exception propagate straight out of
+            # load_encoders() -> encoder_session() -> the orchestrator,
+            # crashing the ENTIRE pipeline run on the first chunk that
+            # reached Stage 8, even though s08_encoding.py's four branches
+            # each already have their own try/except and are explicitly
+            # designed to degrade gracefully (skip that one representation,
+            # keep the other three) when an encoder isn't available. The
+            # fix wraps each encoder's load in its own try/except: a failed
+            # encoder is logged and simply left out of self._encoders, so
+            # get_encoder() raises its normal "not loaded" RuntimeError only
+            # for the branch that actually needed it — exactly what
+            # s08_encoding.py's per-branch handlers already expect. This is
+            # what would have contained the Qwen-Image-2.0-VAE 404 (see
+            # models.yaml) to "Qwen-latent branch skipped" instead of
+            # "pipeline dead" even before that root cause was fixed.
+            try:
+                dtype = getattr(torch, spec.dtype.replace("float", "float"))
+                if key == "z_image_vae":
+                    # Tongyi-MAI/Z-Image-Turbo publishes its VAE bundled inside
+                    # the diffusion pipeline repo under vae/, not as a bare
+                    # AutoencoderKL checkpoint at the repo root.
+                    from diffusers import AutoencoderKL
 
-                model = AutoencoderKL.from_pretrained(
-                    spec.model_id,
-                    torch_dtype=dtype,
-                    revision=spec.revision,
-                ).to(spec.device).eval()
+                    model = AutoencoderKL.from_pretrained(
+                        spec.model_id,
+                        subfolder="vae",
+                        torch_dtype=dtype,
+                        revision=spec.revision,
+                    ).to(spec.device).eval()
 
-            elif key == "maskgit_vq":
-                # Open-MAGVIT2 uses a custom loader
-                from transformers import AutoModel
+                elif key == "qwen_image_vae":
+                    # Qwen-Image-Edit-2511 (like Qwen-Image before it) ships
+                    # as a full diffusers pipeline repo with the VAE bundled
+                    # under vae/ — same convention as Z-Image-Turbo above,
+                    # NOT a standalone "-VAE" repo (that assumption was the
+                    # root cause of the Qwen-Image-2.0-VAE 404 this used to
+                    # hit on every run; see models.yaml for the full story).
+                    from diffusers import AutoencoderKL
 
-                model = AutoModel.from_pretrained(
-                    spec.model_id,
-                    torch_dtype=dtype,
-                    trust_remote_code=True,
-                    revision=spec.revision,
-                ).to(spec.device).eval()
+                    model = AutoencoderKL.from_pretrained(
+                        spec.model_id,
+                        subfolder="vae",
+                        torch_dtype=dtype,
+                        revision=spec.revision,
+                    ).to(spec.device).eval()
 
-            else:
-                log.warning("unknown_encoder", key=key)
+                elif key == "maskgit_vq":
+                    # Open-MAGVIT2 is distributed as a research codebase (OmegaConf
+                    # config + custom `load_vqgan_new` loader via the open-magvit2
+                    # PyPI package), NOT as a transformers-compatible AutoModel repo.
+                    # AutoModel.from_pretrained(..., trust_remote_code=True) is not
+                    # confirmed to work against this repo. Fail loudly and clearly
+                    # rather than let a confusing transformers stack trace stand in
+                    # for "this needs a custom wrapper."
+                    try:
+                        from transformers import AutoModel
+
+                        model = AutoModel.from_pretrained(
+                            spec.model_id,
+                            torch_dtype=dtype,
+                            trust_remote_code=True,
+                            revision=spec.revision,
+                        ).to(spec.device).eval()
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"Failed to load '{spec.model_id}' via AutoModel.from_pretrained "
+                            "(this is expected — Open-MAGVIT2 is not a transformers-native repo). "
+                            "You likely need a custom wrapper: load the OmegaConf config + "
+                            "checkpoint the way TencentARC/Open-MAGVIT2's own repo does (see the "
+                            "`open-magvit2` PyPI package's `load_vqgan_new`), then adapt "
+                            ".encode()/.decode() to the interface s08_encoding.py expects. "
+                            f"Original error: {e}"
+                        ) from e
+
+                else:
+                    log.warning("unknown_encoder", key=key)
+                    continue
+
+                # Deterministic VAE channel-count assertion (only when the config
+                # actually pins expected_channels — leave unpinned specs alone
+                # rather than silently validating against the wrong numbers).
+                if key in ("z_image_vae", "qwen_image_vae") and spec.expected_channels is not None:
+                    from data_forge.agents.vae_checker import VAEConfigError
+
+                    actual_channels = getattr(model.config, "latent_channels", None)
+                    if actual_channels is not None and actual_channels != spec.expected_channels:
+                        raise VAEConfigError(
+                            f"{key}: VAE channel count mismatch — expected "
+                            f"{spec.expected_channels}, got {actual_channels}. Storage "
+                            "budget calculations in pipeline.yaml assume the wrong value."
+                        )
+
+                self._encoders[key] = model
+                log.info("encoder_loaded", key=key)
+
+            except Exception as e:
+                log.error(
+                    "encoder_load_failed",
+                    key=key,
+                    model_id=spec.model_id,
+                    error=str(e),
+                    note="This encoder will be unavailable this session — the matching "
+                         "s08_encoding.py branch will skip it and log a warning per record "
+                         "rather than crash. Fix the underlying model_id/config before a "
+                         "production run; check `docs/DATA_SOURCES.md`.",
+                )
                 continue
-
-            self._encoders[key] = model
-            log.info("encoder_loaded", key=key)
 
     def unload_encoders(self) -> None:
         """Unload all encoder models."""

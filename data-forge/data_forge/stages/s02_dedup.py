@@ -88,7 +88,18 @@ class DedupStage(Stage):
 
         # Build index and find duplicates
         threshold = stage_cfg.get("similarity_threshold", 0.95)
-        dedup_engine = DedupEngine(similarity_threshold=threshold)
+        # BUG FIX: faiss_index_type/faiss_nprobe were declared in
+        # pipeline.yaml but never actually passed to DedupEngine — this
+        # constructor call only ever forwarded similarity_threshold, so
+        # both settings were dead config. It happened to be invisible
+        # because the hardcoded default (nprobe=64) matched pipeline.yaml's
+        # value, and build_index() has its own internal small-n/large-n
+        # branch that ignores index_type entirely regardless of what's
+        # passed — so index_type is still not wired into index construction
+        # (that's build_index's own design, documented there), but nprobe
+        # now actually reflects config instead of coincidentally matching it.
+        nprobe = stage_cfg.get("faiss_nprobe", 64)
+        dedup_engine = DedupEngine(similarity_threshold=threshold, nprobe=nprobe)
         record_ids_valid = [r.id for r in valid_records]
         dedup_engine.build_index(embeddings, record_ids_valid)
         duplicates = dedup_engine.find_duplicates(embeddings, record_ids_valid)

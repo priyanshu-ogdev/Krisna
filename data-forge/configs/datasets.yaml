@@ -7,6 +7,75 @@
 
 datasets:
   # -------------------------------------------------------------------------
+  # PD12M — General Visual Backbone (Public Domain / CC0)
+  # -------------------------------------------------------------------------
+  pd12m:
+    display_name: "PD12M (Public Domain 12M)"
+    source_type: "huggingface"
+    repo_id: "Spawning/PD12M"
+    revision: "main"
+    category: "general_visual"
+    expected_record_count: 12400000
+    license_url: "https://cdla.dev/permissive-2-0/"
+    license_status: "unverified"
+    license_notes: >
+      CDLA-Permissive-2.0, entirely public domain / CC0 sourced. Should be a
+      clean pass through the License Agent, but still runs through it rather
+      than being assumed. NOTE: this dataset ships as parquet metadata +
+      external image URLs (hosted on the pd12m S3 bucket), not bundled image
+      files — the fetcher needs an img2dataset-style download path, not a
+      plain file-pattern glob.
+    fetch_config:
+      file_patterns: ["*.parquet"]
+      download_mode: "url_list"
+      # UNVERIFIED, same discipline as models.yaml's unverified VAE channel
+      # counts: PD12M's column names are believed to be "url"/"caption"
+      # based on the dataset card at review time, but were not independently
+      # re-confirmed against the live parquet schema before this revision.
+      # Run `python -m data_forge.cli inspect-dataset pd12m` (or manually
+      # `pd.read_parquet(...).columns`) against one shard before a real run
+      # and correct these two keys if they differ.
+      image_url_column: "url"
+      caption_column: "caption"
+      sample_size: 200000       # PRD target is 100K-500K curated TOTAL, not per-source
+      download_concurrency: 32
+      download_timeout_seconds: 15
+      note: "Metadata-only repo; images are fetched via URL column, not bundled files."
+
+  # -------------------------------------------------------------------------
+  # CC12M — Supplementary General Visual Diversity
+  # -------------------------------------------------------------------------
+  cc12m:
+    display_name: "CC12M (Conceptual 12M)"
+    source_type: "huggingface"
+    repo_id: "google-research-datasets/conceptual_12m"
+    revision: "main"
+    category: "general_visual"
+    expected_record_count: 12423374
+    license_url: "https://github.com/google-research-datasets/conceptual-12m/blob/main/README.md"
+    license_status: "unverified"
+    license_notes: >
+      Google-provided "AS IS", freely usable with attribution — but the
+      underlying images are web-scraped and unverified per-image, so this
+      is intentionally routed through License Agent + Safety/Aesthetic
+      gates rather than trusted wholesale.
+    fetch_config:
+      file_patterns: ["*.parquet", "*.tsv"]
+      download_mode: "url_list"
+      # UNVERIFIED — CC12M's canonical raw distribution is a headerless TSV
+      # (caption, url in that order; see fetcher.py's tsv fallback branch,
+      # which assumes exactly that column order). If this HF mirror instead
+      # exposes parquet with a header, confirm the real column names before
+      # a production run and correct these two keys — do not assume they
+      # match PD12M's just because both are "general visual" sources.
+      image_url_column: "url"
+      caption_column: "caption"
+      sample_size: 150000       # smaller share than PD12M — weaker legal cleanliness per PRD §8.1
+      download_concurrency: 32
+      download_timeout_seconds: 15
+      note: "Image URLs only; source images are not owned/hosted by this dataset."
+
+  # -------------------------------------------------------------------------
   # RICO — Mobile App UI Screenshots + Metadata
   # -------------------------------------------------------------------------
   rico_core:
@@ -61,15 +130,181 @@ datasets:
       file_patterns: ["*.csv", "*.json"]
 
   # -------------------------------------------------------------------------
-  # WebUI — Web Interface Screenshots (if available)
+  # Enrico — High-quality curated subset of RICO (1460 UIs, 20 topics)
   # -------------------------------------------------------------------------
-  # webui:
-  #   display_name: "WebUI Dataset"
-  #   source_type: "huggingface"
-  #   repo_id: "TBD"
-  #   category: "web_ui"
-  #   license_status: "unverified"
-  #   enabled: false                   # Placeholder for registry watcher discovery
+  enrico:
+    display_name: "Enrico (Enhanced RICO)"
+    source_type: "github"
+    repo_url: "https://github.com/luileito/enrico"
+    branch: "master"
+    category: "mobile_ui"
+    expected_record_count: 1460
+    license_url: null                   # No explicit LICENSE file in repo
+    license_status: "unverified"
+    license_notes: >
+      Manually curated 1460-UI subset of RICO (Leiva et al., 2020). Inherits
+      RICO's own unclear licensing since it's a re-annotation of RICO screens,
+      not independently-sourced images — treat as no more permissive than
+      rico_core. Used primarily for held-out eval / verifier calibration
+      rather than the training pool.
+    fetch_config:
+      file_patterns: ["*.jpg", "*.csv"]
+
+  # -------------------------------------------------------------------------
+  # WebUI — Web Interface Screenshots
+  # -------------------------------------------------------------------------
+  webui:
+    display_name: "WebUI (biglab)"
+    source_type: "huggingface"
+    repo_id: "biglab/webui-350k"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 350000
+    license_url: "https://github.com/js0nwu/webui/blob/main/COPYRIGHT.txt"
+    license_status: "unverified"
+    license_notes: >
+      biglab/webui-350k is the HF-published, explicit-content-filtered subset
+      (biglab/webui-all is the unfiltered 550GB superset — deliberately NOT
+      used here). License terms are per the source repo's own COPYRIGHT.txt,
+      not a standard OSS license — review before treating as clear.
+    fetch_config:
+      file_patterns: ["*.jpg", "*.png", "*.json"]
+
+  # -------------------------------------------------------------------------
+  # Screen2Words — Dense Caption Training Pairs
+  # -------------------------------------------------------------------------
+  screen2words:
+    display_name: "Screen2Words (RICO Screen Summaries)"
+    source_type: "huggingface"
+    repo_id: "bevaya/RICO-Screen2Words"
+    revision: "main"
+    category: "ui_captions"
+    expected_record_count: 22417
+    license_url: "https://huggingface.co/datasets/bevaya/RICO-Screen2Words"
+    license_status: "unverified"
+    license_notes: "CC-BY-4.0 per the HF dataset card. Screens are RICO images; captions are original to Screen2Words."
+    fetch_config:
+      file_patterns: ["*.parquet"]
+      download_mode: "caption_join"
+      # UNVERIFIED, same discipline as PD12M/CC12M's column-name notes:
+      # Screen2Words is captions FOR RICO's screens, so path (b) — join
+      # against rico_core by ID — is the expected shape, not path (a)
+      # (bundled images). join_id_column left unset so the fetcher
+      # auto-detects from {rico_id, screen_id, image_id, id}; set it
+      # explicitly here if the real column name doesn't match any of
+      # those once checked against the live repo.
+      join_target_dataset: "rico_core"
+      caption_column: "caption"
+
+  # -------------------------------------------------------------------------
+  # UICrit — UI Critique / DPO Preference Seed Data
+  # -------------------------------------------------------------------------
+  uicrit:
+    display_name: "UICrit (UI Critique Dataset)"
+    source_type: "github"
+    repo_url: "https://github.com/google-research-datasets/uicrit"
+    branch: "main"
+    category: "ui_critique"
+    expected_record_count: 1000
+    license_url: "https://arxiv.org/abs/2407.08850"
+    license_status: "unverified"
+    license_notes: >
+      CRITICAL: seeds the DPO preference pairs and trains the Tier-1 Audit
+      Agent rubric — verify this one carefully before treating it as
+      excluded_pending_review boilerplate. Per the paper, licensed CC
+      BY-ND (Attribution-NoDerivs), which restricts redistribution of
+      modified/derivative versions — flag for manual legal review even if
+      the License Agent scores it otherwise, since NoDerivs interacts
+      awkwardly with a pipeline that recaptions/re-annotates everything.
+    # BUG FIX: UICrit's screenshots ARE RICO's screenshots — its actual
+    # value is its rating/critique annotations, joined against images
+    # rico_core/rico_semantic already ingested. annotation_only=true stops
+    # the generic github fetch path from cloning this repo and finding
+    # zero images to scan (its images aren't even bundled here). See
+    # data_forge/data/uicrit_ingest.py and stages/s01_5_uicrit_join.py —
+    # UNVERIFIED: the actual join key (which UICrit column identifies the
+    # RICO screen) and the annotation file's real column names need
+    # confirming against the live repo before a production run; the
+    # ingest module's docstring lists every candidate name it tries and
+    # logs loudly (not silently) if none match, rather than guessing.
+    annotation_only: true
+    fetch_config:
+      file_patterns: ["*.json", "*.csv"]
+
+  # ---------------------------------------------------------------------
+  # Planner conversational-synthesis inputs (new — see
+  # stages/s02_planner_synthesis.py). Format-teacher reference material,
+  # not UI-domain content — nothing public teaches "UI design conversation
+  # -> JSON state delta" directly, so these teach output shape only. The
+  # actual design-domain content comes from UICrit's real critique text
+  # via the synthesis stage's generation step, not from these datasets.
+  # ---------------------------------------------------------------------
+  glaive_function_calling:
+    display_name: "Glaive Function Calling v2"
+    source_type: "huggingface"
+    repo_id: "glaiveai/glaive-function-calling-v2"
+    revision: "main"
+    category: "planner_format_reference"
+    expected_record_count: 113000
+    license_url: "https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2"
+    license_status: "unverified"
+    license_notes: "Reference material for tool-call output shape only — not used as design-domain content."
+    fetch_config:
+      download_mode: "text_reference"
+      file_patterns: ["*.json", "*.jsonl", "*.parquet"]
+
+  xlam_function_calling:
+    display_name: "Salesforce xLAM Function Calling 60K"
+    source_type: "huggingface"
+    repo_id: "Salesforce/xlam-function-calling-60k"
+    revision: "main"
+    category: "planner_format_reference"
+    expected_record_count: 60000
+    license_url: "https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k"
+    license_status: "unverified"
+    license_notes: "CC-BY-4.0 per HF dataset card. Reference material for tool-call output shape only."
+    fetch_config:
+      download_mode: "text_reference"
+      file_patterns: ["*.json", "*.jsonl", "*.parquet"]
+
+  # ---------------------------------------------------------------------
+  # Paired edit-conditioning data for Qwen-Image-Edit-2511 (new — see
+  # stages/s07_5_edit_pairs.py). General-photo-domain (source, instruction,
+  # target) triples — teach the edit-conditioning task SHAPE, since
+  # nothing in the pipeline previously provided that at all. UI-domain
+  # pairs are constructed separately and synthetically by the same stage.
+  # ---------------------------------------------------------------------
+  magicbrush:
+    display_name: "MagicBrush"
+    source_type: "huggingface"
+    repo_id: "osunlp/MagicBrush"
+    revision: "main"
+    category: "edit_pairs_reference"
+    expected_record_count: 10000
+    license_url: "https://huggingface.co/datasets/osunlp/MagicBrush"
+    license_status: "unverified"
+    license_notes: "Real (source, instruction, target) triples grounding the edit task shape."
+    fetch_config:
+      download_mode: "triple_dataset"
+      file_patterns: ["*.parquet"]
+      # UNVERIFIED column names — auto-detected defensively by
+      # _fetch_huggingface_triples, override here if detection logs show
+      # it guessed wrong against the live schema.
+
+  instructpix2pix:
+    display_name: "InstructPix2Pix (CLIP-filtered training set)"
+    source_type: "huggingface"
+    repo_id: "timbrooks/instructpix2pix-clip-filtered"
+    revision: "main"
+    category: "edit_pairs_reference"
+    expected_record_count: 300000
+    license_url: "https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered"
+    license_status: "unverified"
+    license_notes: "Real (source, instruction, target) triples. Large — sample_size caps below."
+    fetch_config:
+      download_mode: "triple_dataset"
+      file_patterns: ["*.parquet"]
+      sample_size: 20000  # This one's large enough that a full pull is unnecessary
 
 # ---------------------------------------------------------------------------
 # Registry Watcher: datasets to scan for new releases

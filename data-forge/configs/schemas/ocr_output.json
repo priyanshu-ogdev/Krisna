@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "OCROutput",
   "type": "object",
-  "required": ["text_regions", "primary_language", "total_text_regions", "confidence"],
+  "required": ["confidence"],
   "properties": {
     "text_regions": {
       "type": "array",

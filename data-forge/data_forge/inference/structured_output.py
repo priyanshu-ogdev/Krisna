@@ -169,6 +169,86 @@ class OCROutput(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
 
 
+# ── Critique Output (Critic Tier / v10 PRD §5.2 Critique Adapter) ───────
+
+class CritiqueDimension(BaseModel):
+    """A single scored dimension within a UI critique."""
+
+    score: float = Field(..., ge=0.0, le=1.0)
+    note: str = Field(..., max_length=400, description="<= 2 sentences")
+
+
+class CritiqueOutput(BaseModel):
+    """Structured output from the Critic Tier (Gemma 4 31B).
+
+    Field shape deliberately mirrors the PRD's Critique Adapter contract
+    (§5.2) so a row written here needs no reshaping to match what the
+    product's own preference-pair store expects — `critique_source` is the
+    only field that distinguishes this from a UICrit-derived or
+    verifier-stack-derived critique row.
+    """
+
+    overall_score: float = Field(..., ge=0.0, le=1.0)
+    visual_hierarchy_score: float = Field(..., ge=0.0, le=1.0)
+    visual_hierarchy_note: str = Field(..., max_length=400)
+    readability_score: float = Field(..., ge=0.0, le=1.0)
+    readability_note: str = Field(..., max_length=400)
+    layout_consistency_score: float = Field(..., ge=0.0, le=1.0)
+    layout_consistency_note: str = Field(..., max_length=400)
+    brand_alignment_score: float = Field(..., ge=0.0, le=1.0)
+    brand_alignment_note: str = Field(..., max_length=400)
+    suggested_edits: list[str] = Field(
+        default_factory=list,
+        description="Short, concrete edit instructions, not full sentences",
+    )
+
+
+# ── Planner Conversation Synthesis (Design State Delta) ─────────────────
+# Mirrors the PRD's Design State object (§5.1) closely enough that a
+# generated delta here is directly usable as a real training example for
+# the Planner's tool-call format, without a translation layer between
+# what data-forge produces and what the product's Design State Manager
+# actually consumes.
+
+class DesignStateDelta(BaseModel):
+    """One simulated planner turn's structured JSON output.
+
+    This is intentionally a *subset* of the full Design State object
+    (constraints + stage only) — a single conversational turn updates a
+    slice of state, not the whole object at once, same as the real
+    planner would emit incrementally rather than re-writing the entire
+    design_state on every turn.
+    """
+
+    stage: Literal["conversing", "sketching", "finalizing", "finalized", "critiquing"]
+    constraint_updates: dict[str, str] = Field(
+        default_factory=dict,
+        description="Partial updates to style/palette/layout_hints, as plain key:value strings",
+    )
+    tool_call: str | None = Field(
+        default=None,
+        description="Name of a tool invoked this turn, if any (e.g. 'update_sketch', 'finalize')",
+    )
+    reasoning_note: str = Field(..., max_length=300, description="<= 2 sentences, why this delta")
+
+
+class SynthesizedConversationTurn(BaseModel):
+    role: Literal["user", "planner"]
+    content: str = Field(..., max_length=800)
+
+
+class SynthesizedConversation(BaseModel):
+    """One full generated training example: turns + the final state delta."""
+
+    turns: list[SynthesizedConversationTurn] = Field(..., min_length=2, max_length=8)
+    resulting_delta: DesignStateDelta
+    seed_critique_record_id: str = Field(
+        ..., description="Which real UICrit-sourced critique this was seeded from — "
+                          "keeps every synthetic example traceable to real content, "
+                          "not fully hallucinated from nothing"
+    )
+
+
 # ── Quality / Aesthetic Output ──────────────────────────────────────────
 
 class QualityOutput(BaseModel):

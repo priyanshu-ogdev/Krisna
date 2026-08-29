@@ -1,12 +1,15 @@
-"""Stage 3.5: PII Scrub — face blurring + text redaction (NEW in v13 upgrades).
+"""Stage 3.5: PII Scrub — face blurring (NEW in v13 upgrades).
 
 Prevents Krisna from learning to generate real people's private data.
 Runs between Quality (Stage 3) and Safety (Stage 4).
+
+Text-based PII redaction is handled separately by s05_5_pii_text_redact,
+which runs after OCR extraction is actually available (see that module's
+docstring for why it can't happen here).
 """
 
 from __future__ import annotations
 
-import re
 import shutil
 from typing import Any, ClassVar
 
@@ -39,15 +42,6 @@ class PIIScrubStage(Stage):
         scrubbed_dir = config.resolved_paths["scrubbed"]
         face_conf = stage_cfg.get("face_detection_confidence", 0.5)
         blur_kernel = stage_cfg.get("blur_kernel_size", 99)
-        regex_patterns = stage_cfg.get("regex_patterns", {})
-
-        # Compile PII regex patterns
-        compiled_patterns: dict[str, re.Pattern] = {}  # type: ignore[type-arg]
-        for name, pattern in regex_patterns.items():
-            try:
-                compiled_patterns[name] = re.compile(pattern)
-            except re.error as e:
-                log.warning("invalid_regex", name=name, error=str(e))
 
         # Try to load MediaPipe face detection
         face_detector = None
@@ -106,17 +100,13 @@ class PIIScrubStage(Stage):
                             modified = True
                             detections.append(f"face_detected_at_{x1}_{y1}")
 
-                # 2. Text-based PII detection (from OCR/metadata if available)
-                if rec.ocr_output:
-                    text_regions = rec.ocr_output.get("text_regions", [])
-                    for region in text_regions:
-                        text = region.get("text", "")
-                        for pii_name, pattern in compiled_patterns.items():
-                            if pattern.search(text):
-                                detections.append(f"{pii_name}_in_ocr_text")
-                                # Note: we redact the OCR text in metadata,
-                                # the visual content is handled by face blur
-                                # and by the downstream model not receiving raw PII
+                # NOTE: text-based PII detection (email/phone/SSN/credit-card
+                # regexes) does NOT run here. OCR extraction (rec.ocr_output)
+                # doesn't happen until Stage 5's OCR enrichment sub-stage,
+                # which runs after this one — so rec.ocr_output is always
+                # empty at this point. See s05_5_pii_text_redact, which runs
+                # after OCR and does the real text-PII scrub + visual
+                # redaction. This stage only handles face blurring.
 
                 # Save scrubbed image (or copy original if no modifications)
                 scrubbed_path.parent.mkdir(parents=True, exist_ok=True)

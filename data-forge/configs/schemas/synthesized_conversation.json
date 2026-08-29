@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SynthesizedConversation",
+  "type": "object",
+  "required": ["turns", "resulting_delta", "seed_critique_record_id"],
+  "properties": {
+    "turns": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": {"type": "string", "enum": ["user", "planner"]},
+          "content": {"type": "string", "maxLength": 800}
+        }
+      }
+    },
+    "resulting_delta": {
+      "type": "object",
+      "required": ["stage", "reasoning_note"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["conversing", "sketching", "finalizing", "finalized", "critiquing"]
+        },
+        "constraint_updates": {"type": "object"},
+        "tool_call": {"type": ["string", "null"]},
+        "reasoning_note": {"type": "string", "maxLength": 300}
+      }
+    },
+    "seed_critique_record_id": {"type": "string"}
+  }
+}

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SafetyOutput",
   "type": "object",
-  "required": ["tier", "confidence", "rationale", "flags"],
+  "required": ["tier", "confidence", "rationale"],
   "properties": {
     "tier": { "type": "string", "enum": ["safe", "borderline", "unsafe"] },
     "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },

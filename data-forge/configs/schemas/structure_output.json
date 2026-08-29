@@ -14,8 +14,8 @@
     },
     "hierarchy_depth": { "type": "integer", "minimum": 1 },
     "background_style": {
-      "type": "string",
-      "enum": ["solid_light", "solid_dark", "gradient", "image", "blurred"]
+      "type": ["string", "null"],
+      "enum": ["solid_light", "solid_dark", "gradient", "image", "blurred", null]
     }
   },
   "additionalProperties": false,

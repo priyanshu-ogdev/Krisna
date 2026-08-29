@@ -45,8 +45,26 @@ orchestrator:
 stages:
   s00_manifest_planning:
     enabled: true
-    vae_expected_channels: 64       # Qwen-Image-2.0 f16c64 config
-    vae_expected_downsample: 16     # Spatial downsampling ratio
+    # BUG FIX: this block used to carry qwen_vae_expected_channels: 64 /
+    # qwen_vae_expected_downsample: 16, commented as "Qwen-Image-2.0's VAE
+    # numbers specifically — verified against its own config." That's a
+    # leftover naming confusion from before the Qwen-Image-2.0 ->
+    # Qwen-Image-Edit-2511 swap (§17 of the PRD): Qwen-Image-2.0's weights
+    # were never released, so nothing about it could have been
+    # "verified" — those numbers, if real, would have come from the
+    # original Qwen-Image (20B MMDiT, Aug 2025, which did ship), not the
+    # never-released 2.0. They were also dead config: nothing in the
+    # codebase ever read `qwen_vae_expected_channels`/
+    # `qwen_vae_expected_downsample` from here — engine.py's actual
+    # channel-count assertion (see load_encoders() in inference/engine.py)
+    # reads `expected_channels`/`expected_downsample` from
+    # configs/models.yaml's `encoders.qwen_image_vae` entry, which is
+    # correctly left `null` until Qwen-Image-Edit-2511's real VAE config
+    # is pulled and confirmed. This block is removed rather than
+    # "corrected" to avoid re-introducing a second, driftable copy of a
+    # value that already has exactly one source of truth (models.yaml).
+    # Set `encoders.qwen_image_vae.expected_channels`/`expected_downsample`
+    # in models.yaml once confirmed — do not add a duplicate here.
 
   s01_fetch:
     enabled: true
@@ -54,11 +72,28 @@ stages:
     download_timeout_seconds: 3600
     license_confidence_threshold: 0.85  # Below this → excluded_pending_review
 
+  # New in this revision — closes the "UICrit's real human ratings are
+  # silently discarded" gap found while tracing each PRD model's actual
+  # training-data requirements. See stages/s01_5_uicrit_join.py.
+  s01_5_uicrit_join:
+    enabled: true
+
+  # New — generates Planner (Qwen3.5-9B) SFT training data, seeded from
+  # real UICrit critique text. See stages/s01_6_planner_synthesis.py.
+  s01_6_planner_synthesis:
+    enabled: true
+    target_conversation_count: 2000
+    shard_size: 500
+
   s02_dedup:
     enabled: true
     embedding_model: "openai/clip-vit-large-patch14-336"
     embedding_batch_size: 256
-    faiss_index_type: "IVF4096,Flat"   # Switch to HNSW for < 50k records
+    faiss_index_type: "IVF4096,Flat"   # NOTE: DedupEngine.build_index() currently
+      # chooses Flat vs IVF automatically based on record count (< 10k -> Flat,
+      # else IVF) and does not read this string — it's descriptive of the
+      # IVF branch's shape, not a live switch. faiss_nprobe below IS wired
+      # through and does take effect on the IVF branch.
     faiss_nprobe: 64
     similarity_threshold: 0.95         # Cosine sim above this = duplicate
     exact_hash_dedup: true             # Also do SHA-256 exact match first
@@ -74,12 +109,6 @@ stages:
     enabled: true
     face_detection_confidence: 0.5     # MediaPipe face detection threshold
     blur_kernel_size: 99               # Gaussian blur kernel for faces
-    regex_patterns:
-      email: '[\w.+-]+@[\w-]+\.[\w.]+'
-      phone: '\+?[\d\s\-\(\)]{7,15}'
-      ssn: '\b\d{3}-\d{2}-\d{4}\b'
-      credit_card: '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
-    redaction_token: "[REDACTED]"
 
   s04_safety:
     enabled: true
@@ -96,11 +125,38 @@ stages:
     max_caption_tokens: 512
     ocr_enrichment: true               # Run DeepSeek-OCR pass to enrich captions
 
+  # BUG FIX: this block was missing entirely. The orchestrator invokes
+  # `_run_stage("s05_ocr_enrichment", ...)` as a real, separately-registered
+  # stage (see stages/s05_recaption.py's OCREnrichmentStage), and `_run_stage`
+  # looks it up via `config.get_stage(stage_name)`. With no entry here,
+  # `get_stage()` silently returned `StageConfig(enabled=False)` — its
+  # documented default for anything unconfigured — so OCR extraction was
+  # skipped on every run with only a debug-level "stage_skipped" log line.
+  # That silently broke two things downstream: rec.ocr_output was never
+  # populated, and s05_5_pii_text_redact's entire filter condition
+  # (`status == "structured" and r.ocr_output`) never matched anything —
+  # so the pipeline's one CRITICAL text-PII redaction pass never ran either,
+  # for any record, ever. Both are now wired to actually execute.
+  s05_ocr_enrichment:
+    enabled: true
+    batch_size: 32
+    max_ocr_tokens: 1024
+
   s06_structure:
     enabled: true
     batch_size: 32
     max_retries_on_schema_fail: 1      # Retry with error feedback in prompt
     max_structure_tokens: 2048
+
+  s05_5_pii_text_redact:
+    enabled: true
+    # Runs after s05_ocr_enrichment, once rec.ocr_output actually has data.
+    regex_patterns:
+      email: '[\w.+-]+@[\w-]+\.[\w.]+'
+      phone: '\+?[\d\s\-\(\)]{7,15}'
+      ssn: '\b\d{3}-\d{2}-\d{4}\b'
+      credit_card: '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
+    redaction_token: "[REDACTED]"
 
   s07_routing:
     enabled: true
@@ -109,18 +165,20 @@ stages:
     ui_first_ratio: 0.70               # 70% UI-first, 30% general design
     overflow_action: "exclude"         # "exclude" or "keep_unrouted"
 
+  # New — synthetic UI-domain paired edit data for Qwen-Image-Edit-2511's
+  # actual training task. See stages/s07_5_edit_pairs.py.
+  s07_5_edit_pairs:
+    enabled: true
+    degrade_blur_radius: 4
+    degrade_downsample_factor: 4
+
   s08_encoding:
     enabled: true
-    # Tri-Path encoding targets
-    z_image_vae:
-      model_id: "stabilityai/z-image-turbo-v1"
-      dtype: "float16"
-    qwen_image_vae:
-      model_id: "Qwen/Qwen-Image-2.0-VAE"
-      dtype: "float16"
-    maskgit_vq:
-      model_id: "TencentARC/Open-MAGVIT2"
-      dtype: "float16"
+    # Tri-Path encoder model IDs/dtypes are NOT duplicated here — they live
+    # in configs/models.yaml's `encoders:` block, which is the only source
+    # engine.py actually reads (via config.encoders / engine.get_encoder()).
+    # A second copy here was previously unused dead config that could drift
+    # out of sync with models.yaml during a future model swap.
     # Control maps
     canny_low_threshold: 50
     canny_high_threshold: 150
@@ -137,10 +195,25 @@ stages:
     pass_rate_threshold: 0.95          # Pipeline fails if audit pass rate < 95%
     ensemble_escalation: true          # Disagreements → Tier-2
 
+  # New in this revision — see s10_5_critic_preference.py's module docstring
+  # for the scope note on what this does and doesn't produce (single-image
+  # scored critiques feeding /ui_critique/, not DPO preference pairs).
+  s10_5_critic_preference:
+    enabled: true
+    sample_rate: 0.10                  # Larger than the audit sample — this is
+                                        # bulk training-signal generation, not spot-check
+    min_samples: 500
+    max_samples: 20000                 # Hard ceiling per run — bound Gemma-4 inference cost
+
   s11_registry_watcher:
     enabled: true
     # This stage reads from {DATA_ROOT}/registry_reports/latest.json
     # The JSON is written by `data-forge registry check` (external cron)
+
+  # New — segments the fully-processed manifest into model_data/, one
+  # clean folder per PRD-trainable component. No GPU model needed.
+  s12_model_data_export:
+    enabled: true
 
 # ---------------------------------------------------------------------------
 # Storage quota enforcement
@@ -151,8 +224,25 @@ storage:
   per_record_estimates:
     raw_image_bytes: 500_000           # ~500KB average raw image
     scrubbed_image_bytes: 500_000
-    z_image_latent_bytes: 131_072      # 64ch × 32×32 × fp16 = 128KB
-    qwen_image_latent_bytes: 131_072
+    # BUG FIX: this was labeled "64ch × 32×32 × fp16 = 128KB — verified
+    # for Qwen-Image-2.0's VAE only" — a naming-confusion leftover from
+    # before the Qwen-Image-2.0 -> Qwen-Image-Edit-2511 swap (§17 of the
+    # PRD). Qwen-Image-2.0's weights were never released, so this number
+    # cannot have been verified against it; if it's real, it traces back
+    # to the original Qwen-Image (20B MMDiT, Aug 2025). It is NOT
+    # confirmed against Qwen-Image-Edit-2511's actual VAE config either —
+    # treat it as an unverified placeholder like z_image_latent_bytes
+    # below, not a confirmed value. Pull Qwen-Image-Edit-2511's real
+    # vae/config.json before trusting this for a production storage
+    # projection, and update models.yaml's qwen_image_vae.expected_channels/
+    # expected_downsample at the same time (that's the actual assertion
+    # engine.py checks against — see load_encoders() in inference/engine.py).
+    qwen_image_latent_bytes: 32_768   # 16ch × 32×32 × fp16 = 32KB
+    # UNVERIFIED: Z-Image-Turbo's VAE channel/downsample spec has not been
+    # confirmed to match Qwen-Image-Edit-2511's. Reusing 131_072 here as a
+    # rough placeholder — treat storage pre-flight projections as
+    # approximate until the real Z-Image-Turbo VAE config is checked.
+    z_image_latent_bytes: 131_072      # PLACEHOLDER — see note above
     vq_tokens_bytes: 8_192             # Variable, ~8KB average
     control_map_bytes: 4_096           # JSON + edges ~4KB
     metadata_bytes: 2_048              # Manifest row + logs

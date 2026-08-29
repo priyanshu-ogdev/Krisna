@@ -6,7 +6,7 @@ import os
 import platform
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import yaml
 
@@ -74,6 +74,56 @@ class DatasetSpec:
     # Fetch settings
     fetch_config: dict[str, Any] = field(default_factory=dict)
     note: str | None = None
+    # Set true for sources whose value is annotations to JOIN against
+    # already-ingested images (e.g. UICrit's ratings against RICO screens),
+    # not standalone images of their own. Prevents the generic image-glob
+    # fetch path from creating duplicate/meaningless image records for a
+    # repo that's really just annotation files — see uicrit_ingest.py.
+    annotation_only: bool = False
+
+    # Download modes whose fetch path never inserts a standalone image
+    # record into the main manifest at all: `annotation_only` sources
+    # (UICrit — joins onto existing RICO records), `text_reference`
+    # (Glaive/xLAM — pure text, read directly by s01_6, never touches the
+    # image pipeline), and `caption_join`'s realistic path (Screen2Words —
+    # joins captions onto existing RICO records; see
+    # fetcher.py::_fetch_huggingface_caption_join). These consume ~0 of
+    # the per-record image-storage budget in pipeline.yaml's
+    # `per_record_estimates`, which assumes a raw+scrubbed+two-latent+
+    # vq+control+metadata image record — projecting full storage for them
+    # would double-count storage that either doesn't exist (annotations/
+    # text are tiny compared to per_record_estimates) or was already
+    # counted under the dataset they join onto (rico_core/rico_semantic).
+    _ZERO_IMAGE_STORAGE_MODES: ClassVar[frozenset[str]] = frozenset(
+        {"text_reference", "caption_join"}
+    )
+
+    def storage_relevant_record_count(self) -> int:
+        """Records this dataset actually contributes to the per-record
+        image-storage projection in StorageManager.calculate_projected_size.
+
+        BUG FIX: the pre-flight check previously summed every dataset's
+        raw `expected_record_count` — PD12M's full 12.4M, CC12M's full
+        12.4M, etc. — completely ignoring `fetch_config.sample_size`,
+        which actually caps what gets downloaded (200K/150K respectively).
+        That inflated the projected corpus from the PRD's real ~100K-500K
+        target (see PRD §8.3, "3TB budget is generous at this scale") to
+        ~26M records / ~33TB, which would false-fail `pre_flight_check`
+        against any realistic single-workstation disk before Stage 1 ever
+        ran. This method is the single place that reconciles the two:
+        respect `sample_size` when set, and zero out sources whose fetch
+        path doesn't produce a standalone image record at all (see
+        `_ZERO_IMAGE_STORAGE_MODES` and `annotation_only` above).
+        """
+        if self.annotation_only:
+            return 0
+        download_mode = self.fetch_config.get("download_mode")
+        if download_mode in self._ZERO_IMAGE_STORAGE_MODES:
+            return 0
+        sample_size = self.fetch_config.get("sample_size")
+        if sample_size is not None:
+            return min(self.expected_record_count, int(sample_size))
+        return self.expected_record_count
 
 
 @dataclass
@@ -93,6 +143,22 @@ class PathsConfig:
     registry_reports: str = "registry_reports/"
     audit_reports: str = "audit_reports/"
     compliance_briefs: str = "compliance_briefs/"
+    # BUG FIX / COMPLETENESS GAP: pipeline.yaml's directory-layout comments,
+    # DATAFORGE_ARCHITECTURE.md, and the PRD's §8.3 storage layout all
+    # describe /preference_pairs/*.parquet and /ui_critique/*.parquet as
+    # real pipeline outputs, but neither was ever declared here — so
+    # `config.resolved_paths["ui_critique"]` (used by the new
+    # s10_5_critic_preference.py stage) would have raised a bare KeyError
+    # the first time anything tried to write to it. Now created and
+    # resolved the same way as every other output directory.
+    ui_critique: str = "ui_critique/"
+    preference_pairs: str = "preference_pairs/"
+    # New tracks added to close the data-completeness gaps found when tracing
+    # each PRD model's actual training-data requirement back through the
+    # pipeline (see docs/DATA_COMPLETENESS.md for the full audit trail).
+    edit_pairs: str = "processed/edit_pairs/"           # Qwen-Image-Edit-2511 paired data
+    planner_conversations: str = "planner_data/conversations/"  # Planner SFT data
+    model_data_root: str = "model_data/"                # Final per-model segmented export
 
     def resolve(self, data_root: Path) -> dict[str, Path]:
         """Resolve all paths relative to DATA_ROOT, creating dirs as needed."""
@@ -212,6 +278,7 @@ def _parse_dataset_spec(key: str, data: dict[str, Any]) -> DatasetSpec:
         branch=data.get("branch", "main"),
         fetch_config=data.get("fetch_config", {}),
         note=data.get("note"),
+        annotation_only=data.get("annotation_only", False),
     )
 
 
