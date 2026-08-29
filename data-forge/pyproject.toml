@@ -18,12 +18,31 @@ dependencies = [
     "torchvision>=0.21.0",
     "transformers>=4.45",
     "safetensors>=0.4.5",
+    "diffusers>=0.31.0",        # used by engine.py for z_image_vae / qwen_image_vae
+    # Required by DeepSeek-OCR-2's trust_remote_code=True model code path
+    "einops>=0.8.0",
+    "addict>=2.4.0",
+    "easydict>=1.13",
 
     # --- Data / ML ---
+    # faiss-gpu is published for Linux x86-64 only (pytorch/nvidia/conda-forge
+    # alike) — there is no Windows GPU build, via pip OR conda. Windows/macOS
+    # get faiss-cpu; Stage 2 dedup runs CPU-only there (budget extra wall-clock
+    # time at "millions of images" scale, or move that stage to WSL2/Linux).
     "faiss-gpu>=1.8.0; sys_platform == 'linux'",
+    "faiss-cpu>=1.8.0; sys_platform != 'linux'",
+    "opencv-python-headless>=4.10",  # Canny edge control maps (Stage 8, branch 4)
     "Pillow>=10.4",
     "numpy>=1.26",
     "scipy>=1.14",
+    # BUG FIX: pipeline.yaml, DATAFORGE_ARCHITECTURE.md, and the PRD all
+    # specify /preference_pairs/*.parquet and /ui_critique/*.parquet as
+    # pipeline outputs, but no version of this repo actually depended on
+    # anything that can write Parquet — there was no code path that produced
+    # either directory's contents at all (see utils/parquet_writer.py and
+    # stages/s10_5_critic_preference.py, both new in this revision).
+    "pandas>=2.2",
+    "pyarrow>=17.0",
 
     # --- Schemas & Validation ---
     "pydantic>=2.8",

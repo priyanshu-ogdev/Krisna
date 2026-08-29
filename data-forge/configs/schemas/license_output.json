@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "LicenseOutput",
   "type": "object",
-  "required": ["license_type", "redistribution_allowed", "commercial_use_allowed", "attribution_required", "research_only", "confidence", "source_citation"],
+  "required": ["license_type", "confidence", "source_citation"],
   "properties": {
     "license_type": { "type": "string" },
     "redistribution_allowed": { "type": "boolean" },

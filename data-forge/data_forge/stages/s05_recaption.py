@@ -53,7 +53,7 @@ class RecaptionStage(Stage):
                 failed += 1
                 continue
 
-            caption_out = await tier1.generate_caption(img_path)
+            caption_out = await tier1.generate_caption(img_path, source_caption_hint=rec.source_caption)
             if caption_out is None:
                 manifest.update_record(rec.id, "recaption", new_status="excluded_failed",
                                        reason="Caption inference failed", exclusion_reason="inference_failed")
@@ -74,13 +74,18 @@ class RecaptionStage(Stage):
 class OCREnrichmentStage(Stage):
     """Sub-stage: OCR text extraction (runs in a separate model swap phase)."""
     name = "s05_ocr_enrichment"
-    requires: ClassVar[tuple[str, ...]] = ("s05_recaption",)
+    requires: ClassVar[tuple[str, ...]] = ("s06_structure",)
 
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
         result = StageResult(stage_name=self.name)
         records = manifest.get_records_by_ids(record_ids)
-        records = [r for r in records if r.status == "recaptioned"]
+        # By the time this phase runs, Stage 6 (Structure) has already
+        # advanced records to "structured" — s05_recaption -> s06_structure
+        # both run inside the same Tier-1 vLLM session before this OCR
+        # phase starts. Filtering on "recaptioned" here meant this loop
+        # never matched anything and OCR silently never ran.
+        records = [r for r in records if r.status == "structured"]
         if not records or engine is None:
             return result
 

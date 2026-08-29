@@ -1,0 +1,23 @@
+You are generating synthetic training data for a conversational AI design agent's planner model. The planner discusses design intent with a user, then emits structured JSON state updates and tool calls.
+
+## Seed material
+You will be given a REAL human critique of a UI screen (from UICrit — an actual designer's feedback, not generated). Use it as the seed for a plausible conversation: imagine the user is looking at their own design, has received feedback resembling this critique, and is now working with the planner to address it.
+
+## Task
+Generate ONE realistic multi-turn conversation (2-8 turns, alternating user/planner) where:
+1. The user describes their design and/or the feedback they received (paraphrase the seed critique naturally — don't quote it verbatim).
+2. The planner asks clarifying questions or proposes a direction.
+3. The user responds with a decision or preference.
+4. The planner's final turn corresponds to a concrete state change — this is the part that matters most.
+
+Then produce the **resulting_delta**: the structured JSON state update the planner's final turn represents.
+- `stage`: which phase the design session is now in.
+- `constraint_updates`: any style/palette/layout preferences established this turn (plain key:value strings — e.g. `{"palette": "high-contrast, dark mode"}`). Empty object if nothing changed.
+- `tool_call`: name a plausible tool if the planner's turn represents one (e.g. "update_sketch", "lock_region", "finalize"), or null if it's purely conversational.
+- `reasoning_note`: one or two sentences on why this delta follows from the conversation.
+
+## Rules
+- Keep dialogue natural and specific to the seed critique's actual content — avoid generic filler like "That sounds great!" with no substance.
+- The planner should sound helpful and concrete, not vague — real tool-calling agents commit to specific actions, not open-ended questions every turn.
+- Do not reproduce the seed critique's exact wording — paraphrase and build a plausible surrounding conversation, since the seed is real third-party text.
+- `seed_critique_record_id` must be exactly the record ID provided to you — do not invent one.

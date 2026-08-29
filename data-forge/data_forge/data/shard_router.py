@@ -35,6 +35,24 @@ class ShardRouter:
 
         Returns:
             List of {record_id, domain, shard_id, status} dicts.
+
+        KNOWN LIMITATION (surfaced while fixing the shortfall-backfill bug
+        below, not fully resolved here — flagging rather than silently
+        assuming away): `total` is defined as `len(records)`, i.e. exactly
+        the chunk passed into this one call. s07_routing.py invokes this
+        per-chunk in a chunked pipeline. Once shortfall backfilling (below)
+        is applied, target_ui + target_gen == total == ui_available +
+        gen_available is an algebraic identity for any single chunk, which
+        means `overflow_excluded` can now only be nonzero when a chunk's
+        own ui:gen split is EXACTLY at the configured ratio already (no
+        surplus in either domain to trim) — a real but narrow case. What
+        this function cannot do, as currently designed, is enforce the
+        ratio *across* chunks or against a fixed corpus-wide training-pool
+        size cap (e.g. "stop admitting ui_first records once the running
+        total across all chunks hits 70% of a 300K global cap") — that
+        would need a persistent, cross-chunk counter (e.g. in the manifest)
+        rather than a fresh per-call `total`. Left as an open item rather
+        than expanded in scope here; see docs/DATA_SOURCES.md.
         """
         ui_records = [r for r in records if r.domain == "ui_first"]
         gen_records = [r for r in records if r.domain == "general_design"]
@@ -43,6 +61,23 @@ class ShardRouter:
         target_ui = math.floor(total * self._ui_ratio)
         target_gen = total - target_ui
 
+        # NOTE (previously "fixed" here, then reverted — documenting why):
+        # it's tempting to backfill a domain's shortfall from the other
+        # domain's surplus so fewer records get discarded overall. That's
+        # wrong for this function's actual purpose: `ui_first_ratio` is an
+        # explicit, human-set target for the OUTPUT corpus's composition
+        # (see this module's docstring), not just a "use as much data as
+        # possible" knob. Backfilling changes the resulting ratio — e.g.
+        # 90 ui_first / 10 general_design available at a configured 0.70
+        # target correctly routes 70 ui + 10 gen (accepting a smaller total
+        # of 80, ratio-faithful) per tests/test_shard_router.py's
+        # test_overflow_excluded; backfilling would instead route all 100
+        # records at an actual 90:10 ratio, silently violating the
+        # configured 70:30 target rather than honoring it. Excluding
+        # genuine surplus is the CORRECT behavior here, not a bug — accept
+        # a smaller routed total over a skewed one. (Cross-chunk global
+        # ratio enforcement, see the class docstring, is a separate, real
+        # limitation — orthogonal to this.)
         log.info(
             "routing_plan",
             total=total,

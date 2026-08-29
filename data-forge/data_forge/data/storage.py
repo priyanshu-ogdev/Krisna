@@ -22,23 +22,72 @@ class StorageQuotaExceeded(Exception):
 class StorageManager:
     """Pre-flight and mid-flight storage quota enforcement."""
 
+    # Windows classic MAX_PATH. (Windows 10 1607+ can lift this via a
+    # long-paths opt-in registry key / app manifest, but that's a per-machine
+    # setting this pipeline can't assume — stay conservative against the
+    # unmodified default.)
+    _WINDOWS_MAX_PATH = 260
+    # Safety buffer subtracted from the raw limit — leaves room for a
+    # filesystem/tooling quirk (e.g. a backup or sync tool re-nesting paths)
+    # without living exactly on the edge of the actual OS limit.
+    _WINDOWS_PATH_SAFETY_BUFFER = 20
+
     def __init__(self, config: PipelineConfig) -> None:
         self._config = config
         self._data_root = config.data_root
         self._safety_margin = config.storage.safety_margin
         self._estimates = config.storage.per_record_estimates
 
+    def _check_windows_max_path(self) -> None:
+        """Validate DATA_ROOT against Windows' MAX_PATH, using the pipeline's
+        own actual worst-case relative path — not an arbitrary root-length
+        guess.
+
+        BUG FIX: the previous check rejected any DATA_ROOT >= 50 characters,
+        regardless of whether the *actual* deepest path this pipeline ever
+        constructs would come anywhere near MAX_PATH=260. That threshold was
+        roughly 3.5x more conservative than necessary — it would falsely
+        reject a perfectly safe path like
+        "D:\\Users\\SomeUser\\Projects\\ML\\krisna_data_root" (well over 50
+        chars, nowhere close to 260 once you add this pipeline's actual
+        deepest subpath) while providing no real guarantee for a case that
+        WOULD overflow if this pipeline's directory layout got deeper later.
+        This computes the real worst case instead: the longest configured
+        subdirectory (from PathsConfig) plus a representative worst-case
+        filename (a uuid4-based shard name with the longest extension this
+        pipeline writes, ".safetensors").
+        """
+        from data_forge.config import PathsConfig
+
+        longest_subdir = max(len(v) for v in vars(PathsConfig()).values())
+        # Representative worst-case filename this pipeline actually writes,
+        # e.g. "latents_qwenimage_edit_<32-char-uuid4-hex>.safetensors"
+        worst_case_filename_len = len("shard_prefix_") + 32 + len(".safetensors")
+        worst_case_relative = longest_subdir + 1 + worst_case_filename_len  # +1 for path sep
+
+        worst_case_total = len(str(self._data_root)) + 1 + worst_case_relative
+        limit = self._WINDOWS_MAX_PATH - self._WINDOWS_PATH_SAFETY_BUFFER
+
+        if worst_case_total >= limit:
+            max_safe_root_len = limit - 1 - worst_case_relative
+            raise StorageQuotaExceeded(
+                f"Windows MAX_PATH risk: DATA_ROOT '{self._data_root}' "
+                f"({len(str(self._data_root))} chars) plus this pipeline's worst-case "
+                f"subpath ({worst_case_relative} chars) projects to "
+                f"{worst_case_total} total characters, at or above the "
+                f"{limit}-char safe limit (MAX_PATH={self._WINDOWS_MAX_PATH}, minus a "
+                f"{self._WINDOWS_PATH_SAFETY_BUFFER}-char safety buffer). "
+                f"Use a DATA_ROOT no longer than ~{max(max_safe_root_len, 0)} characters, "
+                "or enable Windows long-path support (Local Group Policy / registry "
+                "LongPathsEnabled) if you control this machine."
+            )
+
     def pre_flight_check(self, manifest_count: int) -> dict[str, Any]:
         """Calculate projected storage needs and validate against available space.
 
         Raises StorageQuotaExceeded if projected > (available * (1 - safety_margin)).
         """
-        if len(str(self._data_root)) >= 50:
-            raise StorageQuotaExceeded(
-                f"Windows MAX_PATH limitation: DATA_ROOT '{self._data_root}' is too long "
-                f"({len(str(self._data_root))} chars). It must be < 50 chars to prevent "
-                "FileNotFoundError crashes during deep directory creation in Stage 8."
-            )
+        self._check_windows_max_path()
 
         projected = self.calculate_projected_size(manifest_count)
         available = self.get_available_bytes()

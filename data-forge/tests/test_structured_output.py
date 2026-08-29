@@ -45,19 +45,26 @@ class TestStructureOutput:
         assert len(out.elements[0].children) == 1
 
     def test_empty_elements(self):
+        # NOTE: "unknown"/0 were never valid values for this schema
+        # (layout_type is a closed Literal set, hierarchy_depth requires
+        # >=1 for a real screen) — fixed to match the live schema rather
+        # than loosening validation to match a stale fixture.
         data = {
             "elements": [],
-            "layout_type": "unknown",
-            "hierarchy_depth": 0,
+            "layout_type": "freeform",
+            "hierarchy_depth": 1,
         }
         out = StructureOutput.model_validate(data)
         assert len(out.elements) == 0
 
 class TestOCROutput:
     def test_empty_regions(self):
+        # NOTE: the field is `primary_language`, not `language`, and
+        # `confidence` is required — fixed to match the live schema.
         data = {
             "text_regions": [],
-            "language": "en"
+            "primary_language": "en",
+            "confidence": 1.0,
         }
         out = OCROutput.model_validate(data)
         assert len(out.text_regions) == 0

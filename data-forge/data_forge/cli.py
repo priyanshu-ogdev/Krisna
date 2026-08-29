@@ -2,6 +2,7 @@
 
 Commands:
   data-forge run [--dry-run] [--resume] [--stages 0,1,2]
+  data-forge doctor
   data-forge registry check
   data-forge manifest stats
   data-forge manifest query --status <status>
@@ -73,12 +74,14 @@ def main() -> None:
 @click.option("--resume/--no-resume", default=True, help="Resume from checkpoints")
 @click.option("--stages", default=None, help="Comma-separated stage numbers to run (e.g., '0,1,2')")
 @click.option("--chunk-size", default=None, type=int, help="Override chunk size from config")
+@click.option("--limit", default=None, type=int, help="Cap total records processed this run (smoke tests)")
 @click.option("--log-level", default="INFO", help="Logging level")
 def run(
     dry_run: bool,
     resume: bool,
     stages: str | None,
     chunk_size: int | None,
+    limit: int | None,
     log_level: str,
 ) -> None:
     """Execute the data pipeline."""
@@ -100,18 +103,24 @@ def run(
         stage_map = {
             "0": "s00_manifest_planning",
             "1": "s01_fetch",
+            "1.5": "s01_5_uicrit_join",
+            "1.6": "s01_6_planner_synthesis",
             "2": "s02_dedup",
             "3": "s03_quality",
             "3.5": "s03_5_pii_scrub",
             "4": "s04_safety",
             "4.5": "s04_5_escalation",
             "5": "s05_recaption",
+            "5.5": "s05_5_pii_text_redact",
             "6": "s06_structure",
             "7": "s07_routing",
+            "7.5": "s07_5_edit_pairs",
             "8": "s08_encoding",
             "9": "s09_heldout",
             "10": "s10_audit",
+            "10.5": "s10_5_critic_preference",
             "11": "s11_registry_watcher",
+            "12": "s12_model_data_export",
         }
         stages_filter = []
         for s in stages.split(","):
@@ -127,6 +136,8 @@ def run(
     console.print(f"  Chunk size: {config.chunk_size}")
     console.print(f"  Dry run: {dry_run}")
     console.print(f"  Resume: {resume}")
+    if limit is not None:
+        console.print(f"  Record limit: {limit}")
     if stages_filter:
         console.print(f"  Stages: {', '.join(stages_filter)}")
     console.print()
@@ -147,6 +158,7 @@ def run(
                 stages_filter=stages_filter,
                 dry_run=dry_run,
                 resume=resume,
+                limit=limit,
             )
         )
 
@@ -156,6 +168,65 @@ def run(
         _print_stats(stats)
     finally:
         manifest.close()
+
+
+@main.command()
+@click.option("--github-token", default=None, help="GitHub token (avoids API rate limits)")
+def doctor(github_token: str | None) -> None:
+    """Pre-flight checks that are cheap to run but easy to forget.
+
+    Currently checks whether the Unsloth toolchain has published support
+    for the pinned Tier-1/Tier-2 model architectures — previously a real,
+    working check (check_unsloth_support) that existed in the codebase but
+    was never called from anywhere.
+    """
+    from data_forge.agents.toolchain_checker import (
+        ToolchainCoverageError,
+        check_unsloth_support,
+    )
+
+    config = _load_pipeline_config()
+    github_token = github_token or os.environ.get("GITHUB_TOKEN")
+
+    console.print("\n[bold cyan]data-forge doctor[/]\n")
+
+    any_failed = False
+
+    console.print("Checking stage ordering consistency (declared requires vs. actual execution order)...")
+    _register_all_stages()
+    from data_forge.orchestrator import validate_stage_ordering
+    ordering_violations = validate_stage_ordering()
+    if ordering_violations:
+        any_failed = True
+        for v in ordering_violations:
+            console.print(f"  [bold red]✗[/] {v}")
+    else:
+        console.print("  [green]✓[/] Every stage's declared requires is consistent with actual execution order")
+
+    for key in ("tier1", "tier2"):
+        model_spec = config.models.get(key)
+        if not model_spec:
+            continue
+        console.print(f"Checking Unsloth support for [bold]{key}[/] ({model_spec.model_id})...")
+        try:
+            check_result = asyncio.run(
+                check_unsloth_support(
+                    model_architecture=model_spec.model_id.split("/")[-1],
+                    model_id=model_spec.model_id,
+                    github_token=github_token,
+                )
+            )
+            console.print(f"  [green]✓[/] {check_result['details']}")
+        except ToolchainCoverageError as e:
+            console.print(f"  [bold red]✗[/] {e}")
+            any_failed = True
+        except Exception as e:
+            console.print(f"  [yellow]?[/] Could not determine support: {e}")
+
+    if any_failed:
+        console.print("\n[bold red]doctor found issues.[/] Review before committing a training run.")
+        sys.exit(1)
+    console.print("\n[green]All checks passed.[/]")
 
 
 @main.group()
@@ -282,18 +353,31 @@ def _register_all_stages() -> None:
     stage_modules = [
         "data_forge.stages.s00_manifest_planning",
         "data_forge.stages.s01_fetch",
+        "data_forge.stages.s01_5_uicrit_join",
+        "data_forge.stages.s01_6_planner_synthesis",
         "data_forge.stages.s02_dedup",
         "data_forge.stages.s03_quality",
         "data_forge.stages.s03_5_pii_scrub",
         "data_forge.stages.s04_safety",
         "data_forge.stages.s04_5_escalation",
         "data_forge.stages.s05_recaption",
+        "data_forge.stages.s05_5_pii_text_redact",
         "data_forge.stages.s06_structure",
         "data_forge.stages.s07_routing",
+        "data_forge.stages.s07_5_edit_pairs",
         "data_forge.stages.s08_encoding",
         "data_forge.stages.s09_heldout",
         "data_forge.stages.s10_audit",
+        # BUG FIX: s10_5_critic_preference.py (new in this revision) was
+        # not in this list — @register_stage only runs when the module is
+        # actually imported, so without this line the stage would exist on
+        # disk, be fully wired into pipeline.yaml and the orchestrator, and
+        # still raise "Unknown stage: s10_5_critic_preference" the moment
+        # anything tried to run it. Same failure mode that would silently
+        # bite any future new stage file added without updating this list.
+        "data_forge.stages.s10_5_critic_preference",
         "data_forge.stages.s11_registry_watcher",
+        "data_forge.stages.s12_model_data_export",
     ]
     for mod in stage_modules:
         try:

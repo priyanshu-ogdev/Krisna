@@ -11,6 +11,7 @@ from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
+from data_forge.utils.completeness import is_encoding_complete, missing_artifacts
 
 log = get_logger("stages.s09")
 
@@ -28,7 +29,37 @@ class HeldoutStage(Stage):
         stratify_by = stage_cfg.get("stratify_by", ["domain", "source_dataset"])
 
         records = manifest.get_records_by_ids(record_ids)
-        encoded = [r for r in records if r.status == "encoded"]
+        candidates = [r for r in records if r.status == "encoded"]
+        if not candidates:
+            return result
+
+        # BUG FIX / COMPLETENESS GAP: status == "encoded" only means Stage
+        # 8 produced AT LEAST ONE artifact for this record (see
+        # s08_encoding.py's own "don't silently produce zero-artifact
+        # records" rule) — not that every artifact its domain actually
+        # requires is present. Without this check, a record missing (say)
+        # its Qwen-Image-Edit-2511 latent due to a transient encode
+        # failure would still flow into training_pool/heldout as if fully
+        # processed, silently degrading whichever model's training loop
+        # expects that artifact to exist. Uses the domain-aware predicate
+        # in utils/completeness.py so general_design records (which
+        # correctly lack vq_tokens — see s08_encoding.py's domain gate)
+        # aren't wrongly excluded for "missing" an artifact they were
+        # never supposed to have.
+        encoded = []
+        incomplete_count = 0
+        for rec in candidates:
+            if is_encoding_complete(rec):
+                encoded.append(rec)
+            else:
+                incomplete_count += 1
+                manifest.update_record(
+                    rec.id, "heldout", new_status="excluded_failed",
+                    reason=f"Incomplete encoding artifacts: missing {sorted(missing_artifacts(rec))}",
+                    exclusion_reason="encoding_incomplete",
+                )
+        if incomplete_count:
+            log.warning("heldout_excluded_incomplete", count=incomplete_count)
         if not encoded:
             return result
 

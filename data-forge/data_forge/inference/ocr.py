@@ -33,11 +33,12 @@ class OCREngine:
     async def extract_text(self, image_path: Path) -> OCROutput | None:
         """Extract all visible text from a UI screenshot."""
         prompt = self._config.get_prompt("ocr_extraction")
+        max_tokens = self._config.get_stage("s05_ocr_enrichment").get("max_ocr_tokens", 4096)
         result = await self._client.complete(
             prompt=prompt,
             image_path=image_path,
             schema=OCROutput,
-            max_tokens=4096,  # OCR can produce long output for text-heavy UIs
+            max_tokens=max_tokens,  # OCR can produce long output for text-heavy UIs
         )
         return result if isinstance(result, OCROutput) else None
 
@@ -46,11 +47,12 @@ class OCREngine:
     ) -> list[OCROutput | None]:
         """Batch OCR extraction."""
         prompt = self._config.get_prompt("ocr_extraction")
+        max_tokens = self._config.get_stage("s05_ocr_enrichment").get("max_ocr_tokens", 4096)
         items = [{"_image_path": str(p), "_id": str(p)} for p in image_paths]
         results = await self._client.complete_batch(
             items=items,
             prompt_template=prompt,
             schema=OCROutput,
-            max_tokens=4096,
+            max_tokens=max_tokens,
         )
         return [r if isinstance(r, OCROutput) else None for r in results]

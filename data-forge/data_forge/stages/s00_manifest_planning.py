@@ -47,11 +47,32 @@ class ManifestPlanningStage(Stage):
             log.info("no_registry_report", note="Run `data-forge registry check` to create one")
 
         # 2. Pre-flight storage check
+        # BUG FIX: this used to sum raw `expected_record_count` (PD12M's
+        # full 12.4M, CC12M's full 12.4M, etc.) with no regard for
+        # `fetch_config.sample_size` actually capping downloads to 200K/
+        # 150K, or for annotation_only/text_reference/caption_join
+        # sources never producing standalone image records at all. That
+        # projected ~26M records / ~33TB against the PRD's real ~100K-
+        # 500K / ~3TB target (§8.3), which would false-fail
+        # `pre_flight_check` before Stage 1 ever ran on any normal
+        # workstation disk. `storage_relevant_record_count()` reconciles
+        # both — see its docstring in config.py.
         storage = StorageManager(config)
-        total_expected = sum(
+        total_expected_raw = sum(
             ds.expected_record_count for ds in config.datasets.values()
         )
-        storage.pre_flight_check(total_expected)
+        total_expected_effective = sum(
+            ds.storage_relevant_record_count() for ds in config.datasets.values()
+        )
+        log.info(
+            "storage_projection_basis",
+            raw_expected_record_count_sum=total_expected_raw,
+            effective_storage_relevant_count=total_expected_effective,
+            note="Pre-flight check uses the effective (sample_size-capped, "
+                 "image-record-only) count, not the raw sum of every "
+                 "dataset's full corpus size.",
+        )
+        storage.pre_flight_check(total_expected_effective)
 
         # 3. Generate dataset version
         import time
@@ -69,13 +90,15 @@ class ManifestPlanningStage(Stage):
         log.info(
             "manifest_planning_complete",
             version=version_id,
-            expected_records=total_expected,
+            expected_records_effective=total_expected_effective,
+            expected_records_raw=total_expected_raw,
             datasets=list(config.datasets.keys()),
         )
 
         result.records_processed = 1
         result.metadata = {
             "version": version_id,
-            "expected_records": total_expected,
+            "expected_records": total_expected_effective,
+            "expected_records_raw_corpus_sum": total_expected_raw,
         }
         return result
