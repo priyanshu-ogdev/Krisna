@@ -104,7 +104,7 @@ def run(
             "0": "s00_manifest_planning",
             "1": "s01_fetch",
             "1.5": "s01_5_uicrit_join",
-            "1.6": "s01_6_planner_synthesis",
+            "1.6": "s01_6_preference_pairs",
             "2": "s02_dedup",
             "3": "s03_quality",
             "3.5": "s03_5_pii_scrub",
@@ -114,11 +114,10 @@ def run(
             "5.5": "s05_5_pii_text_redact",
             "6": "s06_structure",
             "7": "s07_routing",
-            "7.5": "s07_5_edit_pairs",
             "8": "s08_encoding",
+            "8.5": "s08_5_dpo_encoding",
             "9": "s09_heldout",
             "10": "s10_audit",
-            "10.5": "s10_5_critic_preference",
             "11": "s11_registry_watcher",
             "12": "s12_model_data_export",
         }
@@ -354,7 +353,7 @@ def _register_all_stages() -> None:
         "data_forge.stages.s00_manifest_planning",
         "data_forge.stages.s01_fetch",
         "data_forge.stages.s01_5_uicrit_join",
-        "data_forge.stages.s01_6_planner_synthesis",
+        "data_forge.stages.s01_6_preference_pairs",
         "data_forge.stages.s02_dedup",
         "data_forge.stages.s03_quality",
         "data_forge.stages.s03_5_pii_scrub",
@@ -364,18 +363,16 @@ def _register_all_stages() -> None:
         "data_forge.stages.s05_5_pii_text_redact",
         "data_forge.stages.s06_structure",
         "data_forge.stages.s07_routing",
-        "data_forge.stages.s07_5_edit_pairs",
         "data_forge.stages.s08_encoding",
+        # Every entry below must be added here manually — @register_stage
+        # only fires on import, so a stage that's fully wired into
+        # pipeline.yaml/orchestrator.py but missing from this list still
+        # raises "Unknown stage: <name>" the moment anything runs it. This
+        # bit a prior revision once (s10_5_critic_preference.py); keep new
+        # stages in this list from the same commit that adds the file.
+        "data_forge.stages.s08_5_dpo_encoding",
         "data_forge.stages.s09_heldout",
         "data_forge.stages.s10_audit",
-        # BUG FIX: s10_5_critic_preference.py (new in this revision) was
-        # not in this list — @register_stage only runs when the module is
-        # actually imported, so without this line the stage would exist on
-        # disk, be fully wired into pipeline.yaml and the orchestrator, and
-        # still raise "Unknown stage: s10_5_critic_preference" the moment
-        # anything tried to run it. Same failure mode that would silently
-        # bite any future new stage file added without updating this list.
-        "data_forge.stages.s10_5_critic_preference",
         "data_forge.stages.s11_registry_watcher",
         "data_forge.stages.s12_model_data_export",
     ]

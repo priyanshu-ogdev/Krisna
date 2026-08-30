@@ -18,7 +18,6 @@ from data_forge.inference.structured_output import (
     QualityOutput,
     SafetyOutput,
     StructureOutput,
-    SynthesizedConversation,
 )
 from data_forge.logging_setup import get_logger
 
@@ -168,27 +167,9 @@ class Tier1Engine:
         )
         return [r if isinstance(r, SafetyOutput) else None for r in results]
 
-    async def synthesize_conversation(
-        self, seed_record_id: str, seed_critique_text: str
-    ) -> SynthesizedConversation | None:
-        """Generate one synthetic planner-training conversation, seeded from
-        real UICrit human critique text. Text-only completion — no image.
-        See stages/s01_6_planner_synthesis.py for how this fits the broader
-        planner-data-completeness fix.
-        """
-        prompt_template = self._config.get_prompt("planner_conversation_synthesis")
-        prompt = (
-            f"{prompt_template}\n\n"
-            f"## Seed critique (record_id: {seed_record_id})\n{seed_critique_text}\n\n"
-            f"Remember: seed_critique_record_id in your output must be exactly "
-            f"\"{seed_record_id}\"."
-        )
-        result = await self._client.complete(
-            prompt=prompt,
-            schema=SynthesizedConversation,
-            max_tokens=1536,
-            temperature=0.7,  # Higher than other Tier-1 tasks — this is
-                               # generative content synthesis, not extraction/
-                               # classification, and wants conversational variety.
-        )
-        return result if isinstance(result, SynthesizedConversation) else None
+    # REMOVED: synthesize_conversation(). It generated the planner's
+    # synthetic SFT training conversations for the now-removed
+    # s01_6_planner_synthesis.py. The planner ships frozen now (RAG over
+    # UICrit's real critique text + constrained JSON decoding, no
+    # fine-tune) — see the PRD's no-RLHF-loop revision — so nothing in
+    # this pipeline generates synthetic conversational content anymore.

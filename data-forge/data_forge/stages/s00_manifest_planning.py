@@ -50,8 +50,9 @@ class ManifestPlanningStage(Stage):
         # BUG FIX: this used to sum raw `expected_record_count` (PD12M's
         # full 12.4M, CC12M's full 12.4M, etc.) with no regard for
         # `fetch_config.sample_size` actually capping downloads to 200K/
-        # 150K, or for annotation_only/text_reference/caption_join
-        # sources never producing standalone image records at all. That
+        # 150K, or for annotation_only/caption_join/preference_pair/
+        # eval_reference sources never producing standalone image records
+        # at all. That
         # projected ~26M records / ~33TB against the PRD's real ~100K-
         # 500K / ~3TB target (§8.3), which would false-fail
         # `pre_flight_check` before Stage 1 ever ran on any normal
@@ -64,15 +65,23 @@ class ManifestPlanningStage(Stage):
         total_expected_effective = sum(
             ds.storage_relevant_record_count() for ds in config.datasets.values()
         )
+        total_preference_pairs = sum(
+            ds.preference_pair_relevant_count() for ds in config.datasets.values()
+        )
         log.info(
             "storage_projection_basis",
             raw_expected_record_count_sum=total_expected_raw,
             effective_storage_relevant_count=total_expected_effective,
+            preference_pair_count=total_preference_pairs,
             note="Pre-flight check uses the effective (sample_size-capped, "
-                 "image-record-only) count, not the raw sum of every "
-                 "dataset's full corpus size.",
+                 "image-record-only) count for the main corpus and a "
+                 "separate preference-pair count (Pick-a-Pic v2/HPDv2/"
+                 "DesignSense-10k/DesignPref) budgeted at its own, larger "
+                 "per-item storage cost — not the raw sum of every "
+                 "dataset's full corpus size, and not combined into one "
+                 "count with a single per-record constant.",
         )
-        storage.pre_flight_check(total_expected_effective)
+        storage.pre_flight_check(total_expected_effective, total_preference_pairs)
 
         # 3. Generate dataset version
         import time

@@ -524,14 +524,15 @@ class Manifest:
     def get_all_records_with_critique(self) -> list[ManifestRecord]:
         """All records with any non-null critique_output, any status.
 
-        New for s01_6_planner_synthesis.py: it runs right after
-        s01_5_uicrit_join (before dedup/quality/safety/etc.), so matched
-        records are still at status "fetched" — none of the
-        status-scoped query methods (training_pool, heldout, ...) would
-        find them at that point in the pipeline. This is a direct,
-        unfiltered scan for "has critique_output at all", which is a rare
-        enough condition (UICrit-scale, not corpus-scale) that a plain
-        WHERE clause is appropriate rather than needing a dedicated index.
+        Populated by s01_5_uicrit_join.py, which runs right after fetch
+        (before dedup/quality/safety/etc.), so matched records are still
+        at status "fetched" — none of the status-scoped query methods
+        (training_pool, heldout, ...) would find them at that point in the
+        pipeline. This is a direct, unfiltered scan for "has
+        critique_output at all", which is a rare enough condition
+        (UICrit-scale, not corpus-scale) that a plain WHERE clause is
+        appropriate rather than needing a dedicated index. Used by
+        s12_model_data_export.py to build the planner's RAG corpus.
         """
         rows = self._conn.execute(
             "SELECT * FROM records WHERE critique_output_json IS NOT NULL"

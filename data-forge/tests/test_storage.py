@@ -33,8 +33,28 @@ class TestStorageManager:
         assert "used_pct" in report
 
     def test_calculate_projected(self, config: PipelineConfig):
+        """Uses real per-image estimate keys, not arbitrary placeholders —
+        calculate_projected_size() only sums keys it recognizes as
+        per-image or per-preference-pair (see StorageManager's
+        _PER_IMAGE_ESTIMATE_KEYS / _PER_PREFERENCE_PAIR_ESTIMATE_KEYS), a
+        deliberate split added so preference-pair storage (materially
+        larger per item: two source images + two latents) can't get
+        multiplied against the image-record count instead of its own.
+        """
         config.storage = StorageConfig(
-            per_record_estimates={"a": 1000, "b": 2000},
+            per_record_estimates={"raw_image_bytes": 1000, "metadata_bytes": 2000},
         )
         sm = StorageManager(config)
         assert sm.calculate_projected_size(10) == 30000
+
+    def test_calculate_projected_preference_pairs_use_their_own_count(self, config: PipelineConfig):
+        config.storage = StorageConfig(
+            per_record_estimates={
+                "raw_image_bytes": 1000,          # per-image estimate — ignored for the pair count
+                "preference_pair_source_bytes": 500,
+                "preference_pair_latent_bytes": 250,
+            },
+        )
+        sm = StorageManager(config)
+        # 10 image records * 1000 + 5 preference pairs * 750 (500+250)
+        assert sm.calculate_projected_size(10, preference_pair_count=5) == 10_000 + 3_750

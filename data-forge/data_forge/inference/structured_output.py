@@ -203,50 +203,15 @@ class CritiqueOutput(BaseModel):
     )
 
 
-# ── Planner Conversation Synthesis (Design State Delta) ─────────────────
-# Mirrors the PRD's Design State object (§5.1) closely enough that a
-# generated delta here is directly usable as a real training example for
-# the Planner's tool-call format, without a translation layer between
-# what data-forge produces and what the product's Design State Manager
-# actually consumes.
-
-class DesignStateDelta(BaseModel):
-    """One simulated planner turn's structured JSON output.
-
-    This is intentionally a *subset* of the full Design State object
-    (constraints + stage only) — a single conversational turn updates a
-    slice of state, not the whole object at once, same as the real
-    planner would emit incrementally rather than re-writing the entire
-    design_state on every turn.
-    """
-
-    stage: Literal["conversing", "sketching", "finalizing", "finalized", "critiquing"]
-    constraint_updates: dict[str, str] = Field(
-        default_factory=dict,
-        description="Partial updates to style/palette/layout_hints, as plain key:value strings",
-    )
-    tool_call: str | None = Field(
-        default=None,
-        description="Name of a tool invoked this turn, if any (e.g. 'update_sketch', 'finalize')",
-    )
-    reasoning_note: str = Field(..., max_length=300, description="<= 2 sentences, why this delta")
-
-
-class SynthesizedConversationTurn(BaseModel):
-    role: Literal["user", "planner"]
-    content: str = Field(..., max_length=800)
-
-
-class SynthesizedConversation(BaseModel):
-    """One full generated training example: turns + the final state delta."""
-
-    turns: list[SynthesizedConversationTurn] = Field(..., min_length=2, max_length=8)
-    resulting_delta: DesignStateDelta
-    seed_critique_record_id: str = Field(
-        ..., description="Which real UICrit-sourced critique this was seeded from — "
-                          "keeps every synthetic example traceable to real content, "
-                          "not fully hallucinated from nothing"
-    )
+# REMOVED: "Planner Conversation Synthesis (Design State Delta)" schemas
+# (DesignStateDelta, SynthesizedConversationTurn, SynthesizedConversation).
+# They backed the now-removed s01_6_planner_synthesis.py /
+# Tier1Engine.synthesize_conversation(). The planner ships frozen now (RAG
+# over UICrit's real critique text + constrained JSON decoding at
+# inference time, not a fine-tune) — see the PRD's no-RLHF-loop revision.
+# The product's own runtime JSON-delta schema still lives in the product
+# repo's Design State Manager, not here; data-forge no longer generates
+# any training examples for it.
 
 
 # ── Quality / Aesthetic Output ──────────────────────────────────────────

@@ -1,4 +1,10 @@
-"""Stage 8: Tri-Path Encoding — encode to Z-Image, Qwen-Image, VQ, and control maps."""
+"""Stage 8: Encoding — encode to Z-Image latents, sketch-tier VQ tokens, and control maps.
+
+(Formerly "Tri-Path" — a Qwen-Image-Edit-2511 latent branch was removed
+here; that model now ships frozen. See the branch-removal comment below
+and s08_5_dpo_encoding.py for where Z-Image-Turbo's DPO-specific encoding
+lives instead.)
+"""
 
 from __future__ import annotations
 
@@ -109,21 +115,17 @@ class EncodingStage(Stage):
                 except Exception as e:
                     log.warning("z_image_encode_failed", record_id=rec.id, error=str(e))
 
-                # Branch 2: Qwen-Image Continuous Latents
-                try:
-                    q_vae = engine.get_encoder("qwen_image_vae")
-                    q_tensor = normalize_for_vae(image_to_tensor(image)).unsqueeze(0).to("cuda", dtype=torch.float16)
-                    with torch.no_grad():
-                        q_latent = q_vae.encode(q_tensor).latent_dist.sample()
+                # REMOVED: "Branch 2: Qwen-Image Continuous Latents". Data-
+                # forge no longer needs to encode single-image latents for
+                # Qwen-Image-Edit-2511 — it ships frozen (zero-shot ICL +
+                # SDEdit at inference time), so nothing in this pipeline
+                # trains it. See PRD "no-RLHF-loop" revision and
+                # docs/DATA_COMPLETENESS.md. If it's ever un-frozen, restore
+                # an encoder branch here rather than reusing dpo_latents/
+                # (see s08_5_dpo_encoding.py's docstring for why those are
+                # kept separate).
 
-                    q_path = paths["latents_qwenimage"] / f"{rec.id}.safetensors"
-                    save_file({"latent": q_latent.cpu()}, str(q_path))
-                    encoding_paths["qwen_image_latent"] = str(q_path.relative_to(config.data_root))
-                    record_bytes += q_path.stat().st_size
-                except Exception as e:
-                    log.warning("qwen_image_encode_failed", record_id=rec.id, error=str(e))
-
-                # Branch 3: Sketch Tier VQ Tokens
+                # Branch 2 (was 3): Sketch Tier VQ Tokens
                 # BUG FIX / COMPLETENESS GAP: this branch had no domain
                 # check at all — it ran for every record regardless of
                 # domain, including general_design (PD12M/CC12M-sourced)
@@ -158,7 +160,7 @@ class EncodingStage(Stage):
                     except Exception as e:
                         log.warning("vq_encode_failed", record_id=rec.id, error=str(e))
 
-                # Branch 4: Control Maps (Layout JSON from Stage 6 + Canny edges)
+                # Branch 3 (was 4): Control Maps (Layout JSON from Stage 6 + Canny edges)
                 try:
                     stage_cfg = config.get_stage("s08_encoding")
                     canny_low = stage_cfg.get("canny_low_threshold", 50)

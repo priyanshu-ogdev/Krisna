@@ -96,48 +96,38 @@ models:
     role: "image_embeddings"
     vram_estimate_gb: 2
 
-  # -------------------------------------------------------------------------
-  # Critic Tier: Preference-Pair Generation for DPO (v10 PRD addition)
-  # Gemma 4 31B Dense — on-demand, NOT resident in the product's own
-  # interactive serving loop (see the PRD's Tier C / swap-orchestrator
-  # design). Here in data-forge, it runs as an ordinary bulk-pipeline
-  # vLLM session, same pattern as tier1/tier2, generating the
-  # Gemma-derived half of /preference_pairs/ (see s10_5_critic_preference.py).
-  # Confirmed Apache 2.0 (a real change from Gemma 1-3's custom terms),
-  # confirmed working QLoRA training via Unsloth if this checkpoint is later
-  # fine-tuned — irrelevant here since data-forge only needs it frozen for
-  # inference. Dense architecture (not the sibling 26B-A4B MoE variant,
-  # which has a documented, unresolved bnb 4-bit quantization
-  # incompatibility) — quantizes cleanly at NF4/AWQ.
-  # -------------------------------------------------------------------------
-  critic:
-    model_id: "google/gemma-4-31b-it"   # verify exact HF repo id before pinning a revision
-    revision: "main"
-    quantization: "awq"                 # swap to a confirmed-available AWQ/GPTQ build before prod
-    dtype: "auto"
-    max_model_len: 32768
-    gpu_memory_utilization: 0.85
-    trust_remote_code: true
-    role: "critic_preference_generation"
-    load_on_demand: true
-    capabilities:
-      - text
-      - vision
-    vram_estimate_gb: 17
+  # REMOVED: "Critic Tier" model entry (Gemma 4 31B Dense). It existed
+  # solely to run s10_5_critic_preference.py, generating AI-judge
+  # preference labels — the RLHF-loop pattern this project's no-RLHF
+  # revision rules out. Gemma 4 now ships frozen as a product-side,
+  # on-demand critique feature only; data-forge never loads it. Real DPO
+  # preference signal comes from real, already-published human-labeled
+  # datasets instead — see configs/datasets.yaml (pickapic_v2, hpdv2,
+  # designsense_10k, designpref) and stages/s01_6_preference_pairs.py.
 
   # -------------------------------------------------------------------------
   # Product Planner (NOT used by the pipeline — listed for reference only)
-  # Qwen3.5-9B, BF16 LoRA, Gated DeltaNet — locked architecture decision.
+  # Qwen3.5-9B — ships FROZEN in the product (RAG over UICrit's real
+  # critique text + constrained JSON decoding, no fine-tune). data-forge
+  # exports the RAG corpus for it (see s12_model_data_export.py's
+  # planner_qwen3.5_9b_rag/ output) but never trains it.
   # -------------------------------------------------------------------------
   product_planner:
     model_id: "Qwen/Qwen3.5-9B"
     role: "product_planner"
-    note: "NOT used by data-forge. Documented for architecture clarity."
-    managed_by: "product training pipeline, not data-forge"
+    note: "Frozen — RAG + constrained decoding, not fine-tuned. NOT used by data-forge for training."
+    managed_by: "product inference stack, not data-forge"
 
 # ---------------------------------------------------------------------------
-# Encoding Models (Stage 8 Tri-Path)
+# Encoding Models (Stage 8)
 # These are VAEs / VQ tokenizers, NOT LLMs. Loaded via torch/transformers.
+# Only Z-Image-Turbo and the sketch tier's VQ model are listed — data-forge
+# no longer encodes latents for Qwen-Image-Edit-2511 (it ships frozen; see
+# the "Product Planner" note above and PRD's no-RLHF-loop revision). If
+# that model is ever un-frozen and given a real training task, restore a
+# qwen_image_vae entry here modeled on this one (Qwen-Image-Edit-2511's
+# live vae/config.json: z_dim=16, dim_mult=[1,2,4,4] → 8x downsample —
+# verified directly, not guessed, should this be needed again).
 # ---------------------------------------------------------------------------
 encoders:
   z_image_vae:
@@ -153,47 +143,14 @@ encoders:
     dtype: "float16"
     device: "cuda"
     role: "z_image_continuous_latents"
-    # UNVERIFIED: Z-Image-Turbo's S3-DiT VAE is a different architecture from
-    # Qwen-Image-2.0's VAE. Do not assume it shares the same channel count /
-    # downsample ratio — pull the real config before setting these. Left
-    # unset so vae_checker doesn't silently validate against the wrong
-    # (Qwen) numbers.
-    expected_channels: null
-    expected_downsample: null
-    vram_estimate_gb: 2
-
-  qwen_image_vae:
-    # BUG FIX: this previously pointed at "Qwen/Qwen-Image-2.0-VAE", a repo
-    # that was never published. Qwen-Image-2.0 was announced Feb 10, 2026 as
-    # a chat-demo launch — its weights (VAE included) were never released,
-    # confirmed via the QwenLM GitHub changelog (demo link, not a weights
-    # link), an unanswered HF discussion thread running Feb-Apr 2026, and
-    # Alibaba having since moved on to announcing Qwen-Image-3.0 without ever
-    # shipping 2.0's weights. Every run that reached Stage 8 crashed here:
-    # AutoencoderKL.from_pretrained() raised on a 404 with no per-encoder
-    # try/except to catch it (see the load_encoders() fix in engine.py),
-    # taking down the entire Tri-Path Encoding phase for every chunk.
-    #
-    # Replaced with Qwen-Image-Edit-2511 (released Dec 23, 2025, confirmed
-    # downloadable, Apache 2.0, same Qwen-Image/MMDiT lineage) — this is the
-    # PRD's corrected quality-tier polish model. Its VAE ships bundled inside
-    # the pipeline repo under a "vae" subfolder (diffusers convention), the
-    # same pattern already used for Z-Image-Turbo below — NOT as a standalone
-    # "-VAE" repo, which was the root assumption error in the original pin.
-    model_id: "Qwen/Qwen-Image-Edit-2511"
-    revision: "main"                    # Pin to a commit hash for prod
-    dtype: "float16"
-    device: "cuda"
-    role: "qwen_image_edit_continuous_latents"
-    # UNVERIFIED: do not assume this shares Qwen-Image-2.0's old (also
-    # unverified) 64ch/16x numbers. Left null, same discipline already
-    # applied to z_image_vae below — pull Qwen-Image-Edit-2511's real VAE
-    # config (config.json under its vae/ subfolder) before a production run,
-    # then set both fields here AND the matching storage estimate in
-    # pipeline.yaml's per_record_estimates.qwen_image_latent_bytes.
+    # VERIFIED against the live vae/config.json (flux-dev-lineage
+    # AutoencoderKL): latent_channels=16, 4 down_block_types entries =>
+    # 8x spatial downsample. This also fixed pipeline.yaml's
+    # z_image_latent_bytes storage estimate, which was previously an
+    # unverified 131_072 placeholder — now 32_768 (16ch x 32x32 x fp16).
     expected_channels: 16
     expected_downsample: 8
-    vram_estimate_gb: 5                 # 20B MMDiT's VAE; rough estimate, verify
+    vram_estimate_gb: 2
 
   maskgit_vq:
     model_id: "TencentARC/Open-MAGVIT2"

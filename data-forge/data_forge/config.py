@@ -81,21 +81,35 @@ class DatasetSpec:
     # repo that's really just annotation files — see uicrit_ingest.py.
     annotation_only: bool = False
 
+    # True for sources that exist purely to benchmark against (TASTE,
+    # PartiPrompts) — fetched via download_mode "eval_reference" straight
+    # into heldout/external_eval/ (see fetcher.py::_fetch_eval_reference)
+    # and never eligible for training_pool or preference_pairs/ under any
+    # stage configuration. Kept as an explicit field (not inferred from
+    # download_mode alone) so anything auditing datasets.yaml can answer
+    # "is this training data?" without knowing fetch-path internals.
+    eval_only: bool = False
+
     # Download modes whose fetch path never inserts a standalone image
     # record into the main manifest at all: `annotation_only` sources
-    # (UICrit — joins onto existing RICO records), `text_reference`
-    # (Glaive/xLAM — pure text, read directly by s01_6, never touches the
-    # image pipeline), and `caption_join`'s realistic path (Screen2Words —
-    # joins captions onto existing RICO records; see
-    # fetcher.py::_fetch_huggingface_caption_join). These consume ~0 of
-    # the per-record image-storage budget in pipeline.yaml's
-    # `per_record_estimates`, which assumes a raw+scrubbed+two-latent+
-    # vq+control+metadata image record — projecting full storage for them
-    # would double-count storage that either doesn't exist (annotations/
-    # text are tiny compared to per_record_estimates) or was already
-    # counted under the dataset they join onto (rico_core/rico_semantic).
+    # (UICrit — joins onto existing RICO records), `caption_join`'s
+    # realistic path (Screen2Words — joins captions onto existing RICO
+    # records; see fetcher.py::_fetch_huggingface_caption_join),
+    # `preference_pair` (Pick-a-Pic v2/HPDv2/DesignSense-10k/DesignPref —
+    # written directly to preference_pairs/, see
+    # fetcher.py::_fetch_huggingface_preference_pairs), and
+    # `eval_reference` (TASTE/PartiPrompts — written directly to
+    # heldout/external_eval/, never touches training data at all). These
+    # consume ~0 of the per-record image-storage budget in pipeline.yaml's
+    # `per_record_estimates`, which assumes a raw+scrubbed+latent+vq+
+    # control+metadata image record — projecting full storage for them
+    # would double-count storage that either doesn't exist (annotations
+    # are tiny compared to per_record_estimates) or was already counted
+    # under the dataset they join onto (rico_core/rico_semantic), or is
+    # tracked separately under its own preference-pair/eval storage
+    # estimate instead.
     _ZERO_IMAGE_STORAGE_MODES: ClassVar[frozenset[str]] = frozenset(
-        {"text_reference", "caption_join"}
+        {"caption_join", "preference_pair", "eval_reference"}
     )
 
     def storage_relevant_record_count(self) -> int:
@@ -125,6 +139,25 @@ class DatasetSpec:
             return min(self.expected_record_count, int(sample_size))
         return self.expected_record_count
 
+    def preference_pair_relevant_count(self) -> int:
+        """Records this dataset contributes to the preference-pair storage
+        projection specifically — the counterpart to
+        storage_relevant_record_count() for `download_mode:
+        "preference_pair"` sources, which are excluded from that method
+        (see _ZERO_IMAGE_STORAGE_MODES) because a pair costs a different,
+        larger amount of storage than a single image record (two source
+        images + two latents, tracked via
+        storage.per_record_estimates.preference_pair_*). Mixing the two
+        into one count would either under- or over-project depending on
+        which per-record constant got applied to it.
+        """
+        if self.fetch_config.get("download_mode") != "preference_pair":
+            return 0
+        sample_size = self.fetch_config.get("sample_size")
+        if sample_size is not None:
+            return min(self.expected_record_count, int(sample_size))
+        return self.expected_record_count
+
 
 @dataclass
 class PathsConfig:
@@ -132,7 +165,6 @@ class PathsConfig:
     scrubbed: str = "scrubbed/"
     processed_root: str = "processed/"
     latents_zimage: str = "processed/latents_zimage/"
-    latents_qwenimage: str = "processed/latents_qwenimage/"
     vq_tokens_sketch: str = "processed/vq_tokens_sketch/"
     control_tokens: str = "processed/control_tokens/"
     training_pool: str = "training_pool/"
@@ -143,22 +175,19 @@ class PathsConfig:
     registry_reports: str = "registry_reports/"
     audit_reports: str = "audit_reports/"
     compliance_briefs: str = "compliance_briefs/"
-    # BUG FIX / COMPLETENESS GAP: pipeline.yaml's directory-layout comments,
-    # DATAFORGE_ARCHITECTURE.md, and the PRD's §8.3 storage layout all
-    # describe /preference_pairs/*.parquet and /ui_critique/*.parquet as
-    # real pipeline outputs, but neither was ever declared here — so
-    # `config.resolved_paths["ui_critique"]` (used by the new
-    # s10_5_critic_preference.py stage) would have raised a bare KeyError
-    # the first time anything tried to write to it. Now created and
-    # resolved the same way as every other output directory.
+    # REMOVED (data-pipeline upgrade): latents_qwenimage/, edit_pairs/, and
+    # planner_data/conversations/ all existed to feed training jobs that no
+    # longer exist. Qwen-Image-Edit-2511 and the Qwen3.5-9B planner now ship
+    # frozen (zero-shot ICL / SDEdit inference for the former, RAG over
+    # UICrit's real critique text for the latter) — see PRD "no-RLHF-loop"
+    # revision. Deleting these fields is deliberate, not an oversight: their
+    # only two producers (s07_5_edit_pairs.py, s01_6_planner_synthesis.py)
+    # and only consumer (s12_model_data_export.py's old per-model exporters)
+    # were removed in the same pass. See docs/DATA_COMPLETENESS.md.
     ui_critique: str = "ui_critique/"
-    preference_pairs: str = "preference_pairs/"
-    # New tracks added to close the data-completeness gaps found when tracing
-    # each PRD model's actual training-data requirement back through the
-    # pipeline (see docs/DATA_COMPLETENESS.md for the full audit trail).
-    edit_pairs: str = "processed/edit_pairs/"           # Qwen-Image-Edit-2511 paired data
-    planner_conversations: str = "planner_data/conversations/"  # Planner SFT data
-    model_data_root: str = "model_data/"                # Final per-model segmented export
+    preference_pairs: str = "preference_pairs/"         # raw pairs, per-source subfolders
+    dpo_latents: str = "processed/dpo_latents/"          # encoded pairs, ready for Diffusion-DPO
+    model_data_root: str = "model_data/"                 # Final per-model segmented export
 
     def resolve(self, data_root: Path) -> dict[str, Path]:
         """Resolve all paths relative to DATA_ROOT, creating dirs as needed."""
@@ -279,6 +308,7 @@ def _parse_dataset_spec(key: str, data: dict[str, Any]) -> DatasetSpec:
         fetch_config=data.get("fetch_config", {}),
         note=data.get("note"),
         annotation_only=data.get("annotation_only", False),
+        eval_only=data.get("eval_only", False),
     )
 
 
@@ -292,12 +322,13 @@ def _parse_paths(data: dict[str, Any]) -> PathsConfig:
     if isinstance(processed, dict):
         pc.processed_root = processed.get("root", pc.processed_root)
         pc.latents_zimage = processed.get("latents_zimage", pc.latents_zimage)
-        pc.latents_qwenimage = processed.get("latents_qwenimage", pc.latents_qwenimage)
         pc.vq_tokens_sketch = processed.get("vq_tokens_sketch", pc.vq_tokens_sketch)
         pc.control_tokens = processed.get("control_tokens", pc.control_tokens)
+        pc.dpo_latents = processed.get("dpo_latents", pc.dpo_latents)
     for key in (
         "training_pool", "heldout", "manifests", "checkpoints",
         "logs", "registry_reports", "audit_reports", "compliance_briefs",
+        "ui_critique", "preference_pairs",
     ):
         if key in data:
             setattr(pc, key, data[key])

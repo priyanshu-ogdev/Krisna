@@ -290,22 +290,6 @@ class ModelEngine:
                         revision=spec.revision,
                     ).to(spec.device).eval()
 
-                elif key == "qwen_image_vae":
-                    # Qwen-Image-Edit-2511 (like Qwen-Image before it) ships
-                    # as a full diffusers pipeline repo with the VAE bundled
-                    # under vae/ — same convention as Z-Image-Turbo above,
-                    # NOT a standalone "-VAE" repo (that assumption was the
-                    # root cause of the Qwen-Image-2.0-VAE 404 this used to
-                    # hit on every run; see models.yaml for the full story).
-                    from diffusers import AutoencoderKL
-
-                    model = AutoencoderKL.from_pretrained(
-                        spec.model_id,
-                        subfolder="vae",
-                        torch_dtype=dtype,
-                        revision=spec.revision,
-                    ).to(spec.device).eval()
-
                 elif key == "maskgit_vq":
                     # Open-MAGVIT2 is distributed as a research codebase (OmegaConf
                     # config + custom `load_vqgan_new` loader via the open-magvit2
@@ -341,7 +325,9 @@ class ModelEngine:
                 # Deterministic VAE channel-count assertion (only when the config
                 # actually pins expected_channels — leave unpinned specs alone
                 # rather than silently validating against the wrong numbers).
-                if key in ("z_image_vae", "qwen_image_vae") and spec.expected_channels is not None:
+                # z_image_vae only now — qwen_image_vae was removed along with
+                # the frozen-model decision (see models.yaml's encoders comment).
+                if key == "z_image_vae" and spec.expected_channels is not None:
                     from data_forge.agents.vae_checker import VAEConfigError
 
                     actual_channels = getattr(model.config, "latent_channels", None)
