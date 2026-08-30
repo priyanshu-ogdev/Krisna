@@ -207,21 +207,21 @@ class Orchestrator:
                 engine=None,
             )
 
-        # ── Stage 1.6: Planner Conversation Synthesis (runs once, global) ─
-        # Needs Tier-1 for generation, unlike s01_5's pure parsing/matching
-        # — separate vLLM session rather than reusing s01_fetch's, since
-        # this must run AFTER s01_5's join has populated uicrit_human
-        # critique_output records, which s01_fetch's own session has
-        # already closed by that point.
-        if self._should_run("s01_6_planner_synthesis", stages_filter):
-            from data_forge.inference.engine import ModelEngine
-            async with ModelEngine.vllm_session(self.config, "tier1") as engine:
-                await self._run_stage(
-                    "s01_6_planner_synthesis",
-                    record_ids=[],
-                    chunk_id="global",
-                    engine=engine,
-                )
+        # ── Stage 1.6: Preference-Pair Post-Processing (runs once, global) ─
+        # No generative model needed — dedup + face-blur (MediaPipe, same
+        # utility s03_5_pii_scrub uses) over whatever s01_fetch's
+        # `preference_pair`-mode fetches already wrote to
+        # preference_pairs/{key}/. Deliberately model-free: these labels
+        # are real human comparisons (Pick-a-Pic v2, HPDv2, DesignSense-10k,
+        # DesignPref) — there is no AI-judge step anywhere in this pipeline
+        # to distinguish this stage's output from, so it stays simple.
+        if self._should_run("s01_6_preference_pairs", stages_filter):
+            await self._run_stage(
+                "s01_6_preference_pairs",
+                record_ids=[],
+                chunk_id="global",
+                engine=None,
+            )
 
         # ── Chunk-based processing ──────────────────────────────────────
         chunks = self.manifest.split_into_chunks(self.config.chunk_size)
@@ -352,7 +352,7 @@ class Orchestrator:
                         stage_results.append(result)
 
             # ── Deterministic stages (no GPU model needed) ──────────
-            for stage_name in ["s07_routing", "s07_5_edit_pairs"]:
+            for stage_name in ["s07_routing"]:
                 if self._should_run(stage_name, stages_filter):
                     record_ids = self._filter_active(record_ids)
                     if record_ids:
@@ -391,6 +391,20 @@ class Orchestrator:
         # ── Post-chunk global stages ────────────────────────────────
         all_record_ids = [rid for chunk in chunks for rid in chunk]
 
+        # DPO Latent Encoding — encodes the deduped/PII-scrubbed
+        # preference pairs from s01_6 into Z-Image-Turbo's latent space
+        # (the only fine-tuned renderer; Qwen-Image-Edit-2511 stays
+        # frozen, so it never needs training latents at all). Runs once,
+        # global, after the main manifest's s08_encoding phase — the two
+        # are independent (preference pairs never entered the manifest)
+        # but share the same encoder_session pattern.
+        if self._should_run("s08_5_dpo_encoding", stages_filter):
+            from data_forge.inference.engine import ModelEngine
+            async with ModelEngine.encoder_session(self.config) as engine:
+                await self._run_stage(
+                    "s08_5_dpo_encoding", record_ids=[], chunk_id="global", engine=engine
+                )
+
         if self._should_run("s09_heldout", stages_filter):
             await self._run_stage(
                 "s09_heldout", all_record_ids, "global"
@@ -406,24 +420,15 @@ class Orchestrator:
                         "s10_audit", training_ids, "global", engine
                     )
 
-        # Critic Tier (Gemma 4 31B) — separate vLLM session, deliberately
-        # not folded into the s10_audit session above: different model
-        # family entirely (Gemma vs. Qwen), and keeping it a distinct
-        # phase means it can be skipped independently (it's an additive,
-        # non-blocking data source per the PRD — see s10_5_critic_preference.py's
-        # module docstring) without touching the audit gate itself.
-        if self._should_run("s10_5_critic_preference", stages_filter):
-            training_ids = [r.id for r in self.manifest.get_training_pool()]
-            audited_ids = [
-                r.id for r in self.manifest.query_by_status("audited")
-            ]
-            critic_input_ids = list({*training_ids, *audited_ids})
-            if critic_input_ids:
-                from data_forge.inference.engine import ModelEngine
-                async with ModelEngine.vllm_session(self.config, "critic") as engine:
-                    await self._run_stage(
-                        "s10_5_critic_preference", critic_input_ids, "global", engine
-                    )
+        # REMOVED: the Gemma 4 31B "Critic Tier" data-generation pass that
+        # used to run here. It produced AI-judge-labeled preference data
+        # (self-distillation, not calibration) — exactly the RLHF-loop
+        # pattern the PRD's no-RLHF revision rules out for this project.
+        # Gemma 4 now ships frozen as a product-side, on-demand critique
+        # feature only; data-forge no longer trains it or consumes its
+        # output as training data. Real human preference signal comes
+        # from s01_6_preference_pairs/s08_5_dpo_encoding instead (Pick-a-
+        # Pic v2, HPDv2, DesignSense-10k, DesignPref).
 
         # Final stage — no GPU model needed, pure filesystem/manifest
         # organization. Runs last deliberately: it reads training_pool,
@@ -510,7 +515,7 @@ EXECUTION_ORDER: tuple[str, ...] = (
     "s00_manifest_planning",
     "s01_fetch",
     "s01_5_uicrit_join",
-    "s01_6_planner_synthesis",
+    "s01_6_preference_pairs",
     "s02_dedup",
     "s03_quality",
     "s03_5_pii_scrub",
@@ -521,11 +526,10 @@ EXECUTION_ORDER: tuple[str, ...] = (
     "s05_5_pii_text_redact",
     "s04_5_escalation",
     "s07_routing",
-    "s07_5_edit_pairs",
     "s08_encoding",
+    "s08_5_dpo_encoding",
     "s09_heldout",
     "s10_audit",
-    "s10_5_critic_preference",
     "s12_model_data_export",
 )
 

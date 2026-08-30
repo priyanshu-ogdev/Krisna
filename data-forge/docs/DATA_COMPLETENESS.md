@@ -1,5 +1,16 @@
 # Data Completeness: PRD Model → Pipeline Output Trace
 
+> **UPGRADED (no-RLHF-loop revision):** three of the five rows this
+> document originally traced (Planner, Qwen-Image-Edit-2511, Gemma-4
+> Critic) no longer have a data-forge training data path *by design* —
+> those three models ship frozen. The gaps this document found in them
+> are historically accurate (they really were missing) but are no longer
+> open problems to fix; they were closed by removing the training task,
+> not by adding more data. Only two rows below (Sketch Tier, Z-Image-
+> Turbo, now joined by Diffusion-DPO alignment) still describe live
+> data-forge training paths. See the PRD's no-RLHF-loop revision and
+> `docs/ARCHITECTURE.md`'s banner for the current state.
+
 This document exists because "the model stack is finalized" and "the data
 pipeline can train all of them" turned out to be two different claims —
 the first was verified (licenses, VRAM budgets, weight availability) well

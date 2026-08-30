@@ -1,8 +1,18 @@
 # =============================================================================
-# Source Dataset Registry (v13)
+# Source Dataset Registry (v14 — no-RLHF-loop revision)
 # =============================================================================
 # Every dataset the pipeline fetches is registered here. The License
 # Verification Agent (Stage 1) processes entries with license_status: unverified.
+#
+# v13 -> v14: removed glaive_function_calling/xlam_function_calling (dead —
+# the planner ships frozen now, RAG over UICrit instead of fine-tuned SFT)
+# and magicbrush/instructpix2pix (dead — Qwen-Image-Edit-2511 ships frozen,
+# zero-shot ICL + SDEdit at inference, no paired edit-training data needed).
+# Added pickapic_v2/hpdv2 (general DPO preference signal), designsense_10k/
+# designpref (UI-domain DPO preference signal — closes the general-vs-UI
+# domain gap the earlier PRD revision flagged), and taste/partiprompts
+# (eval_only — held-out benchmark, never trained on). See
+# docs/DATA_SOURCES.md for the full before/after rationale.
 # =============================================================================
 
 datasets:
@@ -232,79 +242,200 @@ datasets:
       file_patterns: ["*.json", "*.csv"]
 
   # ---------------------------------------------------------------------
-  # Planner conversational-synthesis inputs (new — see
-  # stages/s02_planner_synthesis.py). Format-teacher reference material,
-  # not UI-domain content — nothing public teaches "UI design conversation
-  # -> JSON state delta" directly, so these teach output shape only. The
-  # actual design-domain content comes from UICrit's real critique text
-  # via the synthesis stage's generation step, not from these datasets.
+  # DPO Preference-Pair Datasets (no-RLHF-loop revision — replaces the
+  # removed Glaive/xLAM format-teacher references AND the removed
+  # MagicBrush/InstructPix2Pix edit-pair references). These are real,
+  # already-published, human-labeled preference comparisons — the DPO
+  # training signal for Z-Image-Turbo (the only fine-tuned renderer).
+  # download_mode: "preference_pair" — see
+  # fetcher.py::_fetch_huggingface_preference_pairs and
+  # stages/s01_6_preference_pairs.py.
   # ---------------------------------------------------------------------
-  glaive_function_calling:
-    display_name: "Glaive Function Calling v2"
+  pickapic_v2:
+    display_name: "Pick-a-Pic v2"
     source_type: "huggingface"
-    repo_id: "glaiveai/glaive-function-calling-v2"
+    repo_id: "yuvalkirstain/pickapic_v2"
     revision: "main"
-    category: "planner_format_reference"
-    expected_record_count: 113000
-    license_url: "https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2"
+    category: "dpo_preference_general"
+    expected_record_count: 500000       # Approximate — HF viewer stats vary by
+                                         # split/dedup; sample_size below is the
+                                         # real operative cap regardless.
+    license_url: "https://huggingface.co/datasets/yuvalkirstain/pickapic_v2"
     license_status: "unverified"
-    license_notes: "Reference material for tool-call output shape only — not used as design-domain content."
+    license_notes: >
+      Real, web-collected human preference comparisons (pickapic.io), MIT
+      license per the PickScore repo. General text-to-image domain, not
+      UI-specific — this is Stage-1 DPO signal (broad aesthetic alignment),
+      not a substitute for the UI-domain datasets below. Image bytes are
+      embedded directly in columns jpg_0/jpg_1 per the dataset card — no
+      external URL fetch needed.
     fetch_config:
-      download_mode: "text_reference"
-      file_patterns: ["*.json", "*.jsonl", "*.parquet"]
-
-  xlam_function_calling:
-    display_name: "Salesforce xLAM Function Calling 60K"
-    source_type: "huggingface"
-    repo_id: "Salesforce/xlam-function-calling-60k"
-    revision: "main"
-    category: "planner_format_reference"
-    expected_record_count: 60000
-    license_url: "https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k"
-    license_status: "unverified"
-    license_notes: "CC-BY-4.0 per HF dataset card. Reference material for tool-call output shape only."
-    fetch_config:
-      download_mode: "text_reference"
-      file_patterns: ["*.json", "*.jsonl", "*.parquet"]
-
-  # ---------------------------------------------------------------------
-  # Paired edit-conditioning data for Qwen-Image-Edit-2511 (new — see
-  # stages/s07_5_edit_pairs.py). General-photo-domain (source, instruction,
-  # target) triples — teach the edit-conditioning task SHAPE, since
-  # nothing in the pipeline previously provided that at all. UI-domain
-  # pairs are constructed separately and synthetically by the same stage.
-  # ---------------------------------------------------------------------
-  magicbrush:
-    display_name: "MagicBrush"
-    source_type: "huggingface"
-    repo_id: "osunlp/MagicBrush"
-    revision: "main"
-    category: "edit_pairs_reference"
-    expected_record_count: 10000
-    license_url: "https://huggingface.co/datasets/osunlp/MagicBrush"
-    license_status: "unverified"
-    license_notes: "Real (source, instruction, target) triples grounding the edit task shape."
-    fetch_config:
-      download_mode: "triple_dataset"
       file_patterns: ["*.parquet"]
-      # UNVERIFIED column names — auto-detected defensively by
-      # _fetch_huggingface_triples, override here if detection logs show
-      # it guessed wrong against the live schema.
+      download_mode: "preference_pair"
+      # VERIFIED column existence from the dataset card (jpg_0/jpg_1 hold
+      # image bytes); the exact label-column name (commonly label_0) was
+      # NOT independently re-confirmed against a live parquet shard before
+      # this revision — same "confirm before a real run" discipline as
+      # PD12M/CC12M's column-name notes above. Override here if
+      # auto-detection logs show it guessed wrong.
+      image_a_column: "jpg_0"
+      image_b_column: "jpg_1"
+      prompt_column: "caption"
+      label_column: "label_0"
+      label_convention: "index"
+      sample_size: 60000
 
-  instructpix2pix:
-    display_name: "InstructPix2Pix (CLIP-filtered training set)"
+  hpdv2:
+    display_name: "HPDv2 (Human Preference Dataset v2)"
     source_type: "huggingface"
-    repo_id: "timbrooks/instructpix2pix-clip-filtered"
+    repo_id: "ymhao/HPDv2"
     revision: "main"
-    category: "edit_pairs_reference"
-    expected_record_count: 300000
-    license_url: "https://huggingface.co/datasets/timbrooks/instructpix2pix-clip-filtered"
+    category: "dpo_preference_general"
+    expected_record_count: 798000       # ~798K pairwise comparisons / ~434K images per dataset card
+    license_url: "https://huggingface.co/datasets/ymhao/HPDv2"
     license_status: "unverified"
-    license_notes: "Real (source, instruction, target) triples. Large — sample_size caps below."
+    license_notes: "Apache 2.0, confirmed on the dataset card. Real human annotator rankings, general T2I domain."
     fetch_config:
-      download_mode: "triple_dataset"
-      file_patterns: ["*.parquet"]
-      sample_size: 20000  # This one's large enough that a full pull is unnecessary
+      file_patterns: ["*.parquet", "*.json"]
+      download_mode: "preference_pair"
+      sample_size: 60000
+      # IMPORTANT — UNVERIFIED SHAPE MISMATCH: HPDv2's native annotation
+      # format (train.json: `human_preference: list[int]`, `file_path:
+      # list[str]` — a variable-length ranked list per prompt, not a fixed
+      # two-image parquet row) does NOT match the simple (image_a, image_b,
+      # label) shape _fetch_huggingface_preference_pairs auto-detects
+      # against. A parquet mirror may expose a flattened two-image view,
+      # but this was not confirmed against the live repo before this
+      # revision. Inspect the actual files before a production run; this
+      # source may need a small dedicated adapter (flatten each ranked
+      # list into consecutive winner/loser pairs) rather than the generic
+      # path — do not assume the generic fetcher will "just work" here.
+
+  # ---------------------------------------------------------------------
+  # DPO Preference-Pair Datasets — UI/design domain. This is the actual
+  # gap-closer: Pick-a-Pic/HPDv2 above are general-photo aesthetic, not
+  # design-domain. These are real, human-designer-labeled comparisons
+  # used as a small-batch Stage-2 DPO pass on top of the general pass —
+  # see the PRD's ablation (c): general-only vs. +domain-augmented DPO,
+  # evaluated against TASTE below.
+  # ---------------------------------------------------------------------
+  designsense_10k:
+    display_name: "DesignSense-10k"
+    source_type: "huggingface"
+    repo_id: null    # CONFIRMED no public dataset release found (checked
+                      # the paper directly — arXiv:2602.23438, Adobe MDSR,
+                      # Gopal et al., Feb 2026 — no HF/GitHub data link
+                      # anywhere in the paper or its listing). Re-check via
+                      # s11_registry_watcher rather than assuming this will
+                      # resolve itself.
+    revision: "main"
+    category: "dpo_preference_ui_layout"
+    expected_record_count: 10235
+    license_url: "https://arxiv.org/abs/2602.23438"
+    license_status: "unverified"
+    license_notes: >
+      CONFIRMED CC BY-NC-ND 4.0 (arXiv's own license badge) — a harder
+      blocker than the missing repo_id. NoDerivs conflicts directly with
+      this pipeline's recaption/re-annotation discipline (same category of
+      issue as UICrit's NoDerivs, see below), and NonCommercial is a
+      separate problem for any project with a product track attached, not
+      just the research paper. Even if a public release appears later,
+      treat this as needing dedicated legal sign-off before use, not just
+      a License Agent pass — do not assume "found the repo" alone clears
+      it. Pair construction also reportedly includes a "VLM-based
+      refinement" curation step — confirm that touches layout *selection*
+      only, not pixel generation, if this is ever revisited.
+    fetch_config:
+      download_mode: "preference_pair"
+      sample_size: 10235
+
+  designpref:
+    display_name: "DesignPref"
+    source_type: "huggingface"
+    repo_id: null    # CONFIRMED NOT YET PUBLICLY RELEASED — this is not a
+                      # search failure. DesignPref's own describing paper
+                      # (Peng et al., 25 Nov 2025) has no data link, and
+                      # TASTE's related-work section (arXiv:2605.20731,
+                      # Zhu et al., independently corroborating as of its
+                      # June 2026 revision) states outright: "DesignPref
+                      # describes a UI-design pairwise dataset whose data
+                      # has not yet been released." There is no repo to
+                      # find yet. Track via s11_registry_watcher for a
+                      # future release rather than re-searching manually.
+    revision: "main"
+    category: "dpo_preference_ui_layout"
+    expected_record_count: 12000
+    license_url: null
+    license_status: "unverified"
+    license_notes: >
+      Real professional-designer pairwise comparisons per the paper
+      (12,000 pairs, 20 designers, identity-linked). Notably reports low
+      inter-designer agreement (Krippendorff's alpha ~0.25) — worth citing
+      directly as a limitation, not just training signal, since it
+      documents that "good UI" is genuinely contested even among experts.
+      License unknown until a release exists; do not assume permissive.
+    fetch_config:
+      download_mode: "preference_pair"
+      sample_size: 12000
+
+  # ---------------------------------------------------------------------
+  # Evaluation-only reference datasets. download_mode: "eval_reference" —
+  # these never enter training_pool/ or preference_pairs/ under any
+  # config; see fetcher.py::_fetch_eval_reference, which is the only code
+  # path that touches them and writes exclusively to
+  # heldout/external_eval/. eval_only: true is a second, redundant
+  # safeguard (checked explicitly in s01_6_preference_pairs.py) — belt
+  # and suspenders, not decorative.
+  # ---------------------------------------------------------------------
+  taste:
+    display_name: "TASTE (multi-axis design-preference benchmark)"
+    source_type: "huggingface"
+    repo_id: "purvanshi/TASTE"   # CONFIRMED — the paper itself
+                                  # (arXiv:2605.20731, Zhu et al., 2026)
+                                  # states directly: "Data:
+                                  # https://huggingface.co/datasets/purvanshi/TASTE".
+                                  # GitHub analysis code:
+                                  # github.com/purvanshi-lica/taste.
+    revision: "main"
+    category: "eval_design_multiaxis"
+    expected_record_count: 1600
+    license_url: "https://github.com/purvanshi-lica/taste/blob/main/LICENSE"
+    license_status: "unverified"   # repo/license existence confirmed via the
+                                    # paper's own text (MIT, per its README);
+                                    # still routed through the License Agent
+                                    # rather than hardcoded, per this
+                                    # registry's standing discipline.
+    license_notes: >
+      CONFIRMED real and public. Two disjoint cohorts of five professional
+      designers each (ten total), nine criteria (typography, aesthetics,
+      spatial, tone, ...), ranking outputs from four current T2I models —
+      1,600 ratings per criterion, both pairwise comparisons and derived
+      4-way rankings released. Ships with its own signal-validation
+      framework (Kendall's tau, majority-vote probability, Condorcet
+      cycles against iid-uniform nulls) — worth adopting for this
+      project's own DPO ablation reporting, not just using the labels.
+      Too small to train on but genuinely multi-dimensional and
+      human-expert — used as held-out evaluation only.
+    eval_only: true
+    fetch_config:
+      download_mode: "eval_reference"
+      file_patterns: ["*.parquet", "*.json", "*.jsonl"]
+
+  partiprompts:
+    display_name: "PartiPrompts (P2)"
+    source_type: "huggingface"
+    repo_id: "nateraw/parti-prompts"
+    revision: "main"
+    category: "eval_prompt_diversity"
+    expected_record_count: 1632
+    license_url: "https://huggingface.co/datasets/nateraw/parti-prompts"
+    license_status: "unverified"
+    license_notes: "Apache 2.0, confirmed on the dataset card. Prompts only (PartiPrompts.tsv), no images — used to diversify the held-out evaluation prompt set, never for training."
+    eval_only: true
+    fetch_config:
+      download_mode: "eval_reference"
+      file_patterns: ["*.tsv"]
+
 
 # ---------------------------------------------------------------------------
 # Registry Watcher: datasets to scan for new releases
@@ -319,3 +450,15 @@ watcher_scan_targets:
   - query: "web interface design dataset"
     platforms: ["huggingface"]
     min_records: 1000
+  # New — specific watches for the two confirmed-not-yet-released
+  # UI/design-domain DPO preference datasets (designsense_10k, designpref
+  # above both have repo_id: null for this exact reason). Generic "UI
+  # design dataset" queries above wouldn't reliably resurface these by
+  # name once released — watch for them explicitly instead of relying on
+  # a manual re-search each time this file is reviewed.
+  - query: "DesignSense-10k Adobe layout preference dataset"
+    platforms: ["huggingface", "github"]
+    min_records: 1
+  - query: "DesignPref UI design preference dataset release"
+    platforms: ["huggingface", "github"]
+    min_records: 1

@@ -1,5 +1,18 @@
 # Data-Forge Architecture Specification
 
+> **UPGRADED (no-RLHF-loop revision, v16):** the planner (Qwen3.5-9B) and
+> Qwen-Image-Edit-2511 now ship **frozen** — RAG + constrained decoding
+> for the former, zero-shot ICL + SDEdit for the latter — so `s01_6` is
+> now `s01_6_preference_pairs.py` (real human DPO preference data, not
+> synthetic planner conversations) and there is no `s07_5`/`Branch 2
+> qwen_image_vae` step anymore. A new `s08_5_dpo_encoding.py` encodes
+> preference pairs into Z-Image-Turbo's latent space instead. The Gemma-4
+> critic tier is a frozen, on-demand product feature only — `s10_5` has
+> been removed outright, no AI-judge labeling happens anywhere in this
+> pipeline. The narrative below (v15 and earlier) is kept as the
+> reasoning trail for *why* each prior fix happened; where it conflicts
+> with this note, this note is current.
+
 ## Overview
 
 The Data-Forge is a custom, 20-stage Python orchestrator designed to process millions of images into training-ready latents on a single workstation (specifically a 48GB VRAM GPU like an RTX A6000). It replaces manual curation with **VLM-as-Judge** auditing and deterministic logic, enforcing a strict zero-touch automation philosophy (v15 spec — v14 plus dedicated data production for every PRD-trainable component; see `docs/DATA_COMPLETENESS.md`).

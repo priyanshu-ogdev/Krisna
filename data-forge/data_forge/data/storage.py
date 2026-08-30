@@ -22,6 +22,24 @@ class StorageQuotaExceeded(Exception):
 class StorageManager:
     """Pre-flight and mid-flight storage quota enforcement."""
 
+    # Which per_record_estimates keys apply to a single image-manifest
+    # record vs. a single preference pair — kept as two disjoint sets
+    # deliberately. calculate_projected_size() sums each against its own
+    # count rather than summing every key in per_record_estimates against
+    # one combined count, which would multiply preference-pair storage
+    # (two source images + two latents, a materially larger per-item cost)
+    # by the image-record count instead of the pair count — silently
+    # inflating the projection by orders of magnitude at this corpus's
+    # scale and false-failing pre_flight_check on a perfectly safe disk.
+    _PER_IMAGE_ESTIMATE_KEYS = frozenset({
+        "raw_image_bytes", "scrubbed_image_bytes", "z_image_latent_bytes",
+        "vq_tokens_bytes", "control_map_bytes", "metadata_bytes",
+    })
+    _PER_PREFERENCE_PAIR_ESTIMATE_KEYS = frozenset({
+        "preference_pair_source_bytes", "preference_pair_latent_bytes",
+        "preference_pair_metadata_bytes",
+    })
+
     # Windows classic MAX_PATH. (Windows 10 1607+ can lift this via a
     # long-paths opt-in registry key / app manifest, but that's a per-machine
     # setting this pipeline can't assume — stay conservative against the
@@ -61,7 +79,7 @@ class StorageManager:
 
         longest_subdir = max(len(v) for v in vars(PathsConfig()).values())
         # Representative worst-case filename this pipeline actually writes,
-        # e.g. "latents_qwenimage_edit_<32-char-uuid4-hex>.safetensors"
+        # e.g. "processed/dpo_latents/<source>/<32-char-uuid4-hex>.safetensors"
         worst_case_filename_len = len("shard_prefix_") + 32 + len(".safetensors")
         worst_case_relative = longest_subdir + 1 + worst_case_filename_len  # +1 for path sep
 
@@ -82,19 +100,20 @@ class StorageManager:
                 "LongPathsEnabled) if you control this machine."
             )
 
-    def pre_flight_check(self, manifest_count: int) -> dict[str, Any]:
+    def pre_flight_check(self, manifest_count: int, preference_pair_count: int = 0) -> dict[str, Any]:
         """Calculate projected storage needs and validate against available space.
 
         Raises StorageQuotaExceeded if projected > (available * (1 - safety_margin)).
         """
         self._check_windows_max_path()
 
-        projected = self.calculate_projected_size(manifest_count)
+        projected = self.calculate_projected_size(manifest_count, preference_pair_count)
         available = self.get_available_bytes()
         safe_limit = int(available * (1.0 - self._safety_margin))
 
         report = {
             "manifest_count": manifest_count,
+            "preference_pair_count": preference_pair_count,
             "projected_bytes": projected,
             "projected_gb": round(projected / 1e9, 2),
             "available_bytes": available,
@@ -113,7 +132,7 @@ class StorageManager:
                 f"{report['safe_limit_gb']:.2f}GB "
                 f"(available: {report['available_gb']:.2f}GB, "
                 f"margin: {self._safety_margin:.0%}). "
-                f"Records: {manifest_count}"
+                f"Records: {manifest_count}, preference pairs: {preference_pair_count}"
             )
 
         return report
@@ -138,10 +157,21 @@ class StorageManager:
 
         return report
 
-    def calculate_projected_size(self, record_count: int) -> int:
-        """Estimate total bytes needed for record_count records through all stages."""
-        per_record = sum(self._estimates.values()) if self._estimates else 1_277_000
-        return record_count * per_record
+    def calculate_projected_size(self, record_count: int, preference_pair_count: int = 0) -> int:
+        """Estimate total bytes needed for record_count image records plus
+        preference_pair_count DPO pairs, through all stages.
+
+        Each count is multiplied against its own disjoint estimate-key set
+        (see _PER_IMAGE_ESTIMATE_KEYS / _PER_PREFERENCE_PAIR_ESTIMATE_KEYS)
+        rather than summing every configured estimate against one count.
+        """
+        per_image = sum(
+            v for k, v in self._estimates.items() if k in self._PER_IMAGE_ESTIMATE_KEYS
+        ) if self._estimates else 546_000  # fallback: raw+scrubbed+z_latent+vq+control+meta defaults
+        per_pair = sum(
+            v for k, v in self._estimates.items() if k in self._PER_PREFERENCE_PAIR_ESTIMATE_KEYS
+        )
+        return record_count * per_image + preference_pair_count * per_pair
 
     def get_available_bytes(self) -> int:
         """Get available disk space at DATA_ROOT."""

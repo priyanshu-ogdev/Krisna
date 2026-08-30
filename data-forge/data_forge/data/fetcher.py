@@ -75,25 +75,26 @@ class DatasetFetcher:
         if spec.fetch_config.get("download_mode") == "caption_join":
             return await self._fetch_huggingface_caption_join(key, spec, dataset_dir)
 
-        # New: format-teacher reference datasets (Glaive Function Calling
-        # v2, Salesforce xLAM) for the planner conversational-synthesis
-        # stage. These are pure text (conversation/tool-call JSON), not
-        # images — downloaded once as raw JSONL/parquet reference material
-        # for s01_6_planner_synthesis.py to read directly, not inserted into
-        # the image-record manifest at all (same "return []" pattern as
-        # annotation_only sources, for the same reason: this isn't image
-        # data and doesn't belong in a table whose schema assumes it is).
-        if spec.fetch_config.get("download_mode") == "text_reference":
-            return await self._fetch_text_reference(key, spec, dataset_dir)
+        # Pairwise human-preference datasets (Pick-a-Pic v2, HPDv2,
+        # DesignSense-10k, DesignPref) — (prompt, image_a, image_b, label)
+        # quadruples for Diffusion-DPO training. Writes directly into
+        # preference_pairs/{key}/, not the image-record manifest, since a
+        # ranked pair isn't a single-image record and doesn't belong in a
+        # schema built for one. See s01_6_preference_pairs.py for the
+        # post-fetch dedup/PII pass, and s08_5_dpo_encoding.py for how
+        # these get turned into training-ready latents.
+        if spec.fetch_config.get("download_mode") == "preference_pair":
+            return await self._fetch_huggingface_preference_pairs(key, spec, dataset_dir)
 
-        # New: paired (source, instruction, target) edit datasets
-        # (MagicBrush, InstructPix2Pix) — writes directly into
-        # processed/edit_pairs/, not the image-record manifest, since a
-        # pair isn't a single-image record. See s07_5_edit_pairs.py, which
-        # combines this general-domain data with synthetically-constructed
-        # UI-domain pairs.
-        if spec.fetch_config.get("download_mode") == "triple_dataset":
-            return await self._fetch_huggingface_triples(key, spec, dataset_dir)
+        # Evaluation-only reference datasets (TASTE, PartiPrompts) — these
+        # exist to benchmark against, never to train on. Routed straight
+        # into heldout/external_eval/{key}/ (outside training_pool,
+        # preference_pairs/, and the image manifest entirely) so there is
+        # no code path — misconfiguration included — by which this data
+        # could end up inside a training set. See docs/DATA_SOURCES.md's
+        # eval-only rule.
+        if spec.fetch_config.get("download_mode") == "eval_reference":
+            return await self._fetch_eval_reference(key, spec, dataset_dir)
 
         if spec.source_type == "huggingface":
             return await self._fetch_huggingface(key, spec, dataset_dir)
@@ -105,17 +106,31 @@ class DatasetFetcher:
             log.error("unknown_source_type", dataset=key, source_type=spec.source_type)
             return []
 
-    async def _fetch_huggingface_triples(
+    async def _fetch_huggingface_preference_pairs(
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
-        """Fetch a (source_image, instruction, target_image) triple dataset
-        and write pairs directly into processed/edit_pairs/.
+        """Fetch a (prompt, image_a, image_b, label) human-preference-pair
+        dataset (Pick-a-Pic v2, HPDv2, DesignSense-10k, DesignPref) and
+        write pairs directly into preference_pairs/{key}/.
 
-        UNVERIFIED column names, same auto-detection discipline as
-        _fetch_huggingface_caption_join: looks for two embedded-image-like
-        columns and one text column, logs what it found, and logs loudly
-        (not silently) if it can't confidently identify all three rather
-        than guessing and producing garbage pairs.
+        These are real, already-published, human-annotated comparisons —
+        no synthesis, no AI-judge labeling happens here or anywhere
+        downstream of it. Column auto-detection follows the same
+        discipline as _fetch_huggingface_caption_join: look for the
+        columns the schema needs, log exactly what was found, and log
+        loudly (never guess silently) if detection fails, since a wrong
+        guess here would silently corrupt every DPO pair's win/lose
+        label — worse than finding zero records.
+
+        fetch_config keys this reads:
+            prompt_column / image_a_column / image_b_column / label_column
+                (str, optional): override auto-detection if the live
+                schema doesn't match the defaults below.
+            label_convention (str, optional): "index" (label is 0 or 1,
+                selecting image_a/image_b as preferred) or "column_name"
+                (label directly names the preferred column, e.g.
+                "image_0"/"image_1"). Defaults to "index".
+            sample_size (int, optional): cap on rows to attempt.
         """
         import io
 
@@ -137,7 +152,7 @@ class DatasetFetcher:
         )
         parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
         if not parquet_files:
-            log.error("triple_dataset_no_parquet", dataset=key, dir=str(meta_dir))
+            log.error("preference_pair_no_parquet", dataset=key, dir=str(meta_dir))
             return []
 
         frames = []
@@ -145,7 +160,7 @@ class DatasetFetcher:
             try:
                 frames.append(pd.read_parquet(pf))
             except Exception as e:
-                log.warning("triple_dataset_parquet_read_failed", file=str(pf), error=str(e))
+                log.warning("preference_pair_parquet_read_failed", file=str(pf), error=str(e))
         if not frames:
             return []
         df = pd.concat(frames, ignore_index=True)
@@ -160,83 +175,134 @@ class DatasetFetcher:
             if _is_image_like(sample):
                 image_cols.append(col)
 
-        text_col = next(
+        prompt_col = spec.fetch_config.get("prompt_column") or next(
+            (c for c in columns if c.lower() in ("caption", "prompt", "text")), None
+        )
+        label_col = spec.fetch_config.get("label_column") or next(
             (c for c in columns if c.lower() in
-             ("instruction", "edit_instruction", "prompt", "edit_prompt", "text")),
+             ("label", "label_0", "preference", "best_image_uid", "human_preference")),
             None,
         )
+        image_a_col = spec.fetch_config.get("image_a_column") or (image_cols[0] if image_cols else None)
+        image_b_col = spec.fetch_config.get("image_b_column") or (image_cols[1] if len(image_cols) > 1 else None)
 
-        if len(image_cols) < 2 or text_col is None:
+        if not image_a_col or not image_b_col or prompt_col is None or label_col is None:
             log.error(
-                "triple_dataset_undetectable",
+                "preference_pair_undetectable",
                 dataset=key,
                 available_columns=columns,
                 detected_image_cols=image_cols,
-                detected_text_col=text_col,
-                note="Need exactly 2 image-like columns (source, target) and "
-                     "1 instruction text column — inspect the real schema and "
-                     "override via fetch_config if auto-detection guessed wrong.",
+                detected_prompt_col=prompt_col,
+                detected_label_col=label_col,
+                note="Need 2 image-like columns, 1 prompt/caption column, and "
+                     "1 label column — inspect the real schema and override via "
+                     "fetch_config (prompt_column/image_a_column/image_b_column/"
+                     "label_column) rather than trusting a guessed match.",
             )
             return []
 
-        source_col, target_col = image_cols[0], image_cols[1]
         log.info(
-            "triple_dataset_columns_resolved",
-            dataset=key, source_col=source_col, target_col=target_col, text_col=text_col,
+            "preference_pair_columns_resolved",
+            dataset=key, image_a_col=image_a_col, image_b_col=image_b_col,
+            prompt_col=prompt_col, label_col=label_col,
         )
 
         sample_size = spec.fetch_config.get("sample_size")
         if sample_size and len(df) > sample_size:
             df = df.sample(n=sample_size, random_state=42)
 
-        out_dir = self._config.resolved_paths["edit_pairs"] / "external" / key
+        out_dir = self._config.resolved_paths["preference_pairs"] / key
         out_dir.mkdir(parents=True, exist_ok=True)
         written = 0
+        seen_hashes: set[str] = set()
 
         for idx, row in enumerate(df.itertuples(index=False)):
             row_dict = dict(zip(df.columns, row))
             try:
-                src_raw = row_dict.get(source_col)
-                tgt_raw = row_dict.get(target_col)
-                src_blob = src_raw.get("bytes") if isinstance(src_raw, dict) else src_raw
-                tgt_blob = tgt_raw.get("bytes") if isinstance(tgt_raw, dict) else tgt_raw
-                if not src_blob or not tgt_blob:
+                a_raw = row_dict.get(image_a_col)
+                b_raw = row_dict.get(image_b_col)
+                a_blob = a_raw.get("bytes") if isinstance(a_raw, dict) else a_raw
+                b_blob = b_raw.get("bytes") if isinstance(b_raw, dict) else b_raw
+                if not a_blob or not b_blob:
                     continue
-                src_img = Image.open(io.BytesIO(src_blob)); src_img.load()
-                tgt_img = Image.open(io.BytesIO(tgt_blob)); tgt_img.load()
+                a_img = Image.open(io.BytesIO(a_blob)); a_img.load()
+                b_img = Image.open(io.BytesIO(b_blob)); b_img.load()
             except Exception:
                 continue
 
+            # Cheap exact-duplicate guard within this source, before the
+            # real dedup pass in s01_6_preference_pairs.py — two rows
+            # hashing to the same source-image pair almost always means
+            # the same comparison was exported twice.
+            pair_hash = self._compute_bytes_sha256(a_blob) + self._compute_bytes_sha256(b_blob)
+            if pair_hash in seen_hashes:
+                continue
+            seen_hashes.add(pair_hash)
+
+            raw_label = row_dict.get(label_col)
+            label = self._normalize_preference_label(raw_label, image_a_col, image_b_col)
+            if label is None:
+                continue  # tie / unparseable — not usable for DPO's strict win/lose pairing
+
             pair_id = f"{key}_{idx:07d}"
-            src_img.save(out_dir / f"{pair_id}_source.png", "PNG")
-            tgt_img.save(out_dir / f"{pair_id}_target.png", "PNG")
+            a_img.save(out_dir / f"{pair_id}_a.png", "PNG")
+            b_img.save(out_dir / f"{pair_id}_b.png", "PNG")
             (out_dir / f"{pair_id}.json").write_text(
                 json.dumps({
                     "pair_id": pair_id,
-                    "instruction": str(row_dict.get(text_col, "")),
-                    "source": f"{pair_id}_source.png",
-                    "target": f"{pair_id}_target.png",
+                    "prompt": str(row_dict.get(prompt_col, "")),
+                    "image_a": f"{pair_id}_a.png",
+                    "image_b": f"{pair_id}_b.png",
+                    "preferred": label,  # "a" or "b"
                     "origin": key,
+                    "label_source": "human",
                 }),
                 encoding="utf-8",
             )
             written += 1
 
-        log.info("triple_dataset_pairs_written", dataset=key, count=written)
-        return []  # Not manifest records — written directly to edit_pairs/
+        log.info("preference_pairs_written", dataset=key, count=written)
+        return []  # Not manifest records — written directly to preference_pairs/
 
-    async def _fetch_text_reference(
+    @staticmethod
+    def _normalize_preference_label(raw_label: Any, image_a_col: str, image_b_col: str) -> str | None:
+        """Map a dataset's own label convention to "a"/"b", or None for
+        ties/unparseable values (DPO needs a strict preference per pair;
+        ties carry no gradient signal and are dropped, not guessed at).
+        """
+        if raw_label is None:
+            return None
+        if isinstance(raw_label, (int, float)):
+            if raw_label == 0:
+                return "a"
+            if raw_label == 1:
+                return "b"
+            return None
+        s = str(raw_label).strip().lower()
+        if s in ("a", "0", "image_a", "left", image_a_col.lower()):
+            return "a"
+        if s in ("b", "1", "image_b", "right", image_b_col.lower()):
+            return "b"
+        return None
+
+    @staticmethod
+    def _compute_bytes_sha256(blob: bytes) -> str:
+        return hashlib.sha256(blob).hexdigest()
+
+    async def _fetch_eval_reference(
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
-        """Download a pure-text reference dataset (no images) as-is.
+        """Download an evaluation-only reference dataset (TASTE,
+        PartiPrompts) and land it under heldout/external_eval/{key}/,
+        never into the image manifest or preference_pairs/.
 
-        Used for format-teacher datasets like Glaive Function Calling v2
-        and Salesforce xLAM — real, open, well-formed tool-call/JSON
-        examples that teach output *shape*, general-domain (nothing
-        public teaches "UI design conversation" specifically — see
-        s01_6_planner_synthesis.py's docstring). Files are left in their
-        native format under raw/{key}/ for that stage to read directly;
-        no manifest records are created since these aren't images.
+        This is a structural guarantee, not a config flag: eval-only
+        sources physically never reach training_pool/ or
+        preference_pairs/ because this method is the only thing that
+        touches them, and it only ever writes to the eval directory. A
+        stage_filter mistake or a future contributor forgetting an
+        `eval_only` check elsewhere cannot leak this data into training —
+        there is no code path from here to anywhere training reads from.
         """
         from huggingface_hub import snapshot_download
 
@@ -244,14 +310,22 @@ class DatasetFetcher:
             log.error("missing_repo_id", dataset=key)
             return []
 
-        log.info("text_reference_downloading", repo=spec.repo_id, dest=str(dest))
+        eval_dir = self._config.resolved_paths["heldout"] / "external_eval" / key
+        eval_dir.mkdir(parents=True, exist_ok=True)
+
+        log.info("eval_reference_downloading", repo=spec.repo_id, dest=str(eval_dir))
         snapshot_download(
             repo_id=spec.repo_id,
             repo_type="dataset",
             revision=spec.revision or "main",
-            local_dir=str(dest),
+            local_dir=str(eval_dir),
             allow_patterns=spec.fetch_config.get("file_patterns", ["*.parquet", "*.json", "*.jsonl"]),
             token=self._hf_token,
+        )
+        log.info(
+            "eval_reference_complete",
+            dataset=key,
+            note="Landed in heldout/external_eval/ only — never used as training data.",
         )
         return []
 

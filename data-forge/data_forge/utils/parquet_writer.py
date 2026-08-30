@@ -1,13 +1,16 @@
 """Append-friendly Parquet writer for the pipeline's tabular outputs.
 
-pipeline.yaml, DATAFORGE_ARCHITECTURE.md, and the PRD all describe two
-directories written in Parquet: `/preference_pairs/*.parquet` and
-`/ui_critique/*.parquet`. Neither had any producing code anywhere in this
-repo prior to this revision — `pandas`/`pyarrow` weren't even project
-dependencies (see pyproject.toml). This module is the shared utility both
-current (s10_5_critic_preference.py) and future stages should use so the
-write pattern (sharding, schema stability, atomic writes) is consistent
-rather than reinvented per-stage.
+pipeline.yaml, DATAFORGE_ARCHITECTURE.md, and the PRD all describe
+`/preference_pairs/` and `/ui_critique/` as real pipeline output
+directories. This module is the shared utility any stage writing
+tabular/shard output should use so the write pattern (sharding, schema
+stability, atomic writes) is consistent rather than reinvented per-stage.
+Not currently used by s01_6_preference_pairs.py/s08_5_dpo_encoding.py,
+which write per-pair JSON sidecars (same pattern the old edit-pairs stage
+used) since pair counts here are small enough that per-file JSON is
+simpler to inspect/debug than a sharded Parquet table — kept available
+for s12_model_data_export.py or a future stage that needs real Parquet
+sharding at larger scale.
 
 Design notes:
 - One shard per pipeline run/chunk, not one giant growing file — matches

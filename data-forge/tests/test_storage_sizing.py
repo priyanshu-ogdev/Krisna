@@ -1,14 +1,25 @@
-"""Tests for DatasetSpec.storage_relevant_record_count.
+"""Tests for DatasetSpec.storage_relevant_record_count and
+DatasetSpec.preference_pair_relevant_count.
 
 Regression coverage for the bug traced during the v10 PRD completeness
 review: the Stage 0 pre-flight storage check summed every dataset's raw
 `expected_record_count` (PD12M's full 12.4M, CC12M's full 12.4M, etc.)
 with no regard for `fetch_config.sample_size` actually capping downloads,
-or for annotation_only/text_reference/caption_join sources that never
-produce a standalone image record at all. That inflated the projected
-corpus by roughly 25x against the PRD's real ~100K-500K target, which
-would false-fail `pre_flight_check` on any normal workstation disk before
-Stage 1 ever ran.
+or for annotation_only/caption_join/preference_pair/eval_reference
+sources that never produce a standalone image record at all. That
+inflated the projected corpus by roughly 25x against the PRD's real
+~100K-500K target, which would false-fail `pre_flight_check` on any
+normal workstation disk before Stage 1 ever ran.
+
+UPDATED (no-RLHF-loop revision): text_reference/triple_dataset sources
+(Glaive/xLAM, MagicBrush/InstructPix2Pix) were removed along with the
+planner-SFT and edit-pairs training tasks they fed. Replaced by
+preference_pair (Pick-a-Pic v2/HPDv2/DesignSense-10k/DesignPref — zero
+image-storage contribution, tracked separately via
+preference_pair_relevant_count() and its own storage-estimate keys) and
+eval_reference (TASTE/PartiPrompts — zero contribution anywhere, by
+design, since eval-only data is never budgeted as if it were training
+data).
 """
 
 from __future__ import annotations
@@ -64,21 +75,35 @@ class TestStorageRelevantRecordCount:
         )
         assert spec.storage_relevant_record_count() == 0
 
-    def test_text_reference_contributes_zero(self):
-        """Glaive/xLAM are pure text reference material, never inserted
-        into the image manifest."""
-        spec = _spec(
-            expected_record_count=113_000,
-            fetch_config={"download_mode": "text_reference"},
-        )
-        assert spec.storage_relevant_record_count() == 0
-
     def test_caption_join_contributes_zero(self):
         """Screen2Words' realistic shape joins captions onto existing
         RICO records rather than creating new image records."""
         spec = _spec(
             expected_record_count=22_417,
             fetch_config={"download_mode": "caption_join"},
+        )
+        assert spec.storage_relevant_record_count() == 0
+
+    def test_preference_pair_contributes_zero_to_image_storage(self):
+        """Pick-a-Pic v2/HPDv2/DesignSense-10k/DesignPref pairs are
+        tracked via preference_pair_relevant_count() and their own
+        per_record_estimates keys, not the image-record count — a pair
+        costs more than one image record's worth of storage (two source
+        images + two latents), so mixing it into this count would
+        under-project."""
+        spec = _spec(
+            expected_record_count=500_000,
+            fetch_config={"download_mode": "preference_pair", "sample_size": 60_000},
+        )
+        assert spec.storage_relevant_record_count() == 0
+
+    def test_eval_reference_contributes_zero(self):
+        """TASTE/PartiPrompts are eval-only — never budgeted as training
+        storage under any count."""
+        spec = _spec(
+            expected_record_count=1_600,
+            eval_only=True,
+            fetch_config={"download_mode": "eval_reference"},
         )
         assert spec.storage_relevant_record_count() == 0
 
@@ -101,30 +126,60 @@ class TestStorageRelevantRecordCount:
             _spec(expected_record_count=22_417,
                   fetch_config={"download_mode": "caption_join"}),
             _spec(expected_record_count=1_000, annotation_only=True, fetch_config={}),
-            _spec(expected_record_count=113_000,
-                  fetch_config={"download_mode": "text_reference"}),
-            _spec(expected_record_count=60_000,
-                  fetch_config={"download_mode": "text_reference"}),
-            _spec(expected_record_count=10_000,
-                  fetch_config={"download_mode": "triple_dataset"}),
-            _spec(expected_record_count=300_000,
-                  fetch_config={"download_mode": "triple_dataset", "sample_size": 20_000}),
+            _spec(expected_record_count=500_000,
+                  fetch_config={"download_mode": "preference_pair", "sample_size": 60_000}),
+            _spec(expected_record_count=798_000,
+                  fetch_config={"download_mode": "preference_pair", "sample_size": 60_000}),
+            _spec(expected_record_count=10_235,
+                  fetch_config={"download_mode": "preference_pair"}),
+            _spec(expected_record_count=12_000,
+                  fetch_config={"download_mode": "preference_pair"}),
+            _spec(expected_record_count=1_600, eval_only=True,
+                  fetch_config={"download_mode": "eval_reference"}),
+            _spec(expected_record_count=1_632, eval_only=True,
+                  fetch_config={"download_mode": "eval_reference"}),
         ]
 
         raw_sum = sum(s.expected_record_count for s in specs)
         effective_sum = sum(s.storage_relevant_record_count() for s in specs)
 
         assert raw_sum > 25_000_000, "sanity check: the raw sum should reproduce the bug's scale"
-        # magicbrush (10K, uncapped triple_dataset) + instructpix2pix (20K,
-        # capped) count toward the effective sum since triple_dataset isn't
-        # in the zero-storage set (it does write real image pairs, just to
-        # a different directory) — bringing the realistic total to ~907K,
-        # comfortably inside/near the PRD's 100K-500K curated target
+        # No preference_pair or eval_reference source contributes to the
+        # image-record count at all now (their own separate budget is
+        # preference_pair_relevant_count(), tested below) — the realistic
+        # image-record total is just the PD12M/CC12M/RICO-family/WebUI
+        # sum, ~1.02M, comfortably near the PRD's 100K-500K curated target
         # (before Stage 2/3 quality and dedup filtering shrink it further).
-        assert effective_sum < 1_000_000, (
+        assert effective_sum < 1_100_000, (
             "effective sum should be roughly PRD-scale, not full-corpus scale"
         )
         assert effective_sum < raw_sum / 20, (
             "the fix should meaningfully shrink the projection, not just "
             "trim it slightly"
         )
+
+
+class TestPreferencePairRelevantCount:
+    def test_non_preference_pair_source_contributes_zero(self):
+        spec = _spec(expected_record_count=12_400_000,
+                      fetch_config={"download_mode": "url_list"})
+        assert spec.preference_pair_relevant_count() == 0
+
+    def test_preference_pair_source_counted_here_not_image_count(self):
+        spec = _spec(
+            expected_record_count=500_000,
+            fetch_config={"download_mode": "preference_pair", "sample_size": 60_000},
+        )
+        assert spec.preference_pair_relevant_count() == 60_000
+        assert spec.storage_relevant_record_count() == 0
+
+    def test_eval_reference_never_counted_as_a_preference_pair_either(self):
+        """Belt-and-suspenders: eval-only sources must not silently
+        contribute to the DPO-training storage budget just because they
+        share a "not a plain image record" shape with preference pairs."""
+        spec = _spec(
+            expected_record_count=1_600,
+            eval_only=True,
+            fetch_config={"download_mode": "eval_reference"},
+        )
+        assert spec.preference_pair_relevant_count() == 0

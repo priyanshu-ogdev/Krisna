@@ -20,29 +20,31 @@ def _mk_record(domain: str, encoding_paths: dict | None) -> ManifestRecord:
 
 
 class TestCompletenessPredicate:
-    def test_ui_first_requires_four_artifacts(self):
+    def test_ui_first_requires_three_artifacts(self):
+        """qwen_image_latent dropped from the required set: Qwen-Image-
+        Edit-2511 ships frozen now (no data-forge training branch for it —
+        see s08_encoding.py's Branch 2 removal)."""
         assert required_artifacts_for("ui_first") == {
-            "z_image_latent", "qwen_image_latent", "control_map", "vq_tokens",
+            "z_image_latent", "control_map", "vq_tokens",
         }
 
-    def test_general_design_requires_three_artifacts_not_four(self):
+    def test_general_design_requires_two_artifacts_not_three(self):
         """The core fix: a general_design record correctly lacking
-        vq_tokens must NOT be flagged incomplete — Stage 8's Branch 3 is
+        vq_tokens must NOT be flagged incomplete — Stage 8's VQ branch is
         deliberately domain-gated to ui_first only."""
         assert required_artifacts_for("general_design") == {
-            "z_image_latent", "qwen_image_latent", "control_map",
+            "z_image_latent", "control_map",
         }
 
     def test_ui_first_complete_record(self):
         rec = _mk_record("ui_first", {
-            "z_image_latent": "a", "qwen_image_latent": "b",
-            "control_map": "c", "vq_tokens": "d",
+            "z_image_latent": "a", "control_map": "c", "vq_tokens": "d",
         })
         assert is_encoding_complete(rec) is True
 
     def test_ui_first_missing_vq_tokens_is_incomplete(self):
         rec = _mk_record("ui_first", {
-            "z_image_latent": "a", "qwen_image_latent": "b", "control_map": "c",
+            "z_image_latent": "a", "control_map": "c",
         })
         assert is_encoding_complete(rec) is False
         assert missing_artifacts(rec) == {"vq_tokens"}
@@ -51,9 +53,10 @@ class TestCompletenessPredicate:
         """This is the exact case that would have been a false positive
         before this fix — s09_heldout.py would have needed to flag every
         correctly-processed general_design record as broken under a
-        blanket four-artifact rule."""
+        blanket rule that required an artifact Stage 8 never produces for
+        this domain."""
         rec = _mk_record("general_design", {
-            "z_image_latent": "a", "qwen_image_latent": "b", "control_map": "c",
+            "z_image_latent": "a", "control_map": "c",
         })
         assert is_encoding_complete(rec) is True
         assert missing_artifacts(rec) == set()

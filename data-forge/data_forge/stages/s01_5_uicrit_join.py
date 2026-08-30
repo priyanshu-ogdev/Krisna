@@ -5,16 +5,17 @@ the UICrit repo already cloned via `_fetch_github`'s annotation_only path
 — see fetcher.py and data/uicrit_ingest.py for why UICrit never produces
 its own image records).
 
-This is the fix for the gap traced in the data-completeness audit: without
-this stage, the pipeline's only critique data was Gemma 4's own
-self-generated output (`s10_5_critic_preference.py`) — self-distillation,
-not calibration. UICrit's ~983 human ratings are the one real ground-truth
-signal available, and prior to this stage they were silently discarded on
-ingestion. Records this stage successfully joins get
-`critique_output.critique_source == "uicrit_human"`, distinguishable from
-`"gemma4_31b"` — training code selecting real calibration data for Gemma
-4's own QLoRA fine-tuning should filter on this field, not just pull
-everything in `/ui_critique/` indiscriminately.
+UICrit's ~983 human ratings are the one real UI-critique ground-truth
+signal in this pipeline. Records this stage successfully joins get
+`critique_output.critique_source == "uicrit_human"`. Two consumers read
+this: s12_model_data_export.py's `planner_rag_corpus/` export (the
+planner ships frozen and retrieves this text at inference time rather
+than being fine-tuned on it) and, historically, the now-removed Gemma-4
+critic-tier calibration path — that model is a frozen, on-demand product
+feature now, not trained by data-forge at all, so this stage's only live
+consumer today is the RAG export. Kept as its own stage regardless of the
+critic tier's removal, since the RAG corpus still needs the same
+join/dedup treatment.
 """
 
 from __future__ import annotations
