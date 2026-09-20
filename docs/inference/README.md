@@ -90,12 +90,51 @@ Admission is deterministic and CI-testable, governed by `VRAMLedger` and `RAMLed
 
 ---
 
-## 5. REST API Endpoints
+## 5. Production Docker Containerization & Dual-Venv Isolation
+
+For release deployments, Krisna Inference is packaged into a high-performance GPU container architecture:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ docker/Dockerfile.inference (CUDA 12.4.1 / Python 3.11)     │
+│                                                             │
+│  ┌─────────────────────────┐   ┌──────────────────────────┐ │
+│  │ /opt/venv-inference     │   │ /opt/venv-critic         │ │
+│  │ - torch >= 2.6.0        │   │ - torch >= 2.6.0         │ │
+│  │ - transformers >= 5.2.0 │   │ - transformers == 5.5.0  │ │
+│  │ - diffusers >= 0.31.0   │   │ - unsloth + unsloth_zoo  │ │
+│  │ - SwapOrchestrator      │   │ - bitsandbytes           │ │
+│  │ - Planner / Sketch /    │   │ - critic_worker.py       │ │
+│  │   Polish models         │   │                          │ │
+│  └────────────┬────────────┘   └─────────────▲────────────┘ │
+│               │                              │              │
+│               └──────── JSON IPC Pipe ───────┘              │
+│                  (KRISNA_CRITIC_VENV_PYTHON)                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **Container Compose Stack**: `docker compose up -d` launches both the GPU inference engine (`:8420`) and the Web Studio UI (`:3000`).
+- **Host Launchers**: `./scripts/docker/run_docker.sh` and `.\scripts\docker\run_docker.ps1` execute host preflight probes (Docker daemon, NVIDIA Container Toolkit, and WSL2 acceleration).
+
+---
+
+## 6. Fail-Fast Hardware & Deployment Preflight Verification
+
+Implemented in `krisna_inference.common.hardware` and runnable via `scripts/inference/check_hardware.py`:
+- Probes GPU existence, CUDA runtime, compute capability (`sm_75+` required, `sm_80+` recommended for native BF16), and physical VRAM.
+- Enforces envelopes: 16GB+ default, 11.5GB+ low-VRAM mode (`KRISNA_LOW_VRAM_MODE=1`).
+- Startup guard: When `KRISNA_USE_REAL_BACKENDS=1`, `service.py` immediately aborts if hardware is incompatible, preventing runtime hangs or crashes. MockBackend is strictly reserved for CI and automated testing.
+
+---
+
+## 7. REST API Endpoints
 
 FastAPI service exposed on default port `8420`:
 
 | Method | Route | Description |
 |---|---|---|
+| `GET` | `/health` / `/healthz` | Liveness & readiness probes for Docker/k8s (residency state and VRAM snapshot). |
+| `GET` | `/hardware` | Live hardware telemetry (GPU, driver, CUDA, free/total VRAM, and config status). |
 | `POST` | `/session` | Initializes a new `DesignState` session. |
 | `GET` | `/session/{id}` | Retrieves active `DesignState` snapshot. |
 | `POST` | `/session/{id}/message` | Advances conversational turn (Planner + Sketch pass). |
@@ -106,9 +145,10 @@ FastAPI service exposed on default port `8420`:
 
 ---
 
-## 6. Related Documentation
+## 8. Related Documentation
 
-- **[inference/README.md](file:///d:/Krisna/inference/README.md)**: Serving setup, mock vs real backends, and low-VRAM flags.
+- **[inference/README.md](file:///d:/Krisna/inference/README.md)**: Serving setup, mock vs real backends, Docker flags, and requirements.
 - **[inference/frontend/README.md](file:///d:/Krisna/inference/frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
 - **[inference/runtime/README.md](file:///d:/Krisna/inference/runtime/README.md)**: CLI harness for multi-turn manual testing.
+- **[docs/review/28_docker_isolation_and_hardware_preflight.md](file:///d:/Krisna/docs/review/28_docker_isolation_and_hardware_preflight.md)**: Phase 28 research and verification report.
 

@@ -46,9 +46,14 @@ Convenience wrappers at the repository root delegating to the appropriate packag
   - `train_planner_lora.sh` & `train_critic_qlora.sh`: Deprecated reference scripts (models ship frozen per PRD §6).
 
 ### 3. `scripts/inference/`
+- **`check_hardware.py`**: Standalone preflight diagnostic CLI probing GPU, CUDA, compute capability, VRAM, and deployment configs (`--require-gpu`, `--low-vram`, `--deploy-check`, `--json`).
 - **`download_weights.py`**: Discovers trained checkpoints, downloads frozen HF models, and generates `.env.inference`.
 - **`run_service.sh` / `.ps1`**: Starts Uvicorn/FastAPI inference service (`--real`, `--low-vram`, host, port).
-- **`setup_env.sh` / `setup_env_inference.sh` / `.ps1`**: Sets up inference virtual environment.
+- **`setup_env.sh` / `setup_env_inference.sh` / `.ps1`**: Sets up inference virtual environment with hardware preflight check.
 - **`setup_env_verifiers.sh`**: Installs verifier models (CLIP, OCR, aesthetic scorers).
 - **`run_tests.sh`**: Executes inference test suite.
+
+### 4. `scripts/docker/`
+- **`run_docker.sh`**: Linux/macOS host preflight checker (Docker daemon & NVIDIA Container Toolkit) and Compose launcher (`--build`, `--detach`, `--low-vram`, `--down`).
+- **`run_docker.ps1`**: Windows PowerShell launcher with Docker Desktop WSL2 GPU acceleration detection.
 

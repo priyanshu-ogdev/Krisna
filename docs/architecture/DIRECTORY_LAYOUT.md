@@ -10,20 +10,33 @@ to what — read this before touching import paths or scripts.
 
 ```
 krisna/
-├── docs/                  # all documentation, root-level, split by subsystem
-├── scripts/                # all shell scripts, root-level, split by subsystem
-├── tests/                  # ALL tests, root-level — not nested per-package
+├── docs/                      # all documentation, root-level, split by subsystem
+├── docker/                    # production containerization (multi-venv CUDA container + frontend)
+│   ├── Dockerfile.inference   # /opt/venv-inference & /opt/venv-critic isolation
+│   ├── Dockerfile.frontend    # Node.js 20 Alpine Web Studio
+│   └── entrypoint.sh          # Container hardware preflight & service runner
+├── scripts/                   # all shell scripts, root-level, split by subsystem
+│   ├── data-forge/
+│   ├── training/
+│   ├── inference/             # service runners, weight downloader, check_hardware.py
+│   └── docker/                # run_docker.sh, run_docker.ps1
+├── tests/                     # ALL tests, root-level (481+ tests across all subsystems)
 │   ├── data_forge/
 │   ├── training/
 │   └── inference/
-├── models/                 # trained checkpoint artifacts (data, not code)
-├── data-forge/              # data pipeline package (data_forge/)
-├── training/                # training package (krisna_training/)
-├── inference/               # serving & inference package (krisna_inference/)
-│   ├── src/krisna_inference/ # SwapOrchestrator + real backends + FastAPI service
-│   ├── frontend/             # Web Studio UI & Node.js Express control-plane
-│   └── runtime/              # CLI session harness (run_agentic_session.py / krisna-session)
-└── pytest.ini                # root-level: asyncio_mode + testpaths, so
+├── models/                    # trained checkpoint artifacts (data, not code)
+├── data-forge/                # data pipeline package (data_forge/)
+├── training/                  # training package (krisna_training/)
+├── inference/                 # serving & inference package (krisna_inference/)
+│   ├── src/krisna_inference/  # SwapOrchestrator + real backends + FastAPI service
+│   ├── frontend/              # Web Studio UI & Node.js Express control-plane
+│   ├── runtime/               # CLI session harness (run_agentic_session.py / krisna-session)
+│   ├── requirements-inference.txt # Core serving requirements (transformers>=5.2.0)
+│   └── requirements-critic.txt   # Isolated Critic tier requirements (transformers==5.5.0)
+├── docker-compose.yml         # Multi-service GPU container orchestration
+├── .dockerignore              # Clean container build rules
+├── setup.sh                   # Root environment setup orchestrator
+└── pytest.ini                 # root-level: asyncio_mode + testpaths, so
                                # `pytest tests/` works from repo root
                                # regardless of which package a test covers
 ```
