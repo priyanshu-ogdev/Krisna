@@ -1,0 +1,29 @@
+# Inference-layer dependencies for the MAIN venv: Planner (Qwen3.5), Sketch
+# tier, and both Polish tiers (Z-Image-Turbo, Qwen-Image-Edit-2511).
+#
+# The Critic tier (Gemma 4 31B + Unsloth) is DELIBERATELY NOT in this file —
+# it needs transformers pinned to EXACTLY 5.5.0 (Unsloth's Gemma-4 pin),
+# which conflicts with the git-main transformers build required below for
+# Qwen3.5. See requirements-critic.txt and README's "Critic tier isolation"
+# section — that tier runs in its own venv via critic_worker.py subprocess.
+
+# Qwen3.5 (planner) is natively supported in transformers >= 5.2.0 (tagged PyPI release,
+# Feb 2026; eliminates prior git-main requirement; see docs/review/27_prd_open_risks_research.md).
+transformers>=5.2.0
+torchvision
+pillow
+
+torch>=2.6.0
+peft>=0.13.0
+
+# diffusers built from git main — ZImagePipeline (Z-Image-Turbo) and
+# QwenImageEditPlusPipeline (Qwen-Image-Edit-2511) are recent additions.
+diffusers @ git+https://github.com/huggingface/diffusers.git@main
+accelerate>=1.0.0
+bitsandbytes>=0.43.0   # NF4 quantization for Qwen-Image-Edit-2511
+
+# Optional, strongly recommended: fast Gated DeltaNet kernels for the
+# planner tier. Without these, planner_backend.py logs a warning and
+# Qwen3.5's linear-attention layers fall back to slow PyTorch ops.
+causal-conv1d
+flash-linear-attention

@@ -1,0 +1,45 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+env/
+venv-*/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Testing & Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Databases & local state
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Large model artifacts & weights
+*.safetensors
+*.ckpt
+*.pt
+*.bin
+weights/*
+!weights/.gitkeep
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
+*.tar.gz

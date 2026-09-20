@@ -1,0 +1,45 @@
+# Sketch tier training — Stage 2 (512px, progressive init from Stage 1).
+# `init_from` loads Stage 1's final checkpoint and bicubically interpolates
+# its positional embedding from 16x16 to 32x32 (pos_embed.py) — everything
+# else transfers as-is. Update init_from's path once Stage 1 finishes.
+
+manifest_path: "./data/sketch_train_512/manifest.jsonl"
+output_dir: "./checkpoints/sketch_stage2_512"
+
+grid_h: 32
+grid_w: 32
+vocab_size: 16384
+hidden_dim: 512
+n_layers: 12
+n_heads: 8
+ffn_dim: 2048
+dropout: 0.1
+prompt_dim: 768
+
+batch_size: 16             # 4x tokens vs stage 1, and since attention is
+                            # O(n^2) in sequence length, FLOPs are ~16x per
+                            # sample — halving batch only nets ~8x more
+                            # compute/memory per step. See
+                            # use_gradient_checkpointing below.
+lr: 1.5e-4                  # lower LR for continued/fine-tune-style training
+weight_decay: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.96             # Chang et al. 2022 (MaskGIT), matches TrainConfig dataclass default
+warmup_steps: 500
+# See stage1's config for the citation/rationale — unchanged for stage 2.
+caption_mix_ratio: 0.95
+cfg_dropout_prob: 0.1
+total_steps: 60000
+critic_loss_weight: 0.5
+grad_clip: 1.0
+use_gradient_checkpointing: true   # recommended on for stage 2 specifically
+                                     # (1024 tokens/seq) — see model.py's
+                                     # build_model() docstring
+
+log_every: 50
+checkpoint_every: 2000
+num_workers: 6               # Upgraded from 4 for i9/A6000 (balanced for gradient checkpointing backward latency)
+seed: 42
+
+resume_from: null
+init_from: "./checkpoints/sketch_stage1_256/checkpoint_final.pt"

@@ -7,7 +7,7 @@ name = "data-forge"
 version = "0.14.0"
 description = "Zero-touch automated data pipeline for the Krisna project (v14 spec — no-RLHF-loop revision)"
 readme = "README.md"
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.10"
 license = { text = "Proprietary" }
 
 dependencies = [
@@ -54,6 +54,7 @@ dependencies = [
     # --- Networking ---
     "httpx>=0.27",
     "huggingface-hub>=0.24",
+    "ruamel.yaml>=0.18",  # scripts/pin_revisions.py — comment-preserving YAML edits
 
     # --- Logging ---
     "structlog>=24.4",
@@ -79,8 +80,7 @@ dev = [
 data-forge = "data_forge.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["data_forge*"]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -91,7 +91,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../tests/data_forge"]
 asyncio_mode = "auto"
 markers = [
     "integration: marks tests that require GPU / vLLM (deselect with '-m \"not integration\"')",

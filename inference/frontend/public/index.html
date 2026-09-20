@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Krisna — Autonomous UI Design & Inference Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wordmark">
+      <div class="brand-badge">
+        <span class="wordmark-dot"></span>
+        <span class="wordmark-main">krisna</span>
+      </div>
+      <span class="wordmark-sub">inference studio &amp; control</span>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="setup">
+        <span class="tab-icon">⚙</span> Setup &amp; Weights
+      </button>
+      <button class="tab-btn" data-tab="studio">
+        <span class="tab-icon">⚡</span> Studio &amp; Inference
+      </button>
+    </nav>
+
+    <div class="topbar-status">
+      <div id="hw-pill" class="pill sys-pill" title="Target Hardware Environment">
+        <i class="dot sys-dot"></i><span id="hw-pill-text">A6000 48GB · 128GB RAM</span>
+      </div>
+      <div id="mode-pill" class="pill mode-pill unknown" title="Inference Engine Mode">
+        <i class="dot"></i><span id="mode-pill-text">Checking Mode</span>
+      </div>
+      <div id="health-pill" class="pill unknown" title="FastAPI Orchestrator Service Health">
+        <i class="dot"></i><span id="health-pill-text">Checking Service</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================= SETUP TAB ============================= -->
+    <section id="tab-setup" class="tab active">
+      <div class="setup-grid">
+
+        <div class="panel tracker-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Install &amp; Weights Pipeline</h2>
+              <p class="panel-desc">Step-by-step model download, verification, and environment resolver.</p>
+            </div>
+          </div>
+          <ol id="tracker" class="tracker"><!-- populated by app.js --></ol>
+        </div>
+
+        <div class="setup-right">
+          <!-- Detected Checkpoints Card -->
+          <div class="panel checkpoints-panel">
+            <div class="panel-head">
+              <div>
+                <h2>Detected Trained Checkpoints</h2>
+                <p class="panel-desc">Models discovered under <code>checkpoints/</code> and <code>models/</code>.</p>
+              </div>
+              <div class="btn-row-sm">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-rescan-checkpoints">Rescan</button>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-apply-checkpoints">Auto-Apply to Form</button>
+              </div>
+            </div>
+            <div id="checkpoints-list" class="checkpoints-list">
+              <div class="ckpt-loading">Scanning repository for trained checkpoints…</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Runtime &amp; Model Options</h2>
+                <p class="panel-desc">Configure model precision, VRAM budget envelope, and checkpoint paths.</p>
+              </div>
+            </div>
+            <form id="install-form">
+              <div class="option-grid">
+                <label class="opt"><input type="checkbox" name="lowVram" /><span>Low-VRAM mode <em>12–16GB CPU offload</em></span></label>
+                <label class="opt"><input type="checkbox" name="fastPlanner" /><span>Fast planner <em>Qwen3.5-4B</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipQuality" /><span>Skip Polish-Quality <em>Qwen-Image-Edit-2511</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipCritic" /><span>Skip Critic <em>needs venv-critic</em></span></label>
+              </div>
+              <div class="field-grid">
+                <label class="field">Sketch checkpoint path
+                  <input type="text" id="input-sketch-ckpt" name="sketchCheckpoint" placeholder="auto-discovered if blank" />
+                </label>
+                <label class="field">Polish LoRA adapter path
+                  <input type="text" id="input-polish-lora" name="polishLora" placeholder="auto-discovered if blank" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="submit" class="btn btn-primary" id="btn-install">Start Install &amp; Download</button>
+                <button type="button" class="btn btn-ghost" id="btn-dry-run">Dry Run</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Installation Log Stream</h2>
+              <span id="log-status" class="tag tag-idle">idle</span>
+            </div>
+            <pre id="install-log" class="terminal"></pre>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Resolved Configuration</h2>
+                <p class="panel-desc">Written to <code id="env-file-path">.env.inference</code></p>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="btn-refresh-env">Refresh</button>
+            </div>
+            <table id="env-table"><tbody></tbody></table>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Orchestrator Backend Daemon</h2>
+                <p class="panel-desc">Real FastAPI/uvicorn inference service on port 8420.</p>
+              </div>
+              <span id="backend-pill" class="pill unknown"><i class="dot"></i>checking</span>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" id="btn-backend-start">Start Backend</button>
+              <button class="btn btn-ghost btn-sm" id="btn-backend-stop">Stop Backend</button>
+            </div>
+            <pre id="backend-log" class="terminal"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= STUDIO TAB ============================= -->
+    <section id="tab-studio" class="tab">
+      <div class="panel pipeline-panel">
+        <div class="panel-head">
+          <div class="pipeline-title-group">
+            <h2>Multi-Tier Generation Pipeline</h2>
+            <span class="pipeline-sub">PRD §5.3 Swap Architecture Flow</span>
+          </div>
+          <span id="pipeline-phase-label" class="tag tag-phase">idle</span>
+        </div>
+        <div class="pipeline-grid">
+          <div id="phase-pipeline" class="phase-pipeline"><!-- populated by app.js --></div>
+          <div class="pixel-forming">
+            <div class="canvas-controls-strip">
+              <div class="canvas-mode-group">
+                <button type="button" class="mode-btn active" data-mode="pixels">🎨 Pixels</button>
+                <button type="button" class="mode-btn" data-mode="wireframe">📐 Wireframe</button>
+                <button type="button" class="mode-btn" data-mode="flow">⚡ Latent Flow</button>
+              </div>
+            </div>
+            <div id="pixel-canvas-wrap" class="pixel-canvas-wrap" title="Click to view full-resolution inspection lightbox">
+              <canvas id="pixel-canvas" width="280" height="280"></canvas>
+              <canvas id="wireframe-canvas" width="280" height="280" class="wireframe-canvas hidden"></canvas>
+              <div id="radar-scan-line" class="radar-scan-line hidden"></div>
+              <div id="pixel-step-overlay" class="pixel-step-overlay hidden">
+                <div class="pixel-step-track"><div id="pixel-step-fill" class="pixel-step-fill"></div></div>
+                <div id="pixel-step-label" class="pixel-step-text">step 0/9</div>
+              </div>
+              <div id="pixel-canvas-label" class="pixel-canvas-label">no render yet</div>
+              <div class="canvas-zoom-hint"><span>🔍 Click to inspect full resolution</span></div>
+            </div>
+            <div class="telemetry-hud" id="telemetry-hud">
+              <div class="telemetry-item">
+                <span class="hud-label">STEP</span>
+                <span class="hud-val" id="hud-step">0/9</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="hud-label">MANIFOLD</span>
+                <span class="hud-val" id="hud-phase">Idle</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="hud-label">ENTROPY</span>
+                <span class="hud-val" id="hud-entropy">1.00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="studio-grid">
+
+        <div class="studio-left">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>GPU Memory Envelope</h2>
+              <button class="btn btn-ghost btn-sm" id="btn-refresh-status">Refresh</button>
+            </div>
+            <div id="rack-envelope-label" class="rack-envelope-label"></div>
+            <div id="rack" class="rack"><!-- populated by app.js --></div>
+            <ul id="rack-legend" class="rack-legend"><!-- populated by app.js --></ul>
+
+            <div id="hw-vram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Hardware VRAM Usage</span><span id="hw-vram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-vram-fill" class="hw-bar-fill"></div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>System RAM Offload</h2></div>
+            <p class="hint">Host RAM utilized for CPU-offloaded tier weights (Critic &amp; Low-VRAM Polish).</p>
+            <div id="ram-rack-label" class="rack-envelope-label"></div>
+            <div id="ram-rack" class="rack ram-rack"><!-- populated by app.js --></div>
+            <div id="hw-ram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Hardware System RAM</span><span id="hw-ram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-ram-fill" class="hw-bar-fill ram"></div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>Residency State Diagram</h2></div>
+            <div id="state-diagram" class="state-diagram"><!-- populated by app.js --></div>
+          </div>
+        </div>
+
+        <div class="studio-right">
+          <div class="panel" id="no-session">
+            <div class="panel-head"><h2>Interactive Design Session</h2></div>
+            <p class="hint">Initialize a multi-turn design session to prompt the Planner, watch Sketch VQ tokens formulate, and finalize polished UI pixels.</p>
+            <button class="btn btn-primary btn-lg" id="btn-new-session">✨ Start New Design Session</button>
+          </div>
+
+          <div id="has-session" class="hidden">
+            <div class="panel session-main-panel">
+              <div class="panel-head">
+                <div class="session-header-title">
+                  <h2>Session <code id="session-id"></code></h2>
+                  <span class="tag tag-rev" id="session-rev-tag">rev 0</span>
+                </div>
+                <div class="session-actions-top">
+                  <button class="btn btn-ghost btn-sm" id="btn-export-json" title="Export complete DesignState JSON">📋 Export JSON</button>
+                  <button class="btn btn-ghost btn-sm" id="btn-download-render" title="Download rendered PNG">📥 Download PNG</button>
+                </div>
+              </div>
+
+              <!-- Quick Start Archetype Prompt Chips -->
+              <div class="archetype-bar">
+                <span class="archetype-label">Archetypes:</span>
+                <button type="button" class="chip" data-prompt="Design a modern Fintech mobile banking dashboard with dark card, balance graph, crypto portfolio, and quick transfer action sheet.">💳 Fintech Banking</button>
+                <button type="button" class="chip" data-prompt="Design a clean SaaS B2B analytics dashboard with metric cards, revenue growth chart, and recent activity audit log.">📊 SaaS Analytics</button>
+                <button type="button" class="chip" data-prompt="Design an elegant e-commerce product checkout drawer with apple pay button, item summary, and discount code input.">🛒 E-Commerce Cart</button>
+                <button type="button" class="chip" data-prompt="Design an enterprise account security settings page with 2FA toggle, active session manager, and API key table.">⚙️ Security Settings</button>
+                <button type="button" class="chip" data-prompt="Design a minimalist web3 crypto wallet with token swap interface, slippage tolerance slider, and gas fee estimator.">📱 Crypto Wallet</button>
+              </div>
+
+              <div id="chat-log" class="chat-log"></div>
+              <div id="chat-error" class="chat-error hidden"></div>
+
+              <!-- Generation Parameter Controls -->
+              <div class="generation-controls-bar">
+                <div class="control-group">
+                  <label class="control-label" for="finalize-quality-mode">Polish Fidelity Tier:</label>
+                  <select id="finalize-quality-mode" class="select-control">
+                    <option value="default">Default: Z-Image-Turbo (9 Steps · Ultra-Fast)</option>
+                    <option value="quality">Quality: Qwen-Image-Edit-2511 (28 Steps · High-Fidelity)</option>
+                  </select>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="seed-input">Seed:</label>
+                  <input type="number" id="seed-input" class="seed-input" placeholder="Random" />
+                  <button type="button" class="btn btn-ghost btn-xs" id="btn-random-seed" title="Randomize seed">🎲</button>
+                </div>
+              </div>
+
+              <form id="message-form" class="message-form">
+                <input type="text" id="message-input" placeholder="Describe your UI requirements (e.g. 'Dark fintech wallet with balance card and action buttons')…" autocomplete="off" />
+                <button type="submit" class="btn btn-primary" id="btn-send">Send Turn</button>
+              </form>
+
+              <div class="btn-row studio-action-row">
+                <button class="btn btn-secondary" id="btn-finalize">
+                  <span class="btn-icon">🎨</span> Finalize Render
+                </button>
+                <button class="btn btn-secondary" id="btn-critique">
+                  <span class="btn-icon">🔍</span> Run Critique Pass
+                </button>
+              </div>
+            </div>
+
+            <!-- Render & Verifier Scores Panel -->
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Render Output &amp; Verifier Breakdown</h2>
+              </div>
+              <div id="finalize-panel" class="finalize-panel">
+                <p class="hint">No render produced yet — click <strong>Finalize Render</strong> above.</p>
+              </div>
+            </div>
+
+            <!-- Critique Feedback Panel -->
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Critic Tier Evaluation</h2>
+              </div>
+              <div id="critique-panel" class="critique-panel">
+                <p class="hint">No critique yet — finalize first, then click <strong>Run Critique Pass</strong>.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============================= FULL RESOLUTION LIGHTBOX MODAL ============================= -->
+  <div id="lightbox-modal" class="lightbox-modal hidden">
+    <div class="lightbox-backdrop" id="lightbox-backdrop"></div>
+    <div class="lightbox-content">
+      <div class="lightbox-header">
+        <div class="lightbox-title">
+          <span class="lightbox-dot"></span>
+          <h3>Full-Resolution Render Inspection</h3>
+          <span id="lightbox-meta" class="tag tag-sm">512x512 PNG</span>
+        </div>
+        <div class="lightbox-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="lightbox-zoom-fit">Fit</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lightbox-zoom-100">100%</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="lightbox-zoom-200">200%</button>
+          <button type="button" class="btn btn-primary btn-sm" id="lightbox-download">📥 Download</button>
+          <button type="button" class="btn btn-ghost btn-sm lightbox-close" id="lightbox-close">✕</button>
+        </div>
+      </div>
+      <div class="lightbox-viewport" id="lightbox-viewport">
+        <img id="lightbox-img" src="" alt="Full Resolution UI Render" />
+        <canvas id="lightbox-wireframe-canvas" class="lightbox-wireframe-canvas hidden"></canvas>
+      </div>
+      <div class="lightbox-footer">
+        <div class="lightbox-scrubber-bar">
+          <div class="scrubber-label-group">
+            <span class="scrubber-title">Denoising Trajectory:</span>
+            <span id="scrubber-stage-name" class="tag tag-sm tag-phase">t = 1.00 · Converged Output</span>
+            <button type="button" class="btn btn-ghost btn-xs" id="lightbox-toggle-wireframe">Toggle Wireframe</button>
+          </div>
+          <div class="scrubber-track-wrap">
+            <input type="range" id="generalization-slider" min="0" max="100" value="100" class="scrubber-slider" />
+          </div>
+          <div class="scrubber-milestones">
+            <span class="milestone" data-t="0">0.0 Latent Noise</span>
+            <span class="milestone" data-t="30">0.3 Semantic Manifold</span>
+            <span class="milestone" data-t="65">0.65 Component Geometry</span>
+            <span class="milestone" data-t="100">1.0 Polish Convergence</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

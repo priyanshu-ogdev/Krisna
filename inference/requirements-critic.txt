@@ -1,0 +1,19 @@
+# Isolated venv for the Critic tier ONLY (Gemma 4 31B Dense + Unsloth).
+#
+# This is a SEPARATE venv from the main inference environment (/opt/venv-critic in Docker,
+# or ./venv-critic locally). Do NOT install into the same venv as requirements-inference.txt:
+#   - unsloth_zoo caps transformers<=5.5.0
+#   - Gemma 4 itself needs transformers>=5.5.0
+#   -> exactly transformers==5.5.0 satisfies both, pinned below
+#   - Qwen3.5 (planner tier, main venv) needs transformers>=5.2.0.
+# The Critic worker process talks to the parent SwapOrchestrator over stdin/stdout JSON lines
+# (see critic_worker.py) — it never imports other tiers, ensuring strict dependency isolation.
+
+transformers==5.5.0
+torch>=2.6.0
+unsloth
+unsloth_zoo
+peft>=0.13.0
+bitsandbytes>=0.43.0
+pillow
+accelerate>=1.0.0

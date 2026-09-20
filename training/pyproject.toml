@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "krisna-training"
+version = "0.2.0"
+description = "Krisna Training — Sketch Tier (from scratch) and Z-Image-Turbo (LoRA + Diffusion-DPO) training code, the data-forge sync bridge, and DPO preference-pair tooling. Planner/Critic training code is DEPRECATED under the final no-RLHF-loop PRD revision (kept for reference — see krisna_training.planner/.critic's __init__.py docstrings). Split out of krisna-orchestrator v0.1.0 — see docs/training/ARCHITECTURE.md."
+requires-python = ">=3.11"
+dependencies = [
+    # krisna_training.sketch.train imports krisna_inference.verifiers.common
+    # for a shared CLIP embedder utility — real, intentional cross-package
+    # dependency, not accidental coupling. See docs/architecture/
+    # DIRECTORY_LAYOUT.md's "why training depends on inference" note.
+    "krisna-inference",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+]
+# Real training — GPU required. Split from dev since most of this
+# package's own logic (masking, dataset collation, lora target-module
+# discovery) is deliberately pure-Python/testable without these.
+sketch = ["torch>=2.3", "pillow>=10.4"]
+polish = ["torch>=2.3", "diffusers>=0.31", "peft>=0.13", "pillow>=10.4"]
+# DEPRECATED — see krisna_training.planner/critic's __init__.py.
+planner = ["torch>=2.3", "transformers>=5.2.0", "peft>=0.13"]
+critic = ["unsloth", "transformers==5.5.0", "peft>=0.13"]
+
+[project.scripts]
+krisna-train-sketch = "krisna_training.sketch.train:main"
+krisna-train-dpo = "krisna_training.polish.train_dpo:main"
+krisna-sync-rag = "krisna_training.data_forge_bridge.sync_planner_rag:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["../tests/training"]

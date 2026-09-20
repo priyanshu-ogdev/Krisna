@@ -1,0 +1,62 @@
+# Polish tier (default), Z-Image LoRA training config.
+# Wraps diffusers' OFFICIAL train_dreambooth_lora_z_image.py — see
+# src/krisna_orchestrator/training/polish/__init__.py for why this project
+# doesn't reimplement diffusion training from scratch.
+#
+# Base model is the UNDISTILLED Tongyi-MAI/Z-Image, not Z-Image-Turbo —
+# see that same docstring for why. inference/polish_default_backend.py's
+# ZImageTurboBackend loads the resulting LoRA onto the Turbo checkpoint for
+# serving.
+
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "Tongyi-MAI/Z-Image"
+
+# Point this at output_dir from training/polish/dataset_prep.py's prepare()
+instance_data_dir: "./data/polish_default_train"
+output_dir: "./checkpoints/polish_default_lora"
+
+resolution: 1024   # NOTE: the DPO refinement stage that continues this
+                    # adapter (dpo_z_image_stage1_general.yaml) trains at
+                    # 512 — RESEARCHED and likely architecturally safe
+                    # (Z-Image-Turbo's MMDiT/RoPE lineage is inherently
+                    # resolution-flexible, unlike learned position
+                    # embeddings) but still not confirmed as a
+                    # deliberate choice anywhere in this repo — see that
+                    # file's comment for the full research and citations.
+train_batch_size: 1
+gradient_accumulation_steps: 4
+gradient_checkpointing: true
+cache_latents: true
+learning_rate: 1.0e-4
+lr_scheduler: "constant"
+lr_warmup_steps: 100
+max_train_steps: 1000
+guidance_scale: 5.0
+optimizer: "adamW"
+use_8bit_adam: true
+mixed_precision: "bf16"
+seed: 0
+# Explicitly pinned to match the DPO stage's `lora-rank: 32`
+# (dpo_z_image_stage1_general.yaml) — previously unset here, silently
+# deferring to whatever train_dreambooth_lora_z_image.py's own default
+# is. Since polish_default_backend.py composes this LoRA with the DPO
+# stage at inference time, an unpinned/uncoordinated rank here risked a
+# capacity mismatch between the two stages. Caught during a design-sync
+# review, not a considered choice originally — see
+# docs/review/02_polish_tier.md for the full writeup. NOTE: confirm this
+# flag name (`rank`) matches whatever version of
+# train_dreambooth_lora_z_image.py is actually vendored into
+# third_party/diffusers before running — diffusers dreambooth-LoRA
+# scripts have used `--rank` consistently across recent releases, but
+# this hasn't been verified against Z-Image's specific script version in
+# this environment (no network access to fetch third_party/diffusers here).
+rank: 32
+
+# --instance_prompt is required by the official script even when per-image
+# captions are used via metadata.jsonl (some script versions still want a
+# fallback) — set to something generic since our data has real per-image
+# captions from dataset_prep.py.
+instance_prompt: "a UI design"
+
+validation_prompt: null   # set to something to get periodic validation renders
+validation_epochs: 25

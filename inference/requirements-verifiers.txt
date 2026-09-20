@@ -1,0 +1,11 @@
+# Verifier-stack dependencies. These share the MAIN venv (requirements-
+# inference.txt) — CLIP/aesthetic/safety/OCR/layout-IoU don't need bleeding-
+# edge transformers, so there's no conflict like the Critic tier has.
+# Install after requirements-inference.txt (torch is a shared base dep).
+
+opencv-python-headless>=4.10   # layout_iou.py's contour detector
+easyocr>=1.7                    # ocr_readability.py
+# transformers, torch, pillow already in requirements-inference.txt —
+# clip_alignment.py, aesthetic_safety.py, and handoff_consistency.py reuse
+# those, plus a small downloaded linear-head checkpoint for the aesthetic
+# predictor (auto-downloaded on first use, see aesthetic_safety.py).

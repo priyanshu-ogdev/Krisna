@@ -38,13 +38,13 @@ datasets:
     fetch_config:
       file_patterns: ["*.parquet"]
       download_mode: "url_list"
-      # UNVERIFIED, same discipline as models.yaml's unverified VAE channel
-      # counts: PD12M's column names are believed to be "url"/"caption"
-      # based on the dataset card at review time, but were not independently
-      # re-confirmed against the live parquet schema before this revision.
-      # Run `python -m data_forge.cli inspect-dataset pd12m` (or manually
-      # `pd.read_parquet(...).columns`) against one shard before a real run
-      # and correct these two keys if they differ.
+      # CONFIRMED (was previously an unverified guess): checked directly
+      # against the live Spawning/PD12M dataset card's own documented
+      # metadata schema — id, url, s3_key, caption, hash, width, height,
+      # mime_type, license, source. "url"/"caption" are exact matches,
+      # not a guess. license_status stays "unverified" regardless (still
+      # runs through the License Agent, not hardcoded as cleared) even
+      # though CDLA-Permissive-2.0 itself is independently confirmed.
       image_url_column: "url"
       caption_column: "caption"
       sample_size: 200000       # PRD target is 100K-500K curated TOTAL, not per-source
@@ -95,16 +95,34 @@ datasets:
     revision: "main"
     subset: null                        # Full dataset
     category: "mobile_ui"
-    expected_record_count: 66000        # ~66k unique UIs
+    expected_record_count: 66261        # CONFIRMED exact count from the live dataset card's
+                                         # "default" (metadata) config split — 66,261 examples.
     license_url: "http://www.interactionmining.org/rico.html"
     license_status: "unverified"
     license_notes: >
-      Original RICO license status is listed as "Unknown" in most HuggingFace repos.
-      The dataset contains third-party app screenshots — IP/privacy implications
-      for commercial use. The license agent will likely route this to
-      excluded_pending_review on first run.
+      CONFIRMED: the live dataset card's own YAML metadata states
+      `license: unknown` explicitly (not "unverified" as in "we haven't
+      checked" — Hugging Face's own indexed metadata says the source
+      itself never specified one). The dataset contains third-party app
+      screenshots — IP/privacy implications for commercial use. Will
+      likely route to excluded_pending_review, correctly.
     fetch_config:
-      file_patterns: ["*.jpg", "*.png", "*.json"]
+      # BUG FIX: was file_patterns: ["*.jpg","*.png","*.json"] against a
+      # repo that ships ONLY *.parquet files — allow_patterns matched
+      # zero files, so every run silently fetched 0 records from the
+      # single most foundational dataset in the whole UI-domain corpus
+      # (CLAY/Enrico/Screen2Words all join onto records that would never
+      # have existed). CONFIRMED via the live dataset card: this repo has
+      # three named configs — "default" (pure metadata, no images),
+      # "ui-screenshots-and-view-hierarchies" (screenshot: image + view
+      # hierarchy — what we actually want), and
+      # "ui-screenshots-and-hierarchies-with-semantic-annotations"
+      # (adds CLAY-style semantic labels on top). config_subfolder pins
+      # to the plain-screenshots config; image_column confirmed directly
+      # from the live schema (feature name: "screenshot", not "image").
+      download_mode: "hf_parquet_images"
+      config_subfolder: "ui-screenshots-and-view-hierarchies"
+      image_column: "screenshot"
       max_files: null                   # No limit
 
   rico_semantic:
@@ -113,12 +131,44 @@ datasets:
     repo_id: "Voxel51/rico"
     revision: "main"
     category: "mobile_ui"
-    expected_record_count: 66000
+    expected_record_count: 66261        # Matches rico_core — CONFIRMED via the live dataset
+                                         # card: "This is a FiftyOne dataset with 66261 samples."
     license_url: "https://huggingface.co/datasets/Voxel51/rico"
     license_status: "unverified"
-    license_notes: "Semantic annotations layer — CC BY 4.0 for Google-added labels."
+    license_notes: >
+      CONFIRMED (was previously a softer "believed CC BY 4.0 for the
+      annotation layer" claim): the live dataset card states outright,
+      as a top-level field, "License: CC BY 4.0" — not qualified to just
+      the semantic-annotation layer. Curated by Liu, Craft, Situ, Yumer,
+      Mech, and Kumar (UIUC + Adobe Systems); funded by Adobe research
+      donation, Google Faculty Research Award, and NSF Grant IIS-1750563.
+      Real screenshots from real, published Android apps — same
+      third-party-app-IP consideration as rico_core still applies to the
+      underlying screenshots even though this repo's own stated license
+      is clean CC BY 4.0.
     fetch_config:
-      file_patterns: ["*.json"]
+      # BUG FIX (now fully resolved, not just patched): same failure
+      # class as rico_core above — file_patterns: ["*.json"] matched
+      # zero files against a repo Voxel51 itself describes as "Parquet
+      # formatted." CONFIRMED this is a FiftyOne-exported HF dataset
+      # (single "default" subset, single "train" split — no multi-config
+      # ambiguity like rico_core has). image_column is now hardcoded,
+      # not auto-detected: the live dataset card's own Data Studio
+      # preview table header shows the column is literally named
+      # "image" (verified directly, not guessed — note this is a
+      # different column name than rico_core's "screenshot", since
+      # these are two independently-exported repos of the same
+      # underlying screens). The FiftyOne-native fields (`ui_vector`,
+      # `ui_viz`, `detections` with per-element `label`/`bounding_box`/
+      # `content_or_function`/`clickable`/`type`/`resource_id`) are NOT
+      # currently ingested by this fetch path — only the image itself.
+      # If the semantic detection labels are needed later (e.g. for a
+      # UI-element-aware conditioning signal), extend
+      # _fetch_hf_parquet_images with an additional structured-column
+      # capture rather than re-deriving labels from scratch.
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
 
   # -------------------------------------------------------------------------
   # CLAY — Mobile UI Layouts (Google Research)
@@ -129,13 +179,29 @@ datasets:
     repo_url: "https://github.com/google-research-datasets/clay"
     branch: "main"
     category: "mobile_ui"
-    expected_record_count: 60000        # Approximate
-    license_url: null                   # Archived repo, no explicit license file
+    expected_record_count: 59555        # CONFIRMED exact count from the paper's own abstract
+                                         # (Li et al., CHI 2022): "the CLAY dataset of 59,555
+                                         # human-annotated screen layouts."
+    license_url: "https://creativecommons.org/licenses/by/4.0/legalcode"
     license_status: "unverified"
     license_notes: >
-      Repository archived April 2026, read-only. License status unclear.
-      Contains human-annotated screen layouts from Android apps.
-      Likely to route to excluded_pending_review.
+      CORRECTED (was "unclear, likely excluded_pending_review"): the
+      paper's own copyright footer states directly "This work is licensed
+      under a Creative Commons Attribution International 4.0 License,"
+      and the umbrella google-research monorepo this dataset ships from
+      states blanket "All datasets in this repository are released under
+      the CC BY 4.0 International license." Real, findable CC BY 4.0 —
+      not indefinitely unclear. Still routed through the License Agent
+      for confirmation rather than hardcoded, since the standalone
+      google-research-datasets/clay repo (as opposed to the
+      google-research monorepo subdirectory the paper actually points to)
+      doesn't carry its own explicit LICENSE file to double-check against
+      — that specific gap is real, just narrower than "unclear" implied.
+      Repository archived April 2026, read-only — data is stable but
+      won't receive fixes. Contains human-annotated screen layouts from
+      Android apps (built on RICO), inherits RICO's own base-image
+      licensing question for the underlying screenshots even though the
+      CLAY annotations themselves are CC BY 4.0.
     fetch_config:
       file_patterns: ["*.csv", "*.json"]
 
@@ -296,20 +362,73 @@ datasets:
     license_status: "unverified"
     license_notes: "Apache 2.0, confirmed on the dataset card. Real human annotator rankings, general T2I domain."
     fetch_config:
-      file_patterns: ["*.parquet", "*.json"]
-      download_mode: "preference_pair"
+      # BUG FIX: was "preference_pair" (the fixed two-image-table mode).
+      # CONFIRMED against the live ymhao/HPDv2 dataset card: HPDv2 ships
+      # train.json as a variable-length ranked-list format
+      # (`human_preference: list[int]`, `file_path: list[str]`), not
+      # parquet and not a fixed two-column table — the generic
+      # preference_pair fetcher would have found zero *.parquet files
+      # and returned nothing. download_mode: "hpdv2_ranked_list" uses a
+      # dedicated adapter instead (see
+      # fetcher.py::_fetch_hpdv2_ranked_pairs) that flattens each
+      # prompt's ranked comparison into a winner/loser pair.
+      download_mode: "hpdv2_ranked_list"
+      annotation_file: "train.json"
       sample_size: 60000
-      # IMPORTANT — UNVERIFIED SHAPE MISMATCH: HPDv2's native annotation
-      # format (train.json: `human_preference: list[int]`, `file_path:
-      # list[str]` — a variable-length ranked list per prompt, not a fixed
-      # two-image parquet row) does NOT match the simple (image_a, image_b,
-      # label) shape _fetch_huggingface_preference_pairs auto-detects
-      # against. A parquet mirror may expose a flattened two-image view,
-      # but this was not confirmed against the live repo before this
-      # revision. Inspect the actual files before a production run; this
-      # source may need a small dedicated adapter (flatten each ranked
-      # list into consecutive winner/loser pairs) rather than the generic
-      # path — do not assume the generic fetcher will "just work" here.
+
+  gamelabel_10k:
+    display_name: "GameLabel-10K"
+    source_type: "huggingface"
+    repo_id: "Jonathan-Zhou/GameLabel-10k"
+    revision: "main"       # only used for license/metadata purposes here —
+                            # the actual fetch reads from parquet_revision
+                            # below, not this field.
+    category: "dpo_preference_general"
+    expected_record_count: 9800     # "slightly under 10 thousand labels,
+                                     # 7000 unique prompts" per the paper's
+                                     # own abstract (arXiv:2409.19830) —
+                                     # note this is real pairwise labels,
+                                     # not deduplicated final DPO pairs;
+                                     # ties (img0_votes == img1_votes,
+                                     # including 0-0) are dropped by
+                                     # _fetch_gamelabel_csv, so the actual
+                                     # written pair count will be lower.
+    license_url: "https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k"
+    license_status: "verified"
+    license_notes: >
+      Apache 2.0, confirmed on the live dataset card. Real crowdsourced
+      human preference votes (mobile-game players, rewarded with in-game
+      currency — arXiv:2409.19830), NOT AI-judge/synthetic labeling.
+      General T2I domain (game-style/illustrative prompts), same category
+      as Pick-a-Pic/HPDv2 above — supplements Stage-1 general DPO signal,
+      does not close the Stage-2 UI-domain gap (designsense_10k/designpref
+      below remain unreleased for that).
+    fetch_config:
+      # download_mode "preference_pair" does NOT work here — CONFIRMED
+      # against the live dataset (HF's own dataset-viewer output for this
+      # repo, not guessed): img0_votes/img1_votes are vote COUNTS (int,
+      # 0-5 — up to 5 players voted per pair), not a fixed 0/1 label
+      # column, and img0_encoding/img1_encoding are plain strings (a
+      # base64-encoded JPEG wrapped in a stray Python b'...' bytes-repr)
+      # rather than the standard HF {"bytes": ...} image-feature dict
+      # the generic fetcher's image-column auto-detection looks for.
+      # download_mode: "gamelabel_csv" uses a dedicated adapter instead
+      # (see fetcher.py::_fetch_gamelabel_csv) that derives a win/lose
+      # label from the vote counts (dropping ties) and decodes the real
+      # encoding.
+      download_mode: "gamelabel_csv"
+      # Reads via the "refs/convert/parquet" revision HF auto-generates
+      # for CSV-formatted dataset repos — confirmed this mirror exists
+      # for this specific repo before wiring it (its own tree listing
+      # shows "Update parquet files", a "default" subset) — rather than
+      # streaming the raw 2.26GB data.csv directly. Override
+      # parquet_revision here if that auto-conversion ever changes shape.
+      parquet_revision: "refs/convert/parquet"
+      sample_size: 20000   # real dataset is ~9800 labels total per the
+                            # paper — this cap is deliberately generous
+                            # (never binds), kept only for consistency
+                            # with the other preference-pair entries'
+                            # sample_size convention.
 
   # ---------------------------------------------------------------------
   # DPO Preference-Pair Datasets — UI/design domain. This is the actual
@@ -322,12 +441,14 @@ datasets:
   designsense_10k:
     display_name: "DesignSense-10k"
     source_type: "huggingface"
-    repo_id: null    # CONFIRMED no public dataset release found (checked
-                      # the paper directly — arXiv:2602.23438, Adobe MDSR,
-                      # Gopal et al., Feb 2026 — no HF/GitHub data link
-                      # anywhere in the paper or its listing). Re-check via
-                      # s11_registry_watcher rather than assuming this will
-                      # resolve itself.
+    repo_id: null    # RE-CONFIRMED (second check, same result): no public
+                      # dataset release found searching directly for
+                      # "DesignSense-10k huggingface dataset released
+                      # 2026" — still only the arXiv listing
+                      # (2602.23438, Adobe MDSR, Gopal et al., Feb 2026),
+                      # no HF/GitHub data link in the paper or its page.
+                      # Re-check via s11_registry_watcher rather than
+                      # assuming this will resolve itself.
     revision: "main"
     category: "dpo_preference_ui_layout"
     expected_record_count: 10235

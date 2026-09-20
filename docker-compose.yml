@@ -1,0 +1,65 @@
+version: "3.8"
+
+services:
+  inference:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.inference
+    image: krisna-inference:latest
+    container_name: krisna-inference
+    ports:
+      - "8420:8420"
+    environment:
+      - KRISNA_USE_REAL_BACKENDS=1
+      - KRISNA_LOW_VRAM_MODE=${KRISNA_LOW_VRAM_MODE:-0}
+      - KRISNA_VRAM_ENVELOPE_GB=${KRISNA_VRAM_ENVELOPE_GB:-24.0}
+      - KRISNA_RAM_ENVELOPE_GB=${KRISNA_RAM_ENVELOPE_GB:-64.0}
+      - KRISNA_BIND_HOST=0.0.0.0
+      - KRISNA_PORT=8420
+      - KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python
+    volumes:
+      - ./models:/app/models:ro
+      - ./checkpoints:/app/checkpoints:ro
+      - ./weights:/app/weights:ro
+      - ./krisna_blobs:/app/krisna_blobs
+      - ./.env.inference:/app/.env.inference:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8420/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - krisna-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    image: krisna-frontend:latest
+    container_name: krisna-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - KRISNA_BACKEND_URL=http://inference:8420
+      - KRISNA_BACKEND_HOST=inference
+      - KRISNA_BACKEND_PORT=8420
+    depends_on:
+      inference:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - krisna-network
+
+networks:
+  krisna-network:
+    driver: bridge
