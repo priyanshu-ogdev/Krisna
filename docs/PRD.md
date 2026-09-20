@@ -236,7 +236,25 @@ Deliberate, not a gap: this system's access pattern (single session, one residen
 
 ### 7.6 Observability: declared budget vs. real hardware
 
-`GET /orchestrator/status` returns both the admission ledgers' declared budgets (`vram`, `ram`) *and* live hardware probes (`real_vram`, `real_ram`, via `torch.cuda.mem_get_info()` / system memory readings).
+`GET /orchestrator/status` returns both the admission ledgers' declared budgets (`vram`, `ram`) *and* live hardware probes (`real_vram`, `real_ram`, via `torch.cuda.mem_get_info()` / system memory readings). Standard healthcheck `@app.get("/healthz")` and telemetry `@app.get("/hardware")` endpoints provide orchestrator health status to container managers and the Web Studio.
+
+### 7.7 Production Docker containerization: dual-venv isolation
+
+To resolve upstream library conflicts between the main inference tiers (`transformers>=5.2.0`, `diffusers>=0.31.0`) and the Critic tier (`transformers==5.5.0`, `unsloth`, `unsloth_zoo`), the production container (`docker/Dockerfile.inference` based on `nvidia/cuda:12.4.1-runtime-ubuntu22.04`) builds two isolated virtual environments:
+- `/opt/venv-inference`: Core SwapOrchestrator, Planner, Sketch, and Polish models.
+- `/opt/venv-critic`: Isolated Gemma 4 31B Dense evaluator.
+
+Out-of-process IPC (`subprocess.Popen([KRISNA_CRITIC_VENV_PYTHON, "critic_worker.py"])`) routes Critic passes seamlessly via `ENV KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python`, ensuring zero Python symbol collisions in production.
+
+### 7.8 Hardware & deployment preflight verification (fail-fast)
+
+When `KRISNA_USE_REAL_BACKENDS=1` is configured, `service.py` and `docker/entrypoint.sh` execute preflight verification via `krisna_inference.common.hardware` (`scripts/inference/check_hardware.py --require-gpu`). The service fails fast and halts startup if:
+1. No NVIDIA GPU or CUDA runtime is detected.
+2. GPU compute capability is below Turing (`sm_75`).
+3. Total physical VRAM is below threshold (16GB default, 11.5GB low-VRAM).
+4. Required checkpoints or isolated Critic interpreters are missing.
+
+Actionable remediation instructions (driver install, PyTorch cu124 wheels, NVIDIA Container Toolkit) are printed directly to the console. MockBackend is strictly reserved for automated testing / CI.
 
 ---
 
@@ -279,18 +297,22 @@ Every image gets a VLM-generated dense caption (Tier-1 recaptioning), but Sketch
 
 ---
 
-## 9. Known, disclosed gaps and fixes (audit history through Phase 26)
+## 9. Known, disclosed gaps and fixes (audit history through Phase 28)
 
-This PRD reflects a system whose own review process (`docs/review/`, 26 phases) has repeatedly audited data contracts and fixed bugs:
+This PRD reflects a system whose own review process (`docs/review/`, 28 phases) has repeatedly audited data contracts and fixed bugs:
 
 1. **The VQ-token → pixel handoff** (Sketch → Polish): decoded through VQGAN before Polish consumes it as a pixel image. Wired via `make_vq_decode_handoff` and auto-downloaded via `download_weights.py` (Phase 19, 22).
-2. **The safety gate**: `VerifierStack.safety_gate()` enforced in `flows.finalize()`; unsafe images roll back the stage to `sketching` and raise `FlowError` (Phase 14).
+2. **The safety gate**: `VerifierStack.safety_gate()` enforced in `flows.finalize()`; unsafe images roll back the stage to `sketching` and raise `FlowError` (Phase 14). Unsafe discarded blobs are purged from disk (Phase 27).
 3. **Raw JSON stripping in chat**: `PlannerBackend._extract_json_delta()` strips the JSON delta character span from `reply_text` before surfacing free text to the UI (Phase 19).
 4. **Multi-turn dialog memory**: `flows.conversational_turn` forwards prior turns to `PlannerBackend.run()`, which injects up to the last 6 turns into the chat template, eliminating amnesia (Phase 26).
 5. **Structured constraint delta merging**: JSON delta `constraint_updates` (`style`, `palette`, `layout_hints`, `locked_regions`) are merged into `state.constraints` (Phase 26).
 6. **Closed critic feedback loop**: `state.critique.result` is passed into `flows.conversational_turn` and formatted into the Planner's system prompt on subsequent turns (Phase 26).
 7. **Sketch prompt grounding**: `SketchBackend` enriches CLIP text conditioning with active constraints (`message (style; palette; layout)`) (Phase 26).
 8. **Finalize prompt synthesis**: `flows.finalize` derives an enriched prompt from conversation history and active constraints when none is explicitly provided (Phase 26).
+9. **Qwen3.5 PyPI native integration**: Upgraded from unreleased git-main dependency to native PyPI `transformers>=5.2.0` (Phase 27).
+10. **Polish-Quality signature introspection**: Guarded `strength` kwarg via `inspect.signature` in `polish_quality_backend.py` (Phase 27).
+11. **Production Docker containerization & multi-venv isolation**: Built dual-environment `/opt/venv-inference` and `/opt/venv-critic` in `docker/Dockerfile.inference`, with GPU Compose stack and Node 20 Web Studio container (Phase 28).
+12. **Hardware fail-fast preflight diagnostics**: Created `krisna_inference.common.hardware` and `scripts/inference/check_hardware.py`; enforced fail-fast startup checks when real backends are requested (Phase 28).
 
 ---
 
@@ -298,7 +320,7 @@ This PRD reflects a system whose own review process (`docs/review/`, 26 phases) 
 
 - A user can complete Conversing → Sketching → Finalizing → Critiquing → Iterating end to end against the real service, on the target hardware envelope (§3), without an OOM or an unhandled crash.
 - Every training signal traces to a real, cited, human-collected dataset or a frozen model — auditable against `docs/architecture/RESEARCH_AND_CITATIONS.md`.
-- The full monorepo test suite (441+ tests) passes without a GPU; GPU-dependent tests skip cleanly rather than blocking CI.
+- The full monorepo test suite (481+ tests) passes without a GPU; GPU-dependent tests skip cleanly rather than blocking CI.
 
 ---
 
@@ -341,12 +363,17 @@ krisna/
 │   ├── data-forge/            # Data pipeline architecture & source registries
 │   ├── training/              # Training runbooks
 │   ├── inference/             # Serving architecture
-│   └── review/                # 26-phase independent audit trail
+│   └── review/                # 28-phase independent audit trail
+├── docker/                    # Production containerization
+│   ├── Dockerfile.inference   # Multi-venv CUDA 12.4.1 runtime container
+│   ├── Dockerfile.frontend    # Node.js 20 Alpine Web Studio container
+│   └── entrypoint.sh          # Container hardware preflight & launcher
 ├── scripts/                   # Production scripts (Linux .sh and Windows .ps1)
 │   ├── data-forge/            # Schema validation & revision pinning
 │   ├── training/              # Training launchers & dataset sync bridges
-│   └── inference/             # Service runners & weight downloader
-├── tests/                     # Monorepo test suite (441+ tests across all engines)
+│   ├── inference/             # Service runners, weight downloader & check_hardware.py
+│   └── docker/                # Host container launchers (run_docker.sh / .ps1)
+├── tests/                     # Monorepo test suite (481+ tests across all engines)
 ├── models/                    # Trained checkpoint artifacts directory
 ├── data-forge/                # Zero-touch data pipeline: raw datasets -> model_data/
 │   ├── src/data_forge/        # 16-stage pipeline engine & orchestrator
@@ -357,11 +384,15 @@ krisna/
 ├── inference/                 # Unified Serving & Inference Subsystem
 │   ├── src/krisna_inference/  # SwapOrchestrator, real model backends, verifiers
 │   ├── frontend/              # Node Express Studio UI (Canvas2D visualizer)
-│   └── runtime/               # CLI session harness (krisna-session)
+│   ├── runtime/               # CLI session harness (krisna-session)
+│   ├── requirements-inference.txt # Core serving requirements (transformers>=5.2.0)
+│   └── requirements-critic.txt   # Isolated Critic tier requirements (transformers==5.5.0)
 ├── setup.sh                   # Phased environment setup
 ├── run_data_forge.sh / .ps1   # Master data pipeline runner
 ├── train.sh / train_all.ps1   # Master training runner
 ├── run_inference.sh / .ps1    # Master inference runner (service & frontend)
+├── docker-compose.yml         # Multi-service GPU container orchestration
+├── .dockerignore              # Clean container build rules
 └── pytest.ini                 # Monorepo test configuration
 ```
 
@@ -379,6 +410,8 @@ krisna/
 | §6.2 CFG & Muse Ramping | `backends/maskgit_model.py`, `tests/inference/test_sketch_conditioning_and_cfg.py` |
 | §7.2 Admission Ledgers | `orchestrator/vram_budget.py`, `tests/inference/test_vram_budget.py` |
 | §7.4 State Machine | `orchestrator/state_machine.py`, `tests/inference/test_state_machine.py` |
+| §7.7 Docker Isolation | `docker/Dockerfile.inference`, `tests/inference/test_docker_config.py` |
+| §7.8 Hardware Diagnostics | `common/hardware.py`, `scripts/inference/check_hardware.py`, `tests/inference/test_hardware_check.py` |
 | §8.4 Pipeline Stages | `data-forge/src/data_forge/orchestrator.py`, `pipeline.yaml` |
 | §8.5 Preference Pairs | `training/src/krisna_training/data_forge_bridge/sync_dpo_pairs.py` |
 
