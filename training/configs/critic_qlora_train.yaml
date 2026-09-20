@@ -1,0 +1,43 @@
+# ==============================================================================
+# [DEPRECATED] CRITIC QLORA CONFIG — ARCHIVAL / REFERENCE ONLY
+# ==============================================================================
+# Per the canonical Product & Research Requirements Document (§6, no-RLHF revision),
+# the Critic (Gemma 4 31B Dense) is evaluated ZERO-SHOT FROZEN at inference
+# (inference/src/krisna_inference/backends/critic_backend.py).
+#
+# Consequently:
+# 1. Data-forge does NOT generate AI-judge critique training pairs.
+# 2. The manifest_path "./data/critic_train/manifest.jsonl" is never populated.
+# 3. Training this config produces an adapter that the live inference stack cannot load.
+# 4. Do not run this config for production training.
+# ==============================================================================
+# Original architectural notes:
+# Critic tier (Gemma 4 31B Dense) QLoRA training config.
+# MUST run under ./venv-critic — see training/critic/__init__.py.
+
+manifest_path: "./data/critic_train/manifest.jsonl"
+output_dir: "./checkpoints/critic_lora"
+model_id: "unsloth/gemma-4-31B-it-unsloth-bnb-4bit"
+max_seq_length: 8192
+max_length: 4096
+
+lora_r: 16
+lora_alpha: 16
+lora_dropout: 0.0
+finetune_vision_layers: true
+finetune_language_layers: true
+finetune_attention_modules: true
+finetune_mlp_modules: true
+
+batch_size: 1
+grad_accum_steps: 8
+lr: 1.0e-4
+weight_decay: 0.01
+warmup_steps: 50
+total_steps: 2000
+grad_clip: 1.0
+
+log_every: 20
+checkpoint_every: 500
+seed: 3407
+resume_adapter_path: null

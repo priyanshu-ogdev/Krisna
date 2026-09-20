@@ -1,0 +1,27 @@
+# =============================================================================
+# Krisna Frontend -- Web Studio & Control Plane Container
+# Base: Node.js 20 on Alpine Linux
+# =============================================================================
+FROM node:20-alpine
+
+LABEL maintainer="Krisna AI Team"
+LABEL description="Production Web Studio & Control Plane for Krisna"
+
+WORKDIR /app
+
+# Install dependencies first for optimal Docker layer caching
+COPY inference/frontend/package.json inference/frontend/package-lock.json* ./
+RUN npm ci --omit=dev || npm install --omit=dev
+
+# Copy frontend source code and public assets
+COPY inference/frontend/ ./
+
+ENV PORT=3000 \
+    NODE_ENV=production \
+    KRISNA_BACKEND_URL=http://inference:8420 \
+    KRISNA_BACKEND_HOST=inference \
+    KRISNA_BACKEND_PORT=8420
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]

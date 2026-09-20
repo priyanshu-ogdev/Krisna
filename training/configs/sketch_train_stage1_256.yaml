@@ -1,0 +1,43 @@
+# Sketch tier training — Stage 1 (256px, from scratch).
+# §6.1: "small-scale, ImageNet-lineage precedent: ~2M images, 256->512px
+# progressive training" — this is stage 1 of that progression.
+
+manifest_path: "./data/sketch_train_256/manifest.jsonl"
+output_dir: "./checkpoints/sketch_stage1_256"
+
+grid_h: 16
+grid_w: 16
+vocab_size: 16384        # matches boris/vqgan_f16_16384's codebook — update if you swap tokenizers
+hidden_dim: 512
+n_layers: 12
+n_heads: 8
+ffn_dim: 2048
+dropout: 0.1
+prompt_dim: 768           # CLIP ViT-L/14 text-embedding dim
+
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.96             # Chang et al. 2022 (MaskGIT), matches TrainConfig dataclass default
+warmup_steps: 1000
+# Caption-style mixing (Betker et al. 2023, DALL-E 3 "Improving Image
+# Generation with Better Captions") and classifier-free-guidance
+# conditioning dropout (Ho & Salimans, 2022) — added during a design-sync
+# review to close a real train/inference distribution-mismatch risk: the
+# dense VLM-recaptioned text this model otherwise trains on exclusively
+# doesn't match how real users actually phrase prompts. See
+# docs/review/10_synthetic_data_generalization_fix.md.
+caption_mix_ratio: 0.95
+cfg_dropout_prob: 0.1
+total_steps: 100000
+critic_loss_weight: 0.5
+grad_clip: 1.0
+
+log_every: 50
+checkpoint_every: 2000
+num_workers: 8               # Upgraded from 4 for i9 (24 cores) + A6000 (fast numpy token loading)
+seed: 42
+
+resume_from: null
+init_from: null

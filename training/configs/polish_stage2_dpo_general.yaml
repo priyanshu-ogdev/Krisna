@@ -1,0 +1,29 @@
+# Diffusion-DPO training for Z-Image-Turbo — Stage 2: General Human Preference Alignment.
+# Canonical config path: training/configs/polish_stage2_dpo_general.yaml
+
+preference-db: "krisna_preference_pairs.db"
+blob-root: "krisna_blobs"
+pretrained-model-name-or-path: "Tongyi-MAI/Z-Image-Turbo"
+lora-adapter-path: null                          # set to base LoRA output_dir to continue DPO from fine-tuned weights
+output-dir: "models/dpo_checkpoints/stage1_general"
+source: ["pickapic_v2", "hpdv2"]                  # Real human-labeled general preference
+
+# Recipe for Stage 2 (UI-Domain DPO):
+# To train on UI-domain preference pairs (DesignSense-10k / DesignPref) once available:
+# 1. Set `lora-adapter-path: "models/dpo_checkpoints/stage1_general"`
+# 2. Set `output-dir: "models/dpo_checkpoints/stage2_domain"`
+# 3. Set `source: ["designsense_10k", "designpref"]`
+
+resolution: 512                                  # 512 deliberate for 48GB VRAM compute efficiency
+beta: 2000.0                                     # Flow-matching velocity sweep candidates: [500.0, 1000.0, 2000.0]
+fm-anchor-weight: 0.0
+learning-rate: 1e-5
+lr-warmup-steps: 100
+lr-scheduler: "constant_with_warmup"
+lora-rank: 32
+train-batch-size: 1
+gradient-accumulation-steps: 4
+max-train-steps: 1000
+checkpointing-steps: 200
+mixed-precision: "bf16"
+seed: 42

@@ -1,0 +1,17 @@
+{
+  "name": "krisna-inference-frontend",
+  "version": "0.1.0",
+  "description": "Lightweight Node.js frontend for the Krisna Swap Orchestrator (inference service) — a Setup/Install view that drives scripts/inference/download_weights.py, and a Studio view that drives the FastAPI session API.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

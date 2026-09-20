@@ -1,12 +1,12 @@
 # =============================================================================
-# Data-Forge Pipeline Configuration (v13)
+# Data-Forge Pipeline Configuration (v14 — no-RLHF revision)
 # =============================================================================
 # All paths are RELATIVE to DATA_ROOT (env var, default: /data_krisna or D:\data_krisna).
 # The orchestrator resolves them at runtime.
 # =============================================================================
 
 pipeline:
-  version: "0.13.0"
+  version: "0.14.0"
   dataset_version_prefix: "krisna_v"  # Auto-incremented: krisna_v001, krisna_v002, ...
 
 # ---------------------------------------------------------------------------
@@ -18,8 +18,14 @@ paths:
   processed:
     root: "processed/"
     latents_zimage: "processed/latents_zimage/"  # Stage 8 branch 1 (only fine-tuned renderer)
-    vq_tokens_sketch: "processed/vq_tokens_sketch/"    # Stage 8 branch 2 (ui_first only)
-    control_tokens: "processed/control_tokens/"        # Stage 8 branch 3
+    # REMOVED: vq_tokens_sketch — the maskgit_vq encoder that produced this
+    # artifact was deleted (sync audit item #1: engine.py loader always raised
+    # RuntimeError, making the entire ui_first domain fail completeness checks
+    # and produce empty sketch-tier exports). See s08_encoding.py's inline
+    # removal comment and docs/review/01_sketch_tier.md for the full history.
+    # training/data_forge_bridge/sync_sketch_tier.py re-tokenizes raw images/
+    # through the real VQTokenizer rather than reading a vq_tokens/ folder.
+    control_tokens: "processed/control_tokens/"        # Stage 8 branch 2 (was 3)
     dpo_latents: "processed/dpo_latents/"              # Stage 8.5 — DPO pair encodings
   training_pool: "training_pool/"                # Final training-ready records
   heldout: "heldout/"                            # Stage 9 eval set; also holds
@@ -95,6 +101,11 @@ stages:
     enabled: true
     face_detection_confidence: 0.5
     blur_kernel_size: 99
+    # BUG FIX: this stage previously ran with no engine and never
+    # classified preference-pair images for NSFW/harmful content — see
+    # s01_6_preference_pairs.py's module docstring. Same threshold
+    # convention as s04_safety.confidence_threshold below.
+    safety_confidence_threshold: 0.8
 
   s02_dedup:
     enabled: true
@@ -198,12 +209,26 @@ stages:
     canny_low_threshold: 50
     canny_high_threshold: 150
 
-  # New — encodes s01_6's deduped/PII-scrubbed preference pairs into
-  # Z-Image-Turbo's latent space for Diffusion-DPO. Z-Image-Turbo only —
-  # it's the sole renderer this project fine-tunes; Qwen-Image-Edit-2511
-  # is frozen. See stages/s08_5_dpo_encoding.py.
+  # Confirmed (docs/review/02_polish_tier.md, re-confirmed this pass):
+  # this stage's .safetensors output has ZERO real consumers anywhere in
+  # training/ or inference/ — train_dpo.py resolves chosen_ref/
+  # rejected_ref through the shared BlobStore and re-encodes from raw
+  # images itself (see that file's own vae.encode(batch["chosen_pixel_
+  # values"]...) call, and sync_dpo_pairs.py's docstring, which states
+  # this outright: "s08_5_dpo_encoding.py's output remains unconsumed
+  # anywhere in this project"). Same orphaned-producer shape as the
+  # maskgit_vq stage removed from s08_encoding.py — the difference is
+  # this one isn't confirmed BROKEN, just confirmed WASTED: every run
+  # spends real GPU-encode time and disk space producing latents nothing
+  # reads. Disabled by default rather than deleted outright, since unlike
+  # maskgit_vq there's a real, live option worth deciding on first: wire
+  # this into train_dpo.py as a fast-path (skip live VAE-encoding when
+  # precomputed latents already exist) rather than only ever removing it.
+  # Set enabled: true only if that wiring is added, or if you specifically
+  # want the latents for some other analysis — not for a normal run.
+  # See docs/review/15_data_forge_finalization.md.
   s08_5_dpo_encoding:
-    enabled: true
+    enabled: false
 
   s09_heldout:
     enabled: true
@@ -257,7 +282,10 @@ storage:
     # now — s08_encoding.py no longer produces this artifact for any
     # record, so there is nothing to budget storage for here. See
     # docs/DATA_COMPLETENESS.md.
-    vq_tokens_bytes: 8_192             # Variable, ~8KB average
+    # REMOVED: vq_tokens_bytes — see paths.processed comment above.
+    # No stage produces vq_tokens/ artifacts anymore; budgeting storage for
+    # them was causing the pre-flight projection to over-estimate ui_first
+    # record costs with a number that never materialised on disk.
     control_map_bytes: 4_096           # JSON + edges ~4KB
     metadata_bytes: 2_048              # Manifest row + logs
     # New — DPO preference-pair storage. Two PNG source images (~500KB

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "krisna-inference"
+version = "0.2.0"
+description = "Krisna Inference — Swap Orchestrator, Design State Manager, real model backends, and the verifier stack (final no-RLHF-loop PRD revision). Split out of krisna-orchestrator v0.1.0 as part of the training/inference separation — see docs/inference/ARCHITECTURE.md."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+# Everything needed to run the orchestrator itself, plus MockBackend —
+# no GPU or model weights required.
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+]
+# Real backends (Planner, Sketch, Polish Default/Quality) — GPU required.
+# Does NOT include the Critic — that runs in its own isolated venv (see
+# backends/critic_worker.py's module docstring for the transformers
+# version-pin conflict this exists to avoid) via
+# scripts/inference/setup_env_critic.sh, not this extra.
+backends = [
+    "torch>=2.3",
+    "transformers>=5.2.0",
+    "diffusers>=0.31",
+    "bitsandbytes>=0.43",
+    "pillow>=10.4",
+    "torchvision>=0.18",
+]
+
+[project.scripts]
+krisna-inference = "krisna_inference.orchestrator.service:main"
+krisna-session = "krisna_inference.cli:main"
+krisna-inference-cli = "krisna_inference.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+# Tests live at the monorepo root now, not nested in this package — see
+# docs/architecture/DIRECTORY_LAYOUT.md. Run pytest from the repo root
+# (krisna/), not from inference/, for this path to resolve.
+testpaths = ["../tests/inference"]

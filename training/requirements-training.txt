@@ -1,0 +1,12 @@
+# Sketch-tier training dependencies. Shares the main venv — torch is
+# already there from requirements-inference.txt.
+
+omegaconf>=2.0.0,<2.1.0   # pinned per taming-transformers' own requirement
+pyyaml>=6.0
+taming-transformers @ git+https://github.com/CompVis/taming-transformers.git
+numpy>=1.26
+pillow>=10.4
+# CLIP text embedder for prompt conditioning is reused from
+# requirements-verifiers.txt (transformers) — install that too if you want
+# real prompt conditioning during training rather than the zero-conditioning
+# fallback in train.py.

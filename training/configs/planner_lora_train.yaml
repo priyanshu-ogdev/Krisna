@@ -1,0 +1,53 @@
+# ==============================================================================
+# [DEPRECATED] PLANNER SFT CONFIG — ARCHIVAL / REFERENCE ONLY
+# ==============================================================================
+# Per the canonical Product & Research Requirements Document (§6, no-RLHF revision),
+# the Planner (Qwen3.5-9B) is kept FROZEN at inference. The live inference stack
+# (inference/src/krisna_inference/backends/planner_backend.py) relies on in-context
+# learning and UICrit RAG retrieval (planner_rag_corpus/uicrit_critiques.jsonl).
+#
+# Consequently:
+# 1. Data-forge does NOT produce or export a planner SFT dataset (s09 was deleted).
+# 2. The manifest_path "./data/planner_sft/manifest.jsonl" is never populated.
+# 3. Training this config produces an adapter that the live inference stack cannot load.
+# 4. Do not run this config for production training.
+# ==============================================================================
+# Original architectural notes:
+# Planner BF16 LoRA training — §6.1: BF16 only, never QLoRA (documented
+# degradation with Qwen3.5's hybrid Gated DeltaNet + Gated Attention arch).
+
+manifest_path: "./data/planner_sft/manifest.jsonl"
+output_dir: "./checkpoints/planner_lora"
+base_model_id: "Qwen/Qwen3.5-9B"
+max_length: 4096
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+# Standard Qwen/Llama-family attention+MLP projection names. Qwen3.5's
+# Gated DeltaNet mixer layer names have NOT been verified against these —
+# see training/planner/lora_config.py's docstring. If discover_target_modules
+# raises "no Linear modules matched", inspect list_linear_module_names(model)
+# and update this list.
+lora_target_patterns:
+  - "q_proj"
+  - "k_proj"
+  - "v_proj"
+  - "o_proj"
+  - "gate_proj"
+  - "up_proj"
+  - "down_proj"
+
+batch_size: 4
+grad_accum_steps: 4        # effective batch size 16
+lr: 1.0e-4
+weight_decay: 0.01
+warmup_steps: 100
+total_steps: 5000
+grad_clip: 1.0
+
+log_every: 20
+checkpoint_every: 500
+num_workers: 2
+seed: 42
+resume_adapter_path: null

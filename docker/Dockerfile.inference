@@ -1,0 +1,83 @@
+# =============================================================================
+# Krisna Inference -- Production GPU Container with Isolated Critic Tier
+# Base: NVIDIA CUDA 12.4.1 Runtime on Ubuntu 22.04 LTS
+# =============================================================================
+FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
+
+LABEL maintainer="Krisna AI Team"
+LABEL description="Production GPU inference container for Krisna with multi-tier venv isolation"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/opt/venv-inference/bin:/usr/local/cuda/bin:$PATH \
+    KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python \
+    KRISNA_USE_REAL_BACKENDS=1 \
+    KRISNA_BIND_HOST=0.0.0.0 \
+    KRISNA_PORT=8420
+
+# 1. Install OS packages, software-properties-common, Python 3.11, and graphics libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    curl \
+    git \
+    build-essential \
+    ffmpeg \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev \
+    python3.11-distutils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Point default python3 and python to python3.11
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+WORKDIR /app
+
+# 2. Build isolated virtual environment 1: /opt/venv-inference (Main Inference Tier)
+RUN python3.11 -m venv /opt/venv-inference \
+    && /opt/venv-inference/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/venv-inference/bin/pip install --no-cache-dir \
+        torch>=2.6.0 torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# 3. Build isolated virtual environment 2: /opt/venv-critic (Gemma-4 31B Dense + Unsloth)
+RUN python3.11 -m venv /opt/venv-critic \
+    && /opt/venv-critic/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && /opt/venv-critic/bin/pip install --no-cache-dir \
+        torch>=2.6.0 torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# 4. Copy dependency specifications and install packages into respective venvs
+COPY inference/requirements-inference.txt /tmp/requirements-inference.txt
+RUN /opt/venv-inference/bin/pip install --no-cache-dir -r /tmp/requirements-inference.txt
+
+COPY inference/requirements-critic.txt /tmp/requirements-critic.txt
+RUN /opt/venv-critic/bin/pip install --no-cache-dir -r /tmp/requirements-critic.txt
+
+# 5. Copy repo source code into container
+COPY . /app
+
+# 6. Install krisna_inference and krisna_training in editable mode inside /opt/venv-inference
+RUN /opt/venv-inference/bin/pip install --no-cache-dir -e /app/inference --no-deps \
+    && /opt/venv-inference/bin/pip install --no-cache-dir -e /app/training --no-deps
+
+# Make entrypoint script executable
+RUN chmod +x /app/docker/entrypoint.sh
+
+# Persistent volume targets for models and checkpoints
+VOLUME ["/app/models", "/app/checkpoints", "/app/krisna_blobs"]
+
+EXPOSE 8420
+
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
+CMD ["python", "-m", "krisna_inference.orchestrator.service"]
