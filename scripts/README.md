@@ -26,6 +26,7 @@ Convenience wrappers at the repository root delegating to the appropriate packag
 - **`sync_to_training.py`**: Exports processed manifests and pairs directly into training directory trees.
 - **`pin_revisions.py`**: Resolves HuggingFace dataset and model tags to immutable git commit SHAs.
 - **`verify_schemas.py`**: Validates JSON Schemas in `configs/schemas/` against Pydantic models.
+- **`inspect_hf_dataset.py`**: Queries HuggingFace datasets server API for schemas, features, and split counts.
 
 ### 2. `scripts/training/`
 - **Environment Setup**:
