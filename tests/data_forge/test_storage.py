@@ -58,3 +58,13 @@ class TestStorageManager:
         sm = StorageManager(config)
         # 10 image records * 1000 + 5 preference pairs * 750 (500+250)
         assert sm.calculate_projected_size(10, preference_pair_count=5) == 10_000 + 3_750
+
+    def test_preflight_fails_on_windows_max_path_risk(self, config: PipelineConfig):
+        from pathlib import Path
+
+        # Set an excessively long data_root that exceeds Windows safe path budget
+        config.data_root = Path("D:/" + "a" * 220)
+        sm = StorageManager(config)
+        with pytest.raises(StorageQuotaExceeded) as exc_info:
+            sm.pre_flight_check(10)
+        assert "Windows MAX_PATH risk" in str(exc_info.value)
