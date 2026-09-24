@@ -20,7 +20,7 @@ from pathlib import Path
 class SketchTokenDataset:
     def __init__(
         self, manifest_path: str | Path, grid_h: int, grid_w: int,
-        caption_mix_ratio: float = 0.85,
+        caption_mix_ratio: float = 0.95,
     ) -> None:
         """caption_mix_ratio: probability of using the dense, VLM-
         recaptioned `caption` on any given access; the complement uses
@@ -28,19 +28,25 @@ class SketchTokenDataset:
         record (silently falls back to `caption` when it doesn't, e.g.
         records with no source-dataset label at all).
 
-        Default CHANGED from 0.95 to 0.85 (semantic audit, P2a fix):
-        Betker et al. 2023's 95/5 split was validated for photo-domain
-        models where human captions are long and descriptive. Krisna's
-        Sketch tier receives raw user intent messages at inference time
-        ("make me a dark dashboard" — 5-8 words, imperative framing)
-        while training on dense VLM captions of finished screenshots
-        ("A dark settings screen with toggle switches" — descriptive,
-        pixel-level). The 15% short-caption share better regularizes
-        the model against this training/inference distribution gap
-        without fully abandoning the density that makes VLM captions
-        useful for structural grounding. See
-        docs/review/09_synthetic_data_audit.md and the semantic audit
-        docs for context.
+        KEPT at 0.95, matching the PRD (§6.2, §8.6), all four sketch
+        YAML configs, and TrainConfig's dataclass default — this
+        constructor default was the one place still disagreeing (a
+        stale P2a "fix" to 0.85 that was never applied anywhere else).
+
+        The P2a rationale's underlying worry is real (train/inference
+        caption-length mismatch: dense VLM captions vs. short imperative
+        user prompts like "make me a dark dashboard"), but its proposed
+        fix was checked against the actual source rather than trusted at
+        face value. Betker et al. 2023 (DALL-E 3) explicitly swept the
+        synthetic/short caption blend ratio and found that a very high
+        percentage of synthetic (dense) captions maximized model
+        performance — and this held even when evaluated with
+        ground-truth (short, human-style) prompts, i.e. the exact P2a
+        scenario. So more dense-caption exposure during training, not
+        less, is what the cited paper's own sweep supports. 0.95 is the
+        right ratio; cfg_dropout_prob (see make_collate_fn in train.py)
+        is the mechanism that actually protects the unconditional/
+        short-prompt path at inference.
         """
         self.manifest_path = Path(manifest_path)
         self.grid_h = grid_h

@@ -1,5 +1,6 @@
 # =============================================================================
 # Krisna Inference -- Production GPU Container with Isolated Critic Tier
+# (+ optional isolated vLLM Planner tier, see INSTALL_VLLM_PLANNER below)
 # Base: NVIDIA CUDA 12.4.1 Runtime on Ubuntu 22.04 LTS
 # =============================================================================
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
@@ -13,9 +14,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CUDA_HOME=/usr/local/cuda \
     PATH=/opt/venv-inference/bin:/usr/local/cuda/bin:$PATH \
     KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python \
+    KRISNA_PLANNER_VLLM_VENV_PYTHON=/opt/venv-planner/bin/python \
     KRISNA_USE_REAL_BACKENDS=1 \
     KRISNA_BIND_HOST=0.0.0.0 \
     KRISNA_PORT=8420
+
+# OPT-IN third venv for the vLLM Planner backend
+# (docs/review/29_vllm_planner_migration_research.md). Gated behind a
+# build ARG rather than built unconditionally: vllm==0.29.0's own wheel
+# is ~316MB before its dependency tree (torch==2.13.0, compressed-tensors,
+# flashinfer-python, triton, etc. — verified via a real `pip install
+# --dry-run` during this project's review), adding real image size and
+# build time for a feature that KRISNA_PLANNER_BACKEND (unset by default)
+# doesn't even use. Build with `--build-arg INSTALL_VLLM_PLANNER=true` to
+# include it. This mirrors the project's own discipline of never silently
+# changing defaults/costs without an explicit opt-in, extended here to
+# the build system itself.
+ARG INSTALL_VLLM_PLANNER=false
 
 # 1. Install OS packages, software-properties-common, Python 3.11, and graphics libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -57,12 +72,33 @@ RUN python3.11 -m venv /opt/venv-critic \
     && /opt/venv-critic/bin/pip install --no-cache-dir \
         torch>=2.6.0 torchvision --index-url https://download.pytorch.org/whl/cu124
 
+# 3b. Build isolated virtual environment 3: /opt/venv-planner (OPT-IN vLLM
+# Planner backend). vllm==0.29.0 requires an EXACT torch==2.13.0 (verified
+# directly from its wheel metadata) — a much stricter pin than the main
+# venv's torch>=2.6.0 or the critic venv's torch>=2.6.0, which is exactly
+# why this needs its own venv rather than joining either existing one.
+# Skipped entirely unless INSTALL_VLLM_PLANNER=true — see the ARG above.
+RUN if [ "$INSTALL_VLLM_PLANNER" = "true" ]; then \
+        python3.11 -m venv /opt/venv-planner \
+        && /opt/venv-planner/bin/pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    fi
+
 # 4. Copy dependency specifications and install packages into respective venvs
 COPY inference/requirements-inference.txt /tmp/requirements-inference.txt
 RUN /opt/venv-inference/bin/pip install --no-cache-dir -r /tmp/requirements-inference.txt
 
 COPY inference/requirements-critic.txt /tmp/requirements-critic.txt
 RUN /opt/venv-critic/bin/pip install --no-cache-dir -r /tmp/requirements-critic.txt
+
+# vllm==0.29.0 pins torch==2.13.0 exactly itself (confirmed from its own
+# wheel metadata) — no separate torch install needed here the way the
+# other two venvs do their own CUDA-indexed torch install first; letting
+# pip resolve vllm's own declared torch pin avoids a redundant, possibly
+# conflicting torch install step for this venv specifically.
+COPY inference/requirements-planner.txt /tmp/requirements-planner.txt
+RUN if [ "$INSTALL_VLLM_PLANNER" = "true" ]; then \
+        /opt/venv-planner/bin/pip install --no-cache-dir -r /tmp/requirements-planner.txt; \
+    fi
 
 # 5. Copy repo source code into container
 COPY . /app
