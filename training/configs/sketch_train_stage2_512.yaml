@@ -43,3 +43,25 @@ seed: 42
 
 resume_from: null
 init_from: "./checkpoints/sketch_stage1_256/checkpoint_final.pt"
+
+# UPGRADE (validation loop, finding #3) — see stage1's config for the
+# full rationale; unchanged for stage 2.
+val_manifest_path: null
+val_every: 1000
+val_batches: 20
+
+# UPGRADE (corpus-scale-aware steps, finding #4) — see stage1's config.
+# 1.0 for stage2 (not 2.0) since it continues from stage1's already-
+# converged weights rather than training from scratch; a full pass at
+# the 512px corpus is a reasonable continuation-style budget, not a
+# from-scratch one.
+target_epochs: 1.0
+
+# UPGRADE (generalization, this review pass): stage 2's real batch_size
+# was already halved (32->16) purely for the quadratic attention-memory
+# cost of 4x the tokens (1024 vs 256) at 512px — accumulation is free
+# VRAM-wise (it trades wall-clock time, not memory) and restores stage
+# 1's effective batch size of 32 for a comparably-noisy gradient
+# estimate across both progressive-resolution stages, on the project's
+# real A6000 48GB training target (PRD §3).
+gradient_accumulation_steps: 2

@@ -1,6 +1,22 @@
 """SQLite store for DPO preference pairs. Same threading/locking pattern as
 store.DesignStateStore — this is a local single-GPU service, not a
 distributed system.
+
+UPGRADE (training-loop review, bug found in data_forge_bridge/
+sync_dpo_pairs.py): `add()` uses `INSERT OR IGNORE` rather than a plain
+`INSERT`. `PreferencePair.id` defaults to a fresh random uuid4 per
+Python-side construction, so re-running a data-forge sync against
+already-imported source data previously created a full set of brand-new
+rows for the exact same underlying image pairs every time — silently
+duplicating a source's contribution every resync, skewing dataset size
+and per-source sampling weight. `INSERT OR IGNORE` makes `add()` safe to
+call repeatedly with the SAME id (a no-op on the second+ call) — but
+this only actually fixes the bug once the id itself is deterministic,
+which is sync_dpo_pairs.py's responsibility (derived from
+source+pair_id/image filenames there, not left as the random default).
+Runtime-labeled pairs (verifier_stack/gemma_critique/uicrit_seed) are
+unaffected — those still get a fresh random id per real labeling event,
+which is correct; they aren't being "resynced" from a stable source.
 """
 
 from __future__ import annotations
@@ -71,7 +87,7 @@ class PreferenceStore:
         with self._lock:
             self._conn.execute(
                 """
-                INSERT INTO preference_pairs
+                INSERT OR IGNORE INTO preference_pairs
                     (id, session_id, prompt, chosen_ref, rejected_ref,
                      chosen_score, rejected_score, source, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -136,6 +152,18 @@ class PreferenceStore:
             params.append(source)
         with self._lock:
             return self._conn.execute(query, params).fetchone()[0]
+
+    def exists(self, pair_id: str) -> bool:
+        """UPGRADE: lets a sync path skip re-doing image I/O (blob-store
+        writes, decode) for a pair it already imported, rather than only
+        deduping at the final INSERT step (see module docstring) — that
+        alone still leaked a fresh blob copy per resync even once the DB
+        row itself became a no-op."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM preference_pairs WHERE id = ? LIMIT 1", (pair_id,)
+            ).fetchone()
+        return row is not None
 
     def close(self) -> None:
         with self._lock:

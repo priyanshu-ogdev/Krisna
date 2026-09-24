@@ -1,18 +1,45 @@
 # Isolated venv for the Critic tier ONLY (Gemma 4 31B Dense + Unsloth).
 #
 # This is a SEPARATE venv from the main inference environment (/opt/venv-critic in Docker,
-# or ./venv-critic locally). Do NOT install into the same venv as requirements-inference.txt:
-#   - unsloth_zoo caps transformers<=5.5.0
-#   - Gemma 4 itself needs transformers>=5.5.0
-#   -> exactly transformers==5.5.0 satisfies both, pinned below
-#   - Qwen3.5 (planner tier, main venv) needs transformers>=5.2.0.
+# or ./venv-critic locally). Do NOT install into the same venv as requirements-inference.txt.
+#
+# UPDATED REASONING (this review pass — closes out
+# docs/review/27_prd_open_risks_research.md's "not yet executed" item):
+# the split is NOT because Qwen3.5 (Planner, main venv) needs an
+# incompatible git-main transformers build — that was resolved; Planner
+# now only needs transformers>=5.2.0, a tagged PyPI release. The real,
+# current reason: transformers==5.5.0 is the last version before a
+# CONFIRMED regression in bnb-4bit dequantization for Unsloth's
+# prequantized checkpoints (exactly what this tier loads) — verified via
+# unslothai/unsloth-zoo PR #1227's own measurement (352/352 modules
+# correctly dequantized on transformers 5.5.0, 0/352 on 5.17.0; tracked
+# upstream as unslothai/unsloth#9867, #10010, #10017, #10276). Holding
+# this tier at exactly 5.5.0 is deliberate regression-avoidance, and the
+# subprocess split is what lets the OTHER three tiers move onto newer
+# transformers/diffusers releases over time without this pin holding
+# them back, and without a shared-venv version bump silently re-breaking
+# this tier.
+#
+# unsloth/unsloth_zoo version floor, PINNED rather than left floating:
+# verified (unslothai/unsloth PR #11210, current as of this review pass)
+# that unsloth_zoo 2026.9.5 already declares transformers<=5.5.0 in its
+# own metadata — i.e. transformers==5.5.0 exactly is confirmed resolvable
+# against this real, dated release; earlier unsloth_zoo releases had a
+# STRICTER ceiling (transformers<=4.57.6, unslothai/unsloth#4022) that
+# would make this exact pin unresolvable. Pinning >=2026.9.5 here avoids
+# depending on "whatever pip happens to resolve today" landing on a new
+# enough release, since neither line was pinned before. unsloth's own
+# floor on unsloth_zoo>=2026.9.5 (its PR #11210) makes unsloth>=2026.9.7
+# (the matching current stable release per that same PR thread) a safe,
+# consistent pair rather than picking one arbitrarily.
+#
 # The Critic worker process talks to the parent SwapOrchestrator over stdin/stdout JSON lines
 # (see critic_worker.py) — it never imports other tiers, ensuring strict dependency isolation.
 
 transformers==5.5.0
 torch>=2.6.0
-unsloth
-unsloth_zoo
+unsloth>=2026.9.7
+unsloth_zoo>=2026.9.5
 peft>=0.13.0
 bitsandbytes>=0.43.0
 pillow

@@ -36,6 +36,12 @@ htmlcov/
 weights/*
 !weights/.gitkeep
 
+# Data-Forge DATA_ROOT default output directory (and defensive guard
+# against a platform-mismatched literal "D:\data_krisna" folder name
+# ever getting created/committed — see docs/review/26_data_root_path_consistency.md)
+data_krisna/
+D:*data_krisna*
+
 # OS generated files
 .DS_Store
 Thumbs.db

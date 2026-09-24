@@ -86,6 +86,25 @@ case "${COMMAND}" in
         ;;
     doctor)
         echo -e "${COLOR_CYAN}[*] Running pre-flight environment and toolchain validation...${COLOR_RESET}"
+        # Print the actually-resolved DATA_ROOT before anything else runs.
+        # Catches a platform-mismatched value (e.g. a literal "D:\..."
+        # string surviving on Linux/WSL2) before a multi-hour pipeline
+        # run, rather than discovering it after the fact. See
+        # docs/review/26_data_root_path_consistency.md.
+        python3 -c "
+import sys
+sys.path.insert(0, 'data-forge/src')
+from pathlib import Path
+from data_forge.config import _default_data_root
+import os
+env_root = os.environ.get('DATA_ROOT')
+resolved = Path(env_root) if env_root else _default_data_root()
+resolved = resolved.resolve()
+print(f'[doctor] Resolved DATA_ROOT: {resolved}')
+if '\\\\\\\\' in str(resolved) or (len(resolved.parts) == 1 and ':' in resolved.parts[0]):
+    print('[doctor] WARNING: this looks like an unparsed Windows-style path on a non-Windows filesystem.')
+    print('[doctor]          Check DATA_ROOT in .env — see .env.example for guidance.')
+"
         exec python -m data_forge.cli doctor
         ;;
     run)

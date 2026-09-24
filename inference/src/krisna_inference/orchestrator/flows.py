@@ -64,27 +64,26 @@ async def conversational_turn(
     planner_reply = planner_out.get("reply_text", "(planner reply)")
     state.append_turn("planner", str(planner_reply))
 
-    # Apply structured constraint updates from Planner's JSON delta
+    # Apply structured constraint updates from Planner's JSON delta —
+    # shared with swap_orchestrator.py's run_conversational_turn (see
+    # constraint_merge.py's docstring for why this now lives in one
+    # place instead of two copies that could drift).
+    from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+
     delta = planner_out.get("design_state_delta") or {}
     constraint_updates = delta.get("constraint_updates") or {}
-    if isinstance(constraint_updates, dict):
-        if "style" in constraint_updates and constraint_updates["style"] is not None:
-            state.constraints.style = str(constraint_updates["style"])
-        if "palette" in constraint_updates and isinstance(constraint_updates["palette"], list):
-            state.constraints.palette = [str(c) for c in constraint_updates["palette"]]
-        if "layout_hints" in constraint_updates and constraint_updates["layout_hints"] is not None:
-            state.constraints.layout_hints = str(constraint_updates["layout_hints"])
-        if "locked_regions" in constraint_updates and isinstance(constraint_updates["locked_regions"], list):
-            from krisna_inference.orchestrator.design_state import LockedRegion
+    original_constraints = state.constraints.model_dump()
+    merged = apply_constraint_updates(original_constraints, constraint_updates)
+    state.constraints.style = merged["style"]
+    state.constraints.palette = merged["palette"]
+    state.constraints.layout_hints = merged["layout_hints"]
+    if merged["locked_regions"] != original_constraints["locked_regions"]:
+        from krisna_inference.orchestrator.design_state import LockedRegion
 
-            new_locked = []
-            for r in constraint_updates["locked_regions"]:
-                if isinstance(r, dict) and "bbox" in r and "reason" in r:
-                    new_locked.append(LockedRegion(**r))
-                elif isinstance(r, LockedRegion):
-                    new_locked.append(r)
-            if new_locked:
-                state.constraints.locked_regions = new_locked
+        state.constraints.locked_regions = [
+            r if isinstance(r, LockedRegion) else LockedRegion(**r)
+            for r in merged["locked_regions"]
+        ]
 
     sketch_out = result.get("sketch", {})
     new_vq_ref = sketch_out.get("vq_tokens_ref")
@@ -202,6 +201,15 @@ async def finalize(
 
     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
     state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
+    # BUG FOUND ON REVIEW: this is the ONLY point in the whole flow where
+    # the real generation-time prompt (effective_prompt) is known. It was
+    # previously discarded — critique_pass() had to re-synthesize a prompt
+    # from LIVE conversation state, which may have moved on by the time
+    # critique is requested, silently mismatching the prompt stored in any
+    # resulting DPO preference pair against the image it's actually paired
+    # with. Freeze it here so later stages read back the truth instead of
+    # re-guessing it.
+    state.finalize_output.prompt_used = effective_prompt
     verifier_scores = dict(output.get("verifier_scores", {}))
 
     if verifier_stack is not None and state.finalize_output.image_ref.startswith("blob://"):
@@ -316,6 +324,32 @@ async def critique_pass(
     both `preference_store` and `compare_against` are given. Without them,
     this behaves exactly as before: critique the render, update
     DesignState, done.
+
+    CALLER CONTRACT worth stating explicitly (found while auditing for
+    prompt/image mixups): the resulting PreferencePair stores ONE prompt
+    for BOTH candidates (state.finalize_output.prompt_used, the current
+    render's actual generation prompt — see the fix in the body below).
+    Diffusion-DPO's own derivation assumes both the chosen and rejected
+    sample are conditioned on the SAME prompt/context when computing the
+    reward margin. `compare_against` is therefore only a valid partner for
+    a pair if it was ALSO generated from that same effective prompt (e.g.
+    an earlier candidate from the same iterative-refinement loop on this
+    same design intent) — not an image from a genuinely different prompt
+    or an earlier, since-changed conversation turn. Nothing in this
+    function can verify that on the caller's behalf; passing a
+    `compare_against` from a different design intent silently produces a
+    pair whose stored prompt is wrong for one of its two images, the same
+    class of mixup the prompt_used fix below closes for the OTHER side of
+    the pair.
+
+    UPGRADE: `compare_against` may now optionally include its own
+    `"prompt_used"` key (the real generation-time prompt for THAT
+    candidate, if the caller tracked one). When present,
+    build_pair_from_candidates cross-checks it against this render's own
+    `prompt_used` and raises MismatchedPromptError instead of silently
+    writing a pair with an ambiguous prompt — turning the caller-contract
+    note above from a documentation-only warning into an enforced check
+    whenever the caller has the data to make enforcement possible.
     """
     state = store.get(session_id)
     expected_rev = state.revision
@@ -372,11 +406,38 @@ async def critique_pass(
         # intent. DPO training then called encode_prompt("minimalist dark") rather
         # than the full prompt the image was actually generated from, producing a
         # poor conditioning signal. Now uses the same full synthesis as finalize().
+        #
+        # BUG FOUND ON REVIEW (a second, distinct mismatch on top of the P1 fix
+        # above): critique_pass() can run turns after finalize() — the user may
+        # have sent more chat messages in between (asking for a further revision,
+        # small talk, anything). _synthesize_dpo_prompt(state) reads
+        # state.conversation_history[-1] as of THIS call, not as of when
+        # state.finalize_output.image_ref was actually generated — so unconditionally
+        # re-synthesizing here could store a prompt describing a LATER user turn
+        # against an image generated from an EARLIER one, a real (prompt, image)
+        # mixup landing directly in DPO training data. finalize() now freezes the
+        # true generation-time prompt on state.finalize_output.prompt_used (see
+        # design_state.py); read that back instead of re-deriving it, falling back
+        # to a fresh synthesis only for a state persisted before this field existed
+        # (prompt_used is None) rather than crashing on old sessions.
         pair = build_pair_from_candidates(
             preference_store,
-            prompt=_synthesize_dpo_prompt(state),
+            prompt=state.finalize_output.prompt_used or _synthesize_dpo_prompt(state),
             candidates=[
-                {"image_ref": state.finalize_output.image_ref, "score": state.critique.result.overall_score},
+                {
+                    "image_ref": state.finalize_output.image_ref,
+                    "score": state.critique.result.overall_score,
+                    # UPGRADE (closes the caller-contract gap this
+                    # docstring used to only describe): report the
+                    # REAL generation-time prompt for this specific
+                    # candidate so build_pair_from_candidates can
+                    # actually enforce the same-prompt assumption
+                    # instead of only documenting it. If the caller's
+                    # compare_against also includes its own
+                    # "prompt_used", a mismatch is now caught and
+                    # raised rather than silently written.
+                    "prompt_used": state.finalize_output.prompt_used,
+                },
                 compare_against,
             ],
             source="gemma_critique",
