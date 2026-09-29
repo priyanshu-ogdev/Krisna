@@ -166,8 +166,46 @@ class PlannerBackend(ModelBackend):
         if self.rag_corpus_dir:
             from pathlib import Path
 
+            from krisna_inference.backends.planner_rag import resolve_embed_fn_from_env
+
             corpus_path = Path(self.rag_corpus_dir) / _RAG_CORPUS_RELATIVE_PATH
-            self._rag_index = await asyncio.to_thread(UICritRAGIndex.from_jsonl, corpus_path)
+            # UPGRADE (docs/review/31_planner_retrieval_upgrade.md): opt-in
+            # embedding-based retrieval, KRISNA_PLANNER_RAG_EMBEDDINGS=1 —
+            # see planner_rag.py's module docstring for the empirical
+            # TF-IDF failure that motivated this. Defaults to unset,
+            # meaning zero behavior change from before this pass. If
+            # enabled, a load failure here is a real configuration bug
+            # (the model ships baked into this image at build time, same
+            # as every other tier's checkpoint) — wrapped into the same
+            # BackendLoadError every other checkpoint-load failure uses,
+            # not silently swallowed into a degraded TF-IDF fallback.
+            try:
+                embed_fn = await asyncio.to_thread(resolve_embed_fn_from_env)
+            except Exception as e:
+                # BUG FOUND ON RE-REVIEW: the planner model itself
+                # (self._model/self._tokenizer) is ALREADY resident on
+                # the GPU by this point — this is a SECOND, later
+                # failure-prone step in load(), downstream of the first
+                # one succeeding. swap_orchestrator.py's own _load_one
+                # only rolls back its LEDGER bookkeeping on a raised
+                # load() (self.ledger.release(tier)) — it does NOT call
+                # unload() to free whatever the backend actually
+                # allocated. Without cleanup here, the real GPU memory
+                # for self._model would leak while the ledger's
+                # bookkeeping incorrectly believes that budget is free
+                # again — a real ledger/reality mismatch. Matches the
+                # cleanup discipline planner_backend_vllm.py's own
+                # equivalent failure path already follows (await
+                # self._kill() before raising) and critic_backend.py's
+                # established pattern of cleaning up its own partial
+                # state before re-raising, rather than relying on the
+                # orchestrator to do it.
+                await self.unload()
+                raise BackendLoadError(
+                    f"Planner RAG embedding model failed to load "
+                    f"(KRISNA_PLANNER_RAG_EMBEDDINGS=1): {e}"
+                ) from e
+            self._rag_index = await asyncio.to_thread(UICritRAGIndex.from_jsonl, corpus_path, embed_fn)
         else:
             log.warning(
                 "planner_no_rag_corpus_configured",
