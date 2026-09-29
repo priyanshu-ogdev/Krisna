@@ -108,18 +108,18 @@ def sync(
             image_a_name = meta.get("image_a")
             image_b_name = meta.get("image_b")
             if not image_a_name or not image_b_name:
-                # BUG FOUND THIS REVIEW PASS (pre-existing, unrelated to
-                # the deterministic-id fix above): this used bracket
-                # access (meta["image_a"]) unconditionally, so a
-                # metadata record that parsed as valid JSON but was
-                # missing either key would raise an uncaught KeyError
-                # here and crash the entire sync() call — losing every
-                # not-yet-processed source in the same run, not just
-                # this one malformed record. Every other malformed-input
-                # case in this same loop (bad JSON, not deduped, missing
-                # image files, missing preferred label) is already
-                # handled by skip-and-count-and-continue; this is the
-                # one path that wasn't. Fixed to match.
+                # BUG FOUND ON REVIEW (pre-existing, unrelated to the
+                # deterministic-id dedup fix above): this used bracket
+                # access (meta["image_a"]) unconditionally, so a metadata
+                # record that parsed as valid JSON but was missing either
+                # key would raise an uncaught KeyError here and crash the
+                # ENTIRE sync() call — losing every not-yet-processed
+                # source in the same run, not just this one malformed
+                # record. Every other malformed-input case in this same
+                # loop (bad JSON, not deduped, missing image files,
+                # missing preferred label) is already handled by
+                # skip-and-count-and-continue; this was the one path that
+                # wasn't. Fixed to match.
                 skipped_missing_images += 1
                 log.warning(
                     "sync_dpo_missing_image_field",

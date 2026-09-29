@@ -63,9 +63,6 @@ class PreferencePairDataset:
     from real human preference pairs recorded in the PreferenceStore.
     """
 
-    flip_prob: float = 0.0
-
-
     def __init__(
         self,
         db_path: str,

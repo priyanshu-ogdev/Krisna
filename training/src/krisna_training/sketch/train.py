@@ -32,6 +32,11 @@ class TrainConfig:
     ffn_dim: int = 2048
     dropout: float = 0.1
     prompt_dim: int = 768              # CLIP ViT-L/14 text-embedding dim by default
+    # UPGRADE (SOTA research pass): forwarded to SketchModelConfig by
+    # build_model_config() below. See that class's docstring for the
+    # full citation trail. false/10000.0 = exact prior behavior.
+    use_2d_rope: bool = False
+    rope_base: float = 10000.0
     batch_size: int = 32
     lr: float = 3e-4
     weight_decay: float = 0.01
@@ -123,6 +128,8 @@ def build_model_config(cfg: TrainConfig):
         dropout=cfg.dropout,
         prompt_dim=cfg.prompt_dim,
         use_gradient_checkpointing=cfg.use_gradient_checkpointing,
+        use_2d_rope=cfg.use_2d_rope,
+        rope_base=cfg.rope_base,
     )
 
 
@@ -263,19 +270,16 @@ def train(cfg: TrainConfig) -> None:
             # exposure the same way training does, not silently deviate.
             cfg.caption_mix_ratio,
         )
-        # BUG FOUND THIS REVIEW PASS: this empty-manifest guard existed in
-        # an earlier draft of this validation loop but was dropped when
-        # val_dataset/val_loader construction got split across two
-        # places during the target_epochs refactor. Without it, an empty
+        # BUG FOUND ON REVIEW: this empty-manifest guard existed in an
+        # earlier draft of this validation loop but was dropped when
+        # val_dataset/val_loader construction got split across two places
+        # during the target_epochs refactor. Without it, an empty
         # val_manifest_path (0 usable records — e.g. data-forge's heldout
         # sync hasn't run yet, or a bad path) silently built an empty
         # DataLoader; _run_validation's own `n_batches = max(1, n_batches)`
         # guard against a ZeroDivisionError would then report a fake,
         # suspiciously-perfect "val_loss: 0.0" every single validation
-        # step instead of skipping validation and saying so loudly — the
-        # exact kind of silent-degradation this project's own review
-        # discipline (e.g. docs/review/13, /16, /19) repeatedly commits
-        # to catching instead of shipping.
+        # step instead of skipping validation and saying so loudly.
         if len(val_dataset) == 0:
             log.warning(
                 "val_manifest_empty",
@@ -332,16 +336,26 @@ def train(cfg: TrainConfig) -> None:
             resumed_model_cfg.mask_token_id != model_cfg.mask_token_id
             or resumed_model_cfg.grid_h != model_cfg.grid_h
             or resumed_model_cfg.grid_w != model_cfg.grid_w
+            # UPGRADE (SOTA research pass): use_2d_rope changes the actual
+            # module graph (RotaryMultiheadSelfAttention layers + no
+            # pos_embed parameter, vs. nn.TransformerEncoder + pos_embed)
+            # — a mismatch here isn't a subtly-wrong-but-loadable config,
+            # it's a state_dict key mismatch that load_state_dict(strict=True)
+            # would fail on outright. Caught here for the same reason as
+            # mask_token_id/grid above: fail with a clear message instead
+            # of a confusing raw key-mismatch traceback three lines deeper.
+            or resumed_model_cfg.use_2d_rope != model_cfg.use_2d_rope
         ):
             raise ValueError(
                 f"Resume config mismatch: checkpoint at {cfg.resume_from} was trained with "
                 f"mask_token_id={resumed_model_cfg.mask_token_id}, grid={resumed_model_cfg.grid_h}x"
-                f"{resumed_model_cfg.grid_w}, but the current YAML config produces "
-                f"mask_token_id={model_cfg.mask_token_id}, grid={model_cfg.grid_h}x{model_cfg.grid_w}. "
-                "Resuming would silently mask/collate against the wrong vocabulary/grid. "
-                "Fix the YAML to match the checkpoint's real config, or use init_from "
-                "(progressive-resolution init) instead of resume_from if you deliberately "
-                "changed grid size."
+                f"{resumed_model_cfg.grid_w}, use_2d_rope={resumed_model_cfg.use_2d_rope}, but the "
+                f"current YAML config produces mask_token_id={model_cfg.mask_token_id}, "
+                f"grid={model_cfg.grid_h}x{model_cfg.grid_w}, use_2d_rope={model_cfg.use_2d_rope}. "
+                "Resuming would silently mask/collate against the wrong vocabulary/grid, or fail "
+                "to load a mismatched architecture. Fix the YAML to match the checkpoint's real "
+                "config, or use init_from (progressive-resolution init) instead of resume_from if "
+                "you deliberately changed grid size."
             )
         model_cfg = resumed_model_cfg
         model.to(device)

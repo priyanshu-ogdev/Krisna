@@ -215,6 +215,46 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--val-every", type=int, default=100, help="Run heldout implicit-reward-margin eval every N optimizer steps. 0 disables validation.")
     p.add_argument("--val-batches", type=int, default=20, help="Cap on validation batches per eval call — mirrors sketch/train.py's val_batches for the same reason (a monitoring signal, not a full pass every time).")
     p.add_argument(
+        "--repa-weight", type=float, default=0.0,
+        help=(
+            "UPGRADE (SOTA research pass): REPA auxiliary loss weight "
+            "(lambda in the paper's L_diffusion + lambda * L_REPA; the "
+            "official REPA repo's own default is 0.5). 0.0 = disabled "
+            "(default, no behavior change) — see polish/repa.py's module "
+            "docstring for the full method, citation (Yu et al. 2024, "
+            "arXiv:2410.06940), and an explicit note on why this "
+            "project's short DPO fine-tune is an honest extrapolation "
+            "from the paper's from-scratch-pretraining regime, not a "
+            "guaranteed-by-the-paper win. Requires --repa-hook-module."
+        ),
+    )
+    p.add_argument(
+        "--repa-hook-module", type=str, default=None,
+        help=(
+            "Dotted path to a real intermediate submodule of the policy "
+            "transformer to hook for REPA (e.g. 'transformer_blocks.8'). "
+            "REQUIRED if --repa-weight > 0 — this project has no "
+            "verified knowledge of Z-Image-Turbo's real internal module "
+            "names, so this is never guessed; inspect the real loaded "
+            "transformer (e.g. print(policy_pipe.transformer)) to find "
+            "a real path before setting this."
+        ),
+    )
+    p.add_argument(
+        "--repa-encoder", type=str, default="facebook/dinov2-base",
+        help=(
+            "HF repo id for the frozen self-supervised encoder REPA "
+            "aligns against. Default verified via HF's own model docs "
+            "before use (hidden_size=768, patch_size=14) — same "
+            "verification standard as this project's other real model "
+            "identifiers (e.g. vq_tokenizer.py's checkpoint sourcing)."
+        ),
+    )
+    p.add_argument(
+        "--repa-image-size", type=int, default=224,
+        help="Resolution the frozen REPA encoder sees, independent of --resolution (the diffusion training resolution) — see polish/repa.py's preprocess_for_dinov2 docstring.",
+    )
+    p.add_argument(
         "--target-passes", type=float, default=None,
         help=(
             "UPGRADE (finding #4): when set, --max-train-steps is IGNORED "
@@ -514,6 +554,88 @@ def main() -> int:
         policy_transformer, optimizer, dataloader, lr_scheduler
     )
 
+    # UPGRADE (SOTA research pass): REPA (Yu et al. 2024, arXiv:2410.06940)
+    # — see polish/repa.py's module docstring for the full method and an
+    # explicit statement of what's verified vs. extrapolated here.
+    # Disabled by default (--repa-weight 0.0); this whole block is a no-op
+    # in that case, exactly preserving prior behavior.
+    _repa_encoder = None
+    _repa_state = {"proj_head": None, "proj_optimizer": None, "captured": None, "hook_handle": None}
+    if args.repa_weight > 0.0:
+        if not args.repa_hook_module:
+            raise ValueError(
+                "--repa-weight > 0 requires --repa-hook-module (a real dotted path into the "
+                "policy transformer to hook) — this project has no verified knowledge of "
+                "Z-Image-Turbo's real internal module names, so this is never guessed. "
+                "Inspect the real loaded transformer to find a real path first."
+            )
+        from transformers import AutoModel
+
+        from krisna_training.polish.repa import resolve_submodule
+
+        _repa_encoder = AutoModel.from_pretrained(args.repa_encoder)
+        _repa_encoder.requires_grad_(False)
+        _repa_encoder.eval()
+        # Cast to match the rest of this pipeline's mixed-precision dtype
+        # — DINOv2 is frozen/inference-only here, so bf16 costs no
+        # training-stability risk the way it might for a trained module.
+        _repa_encoder.to(accelerator.device, dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float32)
+
+        _hook_target = resolve_submodule(accelerator.unwrap_model(policy_transformer), args.repa_hook_module)
+
+        def _repa_capture_hook(module, inputs, output):
+            # Some transformer block implementations return a tuple
+            # (hidden_states, ...) rather than a bare tensor — take the
+            # first element defensively rather than assuming a plain
+            # tensor output, since this hook point is user-supplied and
+            # unverified against Z-Image-Turbo's real block signature.
+            _repa_state["captured"] = output[0] if isinstance(output, tuple) else output
+
+        _repa_state["hook_handle"] = _hook_target.register_forward_hook(_repa_capture_hook)
+        log.info("repa_enabled", extra={"hook_module": args.repa_hook_module, "encoder": args.repa_encoder, "weight": args.repa_weight})
+
+    def _repa_loss_for(pixel_values_neg1_to_1: "torch.Tensor") -> "torch.Tensor | None":
+        """Call immediately after the policy_transformer forward pass
+        whose hidden state this should align (the hook has already fired
+        by the time this runs, since it's a post-forward hook) —
+        `pixel_values_neg1_to_1` is the CLEAN image corresponding to that
+        exact forward pass (chosen or rejected), not the noisy latent."""
+        if _repa_encoder is None or _repa_state["captured"] is None:
+            return None
+        from krisna_training.polish.repa import (
+            RepaProjectionHead,
+            align_patch_grids,
+            preprocess_for_dinov2,
+            repa_loss,
+        )
+
+        h_t = _repa_state["captured"]  # [B, N_model, hidden_dim] — expected rank; see note below
+        if h_t.dim() != 3:
+            # Defensive: if the hooked module's real output shape doesn't
+            # match the [B, N, D] this loss assumes, fail loudly rather
+            # than silently mis-computing a loss over the wrong axes —
+            # exactly the risk --repa-hook-module's docstring warns about.
+            raise ValueError(
+                f"--repa-hook-module {args.repa_hook_module!r} produced output of shape "
+                f"{tuple(h_t.shape)} — REPA expects a 3D [batch, sequence, hidden_dim] hidden "
+                "state. Pick a different hook point (e.g. a block BEFORE any final reshape "
+                "back to a spatial/latent layout)."
+            )
+
+        with torch.no_grad():
+            dino_input = preprocess_for_dinov2(pixel_values_neg1_to_1, size=args.repa_image_size)
+            y_star = _repa_encoder(dino_input.to(_repa_encoder.dtype)).last_hidden_state[:, 1:, :]  # drop CLS
+
+        if _repa_state["proj_head"] is None:
+            proj_head = RepaProjectionHead.build(h_t.shape[-1], y_star.shape[-1]).to(accelerator.device)
+            _repa_state["proj_head"] = proj_head
+            _repa_state["proj_optimizer"] = torch.optim.AdamW(proj_head.parameters(), lr=args.learning_rate)
+            log.info("repa_projection_head_built", extra={"in_dim": h_t.shape[-1], "out_dim": y_star.shape[-1]})
+
+        h_proj = _repa_state["proj_head"](h_t.to(next(_repa_state["proj_head"].parameters()).dtype))
+        y_star_aligned = align_patch_grids(y_star.to(h_proj.dtype), target_len=h_proj.shape[1])
+        return repa_loss(h_proj, y_star_aligned)
+
     # UPGRADE (finding #5): EMA of the trainable (LoRA) parameters.
     # Standard usage — the live weights are always what's optimized and
     # used for the forward passes below; the EMA shadow is only read at
@@ -679,7 +801,11 @@ def main() -> int:
                 # `.sample` output — verify against Z-Image-Turbo's real
                 # transformer class before a production run.
                 policy_v_chosen = policy_transformer(noisy_chosen, sigma_chosen.flatten(), prompt_embeds).sample
+                # Read the hook's capture IMMEDIATELY — the very next
+                # forward call (rejected) overwrites _repa_state["captured"].
+                repa_loss_chosen = _repa_loss_for(batch["chosen_pixel_values"]) if _repa_encoder is not None else None
                 policy_v_rejected = policy_transformer(noisy_rejected, sigma_rejected.flatten(), prompt_embeds).sample
+                repa_loss_rejected = _repa_loss_for(batch["rejected_pixel_values"]) if _repa_encoder is not None else None
                 with torch.no_grad():
                     # Swap ref_transformer onto the accelerator device only
                     # for this forward call, then back to CPU immediately.
@@ -695,7 +821,19 @@ def main() -> int:
                     beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
                 )
 
-                accelerator.backward(out.loss)
+                total_loss = out.loss
+                repa_loss_value = None
+                if repa_loss_chosen is not None and repa_loss_rejected is not None:
+                    # UPGRADE (SOTA research pass): averaged across BOTH
+                    # sides of the pair rather than just one — REPA's
+                    # spirit (well-aligned internal representations) has
+                    # no reason to apply to only chosen or only rejected;
+                    # both are real images the policy transformer forward-
+                    # passes on every step, so both get the signal.
+                    repa_loss_value = (repa_loss_chosen + repa_loss_rejected) / 2.0
+                    total_loss = total_loss + args.repa_weight * repa_loss_value
+
+                accelerator.backward(total_loss)
                 if accelerator.sync_gradients and args.max_grad_norm > 0.0:
                     # UPGRADE (finding #6): previously no clipping at all in
                     # this loop. Only meaningful once grads are fully
@@ -706,9 +844,18 @@ def main() -> int:
                         [p for p in policy_transformer.parameters() if p.requires_grad],
                         args.max_grad_norm,
                     )
+                    if _repa_state["proj_head"] is not None:
+                        # REPA's projection head is a plain torch.nn.Module,
+                        # never passed through accelerator.prepare() (it's
+                        # built lazily, after prepare() already ran) — clip
+                        # it with plain torch, same discipline, own optimizer.
+                        torch.nn.utils.clip_grad_norm_(_repa_state["proj_head"].parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad(set_to_none=True)
+                if _repa_state["proj_optimizer"] is not None:
+                    _repa_state["proj_optimizer"].step()
+                    _repa_state["proj_optimizer"].zero_grad(set_to_none=True)
 
             if accelerator.sync_gradients:
                 _update_ema(global_step)
@@ -723,6 +870,7 @@ def main() -> int:
                         extra={
                             "step": global_step,
                             "loss": out.loss.item(),
+                            "repa_loss": repa_loss_value.item() if repa_loss_value is not None else None,
                             "dpo_term": out.dpo_term.item(),
                             "fm_anchor_term": out.fm_anchor_term.item(),
                             # The real signal to watch, per dpo_loss.py's
@@ -757,7 +905,13 @@ def main() -> int:
                     break
 
     _save_adapter(str(output_dir / "final"), use_ema=True)
-    log.info("dpo_training_complete", extra={"output_dir": str(output_dir), "used_ema": ema_params is not None})
+    if _repa_state["hook_handle"] is not None:
+        # Cleanup — not strictly required since the process exits right
+        # after, but correct hygiene if this ever runs inside a longer-
+        # lived process (e.g. a notebook or a future multi-run script)
+        # rather than as a standalone CLI invocation.
+        _repa_state["hook_handle"].remove()
+    log.info("dpo_training_complete", extra={"output_dir": str(output_dir), "used_ema": ema_params is not None, "repa_enabled": _repa_encoder is not None})
     return 0
 
 
