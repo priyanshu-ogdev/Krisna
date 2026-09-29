@@ -1,17 +1,5 @@
 # Phase 6 — Inference Orchestrator (SwapOrchestrator, VRAM/RAM budget, model registry)
 
-> **RESOLVED (post-Phase-6 follow-up session):** the "Low" severity
-> zero-headroom finding below is now correctly documented in code —
-> `vram_budget.py`'s `_BaseLedger.safety_margin_gb` docstring previously
-> claimed `VRAMLedger` sets a non-zero default, which was simply false
-> (no such override existed anywhere, confirmed by grep across the whole
-> `inference/` tree). The comment has been corrected to state the actual,
-> deliberate design: both ledgers default to `0.0`, opt-in only, because
-> a nonzero default would make the Critic low-VRAM tier permanently
-> inadmissible. See `docs/review/12_post_upgrade_resync_audit.md` §2.
-> This was a documentation-accuracy bug, not a behavior bug — the
-> zero-headroom sizing itself was already correct as designed.
-
 ## Architecture — sound design, verified against real files
 - `_BaseLedger` (shared accounting for `VRAMLedger`/`RAMLedger`) is a genuine shared base class, not copy-pasted twice — a fix to admit/release/would_fit logic fixes both ledgers at once. Real, verified in code, not just claimed in a docstring.
 - Admission decisions are based on the **declared** ledger (`ModelSpec.vram_gb`), not a live `torch.cuda` probe — `probe_real_vram()`/`probe_real_ram()` exist purely for diagnostics/logging, explicitly never used for admission. This is the right call for CI-testability and deterministic behavior; verified this separation is real, not just asserted.

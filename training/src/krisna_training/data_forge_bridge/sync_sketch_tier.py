@@ -56,7 +56,7 @@ def sync(
     # `image_filename` field) fall back to the old stem-based behavior
     # with a loud warning, rather than silently producing empty captions
     # again on a stale export.
-    captions_by_filename: dict[str, str] = {}
+    captions_by_filename: dict[str, dict] = {}
     legacy_captions_by_record: dict[str, str] = {}
     saw_legacy_entry = False
     if captions_path.exists():
@@ -67,7 +67,16 @@ def sync(
                     continue
                 rec = json.loads(line)
                 if "image_filename" in rec and rec["image_filename"]:
-                    captions_by_filename[rec["image_filename"]] = rec.get("caption", "")
+                    captions_by_filename[rec["image_filename"]] = {
+                        "caption": rec.get("caption", ""),
+                        # Added alongside the caption-mixing fix (see
+                        # dataset.py) — the original, short, human/
+                        # source-dataset caption, carried through so it
+                        # can be mixed in during training rather than
+                        # discarded after only being used as a prompt
+                        # hint inside data-forge's s05_recaption.py.
+                        "source_caption": rec.get("source_caption"),
+                    }
                 else:
                     saw_legacy_entry = True
                     legacy_captions_by_record[rec["record_id"]] = rec.get("caption", "")
@@ -99,8 +108,11 @@ def sync(
     matched_captions = 0
     with manifest_path.open("w") as manifest_file:
         for i, image_path in enumerate(image_paths):
+            source_caption = None
             if image_path.name in captions_by_filename:
-                caption = captions_by_filename[image_path.name]
+                entry = captions_by_filename[image_path.name]
+                caption = entry["caption"]
+                source_caption = entry.get("source_caption")
                 matched_captions += 1
             else:
                 # Legacy fallback only — see the warning above. Kept so a
@@ -121,7 +133,10 @@ def sync(
             token_file = f"tokens/{i:07d}.npy"
             np.save(tokens_dir / f"{i:07d}.npy", np.array(tokens, dtype="int32"))
             manifest_file.write(
-                json.dumps({"tokens_path": token_file, "caption": caption, "source_image": str(image_path)}) + "\n"
+                json.dumps({
+                    "tokens_path": token_file, "caption": caption,
+                    "source_caption": source_caption, "source_image": str(image_path),
+                }) + "\n"
             )
             written += 1
 

@@ -3,13 +3,17 @@
 `dpo.preference_store.PreferenceStore` as real `PreferencePair` rows.
 
 Reads the PRE-latent-encoding stage (data-forge's `s01_6_preference_pairs`
-output), not `s08_5_dpo_encoding.py`'s `.safetensors` latents — this
-project has no DPO trainer yet that consumes Z-Image-Turbo latents
-directly (see `dpo/__init__.py`), so importing actual images (via
-BlobStore, same as every other image ref in this project) is what's
-immediately useful: it makes `dpo_dataset_export.py`'s existing JSONL
-export work with real, human-labeled external data today, rather than
-waiting on a latent-consuming trainer that doesn't exist yet.
+output), not `s08_5_dpo_encoding.py`'s `.safetensors` latents. This is
+still correct even now that `polish/train_dpo.py` exists as the real DPO
+trainer: `train_dpo.py` resolves `chosen_ref`/`rejected_ref` through the
+shared `BlobStore` too, i.e. it also consumes images and encodes them
+itself at train time, not `s08_5_dpo_encoding.py`'s precomputed latents
+— so importing images here (rather than waiting on a latent-consuming
+path) is still the right call, just for a different reason than
+originally written: not because no trainer exists, but because the real
+trainer doesn't consume that artifact either. (`s08_5_dpo_encoding.py`'s
+output remains unconsumed anywhere in this project — see
+`docs/review/02_polish_tier.md` for the full design-sync review of this.)
 """
 
 from __future__ import annotations

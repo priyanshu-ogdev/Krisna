@@ -19,6 +19,15 @@ batch_size: 32
 lr: 3.0e-4
 weight_decay: 0.01
 warmup_steps: 1000
+# Caption-style mixing (Betker et al. 2023, DALL-E 3 "Improving Image
+# Generation with Better Captions") and classifier-free-guidance
+# conditioning dropout (Ho & Salimans, 2022) — added during a design-sync
+# review to close a real train/inference distribution-mismatch risk: the
+# dense VLM-recaptioned text this model otherwise trains on exclusively
+# doesn't match how real users actually phrase prompts. See
+# docs/review/10_synthetic_data_generalization_fix.md.
+caption_mix_ratio: 0.95
+cfg_dropout_prob: 0.1
 total_steps: 100000
 critic_loss_weight: 0.5
 grad_clip: 1.0

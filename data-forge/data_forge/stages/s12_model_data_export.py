@@ -154,7 +154,27 @@ class ModelDataExportStage(Stage):
                     link_or_copy(src, model_dir / "images" / src.name)
                     images_linked += 1
                     image_filename = src.name
-            captions.append({"record_id": rec.id, "caption": rec.caption, "image_filename": image_filename})
+            captions.append({
+                "record_id": rec.id, "caption": rec.caption,
+                "image_filename": image_filename,
+                # Added: previously only the dense recaptioned `caption`
+                # was exported, and the original source dataset's own
+                # label (used only as a prompt *hint* inside
+                # s05_recaption.py, then discarded) never reached
+                # training at all. That made it impossible to do the
+                # caption-style mixing DALL-E 3's "Improving Image
+                # Generation with Better Captions" (Betker et al., 2023)
+                # found necessary — mixing a minority of real, short,
+                # human-style captions in with dense synthetic ones
+                # specifically regularizes against the model overfitting
+                # to the VLM captioner's own phrasing/length distribution,
+                # which is not what real users type at inference time.
+                # See docs/review/09_synthetic_data_audit.md and
+                # docs/review/10_synthetic_data_generalization_fix.md for
+                # the full writeup. `None` when the source dataset had no
+                # caption/label of its own (e.g. some WebUI records).
+                "source_caption": rec.source_caption,
+            })
 
         (model_dir / "captions.jsonl").write_text(
             "\n".join(json.dumps(c) for c in captions), encoding="utf-8"

@@ -96,7 +96,7 @@ def compare(filename: str, static: dict, generated: dict) -> list[str]:
 
 
 def main() -> None:
-    base_dir = Path(__file__).parent.parent
+    base_dir = Path(__file__).parent.parent.parent / "data-forge"
     schemas_dir = base_dir / "configs" / "schemas"
 
     mismatches = 0

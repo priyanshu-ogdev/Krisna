@@ -290,36 +290,6 @@ number).
 
 ---
 
-## 5. Open questions this project deliberately leaves open
-
-Documented here rather than silently resolved one way or the other:
-
-- **4-bit inference quality for the Planner (Qwen3.5-9B) is unvalidated.**
-  The training-time QLoRA degradation finding (§3.3) does not by itself
-  say anything about inference-time NF4 quality — that's a different,
-  separate, still-open question.
-- **`KRISNA_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
-  for `QwenImageEditPlusPipeline` specifically.** Confirmed real for
-  `QwenImageImg2ImgPipeline`/`QwenImageInpaintPipeline` — architecturally
-  different pipeline classes. If the installed diffusers version rejects
-  this kwarg, it raises a clear `TypeError` at call time rather than
-  silently no-op'ing; check the real `__call__` signature before relying
-  on this in production.
-- **Region-locking in `polish_quality_backend.py`** is currently expressed
-  as a prompt-level instruction, not a genuine differential-diffusion
-  mask parameter — diffusers' locked-region API for this pipeline family
-  was still moving as of this build.
-- **`train_dpo.py`'s `encode_prompt()` return shape and the transformer's
-  forward-call signature are not independently verified against
-  Z-Image-Turbo's specific pipeline class** — flagged inline in the code
-  itself (same discipline as the `strength` kwarg above). The loss math
-  driving the training loop is verified (§4.5 below); this specific
-  pipeline-calling-convention detail is not, and needs a real
-  `Tongyi-MAI/Z-Image-Turbo` pipeline inspection to nail down before a
-  production run.
-
----
-
 ## 4.5 Diffusion-DPO for a flow-matching model — closing a previously-open gap
 
 **The gap, as it stood**: `training/src/krisna_training/dpo/` built and
@@ -384,6 +354,38 @@ sweep).
 ---
 
 ## 5. Open questions this project deliberately leaves open
+
+Documented here rather than silently resolved one way or the other:
+
+- **4-bit inference quality for the Planner (Qwen3.5-9B) is unvalidated.**
+  The training-time QLoRA degradation finding (§3.3) does not by itself
+  say anything about inference-time NF4 quality — that's a different,
+  separate, still-open question.
+- **`KRISNA_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
+  for `QwenImageEditPlusPipeline` specifically.** Confirmed real for
+  `QwenImageImg2ImgPipeline`/`QwenImageInpaintPipeline` — architecturally
+  different pipeline classes. If the installed diffusers version rejects
+  this kwarg, it raises a clear `TypeError` at call time rather than
+  silently no-op'ing; check the real `__call__` signature before relying
+  on this in production.
+- **Region-locking in `polish_quality_backend.py`** is currently expressed
+  as a prompt-level instruction, not a genuine differential-diffusion
+  mask parameter — diffusers' locked-region API for this pipeline family
+  was still moving as of this build.
+- **`train_dpo.py`'s `encode_prompt()` return shape and the transformer's
+  forward-call signature are not independently verified against
+  Z-Image-Turbo's specific pipeline class** — flagged inline in the code
+  itself (same discipline as the `strength` kwarg above). The loss math
+  driving the training loop is verified (§4.5 below); this specific
+  pipeline-calling-convention detail is not, and needs a real
+  `Tongyi-MAI/Z-Image-Turbo` pipeline inspection to nail down before a
+  production run.
+
+---
+
+---
+
+## 6. Sources verified in this document
 
 | Source | What it verified |
 |---|---|

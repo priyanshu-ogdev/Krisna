@@ -16,6 +16,13 @@
 - **`training/`** — points to `../training/README.md` (the package's own
   README is the primary doc; nothing duplicated here).
 - **`inference/`** — points to `../inference/README.md` likewise.
+- **`review/`** — an independent, phase-by-phase design-sync audit
+  (data↔training↔inference consistency, hyperparameters vs. published
+  precedent, real vs. synthetic data tracing, VRAM/orchestrator
+  correctness) with every fix applied during the review verified
+  against the repo's real test suite where one exists. Start at
+  `review/README.md` for the index; `review/07_consolidated_citations.md`
+  is the paper-ready bibliography plus the full open-action rollup.
 
 Each package's own `README.md` is the source of truth for that package —
 this `docs/` tree holds cross-cutting design docs that don't belong to
