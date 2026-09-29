@@ -38,7 +38,7 @@ renumber pass before this doc goes into a paper's appendix.
 18. UICrit — `google-research-datasets/uicrit`, CC BY-ND.
 
 **Phase 4 — Critic (Gemma 4 31B, frozen)**
-19. Gemma Team, Google DeepMind — Gemma model family (needs a specific Gemma-4 primary source before this goes in the paper; not independently verified in this review).
+19. ~~Gemma Team, Google DeepMind — Gemma model family (needs a specific Gemma-4 primary source before this goes in the paper; not independently verified in this review).~~ **Superseded by #26 below (Phase 12) — primary source now confirmed.**
 20. Unsloth — VLM LoRA fine-tuning API documentation (relevant only if the deprecated Critic-training path is ever revived).
 
 **Phase 5 — Data pipeline**
@@ -51,6 +51,11 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 21. Betker, J., Goh, G., Jing, L., Brooks, T., Wang, J., Li, L., Ouyang, L., Zhuang, J., Lee, J., Guo, Y., Manassra, W., Dhariwal, P., Chu, C., Jiao, Y., & Ramesh, A. (2023). *Improving Image Generation with Better Captions* (DALL-E 3 technical report). OpenAI. — Source of the 95%/5% synthetic/ground-truth caption mixing ratio implemented in this pass.
 22. Ho, J., & Salimans, T. (2022). *Classifier-Free Diffusion Guidance*. arXiv:2207.12598. — Source of the classifier-free-guidance conditioning-dropout mechanism (`cfg_dropout_prob=0.1`) implemented in this pass.
 23. Wang, B., Li, G., Zhou, X., Chen, Z., Grossman, T., & Li, Y. (2021). *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. UIST 2021. — Source of the 6.57-word average source-caption length that justifies `s05_recaption` existing at all.
+
+**Phase 12 fixes — post-upgrade resync audit (`12_post_upgrade_resync_audit.md`)**
+24. Qwen Team, Alibaba (2026-03-02). *Qwen3.5 Small Model Series (0.8B/2B/4B/9B) release notes.* Hugging Face / ModelScope. — Confirms Phase 3's Qwen3.5-9B identification and architecture claims (hybrid Gated DeltaNet + Gated Attention, native multimodal); no correction needed, cited as the dated primary release record.
+25. Tongyi-MAI, Alibaba (2025). *Z-Image: An Efficient Image Generation Foundation Model with Single-Stream Diffusion Transformer.* Technical report, `github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`. — Primary source for Decoupled-DMD/DMDR distillation and the S3-DiT architecture underlying the Polish-Default tier; upgrades Phase 2's Z-Image-Turbo citation from secondary coverage to a verified primary report.
+26. Google DeepMind (2026). *Gemma 4.* Official model page, `deepmind.google/models/gemma/gemma-4/`; documentation at `ai.google.dev/gemma/docs`. — Closes Phase 4's previously-unresolved citation gap (#19 above) for the Critic tier's base model.
 
  not re-derived here, but load-bearing for the paper:** PD12M (`Spawning/PD12M`), TASTE (`purvanshi/TASTE`), PartiPrompts (`nateraw/parti-prompts`), GameLabel-10K, and the full §3/§4 model-stack and low-VRAM-mode writeups — all independently verified in earlier project work per that doc's own account, cross-checked spot-fashion against this review's own independent findings (e.g. §3.3's Qwen3.5 NF4 bug matches Phase 3's independent finding; §4.5's Diffusion-DPO-for-flow-matching writeup matches Phase 2's independent finding) with **no contradictions found** between the two efforts.
 
@@ -79,11 +84,18 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | — | **Sandbox environment: `torch` was uninstallable** (disk space), blocking real verification of the Sketch tier fixes | **Fixed** — diagnosed as a stale partial install from an earlier failed attempt; cleaned up, freed 3.2GB, reinstalled cleanly from PyPI. All 246 tests in `tests/training/` + `tests/inference/` now pass for real. |
 | 1/synthetic | Recaptioning's original `source_caption` was discarded before reaching training, making caption-style mixing impossible | **Fixed** — `s12_model_data_export.py` → `sync_sketch_tier.py` → `dataset.py`, 95/5 mix ratio per Betker et al. 2023 (DALL-E 3), tested against the real `SketchTokenDataset` code with a synthetic manifest (realized ratio 0.9489 vs. 0.95 target) |
 | 1/synthetic | No classifier-free-guidance conditioning dropout existed anywhere in Sketch tier training | **Fixed** — `make_collate_fn`'s new `cfg_dropout_prob=0.1` (Ho & Salimans, 2022), formula-validated on synthetic embedding data (realized rate 0.1009 vs. 0.10 target) |
+| 12 | `maskgit_vq` dead stage was silently causing `is_encoding_complete()` to be False for every `ui_first` record — empty Sketch-tier exports, full domain wrongly held out, on every run | **Fixed** — see `12_post_upgrade_resync_audit.md` §1; 114/114 `data_forge` tests passing |
+| 12 | `vram_budget.py` docstring falsely claimed a nonzero VRAM safety-margin default existed | **Fixed** — comment corrected to match actual design; see §2 |
+| 12 | `download_weights.py`'s local-artifact discovery paths were unverified guesses, wrong on every count | **Fixed** — see §3, verified against real training save code + dry-run test |
+| 12 | Frontend read the wrong conversation-history field names | **Fixed** — see §4, verified via live integration test |
+| 12 | `model_registry.py`'s `POLISH_DEFAULT` `vram_gb=8.0` looks under-sized for a 6B-param bf16 model against Z-Image-Turbo's own published VRAM guidance | **Open** — needs a real hardware measurement; see §5 |
+| 12 | Phase 4's Gemma-4 citation gap | **Fixed** — primary source found, see §5 and citation #26 |
 
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
 2. **Confirm the sketch-tier hyperparameter fixes actually run** — they're syntax-checked and logically sound, but genuinely unverified against `torch` in this environment. Worth a real run before trusting them fully.
-3. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
+3. **Measure Polish-Default's real VRAM footprint on actual hardware** (Phase 12 finding) and correct `model_registry.py` if `8.0`GB is indeed under-sized — this affects the orchestrator's OOM-prevention guarantee, not just bookkeeping.
+4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phase 12 (`12_post_upgrade_resync_audit.md`) is a later follow-up session's changelog against this same set — see that file for anything after this line.

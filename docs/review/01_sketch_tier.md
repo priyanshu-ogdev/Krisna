@@ -1,5 +1,21 @@
 # Phase 1 — Sketch Tier (from-scratch MaskGIT-style transformer)
 
+> **RESOLVED (post-Phase-1 follow-up session):** the `maskgit_vq` dead-stage
+> finding below (line ~26) has been acted on — option (a) from this doc's
+> own recommendation. `data-forge/configs/models.yaml`'s `maskgit_vq`
+> entry, `engine.py`'s always-failing loader, and `s08_encoding.py`'s dead
+> encode branch have all been deleted; `utils/completeness.py` no longer
+> requires `vq_tokens` for `ui_first` records. This also surfaced and
+> fixed a **more severe, previously-undetected bug this doc didn't catch**:
+> because the dead branch's failure was silently swallowed, `vq_tokens`
+> was never present on any record, which made `is_encoding_complete()`
+> False for every `ui_first` record — meaning `s09_heldout.py` excluded
+> the entire `ui_first` domain from every run, and
+> `s12_model_data_export.py` exported an **empty Sketch tier on every
+> run**. See `docs/review/12_post_upgrade_resync_audit.md` §1 for the
+> full account and verification (114 `data_forge` tests passing,
+> including new tests for the corrected completeness behavior).
+
 ## What it is
 A bidirectional (non-causal, BERT/ViT-style) transformer trained from
 scratch over VQGAN token grids, with a learned MASK token, prefix-token
