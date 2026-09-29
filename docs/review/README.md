@@ -33,11 +33,12 @@ those are left visible, not silently edited away.
 | `19_agentic_workflow_io_audit.md` | Traces the real Planner→Sketch→Polish→Critic data contract hop by hop. Finds and fixes the second-highest-severity issue in this review: `service.py` never wired the real VQ-token-to-pixel-image decode hook into the Finalize flow, so every real `/finalize` call crashed with `PIL.UnidentifiedImageError` — not a hypothetical, the only code path the service used. Also fixes a raw-JSON-leaking-into-chat bug in the Planner backend (caught and fixed a mistake in the first attempt at this exact fix via direct execution, not just re-reading the diff) and a critique-results panel that was fetched and stored but never rendered in the frontend. Confirms the rest of the handoff chain (Polish↔Critic key names, the IPC protocol, the training/inference prompt-duplication invariant — verified character-by-character, not eyeballed) was already correct |
 | `20_gamelabel_10k_integration.md` | Integrates GameLabel-10K (confirmed real via live search, Apache 2.0) into the DPO preference-pair pipeline, after confirming its actual column schema against the live dataset rather than the paper's description — it doesn't fit either existing fetch mode. Catches two real bugs before shipping (a lenient `base64.b64decode()` accepting garbage input, and a `NameError`-class scoping bug identical in shape to one caught in Phase 19), both found by executing the code against synthetic data matching the confirmed real format rather than trusting it on inspection |
 | `21_frontend_and_scripts_merge.md` | Merges two working copies that had diverged (one with extensive training/inference fixes, this session's own with a newer frontend design) rather than discarding either. Finds and fixes two more real bugs in a *restored* test (one re-encoded a misconception Phase 6 already retracted; one had a stale post-fix value), finds the Phase-16 escalation-ordering docstring fix had regressed a second time and reapplies it, adds a missing `frontend` setup phase to `setup.sh`, and verifies the Muse CFG citation from `17` line-by-line against the actual primary source (arXiv:2301.00704) rather than trusting it — confirmed exact |
+| `22_root_orchestration_and_vqgan_gap.md` | Traces the full root-tooling chain (`setup.sh` → `run_data_forge.sh` → `train.sh` → install-for-inference → `run_inference.sh` → `inference-frontend/`) end-to-end and finds one real, previously-undiscovered gap: `download_weights.py` had zero awareness of the VQGAN decoder `service.py` requires for every real Finalize call — fixed with auto-discovery + auto-download. Also finds three shell-script "next step" hints claimed-added in a prior session were never actually on disk (reapplied), a real test-suite bug where one file's bare `import torch` broke collection for the *entire* `pytest tests/` run (fixed to match the established `importorskip` pattern), and rewrites both the root README and `src/README.md`, which were stale and in the latter case listed API endpoints that never existed |
 
 ## What's fixed vs. still open
 
 Full list with status is in `07_consolidated_citations.md`'s rollup
-table (updated through Phase 21). Short version: five items fixed and
+table (updated through Phase 22). Short version: five items fixed and
 verified in the original six-phase pass (label smoothing, AdamW betas, a
 stale docstring, a pinned LoRA rank, a VRAM safety-margin capability),
 one retracted finding (the "VRAM bug" turned out to be a review error),
@@ -49,12 +50,15 @@ the VRAM-margin doc bug, the installer's fabricated artifact paths, the
 frontend's wrong field names), the Polish-Default VRAM/quantization fix
 in `13`, a safety-gate wiring fix in `14`, a second orphaned data-forge
 stage disabled in `15`, the escalation-ordering fix in `16` (reverted
-and reapplied a second time in `21`), the Sketch inference-conditioning
-and CFG fixes in `17` (citation independently re-verified in `21`), a
-four-tier training-memory audit in `18`, the Finalize-crash and
-JSON-leak fixes in `19`, the GameLabel-10K integration in `20`, and —
-in `21` — a merge of two divergent working copies, two more test bugs
-fixed, and a `setup.sh` gap closed (no path to installing the frontend).
+and reapplied twice more, in `21` and `22`), the Sketch inference-
+conditioning and CFG fixes in `17` (citation independently re-verified
+in `21`), a four-tier training-memory audit in `18`, the Finalize-crash
+and JSON-leak fixes in `19`, the GameLabel-10K integration in `20`, a
+merge of two divergent working copies plus two more test bugs and a
+`setup.sh` gap in `21`, and — in `22` — the VQGAN installer gap (the
+last real missing link between training output and a working inference
+run), three more claimed-but-missing script hints reapplied, a test-
+collection bug, and both README files brought current.
 **Top remaining items:** (1) verifying
 the exact real usable-image count for the Sketch tier once the
 RICO-license/dedup/join interaction is exercised against a real pipeline
@@ -62,7 +66,7 @@ run, (2) measuring every tier's actual VRAM/RAM footprint on real
 hardware — every number in `18` and earlier phases is arithmetic-derived,
 not measured, (3) `s08_5_dpo_encoding.py`'s wire-vs-delete decision — `16`
 recommends deletion but hasn't executed it, (4) a recurring pattern
-flagged in `19` and confirmed again in `21`: fixes from this review have
+flagged in `19` and confirmed again in `21` and `22`: fixes from this review have
 gone missing from later
 uploaded working copies at least three times over the course of this
 project — worth treating "is this fix actually still present" as a
