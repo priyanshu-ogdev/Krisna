@@ -15,7 +15,14 @@ pretrained_model_name_or_path: "Tongyi-MAI/Z-Image"
 instance_data_dir: "./data/polish_default_train"
 output_dir: "./checkpoints/polish_default_lora"
 
-resolution: 1024
+resolution: 1024   # NOTE: the DPO refinement stage that continues this
+                    # adapter (dpo_z_image_stage1_general.yaml) trains at
+                    # 512 — RESEARCHED and likely architecturally safe
+                    # (Z-Image-Turbo's MMDiT/RoPE lineage is inherently
+                    # resolution-flexible, unlike learned position
+                    # embeddings) but still not confirmed as a
+                    # deliberate choice anywhere in this repo — see that
+                    # file's comment for the full research and citations.
 train_batch_size: 1
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
