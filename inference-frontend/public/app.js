@@ -336,24 +336,35 @@ setInterval(refreshBackendStatus, 4000);
 // ==================================================================== //
 
 const TIER_REGISTRY = {
+  // Kept in sync by hand with orchestrator/model_registry.py's REGISTRY /
+  // LOW_VRAM_REGISTRY — this mirror has drifted stale at least once
+  // before (polish_default's vram_gb sat at a pre-Phase-13 8.0 here
+  // after the backend was corrected to 14.0; critic's low-vram figures
+  // also drifted back to a since-fixed 12.0/40.0 pair on the backend
+  // side independently of this file). No shared source of truth between
+  // this static object and the Python registry currently exists — if
+  // GET /orchestrator/status ever starts including the resolved
+  // per-tier vram_gb/ram_gb figures directly, this object should be
+  // deleted in favor of that, rather than hand-copied again.
   full: {
     envelope_gb: 24.0,
     tiers: [
-      { key: "planner", label: "Planner", vram_gb: 6.5, always_resident: true, color: "#f2a154" },
-      { key: "sketch", label: "Sketch", vram_gb: 3.0, always_resident: true, color: "#e8935f" },
-      { key: "polish_default", label: "Polish · Default", vram_gb: 8.0, always_resident: false, color: "#55c2c0" },
-      { key: "polish_quality", label: "Polish · Quality", vram_gb: 16.0, always_resident: false, color: "#4aa9c9" },
-      { key: "critic", label: "Critic", vram_gb: 18.0, always_resident: false, color: "#8f7fd6" },
+      { key: "planner", label: "Planner", vram_gb: 6.5, ram_gb: 0.0, always_resident: true, color: "#f2a154" },
+      { key: "sketch", label: "Sketch", vram_gb: 3.0, ram_gb: 0.0, always_resident: true, color: "#e8935f" },
+      { key: "polish_default", label: "Polish · Default", vram_gb: 14.0, ram_gb: 0.0, always_resident: false, color: "#55c2c0" },
+      { key: "polish_quality", label: "Polish · Quality", vram_gb: 16.0, ram_gb: 0.0, always_resident: false, color: "#4aa9c9" },
+      { key: "critic", label: "Critic", vram_gb: 18.0, ram_gb: 0.0, always_resident: false, color: "#8f7fd6" },
     ],
   },
   low_vram: {
     envelope_gb: 12.0,
+    ram_envelope_gb: 48.0,
     tiers: [
-      { key: "planner", label: "Planner", vram_gb: 6.5, always_resident: true, color: "#f2a154" },
-      { key: "sketch", label: "Sketch", vram_gb: 3.0, always_resident: true, color: "#e8935f" },
-      { key: "polish_default", label: "Polish · Default", vram_gb: 8.0, always_resident: false, color: "#55c2c0" },
-      { key: "polish_quality", label: "Polish · Quality", vram_gb: 10.0, always_resident: false, color: "#4aa9c9" },
-      { key: "critic", label: "Critic", vram_gb: 12.0, always_resident: false, color: "#8f7fd6" },
+      { key: "planner", label: "Planner", vram_gb: 6.5, ram_gb: 0.0, always_resident: true, color: "#f2a154" },
+      { key: "sketch", label: "Sketch", vram_gb: 3.0, ram_gb: 0.0, always_resident: true, color: "#e8935f" },
+      { key: "polish_default", label: "Polish · Default", vram_gb: 12.0, ram_gb: 2.0, always_resident: false, color: "#55c2c0" },
+      { key: "polish_quality", label: "Polish · Quality", vram_gb: 10.0, ram_gb: 10.0, always_resident: false, color: "#4aa9c9" },
+      { key: "critic", label: "Critic", vram_gb: 11.5, ram_gb: 45.0, always_resident: false, color: "#8f7fd6" },
     ],
   },
 };
@@ -367,7 +378,7 @@ function renderRack(status) {
   const inFlight = status?.residency_state && status.residency_state.startsWith("swapping");
 
   $("#rack-envelope-label").innerHTML =
-    `<span>VRAM envelope</span><strong>${usedGb.toFixed(1)} / ${envelopeGb.toFixed(1)} GB</strong>`;
+    `<span>VRAM envelope (declared budget)</span><strong>${usedGb.toFixed(1)} / ${envelopeGb.toFixed(1)} GB</strong>`;
 
   const rack = $("#rack");
   rack.innerHTML = "";
@@ -394,6 +405,70 @@ function renderRack(status) {
     li.innerHTML = `<span class="legend-swatch" style="background:${isResident ? tier.color : "transparent"};border:1px solid ${tier.color}"></span>${tier.label}${tier.always_resident ? " · baseline" : ""}`;
     legend.appendChild(li);
   }
+
+  renderHardwareBar("vram", status?.real_vram, usedGb);
+}
+
+// RAM-offload rack — same segmented-bar visual language as the VRAM
+// rack above, but for orchestrator.ram_ledger (system RAM used by
+// CPU-offloaded tier weights). In full-VRAM mode every tier's ram_gb is
+// 0.0 by design (see model_registry.py) — shown as an empty, honestly
+// labeled rack rather than hidden, so "offload isn't happening" is a
+// visible state, not an absent one.
+function renderRamRack(status) {
+  const mode = status?.low_vram_mode ? "low_vram" : "full";
+  const reg = TIER_REGISTRY[mode];
+  const ramEnvelopeGb = status?.ram?.envelope_gb ?? reg.ram_envelope_gb ?? 48.0;
+  const ramUsedGb = status?.ram?.used_gb ?? 0;
+  const resident = new Set(status?.ram?.resident ?? []);
+  const offloadTiers = reg.tiers.filter((t) => t.ram_gb > 0);
+
+  $("#ram-rack-label").innerHTML =
+    `<span>RAM offload (declared budget)</span><strong>${ramUsedGb.toFixed(1)} / ${ramEnvelopeGb.toFixed(1)} GB</strong>`;
+
+  const rack = $("#ram-rack");
+  rack.innerHTML = "";
+  if (offloadTiers.length === 0) {
+    rack.innerHTML = `<div class="rack-seg state-idle" style="flex-basis:100%"><span class="seg-label">no tier offloads to RAM in this mode</span></div>`;
+  } else {
+    for (const tier of offloadTiers) {
+      const seg = document.createElement("div");
+      const isResident = resident.has(tier.key);
+      seg.className = `rack-seg ${isResident ? "state-resident" : "state-idle"}`;
+      seg.style.flexBasis = `${(tier.ram_gb / ramEnvelopeGb) * 100}%`;
+      if (isResident) seg.style.background = tier.color;
+      seg.innerHTML = `<span class="seg-label">${tier.label} · ${tier.ram_gb}GB</span>`;
+      rack.appendChild(seg);
+    }
+  }
+
+  renderHardwareBar("ram", status?.real_ram, ramUsedGb);
+}
+
+// Live hardware readout — the actual torch.cuda.mem_get_info()/
+// /proc/meminfo numbers from probe_real_vram()/probe_real_ram(), shown
+// alongside (never instead of) the declared-budget racks above. These
+// two numbers can legitimately disagree — the ledger is an admission
+// bookkeeping abstraction (declared vram_gb per tier), the hardware
+// probe is what's actually free on the card/host right now, including
+// anything outside this process entirely (another process on a shared
+// GPU, OS memory pressure, CUDA context overhead the ledger's estimates
+// don't capture per Phase 6's own disclosed limitation).
+function renderHardwareBar(kind, probe, ledgerUsedGb) {
+  const fill = $(`#hw-${kind}-fill`);
+  const reading = $(`#hw-${kind}-reading`);
+  const block = $(`#hw-${kind}-block`);
+  if (!probe) {
+    block.classList.add("unavailable");
+    fill.style.width = "0%";
+    reading.textContent = "not available on this host";
+    return;
+  }
+  block.classList.remove("unavailable");
+  const usedGb = Math.max(0, probe.total_gb - probe.free_gb);
+  const pct = probe.total_gb > 0 ? Math.min(100, Math.round((usedGb / probe.total_gb) * 100)) : 0;
+  fill.style.width = `${pct}%`;
+  reading.textContent = `${usedGb.toFixed(1)} / ${probe.total_gb.toFixed(1)} GB (${pct}%)`;
 }
 
 // ==================================================================== //
@@ -463,6 +538,7 @@ async function refreshStatus() {
     const r = await fetch("/api/status");
     const data = await r.json();
     renderRack(data);
+    renderRamRack(data);
     renderStateDiagram(data.residency_state);
   } catch (e) {
     // backend unreachable — leave last-known visuals in place, health
@@ -472,7 +548,10 @@ async function refreshStatus() {
 $("#btn-refresh-status").addEventListener("click", refreshStatus);
 setInterval(() => { if ($("#tab-studio").classList.contains("active")) refreshStatus(); }, 4000);
 renderRack(null);
+renderRamRack(null);
 renderStateDiagram("idle_resident");
+renderPhasePipeline(null);
+drawPlaceholderGrid(null, "idle");
 
 // ------------------------------------------------------------------ //
 // Studio: session lifecycle
@@ -481,17 +560,150 @@ renderStateDiagram("idle_resident");
 const STAGES = ["conversing", "sketching", "finalizing", "finalized", "critiquing"];
 let sessionState = null;
 
-function renderStageStrip() {
-  const ol = $("#stage-strip");
-  ol.innerHTML = "";
-  const currentIdx = STAGES.indexOf(sessionState.stage);
-  STAGES.forEach((stage, i) => {
-    const li = document.createElement("li");
-    if (i === currentIdx) li.className = "current";
-    else if (i < currentIdx) li.className = "reached";
-    li.textContent = stage;
-    ol.appendChild(li);
-  });
+// ==================================================================== //
+// Generation pipeline — phase nodes (Planner -> Sketch -> Polish ->
+// Critic), mirroring DesignState.stage transitions in
+// orchestrator/flows.py, not an invented decoration. "finalizing" maps
+// to Polish being active; "finalized" means Polish has already produced
+// a result (shown as its done state, ready for Critique next).
+// ==================================================================== //
+
+const PHASE_NODES = [
+  { key: "planner", label: "PLANNER", sub: "Qwen3.5-9B", x: 10 },
+  { key: "sketch", label: "SKETCH", sub: "VQ tokens", x: 145 },
+  { key: "polish", label: "POLISH", sub: "Z-Image-Turbo", x: 280 },
+  { key: "critic", label: "CRITIC", sub: "Gemma 4", x: 415 },
+];
+const NODE_W = 110, NODE_H = 40;
+
+function phaseStatusFor(stage) {
+  // Returns {planner, sketch, polish, critic}, each "pending"|"active"|"done".
+  if (!stage) return { planner: "pending", sketch: "pending", polish: "pending", critic: "pending" };
+  const order = ["conversing", "sketching", "finalizing", "finalized", "critiquing"];
+  const idx = order.indexOf(stage);
+  const s = { planner: "done", sketch: "pending", polish: "pending", critic: "pending" };
+  if (idx <= 0) { s.planner = "active"; return s; }
+  s.sketch = idx === 1 ? "active" : "done";
+  if (idx === 2) { s.polish = "active"; return s; }
+  s.polish = idx >= 3 ? "done" : "pending";
+  s.critic = idx === 4 ? "active" : (idx > 4 ? "done" : "pending");
+  return s;
+}
+
+function renderPhasePipeline(stage) {
+  const status = phaseStatusFor(stage);
+  $("#pipeline-phase-label").textContent = stage || "idle";
+  let svg = `<svg viewBox="0 0 545 60" xmlns="http://www.w3.org/2000/svg">`;
+  for (let i = 0; i < PHASE_NODES.length - 1; i++) {
+    const a = PHASE_NODES[i], b = PHASE_NODES[i + 1];
+    const active = status[a.key] === "done" || (status[a.key] === "active" && status[b.key] !== "pending");
+    svg += `<line class="phase-edge${active ? " active" : ""}" x1="${a.x + NODE_W}" y1="30" x2="${b.x}" y2="30" />`;
+  }
+  for (const node of PHASE_NODES) {
+    const st = status[node.key];
+    svg += `<g class="phase-node ${st}">
+      <rect x="${node.x}" y="10" width="${NODE_W}" height="${NODE_H}" rx="5" />
+      <circle class="phase-dot" cx="${node.x + 10}" cy="20" r="3" />
+      <text class="phase-title" x="${node.x + NODE_W / 2}" y="26" text-anchor="middle">${node.label}</text>
+      <text class="phase-sub" x="${node.x + NODE_W / 2}" y="40" text-anchor="middle">${node.sub}</text>
+    </g>`;
+  }
+  svg += `</svg>`;
+  $("#phase-pipeline").innerHTML = svg;
+}
+
+// ==================================================================== //
+// Pixel-forming canvas. Two honest states, never a fabricated one:
+//   - No render yet / mid-finalize: a deterministic placeholder pixel
+//     grid (derived from the session id, so it's stable per session
+//     rather than random noise every redraw), pixelated + blurred to
+//     read as "not formed yet."
+//   - A real render exists: fetches the ACTUAL image bytes from
+//     GET /api/session/:id/render (added alongside this feature — see
+//     service.py's new /session/{id}/render route) and reveals it with
+//     a blur-to-sharp transition. Never shows a fake "generated" image.
+// ==================================================================== //
+
+function seededRand(seed) {
+  let x = Math.sin(seed) * 10000;
+  return x - Math.floor(x);
+}
+
+function drawPlaceholderGrid(sessionId, tone) {
+  const canvas = $("#pixel-canvas");
+  const ctx = canvas.getContext("2d");
+  const grid = 12;
+  const cell = canvas.width / grid;
+  const seedBase = [...(sessionId || "seed")].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const hue = tone === "forming" ? 28 : 210; // amber while forming, cool slate at rest
+  for (let y = 0; y < grid; y++) {
+    for (let x = 0; x < grid; x++) {
+      const r = seededRand(seedBase + x * 13.1 + y * 7.7);
+      const light = 12 + r * 14;
+      ctx.fillStyle = `hsl(${hue}, ${tone === "forming" ? 45 : 15}%, ${light}%)`;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+}
+
+let lastRenderedImageRef = null;
+
+async function updatePixelCanvas() {
+  const canvas = $("#pixel-canvas");
+  const label = $("#pixel-canvas-label");
+  const stage = sessionState?.stage;
+  const fo = sessionState?.finalize_output;
+
+  if (fo && fo.image_ref && fo.image_ref.startsWith("blob://")) {
+    if (fo.image_ref !== lastRenderedImageRef) {
+      lastRenderedImageRef = fo.image_ref;
+      canvas.classList.add("forming");
+      try {
+        const img = new Image();
+        const url = `/api/session/${sessionState.session_id}/render?t=${Date.now()}`;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        const ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // Next frame, so the browser has committed the sharp pixels
+        // before the CSS blur transition starts easing out.
+        requestAnimationFrame(() => canvas.classList.remove("forming"));
+        label.textContent = `rendered by ${fo.renderer_used || "polish"}`;
+      } catch {
+        label.textContent = "render exists but couldn't be fetched";
+      }
+    }
+    return;
+  }
+
+  if (fo && fo.image_ref) {
+    // MockBackend's own `render://mock/...` refs (not a real blob) —
+    // finalize genuinely succeeded, there's just no real image behind
+    // it to fetch. Shown honestly as its own state, not as an error and
+    // not silently indistinguishable from "no render yet."
+    lastRenderedImageRef = fo.image_ref;
+    canvas.classList.remove("forming");
+    drawPlaceholderGrid(sessionState?.session_id, "idle");
+    label.textContent = `${fo.renderer_used || "polish"} (mock — no real image)`;
+    return;
+  }
+
+  lastRenderedImageRef = null;
+  if (stage === "finalizing") {
+    canvas.classList.add("forming");
+    drawPlaceholderGrid(sessionState?.session_id, "forming");
+    label.textContent = "polish tier forming the image…";
+  } else {
+    canvas.classList.remove("forming");
+    drawPlaceholderGrid(sessionState?.session_id, "idle");
+    label.textContent = stage === "sketching" || stage === "conversing"
+      ? "no render yet — finalize when ready"
+      : "no render yet";
+  }
 }
 
 function renderChat() {
@@ -568,10 +780,11 @@ function applySession(data) {
   $("#has-session").classList.remove("hidden");
   $("#session-id").textContent = data.session_id || "(unknown)";
   $("#session-rev-tag").textContent = `rev ${data.revision}`;
-  renderStageStrip();
+  renderPhasePipeline(data.stage);
   renderChat();
   renderFinalizePanel();
   renderCritiquePanel();
+  updatePixelCanvas();
 }
 
 $("#btn-new-session").addEventListener("click", async () => {
@@ -584,44 +797,187 @@ $("#btn-new-session").addEventListener("click", async () => {
   if (r.ok) applySession(data);
 });
 
+// ------------------------------------------------------------------ //
+// Chat/session UX: busy-state locking, error surfacing, a lightweight
+// step-progress ticker for finalize. All three buttons + the message
+// input share one `busy` flag — like the file said, only one request
+// per session should ever be in flight from this UI at a time, since
+// the backend itself serializes writes per session (StaleDesignStateError
+// on a revision mismatch) and letting two fire at once would just
+// surface that as a confusing error instead of preventing it up front.
+// ------------------------------------------------------------------ //
+
+let busy = false;
+
+function setBusy(isBusy) {
+  busy = isBusy;
+  $("#message-input").disabled = isBusy;
+  $("#btn-send").disabled = isBusy;
+  $("#btn-finalize").disabled = isBusy;
+  $("#btn-critique").disabled = isBusy;
+}
+
+function showChatError(message) {
+  const box = $("#chat-error");
+  box.textContent = message;
+  box.classList.remove("hidden");
+}
+function clearChatError() {
+  $("#chat-error").classList.add("hidden");
+}
+
+function addThinkingBubble(who) {
+  const log = $("#chat-log");
+  const div = document.createElement("div");
+  div.className = "msg thinking";
+  div.id = "thinking-bubble";
+  div.innerHTML = `<span class="who">${who}</span><span>thinking…</span>`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function removeThinkingBubble() {
+  $("#thinking-bubble")?.remove();
+}
+
+// Z-Image-Turbo's own documented step count (polish_default_backend.py:
+// num_inference_steps=9) — used here only to label the overlay
+// truthfully ("step N/9"), not because this synchronous /finalize call
+// reports real per-step progress back to the browser. The fill ticks on
+// a fixed interval against a rough expected duration, explicitly
+// labeled "estimated" in the UI text, and always completes to 100% the
+// moment the real response arrives rather than drifting past it.
+const POLISH_STEP_COUNT = 9;
+let stepTicker = null;
+
+function startStepOverlay() {
+  const overlay = $("#pixel-step-overlay");
+  const fill = $("#pixel-step-fill");
+  const label = $("#pixel-step-label");
+  overlay.classList.remove("hidden");
+  let step = 0;
+  const expectedMs = 6000; // rough — real duration depends on hardware, not measured here
+  const tickMs = expectedMs / POLISH_STEP_COUNT;
+  fill.style.width = "0%";
+  label.textContent = `step 0/${POLISH_STEP_COUNT} (estimated)`;
+  stepTicker = setInterval(() => {
+    step = Math.min(step + 1, POLISH_STEP_COUNT - 1); // never claims 100% until the real response lands
+    fill.style.width = `${(step / POLISH_STEP_COUNT) * 100}%`;
+    label.textContent = `step ${step}/${POLISH_STEP_COUNT} (estimated)`;
+  }, tickMs);
+}
+function stopStepOverlay(completed) {
+  if (stepTicker) { clearInterval(stepTicker); stepTicker = null; }
+  const overlay = $("#pixel-step-overlay");
+  if (completed) {
+    $("#pixel-step-fill").style.width = "100%";
+    $("#pixel-step-label").textContent = `step ${POLISH_STEP_COUNT}/${POLISH_STEP_COUNT} — done`;
+    setTimeout(() => overlay.classList.add("hidden"), 600);
+  } else {
+    overlay.classList.add("hidden");
+  }
+}
+
+async function extractErrorDetail(r) {
+  try {
+    const data = await r.json();
+    return data.detail || data.error || `request failed (${r.status})`;
+  } catch {
+    return `request failed (${r.status})`;
+  }
+}
+
 $("#message-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!sessionState) return;
+  if (!sessionState || busy) return;
   const input = $("#message-input");
   const message = input.value.trim();
   if (!message) return;
   input.value = "";
-  const r = await fetch(`/api/session/${sessionState.session_id}/message`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-  });
-  const data = await r.json();
-  if (r.ok) applySession(data);
-  refreshStatus();
+  clearChatError();
+  setBusy(true);
+  addThinkingBubble("planner");
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    removeThinkingBubble();
+    if (r.ok) {
+      applySession(await r.json());
+    } else {
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    removeThinkingBubble();
+    showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
 });
 
 $("#btn-finalize").addEventListener("click", async () => {
-  if (!sessionState) return;
+  if (!sessionState || busy) return;
   const quality = $("#finalize-quality").checked;
-  const r = await fetch(`/api/session/${sessionState.session_id}/finalize`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ quality }),
-  });
-  const data = await r.json();
-  if (r.ok) applySession(data);
-  refreshStatus();
+  clearChatError();
+  setBusy(true);
+  // Show the "forming" state immediately, before the (potentially
+  // multi-second, real-model) response comes back — the whole point of
+  // a pixel-forming visualization is showing the wait, not just the
+  // result once it's already done.
+  renderPhasePipeline("finalizing");
+  $("#pixel-canvas").classList.add("forming");
+  drawPlaceholderGrid(sessionState.session_id, "forming");
+  $("#pixel-canvas-label").textContent = "polish tier forming the image…";
+  startStepOverlay();
+
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/finalize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quality }),
+    });
+    if (r.ok) {
+      stopStepOverlay(true);
+      applySession(await r.json());
+    } else {
+      stopStepOverlay(false);
+      renderPhasePipeline(sessionState.stage); // revert the optimistic "finalizing" node
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    stopStepOverlay(false);
+    renderPhasePipeline(sessionState.stage);
+    showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
 });
 
 $("#btn-critique").addEventListener("click", async () => {
-  if (!sessionState) return;
-  const r = await fetch(`/api/session/${sessionState.session_id}/critique`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
-  });
-  const data = await r.json();
-  if (r.ok) applySession(data);
-  refreshStatus();
+  if (!sessionState || busy) return;
+  clearChatError();
+  setBusy(true);
+  renderPhasePipeline("critiquing");
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/critique`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (r.ok) {
+      applySession(await r.json());
+    } else {
+      renderPhasePipeline(sessionState.stage);
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    renderPhasePipeline(sessionState.stage);
+    showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
 });

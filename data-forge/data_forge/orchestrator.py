@@ -6,10 +6,23 @@ the next model. This minimizes PCIe model-swapping overhead on 48GB VRAM.
 
 Execution phases per chunk:
   Phase 1: CLIP embeddings (dedup)
-  Phase 2: Tier-1 VLM (quality, PII/OCR-text, safety, recaption, structure)
-  Phase 3: OCR specialist (text extraction)
-  Phase 4: Tier-2 VLM (escalation — borderline records only)
-  Phase 5: Encoders (Tri-Path VAE/VQ encoding)
+  Phase 2: Tier-1 VLM (quality, PII/OCR-text redaction, safety)
+  Phase 3: Tier-2 VLM (escalation — borderline records only)
+  Phase 4: Tier-1 VLM (recaption, structure)
+  Phase 5: OCR specialist (text extraction) + text-PII redaction
+  Phase 6: Encoders (Tri-Path VAE/VQ encoding)
+
+Phases 2 and 4 were one combined phase until this order was found to
+silently drop every record Tier-2 escalation rescues — recaption/
+structure's safety_tier=="safe" filter only sees a rescued record if it
+runs AFTER escalation resolves it, not in the same pass as the initial
+(pre-escalation) safety classification. See
+docs/review/16_preprocessing_ordering_audit.md for the full account and
+the regression test (tests/data_forge/test_orchestrator.py) that
+verifies the real call order rather than just each stage's own filter
+logic in isolation. (This docstring itself had drifted stale relative
+to the already-fixed code below — found and corrected during a later
+merge; see docs/review/21_frontend_and_scripts_merge.md.)
 
 Between chunks, each phase tears down its model subprocess to prevent CUDA
 memory fragmentation.
@@ -420,7 +433,7 @@ class Orchestrator:
                         )
                         stage_results.append(result)
 
-            # ── Phase 5: Tri-Path Encoding (VAEs/VQ) ────────────────
+            # ── Phase 6: Tri-Path Encoding (VAEs/VQ) ────────────────
             if self._should_run("s08_encoding", stages_filter):
                 record_ids = self._filter_active(record_ids)
                 if record_ids:

@@ -428,6 +428,28 @@ app.get("/api/status", (_req, res) => proxyJson(res, "GET", "/orchestrator/statu
 
 app.post("/api/session", (req, res) => proxyJson(res, "POST", "/session", req.body));
 app.get("/api/session/:id", (req, res) => proxyJson(res, "GET", `/session/${req.params.id}`));
+
+// Binary proxy — proxyJson assumes a JSON body, which would corrupt image
+// bytes; the render route needs its own pass-through that forwards the
+// backend's status/content-type and pipes the body untouched.
+app.get("/api/session/:id/render", async (req, res) => {
+  try {
+    const r = await fetch(`${BACKEND_URL}/session/${req.params.id}/render`);
+    res.status(r.status);
+    if (!r.ok) {
+      const text = await r.text();
+      res.type("application/json").send(text || "{}");
+      return;
+    }
+    res.set("Content-Type", r.headers.get("content-type") || "image/png");
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.send(buf);
+  } catch (e) {
+    res.status(502).json({
+      error: "backend_unreachable", detail: String(e.message || e), backend_url: BACKEND_URL,
+    });
+  }
+});
 app.post("/api/session/:id/message", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/message`, req.body));
 app.post("/api/session/:id/finalize", (req, res) =>

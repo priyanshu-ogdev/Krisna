@@ -102,6 +102,26 @@
 
     <!-- ============================= STUDIO TAB ============================= -->
     <section id="tab-studio" class="tab">
+      <div class="panel pipeline-panel">
+        <div class="panel-head">
+          <h2>Generation pipeline</h2>
+          <span id="pipeline-phase-label" class="tag">idle</span>
+        </div>
+        <div class="pipeline-grid">
+          <div id="phase-pipeline" class="phase-pipeline"><!-- populated by app.js --></div>
+          <div class="pixel-forming">
+            <div id="pixel-canvas-wrap" class="pixel-canvas-wrap">
+              <canvas id="pixel-canvas" width="256" height="256"></canvas>
+              <div id="pixel-step-overlay" class="pixel-step-overlay hidden">
+                <div class="pixel-step-track"><div id="pixel-step-fill" class="pixel-step-fill"></div></div>
+                <div id="pixel-step-label" class="pixel-step-text">step 0/9</div>
+              </div>
+              <div id="pixel-canvas-label" class="pixel-canvas-label">no render yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="studio-grid">
 
         <div class="studio-left">
@@ -113,6 +133,27 @@
             <div id="rack-envelope-label" class="rack-envelope-label"></div>
             <div id="rack" class="rack"><!-- populated by app.js --></div>
             <ul id="rack-legend" class="rack-legend"><!-- populated by app.js --></ul>
+
+            <div id="hw-vram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Live hardware (VRAM)</span><span id="hw-vram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-vram-fill" class="hw-bar-fill"></div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>RAM offload</h2></div>
+            <p class="hint">System RAM used by CPU-offloaded tier weights (Critic, and Polish
+              in low-VRAM mode) — see <code>model_registry.py</code>'s <code>LOW_VRAM_REGISTRY</code>.</p>
+            <div id="ram-rack-label" class="rack-envelope-label"></div>
+            <div id="ram-rack" class="rack ram-rack"><!-- populated by app.js --></div>
+            <div id="hw-ram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Live hardware (system RAM)</span><span id="hw-ram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-ram-fill" class="hw-bar-fill ram"></div></div>
+            </div>
           </div>
 
           <div class="panel">
@@ -134,12 +175,12 @@
                 <h2>Session <code id="session-id"></code></h2>
                 <span class="tag" id="session-rev-tag"></span>
               </div>
-              <ol id="stage-strip" class="stage-strip"><!-- populated by app.js --></ol>
 
               <div id="chat-log" class="chat-log"></div>
+              <div id="chat-error" class="chat-error hidden"></div>
               <form id="message-form" class="message-form">
                 <input type="text" id="message-input" placeholder="Describe the UI you want…" autocomplete="off" />
-                <button type="submit" class="btn btn-primary">Send</button>
+                <button type="submit" class="btn btn-primary" id="btn-send">Send</button>
               </form>
 
               <div class="btn-row">
