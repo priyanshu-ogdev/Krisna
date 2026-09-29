@@ -1,0 +1,91 @@
+diff -ru '--exclude=__pycache__' orig/Krisna/inference/src/krisna_inference/orchestrator/design_state.py Krisna/inference/src/krisna_inference/orchestrator/design_state.py
+--- orig/Krisna/inference/src/krisna_inference/orchestrator/design_state.py	2026-09-20 12:02:08.000000000 +0000
++++ Krisna/inference/src/krisna_inference/orchestrator/design_state.py	2026-09-20 19:45:27.659473011 +0000
+@@ -80,6 +80,19 @@
+     renderer_used: RendererUsed = None
+     image_ref: str | None = None
+     verifier_scores: VerifierScores = Field(default_factory=VerifierScores)
++    # BUG FOUND ON REVIEW (training-data integrity — see flows.py's
++    # finalize()/critique_pass()): the prompt actually used to GENERATE
++    # this image was previously never persisted anywhere. critique_pass()
++    # — which can run turns after finalize(), once the user has sent more
++    # chat messages — re-synthesized "the" prompt from state.conversation_
++    # history at CRITIQUE time and stored THAT in the resulting DPO
++    # preference pair, silently mismatching it against the image that was
++    # actually rendered under the ORIGINAL, now-stale prompt. That is a
++    # real (prompt, image) mixup baked directly into DPO training data —
++    # exactly the failure mode that teaches a model to associate the wrong
++    # text with an image. finalize() now freezes the real generation-time
++    # prompt here; critique_pass() reads it back instead of re-deriving it.
++    prompt_used: str | None = None
+ 
+ 
+ class CritiqueDimensionScore(BaseModel):
+diff -ru '--exclude=__pycache__' orig/Krisna/inference/src/krisna_inference/orchestrator/flows.py Krisna/inference/src/krisna_inference/orchestrator/flows.py
+--- orig/Krisna/inference/src/krisna_inference/orchestrator/flows.py	2026-09-20 12:02:20.000000000 +0000
++++ Krisna/inference/src/krisna_inference/orchestrator/flows.py	2026-09-20 19:46:13.661644904 +0000
+@@ -202,6 +202,15 @@
+ 
+     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
+     state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
++    # BUG FOUND ON REVIEW: this is the ONLY point in the whole flow where
++    # the real generation-time prompt (effective_prompt) is known. It was
++    # previously discarded — critique_pass() had to re-synthesize a prompt
++    # from LIVE conversation state, which may have moved on by the time
++    # critique is requested, silently mismatching the prompt stored in any
++    # resulting DPO preference pair against the image it's actually paired
++    # with. Freeze it here so later stages read back the truth instead of
++    # re-guessing it.
++    state.finalize_output.prompt_used = effective_prompt
+     verifier_scores = dict(output.get("verifier_scores", {}))
+ 
+     if verifier_stack is not None and state.finalize_output.image_ref.startswith("blob://"):
+@@ -316,6 +325,23 @@
+     both `preference_store` and `compare_against` are given. Without them,
+     this behaves exactly as before: critique the render, update
+     DesignState, done.
++
++    CALLER CONTRACT worth stating explicitly (found while auditing for
++    prompt/image mixups): the resulting PreferencePair stores ONE prompt
++    for BOTH candidates (state.finalize_output.prompt_used, the current
++    render's actual generation prompt — see the fix in the body below).
++    Diffusion-DPO's own derivation assumes both the chosen and rejected
++    sample are conditioned on the SAME prompt/context when computing the
++    reward margin. `compare_against` is therefore only a valid partner for
++    a pair if it was ALSO generated from that same effective prompt (e.g.
++    an earlier candidate from the same iterative-refinement loop on this
++    same design intent) — not an image from a genuinely different prompt
++    or an earlier, since-changed conversation turn. Nothing in this
++    function can verify that on the caller's behalf; passing a
++    `compare_against` from a different design intent silently produces a
++    pair whose stored prompt is wrong for one of its two images, the same
++    class of mixup the prompt_used fix below closes for the OTHER side of
++    the pair.
+     """
+     state = store.get(session_id)
+     expected_rev = state.revision
+@@ -372,9 +398,23 @@
+         # intent. DPO training then called encode_prompt("minimalist dark") rather
+         # than the full prompt the image was actually generated from, producing a
+         # poor conditioning signal. Now uses the same full synthesis as finalize().
++        #
++        # BUG FOUND ON REVIEW (a second, distinct mismatch on top of the P1 fix
++        # above): critique_pass() can run turns after finalize() — the user may
++        # have sent more chat messages in between (asking for a further revision,
++        # small talk, anything). _synthesize_dpo_prompt(state) reads
++        # state.conversation_history[-1] as of THIS call, not as of when
++        # state.finalize_output.image_ref was actually generated — so unconditionally
++        # re-synthesizing here could store a prompt describing a LATER user turn
++        # against an image generated from an EARLIER one, a real (prompt, image)
++        # mixup landing directly in DPO training data. finalize() now freezes the
++        # true generation-time prompt on state.finalize_output.prompt_used (see
++        # design_state.py); read that back instead of re-deriving it, falling back
++        # to a fresh synthesis only for a state persisted before this field existed
++        # (prompt_used is None) rather than crashing on old sessions.
+         pair = build_pair_from_candidates(
+             preference_store,
+-            prompt=_synthesize_dpo_prompt(state),
++            prompt=state.finalize_output.prompt_used or _synthesize_dpo_prompt(state),
+             candidates=[
+                 {"image_ref": state.finalize_output.image_ref, "score": state.critique.result.overall_score},
+                 compare_against,
