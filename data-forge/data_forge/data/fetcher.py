@@ -6,6 +6,7 @@ and progress tracking via manifest updates.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -22,6 +23,35 @@ from data_forge.config import DatasetSpec, PipelineConfig
 from data_forge.logging_setup import get_logger
 
 log = get_logger("data.fetcher")
+
+
+def _decode_gamelabel_image(raw: Any) -> bytes | None:
+    """GameLabel-10K's img0_encoding/img1_encoding columns: base64-encoded
+    JPEG bytes wrapped in a stray Python bytes-repr string — confirmed by
+    inspecting real sample values from the live dataset, e.g.
+    `"b'/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwc...'"`. Strips the
+    `b'`/`'` wrapper (a byproduct of the dataset author writing
+    `str(bytes_obj)` instead of the bytes themselves before CSV export —
+    not a documented format, reverse-engineered from the data itself),
+    then base64-decodes the inner content to recover the real JPEG bytes.
+    Returns None rather than raising on anything that doesn't match this
+    exact shape, so a malformed row is skipped (logged by the caller) —
+    not a source of a hard crash mid-fetch over one bad row out of
+    thousands.
+    """
+    if not isinstance(raw, str):
+        return None
+    s = raw.strip()
+    if s.startswith("b'") and s.endswith("'"):
+        s = s[2:-1]
+    elif s.startswith('b"') and s.endswith('"'):
+        s = s[2:-1]
+    if not s:
+        return None
+    try:
+        return base64.b64decode(s, validate=True)
+    except Exception:
+        return None
 
 
 class DatasetFetcher:
@@ -99,6 +129,24 @@ class DatasetFetcher:
         # winner/loser pairs instead. See _fetch_hpdv2_ranked_pairs.
         if spec.fetch_config.get("download_mode") == "hpdv2_ranked_list":
             return await self._fetch_hpdv2_ranked_pairs(key, spec, dataset_dir)
+
+        # GameLabel-10K: crowdsourced mobile-game vote-count pairs, NOT the
+        # fixed two-image table `preference_pair` mode handles. CONFIRMED
+        # directly against the live dataset (HF's own dataset-viewer
+        # output for Jonathan-Zhou/GameLabel-10k, not guessed): columns
+        # are `prompt`, `img0_votes`/`img1_votes` (int, 0-5 — a vote
+        # COUNT from up to 5 players per pair, not a fixed 0/1 label),
+        # and `img0_encoding`/`img1_encoding` (plain strings — NOT the
+        # standard HF `{"bytes": ...}` image-feature dict
+        # `_is_image_like()` above detects — the CSV export wraps
+        # base64-encoded JPEG bytes in a stray Python `b'...'` repr,
+        # e.g. `"b'/9j/4AAQSkZJRgABAQ...'"`). Reusing `preference_pair`
+        # mode would find these columns via neither its dict/bytes
+        # image-detection nor a fixed-label column, and silently return
+        # zero pairs. This dedicated mode decodes the real encoding and
+        # derives a win/lose label from vote counts instead.
+        if spec.fetch_config.get("download_mode") == "gamelabel_csv":
+            return await self._fetch_gamelabel_csv(key, spec, dataset_dir)
 
         # BUG FIX: RICO (both creative-graphic-design/Rico and
         # Voxel51/rico) — the same failure class as PD12M/CC12M/
@@ -454,6 +502,155 @@ class DatasetFetcher:
             written += 1
 
         log.info("preference_pairs_written", dataset=key, count=written)
+        return []  # Not manifest records — written directly to preference_pairs/
+
+    async def _fetch_gamelabel_csv(
+        self, key: str, spec: DatasetSpec, dest: Path
+    ) -> list[dict[str, Any]]:
+        """Fetch GameLabel-10K (Jonathan-Zhou/GameLabel-10k) — a real,
+        Apache-2.0, crowdsourced mobile-game image-preference dataset
+        (arXiv:2409.19830). General-domain DPO signal (supplements
+        Pick-a-Pic/HPDv2's Stage-1 role) — NOT a substitute for the
+        UI-domain sources (DesignSense-10k/DesignPref), which remain
+        publicly unreleased; see datasets.yaml's entries for both.
+
+        Reads via the `refs/convert/parquet` revision Hugging Face
+        auto-generates for CSV-formatted dataset repos, rather than
+        streaming the raw 2.26GB data.csv directly — same parquet-reading
+        infrastructure `_fetch_huggingface_preference_pairs` already uses,
+        just pointed at a different revision. Confirmed this mirror
+        exists for this specific repo (HF's own "refs/convert/parquet"
+        tree listing for Jonathan-Zhou/GameLabel-10k, "Update parquet
+        files") before writing this, rather than assumed.
+
+        Real, confirmed schema (from HF's own dataset-viewer output for
+        this repo — not guessed): `prompt` (str), `img0_votes`/
+        `img1_votes` (int, 0-5 — a vote COUNT from up to 5 crowdsourced
+        players per pair, not a fixed 0/1 label column), `img0_encoding`/
+        `img1_encoding` (str — base64-encoded JPEG wrapped in a stray
+        Python `b'...'` bytes-repr, e.g. `"b'/9j/4AAQSkZJRgABAQ...'"` —
+        confirmed by inspecting real sample values, not the standard HF
+        image-feature `{"bytes": ...}` dict format).
+        """
+        import io
+
+        import pandas as pd
+        from huggingface_hub import snapshot_download
+        from PIL import Image
+
+        if not spec.repo_id:
+            log.error("missing_repo_id", dataset=key)
+            return []
+
+        parquet_revision = spec.fetch_config.get("parquet_revision", "refs/convert/parquet")
+        meta_dir = snapshot_download(
+            repo_id=spec.repo_id,
+            repo_type="dataset",
+            revision=parquet_revision,
+            local_dir=str(dest / "_metadata"),
+            allow_patterns=["*.parquet"],
+            token=self._hf_token,
+        )
+        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
+        if not parquet_files:
+            log.error(
+                "gamelabel_parquet_not_found", dataset=key, dir=str(meta_dir),
+                note=(
+                    f"Expected an auto-converted parquet mirror at revision "
+                    f"{parquet_revision!r} — if HF's auto-conversion for this "
+                    f"repo has changed or lagged, fall back to reading "
+                    f"data.csv directly at revision 'main' instead (same "
+                    f"decode logic below applies either way, since the "
+                    f"columns are unchanged by the CSV->parquet conversion)."
+                ),
+            )
+            return []
+
+        frames = []
+        for pf in parquet_files:
+            try:
+                frames.append(pd.read_parquet(pf))
+            except Exception as e:
+                log.warning("gamelabel_parquet_read_failed", file=str(pf), error=str(e))
+        if not frames:
+            return []
+        df = pd.concat(frames, ignore_index=True)
+
+        required = {"prompt", "img0_votes", "img1_votes", "img0_encoding", "img1_encoding"}
+        missing = required - set(df.columns)
+        if missing:
+            log.error(
+                "gamelabel_schema_mismatch", dataset=key, missing=sorted(missing),
+                available_columns=list(df.columns),
+                note="Confirmed schema no longer matches the live data — do not guess a remapping, inspect the real columns and update this method.",
+            )
+            return []
+
+        sample_size = spec.fetch_config.get("sample_size")
+        if sample_size and len(df) > sample_size:
+            df = df.sample(n=sample_size, random_state=42)
+
+        out_dir = self._config.resolved_paths["preference_pairs"] / key
+        out_dir.mkdir(parents=True, exist_ok=True)
+        written = 0
+        skipped_ties = 0
+        seen_hashes: set[str] = set()
+
+        for idx, row in enumerate(df.itertuples(index=False)):
+            row_dict = dict(zip(df.columns, row))
+
+            votes_a, votes_b = row_dict.get("img0_votes"), row_dict.get("img1_votes")
+            try:
+                votes_a, votes_b = int(votes_a), int(votes_b)
+            except (TypeError, ValueError):
+                continue
+            if votes_a == votes_b:
+                # Genuine tie (including 0-0, no votes cast either way) —
+                # not usable for DPO's strict win/lose pairing, same
+                # tie-dropping convention _fetch_huggingface_preference_pairs
+                # and _fetch_hpdv2_ranked_pairs already use.
+                skipped_ties += 1
+                continue
+            label = "a" if votes_a > votes_b else "b"
+
+            try:
+                a_blob = _decode_gamelabel_image(row_dict.get("img0_encoding"))
+                b_blob = _decode_gamelabel_image(row_dict.get("img1_encoding"))
+                if not a_blob or not b_blob:
+                    continue
+                a_img = Image.open(io.BytesIO(a_blob)); a_img.load()
+                b_img = Image.open(io.BytesIO(b_blob)); b_img.load()
+            except Exception as e:
+                log.warning("gamelabel_image_decode_failed", dataset=key, row=idx, error=str(e))
+                continue
+
+            pair_hash = self._compute_bytes_sha256(a_blob) + self._compute_bytes_sha256(b_blob)
+            if pair_hash in seen_hashes:
+                continue
+            seen_hashes.add(pair_hash)
+
+            pair_id = f"{key}_{idx:07d}"
+            a_img.save(out_dir / f"{pair_id}_a.png", "PNG")
+            b_img.save(out_dir / f"{pair_id}_b.png", "PNG")
+            (out_dir / f"{pair_id}.json").write_text(
+                json.dumps({
+                    "pair_id": pair_id,
+                    "prompt": str(row_dict.get("prompt", "")),
+                    "image_a": f"{pair_id}_a.png",
+                    "image_b": f"{pair_id}_b.png",
+                    "preferred": label,  # "a" or "b"
+                    "origin": key,
+                    "label_source": "human",
+                    # Preserved for downstream weighting/analysis — a 5-0
+                    # vote split is a stronger signal than a 1-0 split,
+                    # even though both produce the same binary label above.
+                    "vote_margin": abs(votes_a - votes_b),
+                }),
+                encoding="utf-8",
+            )
+            written += 1
+
+        log.info("gamelabel_pairs_written", dataset=key, count=written, skipped_ties=skipped_ties)
         return []  # Not manifest records — written directly to preference_pairs/
 
     @staticmethod

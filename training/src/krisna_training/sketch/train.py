@@ -59,6 +59,7 @@ class TrainConfig:
     init_from: str | None = None       # progressive training: load weights from a smaller-grid checkpoint
     num_workers: int = 4
     seed: int = 42
+    use_gradient_checkpointing: bool = False   # see model.py's build_model() docstring
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":
@@ -81,7 +82,31 @@ def build_model_config(cfg: TrainConfig):
         ffn_dim=cfg.ffn_dim,
         dropout=cfg.dropout,
         prompt_dim=cfg.prompt_dim,
+        use_gradient_checkpointing=cfg.use_gradient_checkpointing,
     )
+
+
+def seed_worker(worker_id: int) -> None:
+    """DataLoader `worker_init_fn`. Restores run-to-run reproducibility for
+    the caption-mix (dataset.py) and mask ratio/position (masking.py,
+    called from collate_fn below) draws, both of which use Python's global
+    `random` module. CPython's `random` module auto-reseeds itself from OS
+    entropy after every fork (os.register_at_fork, since Python 3.9) —
+    which means sibling DataLoader workers were never actually correlated
+    (a prior version of this fix wrongly assumed they were), but it does
+    mean the SAME cfg.seed produces DIFFERENT draws on separate runs,
+    since that auto-reseed discards whatever seed was set beforehand.
+    Fixed by explicitly reseeding from torch's already-correct,
+    already-deterministic worker_info.seed.
+    """
+    import random
+
+    import numpy as np
+    import torch
+
+    worker_seed = torch.utils.data.get_worker_info().seed % (2**32)
+    random.seed(worker_seed)
+    np.random.seed(worker_seed)
 
 
 def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int, cfg_dropout_prob: float = 0.1):
@@ -175,6 +200,7 @@ def train(cfg: TrainConfig) -> None:
         num_workers=cfg.num_workers,
         collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim, cfg.cfg_dropout_prob),
         drop_last=True,
+        worker_init_fn=seed_worker,
     )
 
     start_step = 0

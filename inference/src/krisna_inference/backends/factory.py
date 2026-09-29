@@ -52,7 +52,11 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
     if spec.tier == Tier.SKETCH:
         from krisna_inference.backends.sketch_backend import SketchBackend
 
-        return SketchBackend(spec, checkpoint_path=os.environ.get("KRISNA_SKETCH_CHECKPOINT"))
+        return SketchBackend(
+            spec,
+            checkpoint_path=os.environ.get("KRISNA_SKETCH_CHECKPOINT"),
+            guidance_scale=float(os.environ.get("KRISNA_SKETCH_GUIDANCE_SCALE", "3.0")),
+        )
 
     if spec.tier == Tier.POLISH_DEFAULT:
         from krisna_inference.backends.polish_default_backend import ZImageTurboBackend
@@ -96,7 +100,7 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         # critic_backend.py / critic_worker.py.
         max_gpu_gb = None
         if _LOW_VRAM:
-            max_gpu_gb = float(os.environ.get("KRISNA_CRITIC_MAX_GPU_GB", "12.0"))
+            max_gpu_gb = float(os.environ.get("KRISNA_CRITIC_MAX_GPU_GB", "11.5"))
         return CriticBackend(
             spec,
             worker_python=os.environ.get("KRISNA_CRITIC_VENV_PYTHON", "./venv-critic/bin/python"),

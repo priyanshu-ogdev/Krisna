@@ -243,7 +243,7 @@ class PlannerBackend(ModelBackend):
             # sharper instruction rather than silently accepting garbage or
             # crashing on the first miss.
             text = _generate()
-            delta, error = self._extract_json_delta(text)
+            delta, error, span = self._extract_json_delta(text)
             attempts = 1
             while delta is None and attempts <= MAX_JSON_RETRIES:
                 text = _generate(
@@ -255,19 +255,27 @@ class PlannerBackend(ModelBackend):
                         '"tool_call": null, "reasoning_note": "..."}'
                     )
                 )
-                delta, error = self._extract_json_delta(text)
+                delta, error, span = self._extract_json_delta(text)
                 attempts += 1
 
             if delta is None:
                 raise PlannerJSONDecodeError(
                     f"Planner failed to produce valid JSON after {attempts} attempts: {error}"
                 )
-            return {"text": text, "delta": delta, "attempts": attempts}
+            # Strip the JSON delta's own character span back out of the
+            # text before it's surfaced to the user — see
+            # _extract_json_delta's docstring for the bug this fixes.
+            if span is not None:
+                start, end = span
+                conversational_text = (text[:start] + text[end:]).strip()
+            else:
+                conversational_text = text
+            return {"text": conversational_text, "delta": delta, "attempts": attempts}
 
         result = await asyncio.to_thread(_run_sync)
         return {
             "tier": self.spec.tier.value,
-            "mock_output_text": result["text"],
+            "reply_text": result["text"],
             "design_state_delta": result["delta"],
             "retrieved_critique_ids": [r.record_id for r in retrieved],
         }
@@ -297,11 +305,19 @@ class PlannerBackend(ModelBackend):
         return system
 
     @staticmethod
-    def _extract_json_delta(text: str) -> tuple[dict | None, str | None]:
+    def _extract_json_delta(text: str) -> tuple[dict | None, str | None, tuple[int, int] | None]:
         """Find the last well-formed {...} object in `text` and validate it
         has the minimum required design-state-delta keys. Returns
-        (delta, None) on success or (None, error_message) on failure —
-        never raises, so the retry loop above can decide what to do.
+        (delta, None, (start, end)) on success or (None, error_message, None)
+        on failure — never raises, so the retry loop above can decide what
+        to do.
+
+        Also returns the JSON object's character span within `text`. This
+        matters: without it, the raw text (JSON object still attached)
+        flowed unmodified all the way through to the chat UI, which
+        renders it verbatim — every planner turn showed the user a reply
+        with a raw JSON object glued onto the end. The caller strips this
+        span out before surfacing the text.
         """
         try:
             end = text.rindex("}") + 1
@@ -318,20 +334,20 @@ class PlannerBackend(ModelBackend):
                         start = i
                         break
             if start is None:
-                return None, "no balanced JSON object found"
+                return None, "no balanced JSON object found", None
             parsed = json.loads(text[start:end])
         except (ValueError, json.JSONDecodeError) as e:
-            return None, f"JSON parse error: {e}"
+            return None, f"JSON parse error: {e}", None
 
         if not isinstance(parsed, dict):
-            return None, "top-level value is not a JSON object"
+            return None, "top-level value is not a JSON object", None
         if "stage" not in parsed:
-            return None, "missing required key 'stage'"
+            return None, "missing required key 'stage'", None
         valid_stages = {"conversing", "sketching", "finalizing", "finalized", "critiquing"}
         if parsed["stage"] not in valid_stages:
-            return None, f"'stage' must be one of {sorted(valid_stages)}, got {parsed['stage']!r}"
+            return None, f"'stage' must be one of {sorted(valid_stages)}, got {parsed['stage']!r}", None
 
         parsed.setdefault("constraint_updates", {})
         parsed.setdefault("tool_call", None)
         parsed.setdefault("reasoning_note", "")
-        return parsed, None
+        return parsed, None, (start, end)

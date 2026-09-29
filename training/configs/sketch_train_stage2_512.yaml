@@ -16,7 +16,11 @@ ffn_dim: 2048
 dropout: 0.1
 prompt_dim: 768
 
-batch_size: 16             # 4x the tokens per image vs stage 1 — halved batch to fit VRAM
+batch_size: 16             # 4x tokens vs stage 1, and since attention is
+                            # O(n^2) in sequence length, FLOPs are ~16x per
+                            # sample — halving batch only nets ~8x more
+                            # compute/memory per step. See
+                            # use_gradient_checkpointing below.
 lr: 1.5e-4                  # lower LR for continued/fine-tune-style training
 weight_decay: 0.01
 warmup_steps: 500
@@ -26,6 +30,9 @@ cfg_dropout_prob: 0.1
 total_steps: 60000
 critic_loss_weight: 0.5
 grad_clip: 1.0
+use_gradient_checkpointing: true   # recommended on for stage 2 specifically
+                                     # (1024 tokens/seq) — see model.py's
+                                     # build_model() docstring
 
 log_every: 50
 checkpoint_every: 2000

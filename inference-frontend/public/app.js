@@ -529,6 +529,39 @@ function renderFinalizePanel() {
   `;
 }
 
+function renderCritiquePanel() {
+  // sessionState.critique (critique.result: critique_source, overall_score,
+  // dimensions{name:{score,note}}, suggested_edits, raw_model_output_ref)
+  // was fetched and stored by the "Critique" button's handler, but nothing
+  // ever rendered it — clicking Critique gave the user zero visible
+  // feedback that anything happened, let alone what the critique said.
+  const out = $("#critique-panel");
+  const critique = sessionState.critique;
+  if (!critique || !critique.requested || !critique.result) {
+    out.innerHTML = `<p class="hint">No critique yet — finalize first, then critique.</p>`;
+    return;
+  }
+  const result = critique.result;
+  const dimensionRows = Object.entries(result.dimensions || {})
+    .map(([name, d]) => `
+      <div class="score-label">${escapeHtml(name.replace(/_/g, " "))}</div>
+      <div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${Math.round((d.score || 0) * 100)}%"></div></div>
+        ${d.note ? `<div class="hint" style="margin-top:0.15rem">${escapeHtml(d.note)}</div>` : ""}
+      </div>
+    `).join("");
+  const editsList = (result.suggested_edits || [])
+    .map((edit) => `<li>${escapeHtml(JSON.stringify(edit))}</li>`)
+    .join("");
+  out.innerHTML = `
+    <div><strong>Source:</strong> ${escapeHtml(critique.source || result.critique_source || "—")}</div>
+    <div><strong>Overall score:</strong> ${Math.round((result.overall_score || 0) * 100)}%</div>
+    ${critique.timestamp ? `<div class="hint" style="margin-top:0.15rem">${escapeHtml(critique.timestamp)}</div>` : ""}
+    <div class="score-grid" style="margin-top:0.5rem">${dimensionRows}</div>
+    ${editsList ? `<div style="margin-top:0.5rem"><strong>Suggested edits:</strong><ul>${editsList}</ul></div>` : ""}
+  `;
+}
+
 function applySession(data) {
   sessionState = data;
   $("#no-session").classList.add("hidden");
@@ -538,6 +571,7 @@ function applySession(data) {
   renderStageStrip();
   renderChat();
   renderFinalizePanel();
+  renderCritiquePanel();
 }
 
 $("#btn-new-session").addEventListener("click", async () => {

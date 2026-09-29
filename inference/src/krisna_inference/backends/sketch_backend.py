@@ -20,11 +20,23 @@ log = logging.getLogger("krisna_inference.backends.sketch")
 
 
 class SketchBackend(ModelBackend):
-    def __init__(self, spec, checkpoint_path: str | None = None, num_rounds: int = 8) -> None:
+    def __init__(
+        self,
+        spec,
+        checkpoint_path: str | None = None,
+        num_rounds: int = 8,
+        guidance_scale: float = 3.0,
+    ) -> None:
         super().__init__(spec)
         self.checkpoint_path = checkpoint_path
         self.num_rounds = num_rounds
+        # Moderate, literature-anchored starting point (no trained
+        # checkpoint exists yet to tune this against — see
+        # maskgit_model.py's module docstring). 0.0 (no guidance, the
+        # pre-Phase-17 behavior) remains available by passing 0.0.
+        self.guidance_scale = guidance_scale
         self._model = None
+        self._text_embedder = None
 
     async def load(self) -> None:
         if not self.checkpoint_path:
@@ -52,6 +64,29 @@ class SketchBackend(ModelBackend):
             if "out of memory" in msg:
                 raise OOMSimulatedError(str(e)) from e
             raise BackendLoadError(f"Failed to load sketch checkpoint: {e}") from e
+
+        # Real prompt conditioning: loads the SAME CLIP embedder singleton
+        # training's collate_fn uses (krisna_inference.verifiers.common.
+        # get_clip_embedder), guaranteeing the embedding space matches by
+        # construction. Falls back to unconditional generation (logged) if
+        # CLIP/transformers deps aren't installed, rather than hard-failing
+        # the whole backend load — see docs/review/17_sketch_inference_conditioning_and_cfg.md.
+        def _load_embedder_sync():
+            from krisna_inference.verifiers.common import get_clip_embedder
+
+            embedder = get_clip_embedder()
+            embedder.load()
+            return embedder
+
+        try:
+            self._text_embedder = await asyncio.to_thread(_load_embedder_sync)
+        except ImportError:
+            log.warning(
+                "sketch_text_embedder_unavailable",
+                extra={"note": "CLIP/transformers not installed — Sketch tier will generate unconditionally (zero embedding) regardless of prompt text"},
+            )
+            self._text_embedder = None
+
         self._loaded = True
 
     async def unload(self) -> None:
@@ -83,21 +118,41 @@ class SketchBackend(ModelBackend):
         blobs = get_blob_store()
         prior_tokens = blobs.load_tokens(prior_tokens_ref) if prior_tokens_ref else None
 
+        # The user's actual message, forwarded via **kwargs from
+        # SwapOrchestrator.run_conversational_turn (the same kwargs dict
+        # PlannerBackend.run(message=...) receives). Falls back to
+        # "UI design" (not a zero vector) on empty/missing text, matching
+        # collate_fn's own fallback for records with no usable caption —
+        # a genuine zero vector is reserved for the CFG unconditional
+        # branch below.
+        message = (kwargs.get("message") or "").strip()
+        prompt_text = message or "UI design"
+
         def _run_sync():
             import torch
 
-            # Real prompt conditioning would come from the planner's hidden
-            # states / a shared embedding space — placeholder zeros here
-            # since that cross-tier embedding contract is a training-time
-            # decision this backend doesn't own. Sized from the loaded
-            # checkpoint's own config (training/sketch/model.py's
-            # SketchModelConfig.prompt_dim), not a hardcoded guess — a
-            # checkpoint trained with a different prompt_dim (e.g. CLIP's
-            # 768 instead of the placeholder default) still loads correctly.
             prompt_dim = getattr(self._model.module.cfg, "prompt_dim", 4096)
-            prompt_embedding = torch.zeros(1, prompt_dim, device=next(self._model.module.parameters()).device)
+            device = next(self._model.module.parameters()).device
+            guidance_scale = self.guidance_scale
+
+            if self._text_embedder is not None:
+                prompt_embedding = self._text_embedder.embed_text(prompt_text).to(device)
+                if prompt_embedding.shape[-1] != prompt_dim:
+                    log.warning(
+                        "sketch_prompt_dim_mismatch",
+                        extra={"embedder_dim": prompt_embedding.shape[-1], "checkpoint_prompt_dim": prompt_dim},
+                    )
+                    prompt_embedding = torch.zeros(1, prompt_dim, device=device)
+                    guidance_scale = 0.0
+            else:
+                prompt_embedding = torch.zeros(1, prompt_dim, device=device)
+                guidance_scale = 0.0
+
             return self._model.sample(
-                prompt_embedding, num_rounds=self.num_rounds, prior_tokens=prior_tokens
+                prompt_embedding,
+                num_rounds=self.num_rounds,
+                prior_tokens=prior_tokens,
+                guidance_scale=guidance_scale,
             )
 
         result = await asyncio.to_thread(_run_sync)

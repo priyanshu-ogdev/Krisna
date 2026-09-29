@@ -62,6 +62,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--beta", type=float, default=2000.0, help="DPO inverse-temperature — see dpo_loss.py's docstring for why this default is a starting point, not a tuned value.")
     p.add_argument("--fm-anchor-weight", type=float, default=0.0, help="Flow-matching anchor regularization weight (MotionFlux-style). 0.0 disables it.")
     p.add_argument("--learning-rate", type=float, default=1e-5)
+    p.add_argument(
+        "--lr-warmup-steps", type=int, default=100,
+        help=(
+            "This training loop previously had no LR scheduler at all — "
+            "plain constant AdamW(lr=learning_rate) from step 0, unlike "
+            "every sibling config in this repo. A randomly-initialized "
+            "LoRA adapter taking full-LR AdamW steps from step 0, against "
+            "a DPO loss with beta=2000, is exactly what warmup protects "
+            "against. Default 100 matches the sibling dreambooth script's "
+            "value."
+        ),
+    )
+    p.add_argument(
+        "--lr-scheduler", type=str, default="constant_with_warmup",
+        choices=["constant", "constant_with_warmup", "linear", "cosine"],
+    )
     p.add_argument("--lora-rank", type=int, default=32)
     p.add_argument("--train-batch-size", type=int, default=1)
     p.add_argument("--gradient-accumulation-steps", type=int, default=4)
@@ -175,19 +191,64 @@ def main() -> int:
         ref_pipe.load_lora_weights(args.lora_adapter_path)
     ref_pipe.transformer.requires_grad_(False)
     ref_pipe.transformer.eval()
+    ref_transformer = ref_pipe.transformer
+
+    # UPGRADE (A6000 48GB training-memory audit): only ref_pipe.transformer
+    # is ever used below — prompt_embeds come from policy_pipe.encode_prompt(),
+    # and ref_pipe's own VAE/text encoder(s) are never called. Loading the
+    # whole pipeline built a second, entirely unused copy of them purely
+    # to reach `.transformer` — freed immediately.
+    del ref_pipe.vae
+    if hasattr(ref_pipe, "text_encoder"):
+        del ref_pipe.text_encoder
+    if hasattr(ref_pipe, "text_encoder_2"):
+        del ref_pipe.text_encoder_2
+    if hasattr(ref_pipe, "text_encoder_3"):
+        del ref_pipe.text_encoder_3
+    del ref_pipe
+    import gc
+
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # Holding BOTH full bf16 transformer copies resident on GPU
+    # simultaneously is DPO's dominant VRAM cost — documented in Reg-DPO
+    # (arXiv:2511.01450, §5 "Model Offloading for Frozen Modules": moving
+    # a frozen reference model's weights to CPU between forward passes
+    # cuts peak memory by ~10GB). ref_transformer needs no gradients and
+    # is only used inside `with torch.no_grad()` below, so it stays on
+    # CPU by default and is swapped to GPU only for its brief forward call.
+    ref_transformer.to("cpu")
 
     vae = policy_pipe.vae
     vae.requires_grad_(False)
     policy_transformer = policy_pipe.transformer
-    ref_transformer = ref_pipe.transformer
+
+    if hasattr(policy_transformer, "enable_gradient_checkpointing"):
+        policy_transformer.enable_gradient_checkpointing()
+        log.info("policy_transformer_gradient_checkpointing_enabled")
+    else:
+        log.warning("policy_transformer_gradient_checkpointing_unavailable")
 
     optimizer = torch.optim.AdamW(
         [p for p in policy_transformer.parameters() if p.requires_grad],
         lr=args.learning_rate,
     )
+    from diffusers.optimization import get_scheduler
 
-    policy_transformer, ref_transformer, optimizer, dataloader = accelerator.prepare(
-        policy_transformer, ref_transformer, optimizer, dataloader
+    lr_scheduler = get_scheduler(
+        args.lr_scheduler,
+        optimizer=optimizer,
+        num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps * accelerator.num_processes,
+    )
+
+    # ref_transformer removed from accelerator.prepare() — that call
+    # would move/wrap it onto the accelerator device immediately,
+    # undoing the CPU-resident placement above before training starts.
+    policy_transformer, optimizer, dataloader, lr_scheduler = accelerator.prepare(
+        policy_transformer, optimizer, dataloader, lr_scheduler
     )
 
     global_step = 0
@@ -249,8 +310,12 @@ def main() -> int:
                 policy_v_chosen = policy_transformer(noisy_chosen, sigma_chosen.flatten(), prompt_embeds).sample
                 policy_v_rejected = policy_transformer(noisy_rejected, sigma_rejected.flatten(), prompt_embeds).sample
                 with torch.no_grad():
+                    # Swap ref_transformer onto the accelerator device only
+                    # for this forward call, then back to CPU immediately.
+                    ref_transformer.to(accelerator.device)
                     ref_v_chosen = ref_transformer(noisy_chosen, sigma_chosen.flatten(), prompt_embeds).sample
                     ref_v_rejected = ref_transformer(noisy_rejected, sigma_rejected.flatten(), prompt_embeds).sample
+                    ref_transformer.to("cpu")
 
                 out = flow_matching_dpo_loss(
                     policy_v_chosen=policy_v_chosen, policy_v_rejected=policy_v_rejected,
@@ -261,6 +326,7 @@ def main() -> int:
 
                 accelerator.backward(out.loss)
                 optimizer.step()
+                lr_scheduler.step()
                 optimizer.zero_grad()
 
             if accelerator.sync_gradients:
