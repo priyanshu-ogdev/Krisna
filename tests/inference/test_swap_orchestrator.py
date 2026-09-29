@@ -136,15 +136,17 @@ async def test_both_quality_and_fallback_oom_exhausts_recovery(
 
 @pytest.mark.asyncio
 async def test_vram_budget_preflight_skips_straight_to_fallback(started_orchestrator: SwapOrchestrator):
-    # Tiny envelope: baseline (9.5GB) + POLISH_QUALITY (16GB) = 25.5,
-    # doesn't fit a 20GB envelope, but + POLISH_DEFAULT (8GB) = 17.5 does...
-    # except baseline gets unloaded before the polish load in the real
-    # sequence, so budget is checked against JUST the candidate tier size.
+    # Tiny envelope: POLISH_QUALITY (16GB) alone doesn't fit, but
+    # POLISH_DEFAULT (14GB, corrected from an earlier 8GB estimate that
+    # wrongly assumed NF4 quantization — see model_registry.py and
+    # docs/review/13_ram_offload_and_precision_audit.md) does. Baseline
+    # gets unloaded before the polish load in the real sequence, so
+    # budget is checked against JUST the candidate tier size.
     orchestrator = started_orchestrator
-    orchestrator.ledger.envelope_gb = 10.0  # smaller than POLISH_QUALITY's 16GB alone
+    orchestrator.ledger.envelope_gb = 15.0  # smaller than POLISH_QUALITY's 16GB alone, bigger than POLISH_DEFAULT's 14GB
     result = await orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
     assert result.ok
-    assert result.tier_used == Tier.POLISH_DEFAULT  # 8GB fits under 10GB envelope
+    assert result.tier_used == Tier.POLISH_DEFAULT  # 14GB fits under 15GB envelope
     assert result.degraded is True
 
 

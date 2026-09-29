@@ -20,9 +20,9 @@ import os
 from krisna_inference.orchestrator.model_registry import ModelBackend, ModelSpec, Tier
 
 # Low-VRAM / CPU-offload mode. When set, real_backend_factory passes
-# offload params to the backends that support it (POLISH_QUALITY, CRITIC —
-# PLANNER/SKETCH/POLISH_DEFAULT are already small enough not to need it,
-# see model_registry.py's LOW_VRAM_REGISTRY comment). This flag alone does
+# offload params to the backends that support it (POLISH_DEFAULT,
+# POLISH_QUALITY, CRITIC — PLANNER/SKETCH are small enough not to need
+# it, see model_registry.py's LOW_VRAM_REGISTRY comment). This flag alone does
 # NOT change which registry SwapOrchestrator uses — that's the separate
 # `low_vram=True` constructor arg (see swap_orchestrator.py). Passing this
 # env var without also constructing the orchestrator with `low_vram=True`
@@ -60,8 +60,18 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         # Z-Image-Turbo is the ONE renderer this project actually fine-tunes
         # (LoRA + Diffusion-DPO per the final PRD) — this LoRA wiring is
         # correct and must stay, unlike the three removed above/below.
-        # Not wired to _LOW_VRAM either — 8.0GB already fits a 12GB target.
-        return ZImageTurboBackend(spec, lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"))
+        # WAS "Not wired to _LOW_VRAM — 8.0GB already fits a 12GB target."
+        # That 8.0GB figure assumed NF4 quantization this backend never
+        # applies (bf16 only, by design — see that file's load()). Real
+        # bf16 footprint is ~14GB, which does NOT already fit a 12GB
+        # target, so this now wires the same enable_cpu_offload mechanism
+        # Polish Quality uses. See model_registry.py's LOW_VRAM_REGISTRY
+        # entry for this tier and docs/review/13_ram_offload_and_precision_audit.md.
+        return ZImageTurboBackend(
+            spec,
+            lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
+            enable_cpu_offload=_LOW_VRAM,
+        )
 
     if spec.tier == Tier.POLISH_QUALITY:
         from krisna_inference.backends.polish_quality_backend import QwenImageEditBackend
