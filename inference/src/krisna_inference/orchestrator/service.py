@@ -207,6 +207,41 @@ async def get_session(session_id: str) -> dict:
     return state.to_wire() | {"revision": state.revision}
 
 
+@app.get("/session/{session_id}/render")
+async def get_session_render(session_id: str):
+    """Serves the session's finalized image as actual bytes.
+
+    Added alongside the frontend's pixel-forming visualization —
+    finalize_output.image_ref (a `blob://...` string) was never
+    fetchable by a browser before this: DesignState.to_wire() only ever
+    returned the *reference*, and this service had no route that
+    resolved it to real bytes. Without this, no UI could ever show the
+    actual rendered image, only its existence. Session-scoped (routed
+    through the same session_id every other endpoint uses) rather than
+    a generic /blob/{ref} route, so a client can only ever fetch the
+    image belonging to the session it already has access to — image_ref
+    itself is never accepted as a request parameter, only read
+    server-side from that session's own state, which also rules out any
+    path-traversal concern (BlobStore.path_for()'s ref always comes from
+    save_image()'s own uuid-based filename, never client input).
+    """
+    from fastapi.responses import FileResponse
+
+    from krisna_inference.backends.blob_store_singleton import get_blob_store
+
+    try:
+        state = store.get(session_id)
+    except SessionNotFoundError as e:
+        raise _error_response(e)
+    image_ref = state.finalize_output.image_ref
+    if not image_ref or not image_ref.startswith("blob://"):
+        raise HTTPException(status_code=404, detail="No finalized image for this session yet.")
+    path = get_blob_store().path_for(image_ref)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Image reference exists but the blob is missing on disk.")
+    return FileResponse(path, media_type="image/png")
+
+
 @app.post("/session/{session_id}/message")
 async def post_message(session_id: str, req: MessageRequest) -> dict:
     try:
@@ -266,6 +301,8 @@ async def preference_pairs_export(source: str | None = None) -> dict:
 
 @app.get("/orchestrator/status")
 async def orchestrator_status() -> dict:
+    from krisna_inference.orchestrator.vram_budget import probe_real_ram, probe_real_vram
+
     return {
         "residency_state": orchestrator.state.state.value,
         "conversation_available": orchestrator.conversation_available(),
@@ -276,6 +313,19 @@ async def orchestrator_status() -> dict:
         # exists conditionally on low_vram — a caller checking this
         # field doesn't need to know which mode is active first.
         "ram": orchestrator.ram_ledger.snapshot(),
+        # New: real, live hardware readings (torch.cuda.mem_get_info(),
+        # /proc/meminfo) alongside the declared ledger numbers above.
+        # probe_real_vram()/probe_real_ram() already existed in
+        # vram_budget.py for diagnostics/logging — confirmed by grep
+        # they were never actually wired into any API response before
+        # this, so no client (this project's own frontend included)
+        # could ever show real hardware utilization, only the admission
+        # ledger's own declared bookkeeping. None on hosts without
+        # CUDA/without /proc (e.g. this endpoint running the MockBackend
+        # dev path on a Mac) — a null here means "not available on this
+        # host," never "zero used."
+        "real_vram": probe_real_vram(),
+        "real_ram": probe_real_ram(),
         "low_vram_mode": orchestrator.low_vram,
         "history_len": len(orchestrator.state.history),
     }

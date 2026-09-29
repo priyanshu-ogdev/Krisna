@@ -15,7 +15,7 @@ renumber pass before this doc goes into a paper's appendix.
 
 **Phase 1 — Sketch tier (MaskGIT)**
 1. Chang, H., Zhang, H., Jiang, L., Liu, C., & Freeman, W. T. (2022). *MaskGIT: Masked Generative Image Transformer*. CVPR 2022.
-2. Chang, H., et al. (2023). *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. arXiv:2301.00704.
+2. Chang, H., et al. (2023). *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. arXiv:2301.00704. — Re-verified in `21_frontend_and_scripts_merge.md` §5 directly against the paper (§2.7, equation 1: `ℓ_g=(1+t)ℓ_c-tℓ_u`; 10% training-time dropout; linear guidance ramp) rather than trusted from Phase 17's own citation — confirmed exact on every specific.
 3. Besnier, V. & Chen, M. (2023). *A Pytorch Reproduction of Masked Generative Image Transformer*. arXiv:2310.14400. (Source for the ~387M-sample training-budget precedent cited against this repo's Stage-1 budget.)
 4. Besnier, V., et al. (2025). *Halton scheduler as a plug-in replacement for confidence-based scheduling in masked generative transformers*. arXiv (2025).
 
@@ -97,6 +97,10 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | 18 | Training-memory audit against the real A6000 48GB/128GB-RAM target: Sketch Stage 2 and Planner had no gradient checkpointing (Planner's activation memory upper-bound computed at ~245GB vs. ~7.7GB with checkpointing at its configured batch/seq length); DPO had no LR scheduler, loaded a fully redundant reference-pipeline VAE/text-encoder copy, and held both transformer copies on GPU simultaneously | **Fixed** — see `18_training_memory_audit.md`; also documents a self-correction — an earlier "standardize LoRA alpha to 2x across tiers" fix was reverted after research showed Critic/DPO each follow a real, different, model-API-specific convention than the assumption that motivated it |
 | 19 | **Second-highest-severity finding in this review**: `service.py` never wired the real VQ-token-decode hook into Finalize — every real `/finalize` call crashed with `PIL.UnidentifiedImageError`, not a hypothetical. Also: raw JSON leaking into every planner chat message (the JSON delta's span was computed but discarded), and a critique-results panel fetched/stored but never rendered | **Fixed** — see `19_agentic_workflow_io_audit.md`; handoff hook wired with a clear-failure fallback, JSON stripped from user-facing text (caught and fixed a bug in the first attempt at this fix via direct execution), critique panel added to the frontend |
 | 20 | GameLabel-10K listed as "vetted but not integrated" — real dataset, but neither existing fetch mode matches its actual schema (vote-count columns, not a fixed label; a non-standard base64+bytes-repr image encoding) | **Fixed** — see `20_gamelabel_10k_integration.md`; dedicated fetch adapter added after confirming the live schema, verified end-to-end against real pandas/PIL with two bugs caught before shipping |
+| 21 | A restored regression test (`test_critic_low_vram_tier_has_real_headroom_not_exact_equality`) re-asserted the exact misconception Phase 6 already retracted — baseline+candidate VRAM summed together, rather than the real per-tier-alone admission model | **Fixed** — see `21_frontend_and_scripts_merge.md` §2; incorrect final assertion removed with an explanatory comment |
+| 21 | A separate test (`test_low_vram_env_var_sets_critic_max_gpu_gb`) still asserted the pre-fix `max_gpu_gb == 12.0` instead of the corrected `11.5` | **Fixed** — see §2 |
+| 21 | `data-forge/orchestrator.py`'s module docstring + duplicate "Phase 5" numbering (fixed once already) had reverted again in a later uploaded working copy | **Fixed again** — see §3 |
+| 21 | `setup.sh` had no phase for `inference-frontend/` — no way for a fresh operator to discover or install the Node control panel | **Fixed** — see §4; new `frontend` phase, not in the default list, plus a next-steps mention |
 
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
@@ -105,4 +109,4 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–13 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–21 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.

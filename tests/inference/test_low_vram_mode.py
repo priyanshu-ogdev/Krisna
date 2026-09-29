@@ -71,8 +71,18 @@ class TestGetRegistry:
         margin_gb = 12.0 - critic_spec.vram_gb
         assert margin_gb >= 0.25, "headroom should be a real safety margin, not a rounding artifact"
 
-        baseline_vram = LOW_VRAM_REGISTRY[Tier.PLANNER].vram_gb + LOW_VRAM_REGISTRY[Tier.SKETCH].vram_gb
-        assert baseline_vram + critic_spec.vram_gb < 12.0
+        # BUG FIX (found while merging this working copy with a separate
+        # upload): this used to also assert `baseline_vram +
+        # critic_spec.vram_gb < 12.0` — Planner + Sketch + Critic all
+        # fitting the envelope AT ONCE. That's not how this system
+        # admits a swapped-in tier: baseline is unloaded BEFORE Critic
+        # (or any Polish tier) is admitted — see swap_orchestrator.py's
+        # admission sequence and Phase 6's own "retracted" finding for
+        # the exact same misconception, already found and corrected once
+        # elsewhere in this review. The sibling test above
+        # (test_every_swappable_tier_fits_a_12gb_envelope_alone_in_low_vram_mode)
+        # already asserts the correct thing: each swappable tier fits
+        # ALONE, and baseline fits alone, separately — never summed.
 
     def test_critic_ram_headroom_not_pushed_to_exact_equality_by_the_vram_fix(self):
         """RESTORED again — see above. Lowering Critic's GPU-resident

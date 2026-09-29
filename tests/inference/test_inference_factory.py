@@ -145,7 +145,7 @@ class TestLowVramModeFactoryWiring:
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.CRITIC])
-            assert backend.max_gpu_gb == 12.0
+            assert backend.max_gpu_gb == 11.5
         finally:
             monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
             importlib.reload(factory_module)
