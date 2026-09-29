@@ -1,10 +1,13 @@
 """Critic backend — Gemma 4 31B Dense, run in an isolated subprocess.
 
-See critic_worker.py's module docstring for WHY this is a subprocess at
-all: a genuine, unresolvable-in-one-venv `transformers` version conflict
-between this tier (needs exactly transformers==5.5.0, per Unsloth's
-Gemma-4 pin) and the planner tier (needs transformers built from git main
-for Qwen3.5 support). This backend owns the subprocess lifecycle
+See critic_worker.py's module docstring for the full, UPDATED reasoning
+(this review pass) on why this is a subprocess at all: NOT a simple
+Planner-needs-git-main-transformers conflict (that was resolved —
+Qwen3.5 is natively supported in transformers>=5.2.0, a tagged PyPI
+release), but a confirmed bnb-4bit dequantization regression in
+transformers>5.5.0 that this tier's prequantized Gemma-4 checkpoint
+specifically depends on avoiding (unslothai/unsloth#9867 and related).
+This backend owns the subprocess lifecycle
 (spawn/load/run/unload/terminate) and translates the worker's JSON
 protocol into the same ModelBackend interface every other tier uses — the
 swap orchestrator doesn't know or care that this tier is out-of-process.

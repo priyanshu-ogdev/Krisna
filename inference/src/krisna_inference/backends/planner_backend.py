@@ -39,9 +39,16 @@ failure — a malformed response after MAX_JSON_RETRIES attempts surfaces a
 distinct error rather than either silently returning free text mislabeled
 as structured JSON or crashing.
 
-Requires `transformers` built from git main (Qwen3.5 support isn't in a
-tagged PyPI release as of this build — see huggingface.co/Qwen/Qwen3.5-9B),
-plus `torchvision`/`pillow` (it's a VL model) and, for full-speed Gated
+Requires `transformers>=5.2.0` — a tagged PyPI release (Feb 2026) that
+natively supports Qwen3.5's hybrid Gated DeltaNet + Gated Attention
+architecture (confirmed via two independent sources, see
+`docs/architecture/RESEARCH_AND_CITATIONS.md` and
+`docs/review/27_prd_open_risks_research.md` §2.1) — CORRECTED this
+review pass; an earlier revision of this docstring claimed a git-main
+build was required, which was true when originally written but is no
+longer accurate and had drifted from `requirements-inference.txt`,
+which already reflected the fix. Also needs `torchvision`/`pillow`
+(it's a VL model) and, for full-speed Gated
 DeltaNet, the optional `causal_conv1d` + `flash-linear-attention` kernels.
 Without those two kernel packages the linear-attention layers silently fall
 back to slow PyTorch ops rather than failing — this backend checks for them
@@ -213,28 +220,36 @@ class PlannerBackend(ModelBackend):
         self._rag_index = None
         self._loaded = False
 
-    async def run(self, message: str = "", constraints: dict | None = None, **kwargs):
+    async def run(
+        self,
+        message: str = "",
+        constraints: dict | None = None,
+        conversation_history: list[dict] | None = None,
+        prior_critique: dict | None = None,
+        **kwargs,
+    ):
         if not self._loaded:
             raise RuntimeError("Planner backend not loaded")
         import asyncio
 
         retrieved = self._rag_index.retrieve(message, k=self.rag_top_k) if self._rag_index else []
-        system = self._build_system_prompt(constraints or {}, retrieved)
+        system = self._build_system_prompt(constraints or {}, retrieved, prior_critique=prior_critique)
 
+        # REFACTORED (docs/review/29_vllm_planner_migration_research.md):
+        # generation used to be an inline closure here, coupling the
+        # retry loop / RAG / prompt-building logic (all backend-agnostic)
+        # to this one specific transformers .generate() call. Extracted
+        # into the overridable _generate_raw() method below so
+        # planner_backend_vllm.py's PlannerBackendVLLM can subclass this
+        # class and override ONLY generation, inheriting everything else
+        # unchanged — zero duplicated logic, zero risk of the two
+        # backends' prompt-building or JSON-retry behavior silently
+        # drifting apart from each other. This refactor is a pure
+        # extraction: the generation logic itself (chat template,
+        # max_new_tokens, do_sample, temperature) is byte-identical to
+        # what ran inline before.
         def _generate(extra_instruction: str | None = None) -> str:
-            import torch
-
-            messages = [{"role": "system", "content": system}]
-            if extra_instruction:
-                messages.append({"role": "system", "content": extra_instruction})
-            messages.append({"role": "user", "content": message})
-
-            inputs = self._tokenizer.apply_chat_template(
-                messages, add_generation_prompt=True, return_tensors="pt"
-            ).to(self._model.device)
-            with torch.no_grad():
-                out = self._model.generate(inputs, max_new_tokens=512, do_sample=True, temperature=0.7)
-            return self._tokenizer.decode(out[0][inputs.shape[1]:], skip_special_tokens=True)
+            return self._generate_raw(system, conversation_history, message, extra_instruction)
 
         def _run_sync() -> dict:
             # Generate-validate-retry loop, not a hard grammar constraint —
@@ -280,16 +295,79 @@ class PlannerBackend(ModelBackend):
             "retrieved_critique_ids": [r.record_id for r in retrieved],
         }
 
-    def _build_system_prompt(self, constraints: dict, retrieved: list) -> str:
+    def _generate_raw(
+        self,
+        system: str,
+        conversation_history: list[dict] | None,
+        message: str,
+        extra_instruction: str | None = None,
+    ) -> str:
+        """Default (transformers) generation path — runs synchronously,
+        called from inside asyncio.to_thread by run()'s _run_sync closure,
+        so blocking calls here are fine. Subclasses (e.g.
+        PlannerBackendVLLM) override this one method to swap the
+        generation backend while inheriting run()'s RAG retrieval,
+        prompt-building, and JSON-retry logic unchanged."""
+        import torch
+
+        messages = [{"role": "system", "content": system}]
+        if conversation_history:
+            for turn in conversation_history[-6:]:
+                role = "assistant" if turn.get("role") == "planner" else turn.get("role", "user")
+                content = turn.get("content", "")
+                if content:
+                    messages.append({"role": role, "content": content})
+        if extra_instruction:
+            messages.append({"role": "system", "content": extra_instruction})
+        messages.append({"role": "user", "content": message})
+
+        inputs = self._tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, return_tensors="pt"
+        ).to(self._model.device)
+        with torch.no_grad():
+            out = self._model.generate(inputs, max_new_tokens=512, do_sample=True, temperature=0.7)
+        return self._tokenizer.decode(out[0][inputs.shape[1]:], skip_special_tokens=True)
+
+    def _build_system_prompt(
+        self,
+        constraints: dict,
+        retrieved: list,
+        prior_critique: dict | None = None,
+    ) -> str:
+        intent_clause = ""
+        if constraints and constraints.get("original_intent"):
+            intent_clause = f"Original user goal: {constraints['original_intent']!r}. "
+
         system = (
             "You are Krisna's design planner. Discuss intent, refine "
             f"style/constraints, and describe the sketch to generate. "
+            f"{intent_clause}"
             f"Current constraints: {constraints}. "
             "End every reply with a single JSON object on its own line matching "
             'this shape: {"stage": "conversing|sketching|finalizing|finalized|'
             'critiquing", "constraint_updates": {"...": "..."}, "tool_call": '
             '"<tool name or null>", "reasoning_note": "<=2 sentences"}'
         )
+        if prior_critique:
+            critique_lines = [f"Overall Score: {prior_critique.get('overall_score', 'N/A')}"]
+            dims = prior_critique.get("dimensions", {})
+            if isinstance(dims, dict):
+                for dim_name, dim_val in dims.items():
+                    note = dim_val.get("note", "") if isinstance(dim_val, dict) else str(dim_val)
+                    if note:
+                        critique_lines.append(f"- {dim_name}: {note}")
+            edits = prior_critique.get("suggested_edits", [])
+            if edits:
+                critique_lines.append("Suggested Edits to address in this turn:")
+                for edit in edits:
+                    if isinstance(edit, dict):
+                        instr = edit.get("instruction", "")
+                        region = edit.get("region", "")
+                        critique_lines.append(f"  * [{region}] {instr}" if region else f"  * {instr}")
+                    else:
+                        critique_lines.append(f"  * {edit}")
+            system += "\n\nPrior Critic Feedback & Suggested Edits:\n" + "\n".join(critique_lines)
+
         if retrieved:
             # Real human UICrit critique snippets — this is the retrieval
             # context replacing the removed fine-tune. Each snippet is
