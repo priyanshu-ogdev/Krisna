@@ -16,6 +16,7 @@ class-definition time either.
 from __future__ import annotations
 
 import os
+import sys
 
 from krisna_inference.orchestrator.model_registry import ModelBackend, ModelSpec, Tier
 
@@ -74,6 +75,11 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         return ZImageTurboBackend(
             spec,
             lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
+            # UPGRADE (matches polish-quality's KRISNA_POLISH_QUALITY_EDIT_STRENGTH
+            # convention, now that this tier also does real image-conditioned
+            # editing instead of the previous, buggy blank-slate txt2img —
+            # see polish_default_backend.py's module docstring).
+            strength=float(os.environ.get("KRISNA_POLISH_DEFAULT_STRENGTH", "0.6")),
             enable_cpu_offload=_LOW_VRAM,
         )
 
@@ -101,9 +107,12 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         max_gpu_gb = None
         if _LOW_VRAM:
             max_gpu_gb = float(os.environ.get("KRISNA_CRITIC_MAX_GPU_GB", "11.5"))
+        default_worker_python = (
+            "./venv-critic/Scripts/python.exe" if sys.platform == "win32" else "./venv-critic/bin/python"
+        )
         return CriticBackend(
             spec,
-            worker_python=os.environ.get("KRISNA_CRITIC_VENV_PYTHON", "./venv-critic/bin/python"),
+            worker_python=os.environ.get("KRISNA_CRITIC_VENV_PYTHON", default_worker_python),
             # When set, critic_worker.py bypasses unsloth's FastModel (no
             # verified CPU-offload support) for plain transformers+bnb
             # instead — see that module's _load() docstring, including the

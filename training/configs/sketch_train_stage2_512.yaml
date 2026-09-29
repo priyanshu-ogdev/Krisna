@@ -23,6 +23,8 @@ batch_size: 16             # 4x tokens vs stage 1, and since attention is
                             # use_gradient_checkpointing below.
 lr: 1.5e-4                  # lower LR for continued/fine-tune-style training
 weight_decay: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.96             # Chang et al. 2022 (MaskGIT), matches TrainConfig dataclass default
 warmup_steps: 500
 # See stage1's config for the citation/rationale — unchanged for stage 2.
 caption_mix_ratio: 0.95
@@ -36,8 +38,30 @@ use_gradient_checkpointing: true   # recommended on for stage 2 specifically
 
 log_every: 50
 checkpoint_every: 2000
-num_workers: 4
+num_workers: 6               # Upgraded from 4 for i9/A6000 (balanced for gradient checkpointing backward latency)
 seed: 42
 
 resume_from: null
 init_from: "./checkpoints/sketch_stage1_256/checkpoint_final.pt"
+
+# UPGRADE (validation loop, finding #3) — see stage1's config for the
+# full rationale; unchanged for stage 2.
+val_manifest_path: null
+val_every: 1000
+val_batches: 20
+
+# UPGRADE (corpus-scale-aware steps, finding #4) — see stage1's config.
+# 1.0 for stage2 (not 2.0) since it continues from stage1's already-
+# converged weights rather than training from scratch; a full pass at
+# the 512px corpus is a reasonable continuation-style budget, not a
+# from-scratch one.
+target_epochs: 1.0
+
+# UPGRADE (generalization, this review pass): stage 2's real batch_size
+# was already halved (32->16) purely for the quadratic attention-memory
+# cost of 4x the tokens (1024 vs 256) at 512px — accumulation is free
+# VRAM-wise (it trades wall-clock time, not memory) and restores stage
+# 1's effective batch size of 32 for a comparably-noisy gradient
+# estimate across both progressive-resolution stages, on the project's
+# real A6000 48GB training target (PRD §3).
+gradient_accumulation_steps: 2

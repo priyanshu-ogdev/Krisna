@@ -12,22 +12,84 @@ preference-db: "krisna_preference_pairs.db"     # populate via
                                                    # scripts/training/sync_from_data_forge_dpo.sh
 blob-root: "krisna_blobs"
 pretrained-model-name-or-path: "Tongyi-MAI/Z-Image-Turbo"
-lora-adapter-path: null                          # set to the base fine-tune's
-                                                    # output_dir to continue DPO
-                                                    # from an already-trained
-                                                    # checkpoint, rather than
-                                                    # the raw base weights
+lora-adapter-path: null                          # UPGRADE (finding #2, [Critical]): left null
+                                                    # deliberately — see polish_stage2_dpo_general.yaml's
+                                                    # comment; train_dpo.py's main() now auto-detects
+                                                    # and loudly logs the base fine-tune checkpoint it
+                                                    # continues from instead of silently training a
+                                                    # fresh adapter on raw pretrained weights.
 output-dir: "models/dpo_checkpoints/stage1_general"
 source: ["pickapic_v2", "hpdv2"]                  # Stage 1 = general preference
                                                     # (real, human-labeled,
                                                     # not UI-domain — see
                                                     # RESEARCH_AND_CITATIONS.md §1).
-                                                    # For Stage 2 (UI-domain),
-                                                    # override to
-                                                    # ["designsense_10k", "designpref"]
-                                                    # once either has real
-                                                    # public data — see §2.8/2.9.
-resolution: 512
+                                                    #
+                                                    # RECIPE FOR STAGE 2 (UI-DOMAIN DPO):
+                                                    # To train Stage 2 once UI-domain human preference pairs
+                                                    # (DesignSense-10k / DesignPref) are available:
+                                                    # 1. Copy this config to dpo_z_image_stage2_domain.yaml.
+                                                    # 2. Set `lora-adapter-path: "models/dpo_checkpoints/stage1_general"`
+                                                    #    to continue DPO from the general preference checkpoint.
+                                                    # 3. Set `output-dir: "models/dpo_checkpoints/stage2_domain"`.
+                                                    # 4. Set `source: ["designsense_10k", "designpref"]`.
+                                                    # 5. Run: ./train.sh polish-dpo training/configs/dpo_z_image_stage2_domain.yaml
+resolution: 512   # UPGRADE — flagging an unaddressed cross-stage
+                    # inconsistency found on review, not silently fixing a
+                    # number without evidence either way: the base
+                    # fine-tune this LoRA continues from
+                    # (polish_default_lora_z_image.yaml) trains at
+                    # resolution=1024, this DPO refinement stage at 512.
+                    #
+                    # RESEARCHED, not just plausible: this project's own
+                    # docs/architecture/RESEARCH_AND_CITATIONS.md already
+                    # documents Z-Image-Turbo as "MMDiT lineage" (the
+                    # FLUX/SD3 architecture family). That family uses RoPE
+                    # (Rotary Position Embeddings) applied at every
+                    # self-attention layer, not learned absolute position
+                    # embeddings — and RoPE-based DiTs are specifically,
+                    # repeatedly documented as resolution-flexible by
+                    # construction (e.g. DyPE, arXiv:2510.20766, on
+                    # training-free resolution extrapolation for RoPE
+                    # DiTs; FiT/FiTv2 describing this as a "flexible DiT
+                    # trained on multiple resolutions" as a normal,
+                    # expected property of the architecture) — a
+                    # genuinely different, more inherently
+                    # resolution-tolerant mechanism than the Sketch
+                    # tier's own LEARNED positional embeddings, which
+                    # needed an explicit interpolation fix to cross
+                    # resolutions (see docs/review/24_tensor_shape_final_check.md).
+                    # So the architecture itself doesn't make this
+                    # dangerous.
+                    #
+                    # Real precedent for training a base LoRA fine-tune
+                    # and a follow-on stage at different resolutions also
+                    # exists in practice, not just in theory: a public
+                    # FLUX-LoRA writeup training the identical task at
+                    # both 512 and 1024 found the 1024 version was the
+                    # "primary deliverable" and the 512 one "behaves
+                    # similarly at scale 0.5" but was explicitly the
+                    # secondary artifact, not the intended main path —
+                    # i.e. it worked, but wasn't the deliberate design.
+                    # Practitioner consensus elsewhere (OneTrainer
+                    # maintainer discussion) is still to train at the
+                    # base model's native/expected resolution as the safe
+                    # default and treat deviating from it as a choice
+                    # that needs its own justification, not a free
+                    # substitution.
+                    #
+                    # Net: CONFIRMED deliberate design decision — DPO has
+                    # ~2x per-step compute/memory overhead from running both
+                    # policy and reference forward passes per sample (see
+                    # docs/review/18_training_memory_audit.md). Using 512 for
+                    # the preference alignment stage is a principled trade-off:
+                    # RoPE in the MMDiT architecture provides cross-resolution
+                    # extrapolation safety (arXiv:2510.20766), while 512 keeps
+                    # preference learning fast and stable within single-GPU VRAM.
+# Beta hyperparameter for Diffusion-DPO loss:
+# beta=2000.0 is Wallace et al.'s baseline. For flow-matching models with velocity
+# prediction, candidate sweep values are [500.0, 1000.0, 2000.0].
+# If policy divergence or visual artifacts occur, sweep downward to beta=500.0
+# for tighter anchor to the reference model.
 beta: 2000.0
 fm-anchor-weight: 0.0
 learning-rate: 1e-5
@@ -40,3 +102,57 @@ max-train-steps: 1000
 checkpointing-steps: 200
 mixed-precision: "bf16"
 seed: 42
+
+# UPGRADE (finding #4): max-train-steps above (1000) covers only ~0.2% of
+# Pick-a-Pic v2 + HPDv2's combined ~1.8M preference pairs at effective
+# batch 4 — a smoke-test-scale budget never rescaled once real pair
+# volume was known. Setting target-passes recomputes max-train-steps at
+# train-time from the ACTUAL synced pair count instead. 1.0 pass is a
+# conservative starting point for a DPO stage (unlike a from-scratch
+# generator, DPO risks reward-hacking drift with too MANY passes over a
+# fixed, non-growing preference set — see dpo_loss.py's fm-anchor-weight
+# docstring) — remove/set to null to keep max-train-steps exactly as
+# configured above.
+target-passes: 1.0
+
+# UPGRADE (finding #3): heldout implicit-reward-margin validation, using
+# a deterministic 5% hold-out of the synced preference pairs (matching
+# the PRD's own stratified-holdout convention).
+val-fraction: 0.05
+val-every: 100
+
+# UPGRADE (finding #6): gradient clipping — this loop previously had
+# none at all, unlike sketch/train.py. See train_dpo.py's --max-grad-norm
+# help text for why this matters specifically for beta=2000-scale DPO.
+max-grad-norm: 1.0
+
+# UPGRADE (finding #5): EMA of the trainable LoRA weights for
+# diffusion/flow-matching training (this tier) — see train_dpo.py's
+# --ema-decay help text for the ablation citation. Sketch tier
+# deliberately does NOT get this (MaskGIT/token-based regime).
+ema-decay: 0.9995
+
+# UPGRADE (bug fix, this review pass): LoraConfig previously had no
+# target_modules at all, which would raise at the first fresh-adapter
+# run since Z-Image-Turbo's transformer class isn't in PEFT's built-in
+# auto-resolution mapping. See train_dpo.py's --lora-target-modules help
+# text for the single-stream-vs-dual-stream reasoning behind this
+# default; override if the real module names differ.
+lora-target-modules: "to_q,to_k,to_v,to_out.0"
+
+# UPGRADE: LoRA-layer dropout, 0.0 preserves prior behavior exactly.
+lora-dropout: 0.0
+
+# UPGRADE (reconsidered this review pass): paired horizontal-flip
+# augmentation. 0.0 = disabled (default, no behavior change). This is
+# the FINAL high-fidelity stage — a flip mirrors any on-screen UI text
+# into unreadable backward glyphs; only raise this once you've checked
+# your preference corpus's real text density. See train_dpo.py's
+# --flip-prob help text.
+flip-prob: 0.0
+
+# UPGRADE: validation can safely use a larger batch than training (no
+# gradients/optimizer state during eval) — null falls back to
+# train-batch-size.
+val-batch-size: null
+val-batches: 20

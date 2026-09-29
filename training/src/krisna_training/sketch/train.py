@@ -61,6 +61,46 @@ class TrainConfig:
     seed: int = 42
     use_gradient_checkpointing: bool = False   # see model.py's build_model() docstring
 
+    # UPGRADE (generalization, this review pass): effective batch size
+    # was previously fixed at exactly `batch_size` (32 by default) with
+    # no way to raise it without more VRAM. A larger effective batch
+    # reduces gradient-estimate noise for a from-scratch 44M-param
+    # transformer trained on a 100K-500K image corpus (PRD §8.3) — the
+    # exact regime where noisy small-batch gradients hurt convergence
+    # and final generalization most. 1 preserves prior behavior exactly
+    # (no accumulation). Raise this rather than `batch_size` itself when
+    # VRAM is the constraint, matching how train_dpo.py already does
+    # gradient accumulation via Accelerate.
+    gradient_accumulation_steps: int = 1
+
+    # --- UPGRADE: real validation loop (finding #3) ---
+    # data-forge's s09_heldout stage carves out a 5% stratified holdout
+    # specifically so training can measure generalization instead of only
+    # training loss (a poor proxy for a masked-token objective — a model
+    # can drive training loss down by memorizing the ~1-4% of the corpus
+    # it actually sees at max_train_steps=1000-scale step budgets without
+    # this ever showing up as a token-loss regression). Point this at the
+    # manifest.jsonl produced by syncing that heldout split through the
+    # same data_forge_bridge path as the training manifest.
+    val_manifest_path: str | None = None
+    val_every: int = 1000
+    val_batches: int = 20              # cap eval cost; heldout loss is a monitoring signal, not a full pass every time
+
+    # --- UPGRADE: corpus-scale-aware step count (finding #4) ---
+    # max_train_steps=1000-class defaults in the shipped configs were
+    # calibrated against small (hundreds-of-images) style-transfer LoRA
+    # guidance, not against this project's own PRD §8.3 target of
+    # 100K-500K images. "Total steps = (Images * Repetitions * Epochs) /
+    # Batch Size" (standard LoRA/diffusion step-count guidance) scales
+    # with dataset size, not a fixed constant. Rather than hand-tune
+    # total_steps per corpus snapshot, set target_epochs and this
+    # computes total_steps from the ACTUAL synced dataset length at
+    # train-time — self-correcting as the corpus grows, matching how
+    # sync_to_training.py already prints real corpus counts once known.
+    # None preserves the exact configured total_steps (opt-in, so this
+    # never silently changes a deliberately-set value).
+    target_epochs: float | None = None
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":
         import yaml
@@ -183,6 +223,65 @@ def train(cfg: TrainConfig) -> None:
 
     model_cfg = build_model_config(cfg)
     dataset = SketchTokenDataset(cfg.manifest_path, cfg.grid_h, cfg.grid_w, cfg.caption_mix_ratio)
+    effective_batch = max(1, cfg.batch_size * cfg.gradient_accumulation_steps)
+
+    # Corpus-scale-aware step count (finding #4). Computed from the real,
+    # just-loaded dataset length — not a guess made ahead of sync time.
+    # Uses effective_batch (not raw batch_size) so target_epochs means
+    # what it says regardless of gradient_accumulation_steps.
+    if cfg.target_epochs is not None:
+        steps_per_epoch = max(1, len(dataset) // effective_batch)
+        scaled_steps = max(1, round(cfg.target_epochs * steps_per_epoch))
+        log.info(
+            "total_steps_rescaled_to_corpus",
+            extra={
+                "configured_total_steps": cfg.total_steps, "dataset_size": len(dataset),
+                "effective_batch": effective_batch, "steps_per_epoch": steps_per_epoch,
+                "target_epochs": cfg.target_epochs, "scaled_total_steps": scaled_steps,
+            },
+        )
+        cfg.total_steps = scaled_steps
+    else:
+        approx_epochs = (cfg.total_steps * effective_batch) / max(1, len(dataset))
+        if approx_epochs < 1.0:
+            log.warning(
+                "max_train_steps_may_be_undersized",
+                extra={
+                    "total_steps": cfg.total_steps, "effective_batch": effective_batch,
+                    "dataset_size": len(dataset), "approx_epochs_covered": round(approx_epochs, 3),
+                    "note": "total_steps covers well under one full pass over the corpus at this "
+                             "effective batch size — consider setting target_epochs instead of a "
+                             "fixed step count.",
+                },
+            )
+
+    val_dataset = None
+    if cfg.val_manifest_path:
+        val_dataset = SketchTokenDataset(
+            cfg.val_manifest_path, cfg.grid_h, cfg.grid_w,
+            # Heldout eval should reflect real inference-time caption style
+            # exposure the same way training does, not silently deviate.
+            cfg.caption_mix_ratio,
+        )
+        # BUG FOUND THIS REVIEW PASS: this empty-manifest guard existed in
+        # an earlier draft of this validation loop but was dropped when
+        # val_dataset/val_loader construction got split across two
+        # places during the target_epochs refactor. Without it, an empty
+        # val_manifest_path (0 usable records — e.g. data-forge's heldout
+        # sync hasn't run yet, or a bad path) silently built an empty
+        # DataLoader; _run_validation's own `n_batches = max(1, n_batches)`
+        # guard against a ZeroDivisionError would then report a fake,
+        # suspiciously-perfect "val_loss: 0.0" every single validation
+        # step instead of skipping validation and saying so loudly — the
+        # exact kind of silent-degradation this project's own review
+        # discipline (e.g. docs/review/13, /16, /19) repeatedly commits
+        # to catching instead of shipping.
+        if len(val_dataset) == 0:
+            log.warning(
+                "val_manifest_empty",
+                extra={"path": cfg.val_manifest_path, "note": "validation will be skipped entirely, not silently reported as a perfect val_loss"},
+            )
+            val_dataset = None
 
     text_embedder = None
     try:
@@ -203,9 +302,48 @@ def train(cfg: TrainConfig) -> None:
         worker_init_fn=seed_worker,
     )
 
+    val_loader = None
+    if val_dataset is not None:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=cfg.batch_size,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim, cfg_dropout_prob=0.0),
+            drop_last=False,
+        )
+
     start_step = 0
+    resumed_optimizer_state = None
     if cfg.resume_from:
-        model, model_cfg, start_step, _ = load_checkpoint_for_resume(cfg.resume_from)
+        model, resumed_model_cfg, start_step, resumed_optimizer_state = load_checkpoint_for_resume(cfg.resume_from)
+        # BUG FOUND ON REVIEW: the training/val DataLoaders above were
+        # already built (collate_fn closes over `model_cfg.mask_token_id`,
+        # captured from the config FILE's fresh SketchModelConfig) before
+        # this resume branch ever runs. If a resumed checkpoint's saved
+        # config disagrees with the current YAML (vocab_size/grid changed
+        # between runs, or the wrong checkpoint path given), masking would
+        # silently use the WRONG mask_token_id against the actually-
+        # resumed model — an out-of-vocabulary embedding lookup or a
+        # mask_token_id the resumed model never trained on, with no error,
+        # just quietly worse convergence. Fail loudly instead of resuming
+        # into a mismatched setup.
+        if (
+            resumed_model_cfg.mask_token_id != model_cfg.mask_token_id
+            or resumed_model_cfg.grid_h != model_cfg.grid_h
+            or resumed_model_cfg.grid_w != model_cfg.grid_w
+        ):
+            raise ValueError(
+                f"Resume config mismatch: checkpoint at {cfg.resume_from} was trained with "
+                f"mask_token_id={resumed_model_cfg.mask_token_id}, grid={resumed_model_cfg.grid_h}x"
+                f"{resumed_model_cfg.grid_w}, but the current YAML config produces "
+                f"mask_token_id={model_cfg.mask_token_id}, grid={model_cfg.grid_h}x{model_cfg.grid_w}. "
+                "Resuming would silently mask/collate against the wrong vocabulary/grid. "
+                "Fix the YAML to match the checkpoint's real config, or use init_from "
+                "(progressive-resolution init) instead of resume_from if you deliberately "
+                "changed grid size."
+            )
+        model_cfg = resumed_model_cfg
         model.to(device)
         log.info("resumed", extra={"path": cfg.resume_from, "step": start_step})
     else:
@@ -214,10 +352,66 @@ def train(cfg: TrainConfig) -> None:
             _init_from_smaller_grid(model, model_cfg, cfg.init_from)
         model.to(device)
 
+    # UPGRADE (generalization, this review pass): decoupled weight decay
+    # — 1D parameters (biases, LayerNorm/RMSNorm weights) and embedding
+    # tables were previously decayed at the same rate as every 2D weight
+    # matrix. This is well-established practice across transformer
+    # training (GPT-2, BERT, ViT all exclude these; see Loshchilov &
+    # Hutter 2019 "Decoupled Weight Decay Regularization" — the AdamW
+    # paper itself — and its widely-followed convention of decaying only
+    # matrix-multiply weights). Decaying LayerNorm scale/bias toward zero
+    # has no principled justification (it directly fights the norm's
+    # learned rescaling) and decaying embedding rows shrinks token
+    # representations toward the origin for tokens seen rarely per
+    # epoch — a 44M-param from-scratch transformer on a 100K-500K image
+    # corpus (PRD §8.3) is exactly the small-enough-to-matter regime
+    # where this default has a real effect on generalization, not just a
+    # theoretical nicety.
+    decay_params, no_decay_params = [], []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        if param.ndim <= 1 or "norm" in name.lower() or "embed" in name.lower():
+            no_decay_params.append(param)
+        else:
+            decay_params.append(param)
     optimizer = AdamW(
-        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
-        betas=(cfg.adam_beta1, cfg.adam_beta2),
+        [
+            {"params": decay_params, "weight_decay": cfg.weight_decay},
+            {"params": no_decay_params, "weight_decay": 0.0},
+        ],
+        lr=cfg.lr, betas=(cfg.adam_beta1, cfg.adam_beta2),
     )
+    log.info(
+        "optimizer_param_groups",
+        extra={"decayed_params": sum(p.numel() for p in decay_params), "no_decay_params": sum(p.numel() for p in no_decay_params)},
+    )
+
+    # BUG FOUND THIS REVIEW PASS: the optimizer's Adam moment buffers
+    # (m, v — the whole point of using Adam over plain SGD) were loaded
+    # from the checkpoint by load_checkpoint_for_resume(), then silently
+    # discarded (previously assigned to `_`). Every resume therefore
+    # restarted Adam from cold moments — a real transient destabilization
+    # right after every resume, worse the more often training is
+    # resumed (long runs on preemptible/interruptible hardware being
+    # exactly the case resume_from exists for). Restore it when shapes
+    # match; degrade to a loud warning rather than crashing if an older
+    # checkpoint's param-group structure doesn't match (e.g. saved
+    # before this review's decay/no-decay param-group split existed).
+    if resumed_optimizer_state is not None:
+        try:
+            optimizer.load_state_dict(resumed_optimizer_state)
+            log.info("optimizer_state_restored", extra={"step": start_step})
+        except (ValueError, KeyError) as e:
+            log.warning(
+                "optimizer_state_restore_failed",
+                extra={
+                    "error": str(e), "step": start_step,
+                    "note": "Resuming with fresh Adam moments instead — likely an older "
+                             "checkpoint saved before the decay/no-decay optimizer param-group "
+                             "split, or a genuinely incompatible checkpoint.",
+                },
+            )
 
     def lr_lambda(step: int) -> float:
         if step < cfg.warmup_steps:
@@ -228,43 +422,79 @@ def train(cfg: TrainConfig) -> None:
         return 0.5 * (1 + math.cos(math.pi * min(1.0, progress)))
 
     scheduler = LambdaLR(optimizer, lr_lambda)
+    if start_step > 0:
+        # BUG FOUND THIS REVIEW PASS: LambdaLR tracks its own internal
+        # `last_epoch` counter starting at 0, independent of the
+        # training loop's `step` variable — it has no way to know
+        # training is resuming from start_step rather than from
+        # scratch. Left as-is, EVERY resume silently restarted the
+        # cosine LR schedule from the beginning (back through warmup,
+        # or back to peak LR, depending on warmup_steps) instead of
+        # continuing from wherever the true step count had reached —
+        # a real LR discontinuity on every resume, exactly the kind of
+        # bug that degrades final convergence without ever showing up
+        # as a crash. Fast-forward it to match.
+        scheduler.last_epoch = start_step - 1
+        scheduler.step()
 
     model.train()
     step = start_step
     t0 = time.time()
     data_iter = iter(loader)
 
-    while step < cfg.total_steps:
+    def _next_batch():
+        nonlocal data_iter
         try:
-            tokens, mask, targets, prompt_embeds = next(data_iter)
+            return next(data_iter)
         except StopIteration:
             data_iter = iter(loader)
-            tokens, mask, targets, prompt_embeds = next(data_iter)
+            return next(data_iter)
 
-        tokens, mask, targets, prompt_embeds = (
-            tokens.to(device), mask.to(device), targets.to(device), prompt_embeds.to(device)
-        )
-
-        with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16):
-            logits, critic_scores = model(tokens, mask, prompt_embeds)
-            loss, token_loss, critic_loss = compute_loss(
-                logits, critic_scores, targets, mask, critic_loss_weight=cfg.critic_loss_weight
+    while step < cfg.total_steps:
+        optimizer.zero_grad(set_to_none=True)
+        # UPGRADE (generalization, this review pass): gradient
+        # accumulation — see gradient_accumulation_steps' docstring
+        # above. Loss is divided by the accumulation count so the
+        # accumulated gradient matches what a single large batch of
+        # size effective_batch would have produced (mean reduction
+        # composes linearly across accumulated micro-batches this way);
+        # clipping and the optimizer step happen exactly once per
+        # OPTIMIZER step, after every micro-batch's gradient has been
+        # accumulated — not once per micro-batch, which would clip and
+        # step on partial gradients and silently defeat the point of
+        # accumulating in the first place.
+        loss_sum, token_loss_sum, critic_loss_sum = 0.0, 0.0, 0.0
+        for micro_step in range(cfg.gradient_accumulation_steps):
+            tokens, mask, targets, prompt_embeds = _next_batch()
+            tokens, mask, targets, prompt_embeds = (
+                tokens.to(device), mask.to(device), targets.to(device), prompt_embeds.to(device)
             )
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
+            with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16):
+                logits, critic_scores = model(tokens, mask, prompt_embeds)
+                loss, token_loss, critic_loss = compute_loss(
+                    logits, critic_scores, targets, mask, critic_loss_weight=cfg.critic_loss_weight
+                )
+            (loss / cfg.gradient_accumulation_steps).backward()
+            # Logging uses the true mean across accumulated micro-batches,
+            # not just whichever micro-batch happened to run last.
+            loss_sum += loss.item()
+            token_loss_sum += token_loss.item()
+            critic_loss_sum += critic_loss.item()
+
         torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
         optimizer.step()
         scheduler.step()
 
         if step % cfg.log_every == 0:
             elapsed = time.time() - t0
+            n_micro = cfg.gradient_accumulation_steps
             log.info(
                 "train_step",
                 extra={
-                    "step": step, "loss": round(loss.item(), 4),
-                    "token_loss": round(token_loss.item(), 4),
-                    "critic_loss": round(critic_loss.item(), 4),
+                    "step": step, "loss": round(loss_sum / n_micro, 4),
+                    "token_loss": round(token_loss_sum / n_micro, 4),
+                    "critic_loss": round(critic_loss_sum / n_micro, 4),
                     "lr": round(scheduler.get_last_lr()[0], 6),
                     "steps_per_sec": round(cfg.log_every / max(elapsed, 1e-6), 3) if step > start_step else None,
                 },
@@ -276,11 +506,59 @@ def train(cfg: TrainConfig) -> None:
             save_checkpoint(ckpt_path, model, model_cfg, step, optimizer)
             log.info("checkpoint_saved", extra={"path": str(ckpt_path)})
 
+        if val_loader is not None and step > 0 and step % cfg.val_every == 0:
+            val_metrics = _run_validation(model, val_loader, device, cfg)
+            log.info("val_step", extra={"step": step, **val_metrics})
+            model.train()
+
         step += 1
 
     final_path = Path(cfg.output_dir) / "checkpoint_final.pt"
     save_checkpoint(final_path, model, model_cfg, step, optimizer)
     log.info("training_complete", extra={"path": str(final_path), "total_steps": step})
+
+
+def _run_validation(model, val_loader, device: str, cfg: "TrainConfig") -> dict:
+    """Heldout masked-token loss (finding #3) — the metric no prior
+    version of this loop ever computed. Deliberately model.eval()'d and
+    no_grad'd: this is purely a monitoring/early-stopping signal, never
+    part of the optimization step. Capped at cfg.val_batches so a large
+    heldout split doesn't stall training every val_every steps; the
+    subset is still a real random sample since val_loader's underlying
+    dataset order is whatever the manifest wrote it in and batches are
+    consumed in order — good enough for a trend signal, not a claim of
+    a perfectly i.i.d. estimate on every call.
+    """
+    import torch
+
+    from krisna_training.sketch.losses import compute_loss
+
+    model.eval()
+    total_loss, total_token_loss, total_critic_loss, n_batches = 0.0, 0.0, 0.0, 0
+    with torch.no_grad():
+        for i, (tokens, mask, targets, prompt_embeds) in enumerate(val_loader):
+            if i >= cfg.val_batches:
+                break
+            tokens, mask, targets, prompt_embeds = (
+                tokens.to(device), mask.to(device), targets.to(device), prompt_embeds.to(device)
+            )
+            with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16):
+                logits, critic_scores = model(tokens, mask, prompt_embeds)
+                loss, token_loss, critic_loss = compute_loss(
+                    logits, critic_scores, targets, mask, critic_loss_weight=cfg.critic_loss_weight
+                )
+            total_loss += loss.item()
+            total_token_loss += token_loss.item()
+            total_critic_loss += critic_loss.item()
+            n_batches += 1
+
+    n_batches = max(1, n_batches)
+    return {
+        "val_loss": round(total_loss / n_batches, 4),
+        "val_token_loss": round(total_token_loss / n_batches, 4),
+        "val_critic_loss": round(total_critic_loss / n_batches, 4),
+        "val_batches": n_batches,
+    }
 
 
 def _init_from_smaller_grid(model, new_cfg, checkpoint_path: str) -> None:
