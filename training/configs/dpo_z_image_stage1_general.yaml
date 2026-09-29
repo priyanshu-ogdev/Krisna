@@ -27,7 +27,61 @@ source: ["pickapic_v2", "hpdv2"]                  # Stage 1 = general preference
                                                     # ["designsense_10k", "designpref"]
                                                     # once either has real
                                                     # public data — see §2.8/2.9.
-resolution: 512
+resolution: 512   # UPGRADE — flagging an unaddressed cross-stage
+                    # inconsistency found on review, not silently fixing a
+                    # number without evidence either way: the base
+                    # fine-tune this LoRA continues from
+                    # (polish_default_lora_z_image.yaml) trains at
+                    # resolution=1024, this DPO refinement stage at 512.
+                    #
+                    # RESEARCHED, not just plausible: this project's own
+                    # docs/architecture/RESEARCH_AND_CITATIONS.md already
+                    # documents Z-Image-Turbo as "MMDiT lineage" (the
+                    # FLUX/SD3 architecture family). That family uses RoPE
+                    # (Rotary Position Embeddings) applied at every
+                    # self-attention layer, not learned absolute position
+                    # embeddings — and RoPE-based DiTs are specifically,
+                    # repeatedly documented as resolution-flexible by
+                    # construction (e.g. DyPE, arXiv:2510.20766, on
+                    # training-free resolution extrapolation for RoPE
+                    # DiTs; FiT/FiTv2 describing this as a "flexible DiT
+                    # trained on multiple resolutions" as a normal,
+                    # expected property of the architecture) — a
+                    # genuinely different, more inherently
+                    # resolution-tolerant mechanism than the Sketch
+                    # tier's own LEARNED positional embeddings, which
+                    # needed an explicit interpolation fix to cross
+                    # resolutions (see docs/review/24_tensor_shape_final_check.md).
+                    # So the architecture itself doesn't make this
+                    # dangerous.
+                    #
+                    # Real precedent for training a base LoRA fine-tune
+                    # and a follow-on stage at different resolutions also
+                    # exists in practice, not just in theory: a public
+                    # FLUX-LoRA writeup training the identical task at
+                    # both 512 and 1024 found the 1024 version was the
+                    # "primary deliverable" and the 512 one "behaves
+                    # similarly at scale 0.5" but was explicitly the
+                    # secondary artifact, not the intended main path —
+                    # i.e. it worked, but wasn't the deliberate design.
+                    # Practitioner consensus elsewhere (OneTrainer
+                    # maintainer discussion) is still to train at the
+                    # base model's native/expected resolution as the safe
+                    # default and treat deviating from it as a choice
+                    # that needs its own justification, not a free
+                    # substitution.
+                    #
+                    # Net: this is very likely SAFE architecturally, but
+                    # still not CONFIRMED deliberate — nothing in this
+                    # repo states 512 was chosen here for a specific
+                    # reason (e.g. DPO's larger per-step cost from
+                    # needing both a policy and reference forward pass,
+                    # see docs/review/18_training_memory_audit.md,
+                    # justifying a cheaper resolution for the
+                    # preference-comparison phase specifically). Confirm
+                    # that reasoning explicitly before a real run, or
+                    # align to 1024 if the difference was accidental
+                    # drift rather than a cost-driven choice.
 beta: 2000.0
 fm-anchor-weight: 0.0
 learning-rate: 1e-5
