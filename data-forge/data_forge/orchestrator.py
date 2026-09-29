@@ -278,12 +278,36 @@ class Orchestrator:
                     record_ids = self._filter_active(record_ids)
 
             # ── Phase 2: Tier-1 VLM ─────────────────────────────────
+            # BUG FIX: s05_recaption/s06_structure used to run inside this
+            # same phase, immediately after s04_safety, before escalation
+            # ever got a chance to run. Any record Tier-1 marked
+            # "borderline" (status stays "safety_classified", safety_tier
+            # ="borderline") was correctly skipped by s05_recaption's own
+            # filter (safety_tier=="safe") at that point — but Phase 4
+            # below (Tier-2 escalation) can later flip a resolved
+            # borderline record's safety_tier to "safe" WITHOUT ever
+            # re-running recaption/structure for it, because by the time
+            # escalation runs, this phase (and its vLLM session) has
+            # already closed for this chunk, and nothing here loops back.
+            # The record is then permanently stuck at status=
+            # "safety_classified" — never recaptioned, never structured,
+            # never routed, never encoded, never in training_pool or
+            # heldout. A real, silent, no-error-raised loss of every
+            # record the two-tier escalation system successfully RESCUES
+            # — the exact opposite of what escalation exists to do. See
+            # docs/review/16_preprocessing_ordering_audit.md.
+            #
+            # Fixed by splitting this phase: only s03_quality/
+            # s03_5_pii_scrub/s04_safety run here. s05_recaption/
+            # s06_structure move to a new Phase 2b, AFTER Phase 4's
+            # escalation has already run and resolved whatever it can —
+            # so their "safety_tier == safe" filter correctly picks up
+            # both originally-safe records AND escalation-rescued ones,
+            # in the same pass, exactly once.
             tier1_stages = [
                 "s03_quality",
                 "s03_5_pii_scrub",
                 "s04_safety",
-                "s05_recaption",
-                "s06_structure",
             ]
             runnable_tier1 = [s for s in tier1_stages if self._should_run(s, stages_filter)]
 
@@ -307,7 +331,7 @@ class Orchestrator:
                 # costs nothing in extra model-swap overhead; the vLLM
                 # process just sits idle for that one stage's duration.
                 one_vlm_stage_order = [
-                    s for s in ["s03_quality", "s03_5_pii_scrub", "s04_safety", "s05_recaption", "s06_structure"]
+                    s for s in ["s03_quality", "s03_5_pii_scrub", "s04_safety"]
                     if s in runnable_tier1
                 ]
                 if one_vlm_stage_order:
@@ -322,7 +346,46 @@ class Orchestrator:
                             )
                             stage_results.append(result)
 
-            # ── Phase 3: OCR Specialist ─────────────────────────────
+            # ── Phase 3: Tier-2 Escalation ───────────────────────────
+            # Moved ahead of recaption/structure/OCR (was "Phase 4",
+            # running after them) — see the Phase 2 comment above for why:
+            # escalation must resolve borderline->safe BEFORE the
+            # safety_tier=="safe" filters in recaption/structure run, or
+            # rescued records are silently never recaptioned/structured/
+            # OCR'd/routed/encoded at all.
+            if self._should_run("s04_5_escalation", stages_filter):
+                # Only escalated records need Tier-2
+                borderline_ids = self._get_borderline_ids(record_ids)
+                if borderline_ids:
+                    from data_forge.inference.engine import ModelEngine
+                    async with ModelEngine.vllm_session(self.config, "tier2") as engine:
+                        result = await self._run_stage(
+                            "s04_5_escalation", borderline_ids, chunk_id, engine
+                        )
+                        stage_results.append(result)
+
+            # ── Phase 4: Recaption + Structure ───────────────────────
+            # Split out of the old combined Phase 2 (see that phase's
+            # comment) specifically so it runs AFTER Phase 3 above —
+            # `record_ids` re-filtered fresh here picks up both
+            # originally-safe records and any Tier-2-rescued ones, since
+            # both now correctly read safety_tier=="safe" at this point.
+            recaption_structure_stages = [
+                s for s in ["s05_recaption", "s06_structure"] if self._should_run(s, stages_filter)
+            ]
+            if recaption_structure_stages:
+                from data_forge.inference.engine import ModelEngine
+                async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                    for stage_name in recaption_structure_stages:
+                        record_ids = self._filter_active(record_ids)
+                        if not record_ids:
+                            break
+                        result = await self._run_stage(
+                            stage_name, record_ids, chunk_id, engine
+                        )
+                        stage_results.append(result)
+
+            # ── Phase 5: OCR Specialist ──────────────────────────────
             if self._should_run("s05_recaption", stages_filter):
                 ocr_config = self.config.get_stage("s05_recaption")
                 if ocr_config.get("ocr_enrichment", True):
@@ -346,18 +409,6 @@ class Orchestrator:
                                     "s05_5_pii_text_redact", record_ids, chunk_id
                                 )
                                 stage_results.append(result)
-
-            # ── Phase 4: Tier-2 Escalation ──────────────────────────
-            if self._should_run("s04_5_escalation", stages_filter):
-                # Only escalated records need Tier-2
-                borderline_ids = self._get_borderline_ids(record_ids)
-                if borderline_ids:
-                    from data_forge.inference.engine import ModelEngine
-                    async with ModelEngine.vllm_session(self.config, "tier2") as engine:
-                        result = await self._run_stage(
-                            "s04_5_escalation", borderline_ids, chunk_id, engine
-                        )
-                        stage_results.append(result)
 
             # ── Deterministic stages (no GPU model needed) ──────────
             for stage_name in ["s07_routing"]:
