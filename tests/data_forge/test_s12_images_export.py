@@ -3,16 +3,10 @@
 Both _export_sketch_tier and _export_zimage previously linked only their
 processed artifacts (vq_tokens/, latents/) and never the raw scrubbed
 images — meaning neither exported folder had a working consumer for the
-tooling that actually needs raw images (the real Sketch tokenizer,
-boris/vqgan_f16_16384, run by training/data_forge_bridge; the official
-diffusers train_dreambooth_lora_z_image.py script, which takes
---instance_data_dir of raw images and computes its own latents
-internally).
-
-UPDATED (sync audit item #1): data-forge's own vq_tokens/ export has
-since been removed entirely — its producer (the maskgit_vq encoder) never
-worked, and nothing consumed vq_tokens/ even when the try/except silently
-swallowed that failure. _export_sketch_tier now only links images/.
+tooling that actually needs raw images (a working VQ tokenizer other than
+the unverified Open-MAGVIT2 wrapper; the official diffusers
+train_dreambooth_lora_z_image.py script, which takes --instance_data_dir
+of raw images and computes its own latents internally).
 """
 
 from __future__ import annotations
@@ -37,7 +31,7 @@ def _make_ui_first_record(manifest, data_root, sample_image, i: int):
         scrubbed_image_path=rel_path,
         caption=f"a UI screen {i}",
         encoding_paths={
-            "z_image_latent": rel_path, "control_map": rel_path,
+            "z_image_latent": rel_path, "control_map": rel_path, "vq_tokens": rel_path,
         },
     )
     return rec.id
@@ -59,19 +53,19 @@ def _make_general_design_record(manifest, data_root, sample_image, i: int):
 
 
 class TestSketchTierImagesLinked:
-    def test_images_linked_no_vq_tokens_folder(self, manifest, config, data_root, sample_image):
+    def test_images_linked_alongside_vq_tokens(self, manifest, config, data_root, sample_image):
         _make_ui_first_record(manifest, data_root, sample_image, 1)
         stage = ModelDataExportStage()
         result = asyncio.run(stage.run(manifest, config, []))
 
         model_dir = config.resolved_paths["model_data_root"] / "sketch_tier_maskgit"
-        assert not (model_dir / "vq_tokens").exists()
+        assert (model_dir / "vq_tokens").exists()
         assert (model_dir / "images").exists()
         assert len(list((model_dir / "images").iterdir())) == 1
 
         summary = json.loads((model_dir / "manifest_summary.json").read_text())
         assert summary["images_linked"] == 1
-        assert "vq_tokens_linked" not in summary
+        assert summary["vq_tokens_linked"] == 1
 
 
 class TestZImageImagesLinked:
@@ -97,6 +91,7 @@ class TestZImageImagesLinked:
             encoding_paths={
                 "z_image_latent": str(second_image.relative_to(data_root)),
                 "control_map": str(second_image.relative_to(data_root)),
+                "vq_tokens": str(second_image.relative_to(data_root)),
             },
         )
 

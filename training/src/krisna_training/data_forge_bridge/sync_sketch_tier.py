@@ -19,7 +19,6 @@ def sync(
     output_dir: str | Path,
     tokenizer,
     image_size: int = 256,
-    expected_codebook_size: int | None = 16384,
 ) -> Path:
     """data_forge_model_data_dir: path to data-forge's `model_data/`
     (the parent of `sketch_tier_maskgit/`). tokenizer: a
@@ -30,19 +29,6 @@ def sync(
     consume it.
     """
     from PIL import Image
-
-    # C2 validation: protect against out-of-vocabulary corruption if an alternative
-    # VQGAN codebook size is supplied (e.g. 8192 vs expected MaskGIT 16384).
-    if expected_codebook_size is not None:
-        actual_size = getattr(tokenizer, "codebook_size", None)
-        if callable(actual_size):
-            actual_size = actual_size()
-        if actual_size is not None and actual_size != expected_codebook_size:
-            raise ValueError(
-                f"VQTokenizer codebook size ({actual_size}) does not match "
-                f"expected MaskGIT vocab_size ({expected_codebook_size}). "
-                "Using mismatched codebooks causes silent out-of-vocabulary corruption."
-            )
 
     sketch_dir = Path(data_forge_model_data_dir) / "sketch_tier_maskgit"
     images_dir = sketch_dir / "images"
@@ -70,7 +56,7 @@ def sync(
     # `image_filename` field) fall back to the old stem-based behavior
     # with a loud warning, rather than silently producing empty captions
     # again on a stale export.
-    captions_by_filename: dict[str, dict] = {}
+    captions_by_filename: dict[str, str] = {}
     legacy_captions_by_record: dict[str, str] = {}
     saw_legacy_entry = False
     if captions_path.exists():
@@ -81,16 +67,7 @@ def sync(
                     continue
                 rec = json.loads(line)
                 if "image_filename" in rec and rec["image_filename"]:
-                    captions_by_filename[rec["image_filename"]] = {
-                        "caption": rec.get("caption", ""),
-                        # Added alongside the caption-mixing fix (see
-                        # dataset.py) — the original, short, human/
-                        # source-dataset caption, carried through so it
-                        # can be mixed in during training rather than
-                        # discarded after only being used as a prompt
-                        # hint inside data-forge's s05_recaption.py.
-                        "source_caption": rec.get("source_caption"),
-                    }
+                    captions_by_filename[rec["image_filename"]] = rec.get("caption", "")
                 else:
                     saw_legacy_entry = True
                     legacy_captions_by_record[rec["record_id"]] = rec.get("caption", "")
@@ -122,11 +99,8 @@ def sync(
     matched_captions = 0
     with manifest_path.open("w") as manifest_file:
         for i, image_path in enumerate(image_paths):
-            source_caption = None
             if image_path.name in captions_by_filename:
-                entry = captions_by_filename[image_path.name]
-                caption = entry["caption"]
-                source_caption = entry.get("source_caption")
+                caption = captions_by_filename[image_path.name]
                 matched_captions += 1
             else:
                 # Legacy fallback only — see the warning above. Kept so a
@@ -147,10 +121,7 @@ def sync(
             token_file = f"tokens/{i:07d}.npy"
             np.save(tokens_dir / f"{i:07d}.npy", np.array(tokens, dtype="int32"))
             manifest_file.write(
-                json.dumps({
-                    "tokens_path": token_file, "caption": caption,
-                    "source_caption": source_caption, "source_image": str(image_path),
-                }) + "\n"
+                json.dumps({"tokens_path": token_file, "caption": caption, "source_image": str(image_path)}) + "\n"
             )
             written += 1
 

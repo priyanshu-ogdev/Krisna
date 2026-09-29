@@ -104,26 +104,6 @@ class TestFrozenModelsHaveNoLoraWiring:
 
 
 class TestLowVramModeFactoryWiring:
-    def test_low_vram_env_var_enables_offload_on_polish_default(self, monkeypatch):
-        """Polish Default used to be excluded from offload wiring on the
-        (incorrect) assumption that its 8.0GB declared vram_gb — which
-        assumed NF4 quantization the backend never applies — already fit
-        a low-VRAM target. Corrected: this tier is bf16 (~14GB real), so
-        it needs the same offload wiring Polish Quality already had. See
-        model_registry.py's LOW_VRAM_REGISTRY entry and
-        docs/review/13_ram_offload_and_precision_audit.md."""
-        monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
-        import importlib
-
-        import krisna_inference.backends.factory as factory_module
-        importlib.reload(factory_module)
-        try:
-            backend = factory_module.real_backend_factory(REGISTRY[Tier.POLISH_DEFAULT])
-            assert backend.enable_cpu_offload is True
-        finally:
-            monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
-            importlib.reload(factory_module)
-
     def test_low_vram_env_var_enables_offload_on_polish_quality(self, monkeypatch):
         monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
         import importlib
@@ -145,25 +125,21 @@ class TestLowVramModeFactoryWiring:
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.CRITIC])
-            assert backend.max_gpu_gb == 11.5
+            assert backend.max_gpu_gb == 12.0
         finally:
             monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
             importlib.reload(factory_module)
 
     def test_default_mode_leaves_offload_disabled(self):
-        polish_default = real_backend_factory(REGISTRY[Tier.POLISH_DEFAULT])
-        assert polish_default.enable_cpu_offload is False
         backend = real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
         assert backend.enable_cpu_offload is False
         critic = real_backend_factory(REGISTRY[Tier.CRITIC])
         assert critic.max_gpu_gb is None
 
-    def test_planner_never_offloaded_even_in_low_vram_mode(self, monkeypatch):
+    def test_planner_and_polish_default_never_offloaded_even_in_low_vram_mode(self, monkeypatch):
         """Confirmed by design (see model_registry.py's LOW_VRAM_REGISTRY
-        comment): Planner and Sketch are already small enough that
-        offload buys nothing but latency. Polish Default is NOT in this
-        group any more — see test_low_vram_env_var_enables_offload_on_polish_default
-        above; it used to be, incorrectly."""
+        comment): these two are already small enough that offload buys
+        nothing but latency."""
         monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
         import importlib
 

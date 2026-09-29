@@ -38,34 +38,7 @@ def prepare(
 
     captions: dict[str, str] = {}
     if captions_path and Path(captions_path).exists():
-        cpath = Path(captions_path)
-        raw_text = cpath.read_text(encoding="utf-8").strip()
-        if raw_text:
-            if cpath.suffix.lower() == ".jsonl" or ("\n" in raw_text and not raw_text.startswith("[")):
-                for line in raw_text.splitlines():
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        rec = json.loads(line)
-                    except Exception:
-                        continue
-                    fname = rec.get("image_filename") or rec.get("filename") or rec.get("source_image") or rec.get("record_id")
-                    if fname:
-                        captions[Path(fname).name] = rec.get("caption", "")
-            else:
-                try:
-                    loaded = json.loads(raw_text)
-                    if isinstance(loaded, dict):
-                        captions = loaded
-                    elif isinstance(loaded, list):
-                        for item in loaded:
-                            if isinstance(item, dict):
-                                fname = item.get("image_filename") or item.get("filename") or item.get("source_image")
-                                if fname:
-                                    captions[Path(fname).name] = item.get("caption", "")
-                except Exception as e:
-                    log.warning("captions_load_failed", extra={"path": str(cpath), "error": str(e)})
+        captions = json.loads(Path(captions_path).read_text())
 
     image_paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS)
     if not image_paths:

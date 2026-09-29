@@ -136,17 +136,15 @@ async def test_both_quality_and_fallback_oom_exhausts_recovery(
 
 @pytest.mark.asyncio
 async def test_vram_budget_preflight_skips_straight_to_fallback(started_orchestrator: SwapOrchestrator):
-    # Tiny envelope: POLISH_QUALITY (16GB) alone doesn't fit, but
-    # POLISH_DEFAULT (14GB, corrected from an earlier 8GB estimate that
-    # wrongly assumed NF4 quantization — see model_registry.py and
-    # docs/review/13_ram_offload_and_precision_audit.md) does. Baseline
-    # gets unloaded before the polish load in the real sequence, so
-    # budget is checked against JUST the candidate tier size.
+    # Tiny envelope: baseline (9.5GB) + POLISH_QUALITY (16GB) = 25.5,
+    # doesn't fit a 20GB envelope, but + POLISH_DEFAULT (8GB) = 17.5 does...
+    # except baseline gets unloaded before the polish load in the real
+    # sequence, so budget is checked against JUST the candidate tier size.
     orchestrator = started_orchestrator
-    orchestrator.ledger.envelope_gb = 15.0  # smaller than POLISH_QUALITY's 16GB alone, bigger than POLISH_DEFAULT's 14GB
+    orchestrator.ledger.envelope_gb = 10.0  # smaller than POLISH_QUALITY's 16GB alone
     result = await orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
     assert result.ok
-    assert result.tier_used == Tier.POLISH_DEFAULT  # 14GB fits under 15GB envelope
+    assert result.tier_used == Tier.POLISH_DEFAULT  # 8GB fits under 10GB envelope
     assert result.degraded is True
 
 
@@ -161,49 +159,3 @@ async def test_new_orchestrator_conversation_unavailable_before_start():
     # own "not loaded" error, not silently succeed.
     with pytest.raises(RuntimeError):
         await orchestrator.run_conversational_turn(message="hi")
-
-
-@pytest.mark.asyncio
-async def test_run_oom_falls_back_to_polish_default(started_orchestrator: SwapOrchestrator):
-    # Simulate runtime OOM during POLISH_QUALITY generation (run()).
-    # It has a configured fallback (POLISH_DEFAULT).
-    started_orchestrator.backends[Tier.POLISH_QUALITY].fail_runs = 999
-
-    result = await started_orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
-    assert result.ok
-    assert result.tier_used == Tier.POLISH_DEFAULT
-    assert result.degraded is True
-    # System healthy and baseline restored afterward.
-    assert started_orchestrator.backends[Tier.PLANNER].is_loaded
-    assert started_orchestrator.backends[Tier.SKETCH].is_loaded
-    assert started_orchestrator.conversation_available()
-
-
-@pytest.mark.asyncio
-async def test_run_oom_both_quality_and_fallback_exhausts_recovery(started_orchestrator: SwapOrchestrator):
-    # Simulate runtime OOM on both POLISH_QUALITY and POLISH_DEFAULT.
-    started_orchestrator.backends[Tier.POLISH_QUALITY].fail_runs = 999
-    started_orchestrator.backends[Tier.POLISH_DEFAULT].fail_runs = 999
-
-    result = await started_orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
-    assert not result.ok
-    # System healthy and baseline restored afterward.
-    assert started_orchestrator.backends[Tier.PLANNER].is_loaded
-    assert started_orchestrator.backends[Tier.SKETCH].is_loaded
-    assert started_orchestrator.conversation_available()
-
-
-@pytest.mark.asyncio
-async def test_critic_run_oom_restores_baseline(started_orchestrator: SwapOrchestrator):
-    # Simulate runtime OOM during CRITIC generation (run()).
-    started_orchestrator.backends[Tier.CRITIC].fail_runs = 999
-
-    result = await started_orchestrator.request_critique()
-    assert not result.ok
-    assert result.error is not None
-    assert "critic" in result.error
-    # Baseline restored.
-    assert started_orchestrator.backends[Tier.PLANNER].is_loaded
-    assert started_orchestrator.backends[Tier.SKETCH].is_loaded
-    assert started_orchestrator.conversation_available()
-

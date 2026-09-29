@@ -12,15 +12,6 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-
-# Preflight hardware check
-echo -e "\033[1;36mRunning hardware compatibility check...\033[0m"
-if [[ "${*:-}" =~ "--require-gpu" ]]; then
-    python scripts/inference/check_hardware.py --require-gpu
-else
-    python scripts/inference/check_hardware.py || true
-fi
-
 pip install -r inference/requirements-inference.txt
 
 echo -e "\033[1;32mDone.\033[0m"

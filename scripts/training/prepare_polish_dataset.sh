@@ -15,7 +15,9 @@ from pathlib import Path
 from krisna_training.polish.dataset_prep import prepare, count_prepared
 
 image_dir, output_dir, captions_path = sys.argv[1:4]
-out = prepare(image_dir, output_dir, captions=captions_path or None, use_shared_instance_prompt="a UI design")
+captions = json.loads(Path(captions_path).read_text()) if captions_path else {}
+
+out = prepare(image_dir, output_dir, captions=captions, use_shared_instance_prompt="a UI design")
 print(f"Prepared {count_prepared(out)} images at {out}")
 PYEOF
 

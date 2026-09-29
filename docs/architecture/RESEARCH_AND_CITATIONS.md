@@ -1,8 +1,5 @@
 # Research Findings & Citations
 
-> [!IMPORTANT]
-> **Canonical Reference**: This document serves as the research audit trail and methodological grounding for [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) (the canonical Product & Research Requirements Document). Every `PRD §X` cited here references sections in that master document.
-
 Every non-obvious architectural decision in this repo traces back to a
 specific, checked fact — not an assumption. This document is that trail:
 what was claimed, what was actually verified, against what source, and
@@ -161,24 +158,19 @@ pairwise dataset whose data has not yet been released."* There is no repo
 to find because there isn't one yet. Same `repo_id: null` /
 registry-watcher treatment as DesignSense-10k.
 
-### 2.10 GameLabel-10K — found, then integrated (Phase 20)
+### 2.10 GameLabel-10K — found, deliberately not integrated
 
 Surfaced during the DesignSense-10k/DesignPref re-check.
 **Confirmed real**: `Jonathan-Zhou/GameLabel-10k`, Apache 2.0,
 arXiv:2409.19830, ~10K human-labeled image-preference pairs from
 mobile-game crowdsourcing, already demonstrated improving Flux-Schnell
-via DPO/LoRA. **Initially not wired in**: ships as a single 2.26GB
-`data.csv`, not parquet — doesn't fit either existing preference-pair
-fetch shape, and its exact column names weren't independently confirmed
-against the live file at the time. **Since integrated**
-(`docs/review/20_gamelabel_10k_integration.md`): the live schema was
-confirmed directly (vote-count columns, not a fixed label; a
-non-standard base64+bytes-repr image encoding — neither matched what was
-initially assumed), a dedicated fetch adapter was written for that exact
-shape, and it's now a real Stage-1 general-aesthetic DPO source
-alongside Pick-a-Pic v2 and HPDv2, verified end-to-end against real
-pandas/PIL rather than shipped on the strength of the schema-confirmation
-alone.
+via DPO/LoRA. **Not wired in**: ships as a single 2.26GB `data.csv`, not
+parquet — doesn't fit either existing preference-pair fetch shape, and
+its exact column names weren't independently confirmed against the live
+file before this project's scope closed. Documented in
+`docs/data-forge/DATA_SOURCES.md` as a vetted candidate for future
+integration, specifically to avoid repeating the HPDv2/PD12M pattern of
+wiring in a fetch path against a guessed schema.
 
 ---
 
@@ -229,39 +221,6 @@ the declared budget. This is explicitly *not* a claim that 4-bit
 inference quality is validated for this model — that remains a genuinely
 open question (see §5 below) — it's a claim that the budget and the
 actual loading code now agree with each other, which they didn't before.
-
-### 3.4 Sketch tier — classifier-free guidance was trained for but never used at inference (found and fixed)
-
-**Finding**: Phase 10's synthetic-data audit added CFG conditioning
-dropout (`cfg_dropout_prob=0.1`) to Sketch-tier training specifically so
-the model would learn an unconditional distribution alongside the
-conditional one — the entire point of which is to enable
-classifier-free guidance at sampling time. Tracing the actual inference
-path (`sketch_backend.py`, `maskgit_model.py`) found this training
-investment was never used: `sketch_backend.py` sent an unconditional
-zero prompt embedding on every call (never real CLIP text conditioning),
-and `maskgit_model.py`'s `sample()` never performed the guidance
-computation at all — a model trained to support CFG was being sampled
-as if it hadn't been.
-
-**Fix, verified against the primary source rather than implemented from
-a plausible-sounding description**: Muse (Chang et al., "Muse:
-Text-to-Image Generation via Masked Generative Transformers", ICML
-2023, arXiv:2301.00704) is the citable precedent for CFG in exactly this
-model family (masked-generative, not diffusion). Its §2.7 specifies the
-training-time dropout rate (10% — matching this project's own default,
-confirmed the same design choice rather than a coincidental match), the
-guidance formula (`ℓ_g = (1+t)ℓ_c - tℓ_u`), and a linearly-ramped
-guidance schedule through sampling rather than a constant scale ("to
-reduce the hit to diversity," in the paper's own words). Implemented
-verbatim: `sketch_backend.py` now sends real CLIP text conditioning,
-and `maskgit_model.py`'s sampler applies the exact formula above with
-the same linear ramp. Verified two ways: numerically (a numpy-backed
-torch stub driving the real `sample()` code, confirming the formula's
-arithmetic), and by refetching Muse's own paper text directly and
-checking the formula, dropout rate, and ramp description against it
-line-by-line — all three matched exactly, no correction needed to the
-implementation once traced.
 
 ---
 
@@ -331,84 +290,6 @@ number).
 
 ---
 
-## 4.5 Diffusion-DPO for a flow-matching model — closing a previously-open gap
-
-**The gap, as it stood**: `training/src/krisna_training/dpo/` built and
-exported real preference-pair data (§2's human-labeled sources), but
-nothing consumed it — there was no trainer.
-
-**Why this isn't "just apply Diffusion-DPO"**: the original formulation
-(Wallace et al., "Diffusion Model Alignment Using Direct Preference
-Optimization", CVPR 2024, Eq. 46) is derived for DDPM-style models
-predicting **noise** (epsilon). Z-Image-Turbo is a **flow-matching**
-model predicting a **velocity** — a different prediction target with
-different loss geometry. The DDPM-derived loss doesn't transfer
-unmodified.
-
-**The adaptation used, verified against real published precedent, not
-invented for this project**: MotionFlux (Bin et al., arXiv:2508.19527,
-§3.6) applies exactly the substitution needed — replacing the epsilon-
-prediction squared-error terms in Wallace et al.'s sigmoid-of-difference
-structure with velocity-prediction squared-error terms — to align a
-rectified-flow-matching motion-generation model via DPO, citing Wallace
-et al. as its own base formulation. The same paper also documents a real
-failure mode (reward-hacking-style drift from the pretraining
-distribution when optimizing DPO on a diffusion/flow model in isolation)
-and addresses it with a flow-matching anchor regularization term — also
-implemented here (`fm_anchor_weight`, off by default pending a real
-sweep).
-
-**What was verified vs. what needs a real GPU run**:
-- **Verified, via genuine mathematical tests** (`tests/training/
-  test_dpo_loss.py`), not just shape/smoke checks: the loss equals
-  exactly `log(2)` when the policy hasn't diverged from the reference (the
-  standard DPO closed-form sanity check — true for any correctly-
-  implemented DPO-family loss), the loss correctly rewards the policy
-  fitting the chosen sample better than the reference and correctly
-  penalizes the opposite, a real gradient step measurably moves the
-  chosen-side prediction toward its target, the anchor term's on/off
-  behavior, and — specific to the flow-matching adaptation — that the
-  velocity-target and noising-interpolant sign conventions are mutually
-  consistent (predicting the target velocity and taking one Euler step
-  from the noised latent recovers the original clean latent exactly).
-- **Sign/target convention**: `target = noise - clean_latent`, matching
-  diffusers' own `train_dreambooth_lora_sd3.py`/`train_dreambooth_lora_
-  flux.py` scripts — deliberately not hand-derived from a paper's own
-  notation (papers disagree on which endpoint is t=0 vs t=1; getting this
-  backwards would be a silent, serious bug).
-- **API surface used to wire the loop together** (`transformer.
-  add_adapter(LoraConfig(...))`, `model.save_pretrained()` once PEFT-
-  wrapped): confirmed real via direct research — a diffusers maintainer's
-  own bug-report example calls `add_adapter()` on a real diffusers
-  transformer model (github.com/huggingface/peft/issues/2494), and
-  PEFT's own quickstart confirms `save_pretrained()` as the standard
-  save call afterward. An earlier draft used an unconfirmed
-  `save_lora_adapter()` method name that was never found documented
-  anywhere in the same research pass — caught and replaced before it
-  could ship as an untested guess.
-- **Not verified, and can't be from this environment**: real training
-  dynamics against actual Z-Image-Turbo weights, and the two
-  pipeline-specific API details flagged above.
-- **`beta` default, refined beyond Wallace et al.'s own range**: Wallace
-  et al.'s SD1.5/SDXL setting (`beta` in [2000, 5000], epsilon-
-  prediction) is this implementation's documented starting point, but a
-  further check against papers doing real β-sweeps on models
-  architecturally closer to Z-Image-Turbo (flow-matching, not
-  epsilon-prediction) found meaningfully lower optima: Linear-DPO
-  (arXiv:2605.21123, §E.3) swept `beta` in {100, 250, 500, 1000, 2000}
-  and found the best PickScore at `beta=250` for SD1.5, `beta=500` for
-  SDXL, and — most directly relevant, since it's a flow-matching model
-  like Z-Image-Turbo — `beta=500` for SD3-M on HPSv3. DeRaDiff
-  (arXiv:2601.20198) shows the risk cuts both ways: `beta=250` caused
-  visually severe reward-hacking on SDXL. `dpo_loss.py`'s docstring now
-  recommends sweeping `{250, 500, 1000, 2000}` on real validation output
-  before committing to a default, rather than treating Wallace et al.'s
-  epsilon-prediction-tuned range as an unquestioned transfer to this
-  flow-matching model, or overcorrecting to a new unverified guess in
-  the other direction.
-
----
-
 ## 5. Open questions this project deliberately leaves open
 
 Documented here rather than silently resolved one way or the other:
@@ -428,49 +309,15 @@ Documented here rather than silently resolved one way or the other:
   as a prompt-level instruction, not a genuine differential-diffusion
   mask parameter — diffusers' locked-region API for this pipeline family
   was still moving as of this build.
-- **`train_dpo.py`'s `encode_prompt()` return shape and the transformer's
-  forward-call signature are not independently verified against
-  Z-Image-Turbo's specific pipeline class** — flagged inline in the code
-  itself (same discipline as the `strength` kwarg above). The loss math
-  driving the training loop is verified (§4.5 below); this specific
-  pipeline-calling-convention detail is not, and needs a real
-  `Tongyi-MAI/Z-Image-Turbo` pipeline inspection to nail down before a
-  production run.
+- **No DPO trainer is wired up yet.** `training/src/krisna_training/dpo/`
+  builds and exports real preference-pair data (from data-forge's
+  human-labeled sources, §2 above); nothing in this repo currently
+  consumes that export to actually run a Diffusion-DPO training loop
+  against Z-Image-Turbo.
 
 ---
 
-## 6. Canonical Bibliography & Primary Sources (Aligned with PRD §12)
-
-Every citation below is a confirmed primary source directly grounding decisions in [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) §12:
-
-1. **Chang, H., et al. (2023)**. *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. [arXiv:2301.00704](https://arxiv.org/abs/2301.00704).
-   - *Role*: Classifier-Free Guidance (CFG) formula ($\ell_g = (1+t)\ell_c - t\ell_u$), 10% conditioning dropout during training (`cfg_dropout_prob=0.1`), and linear guidance schedule ramp for the Sketch tier (§6.2).
-2. **Wallace, B., et al. (2024)**. *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024. [arXiv:2311.12908](https://arxiv.org/abs/2311.12908).
-   - *Role*: Foundational Diffusion-DPO formulation for aligning generative models without reinforcement learning loops (§6, §8.5).
-3. **Bin, Y., et al. (2025)**. *MotionFlux*. [arXiv:2508.19527](https://arxiv.org/abs/2508.19527).
-   - *Role*: Velocity-prediction DPO substitution adapting DDPM epsilon formulation to rectified flow-matching models, including flow-matching anchor regularization ($L_{anchor}$) (§8.5, `dpo_loss.py`).
-4. **Linear-DPO (2026)**. [arXiv:2605.21123](https://arxiv.org/abs/2605.21123), §E.3; **DeRaDiff (2026)**. [arXiv:2601.20198](https://arxiv.org/abs/2601.20198).
-   - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (`docs/review/27_prd_open_risks_research.md`).
-5. **Ho, J. & Salimans, T. (2022)**. *Classifier-Free Diffusion Guidance*. NeurIPS 2021 Workshop on RepL4RL / [arXiv:2207.12598](https://arxiv.org/abs/2207.12598).
-   - *Role*: Theoretical basis of joint conditional/unconditional score modeling with random conditioning dropout (§6.2).
-6. **Qwen Team, Alibaba (2026-03-02)**. *Qwen3.5 Small Model Series release notes*.
-   - *Role*: Documents Qwen3.5-9B's hybrid Gated DeltaNet + Gated Attention architecture and native multimodal capabilities; justifies frozen RAG deployment over training (§6, §7.3). **PyPI Dependency Status**: Natively supported in `transformers >= 5.2.0` (tagged release, Feb 2026), eliminating the prior unreleased git-main dependency blocker.
-7. **Tongyi-MAI, Alibaba (2025)**. *Z-Image: An Efficient Image Generation Foundation Model with Single-Stream Diffusion Transformer*. [Report PDF](https://github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf).
-   - *Role*: Primary specification for Z-Image-Turbo (S3-DiT architecture, Decoupled-DMD distillation), base model for Polish-Default (§6, §7.3).
-8. **Google DeepMind (2026)**. *Gemma 4*.
-   - *Role*: Establishes Gemma 4 31B Dense architecture, Apache 2.0 license, and Unsloth 4-bit quantization compatibility for zero-shot VLM-as-a-judge Critic (§6, §7.3).
-9. **Wang, B., et al. (2021)**. *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. UIST 2021. [arXiv:2108.03353](https://arxiv.org/abs/2108.03353).
-   - *Role*: Empirical distribution of mobile UI captions, establishing the need for VLM-dense recaptioning in `data-forge` (§8.4, §8.6).
-10. **Jonathan-Zhou (2024)**. *GameLabel-10k*. [arXiv:2409.19830](https://arxiv.org/abs/2409.19830).
-    - *Role*: Real, human-labeled preference pairs crowdsourced from mobile-game UI aesthetics, adapted as a Stage 1 DPO source (§8.5).
-11. **DyPE (2025)**. [arXiv:2510.20766](https://arxiv.org/abs/2510.20766); **FiT / FiTv2**.
-    - *Role*: Rotary Position Embedding (RoPE) resolution flexibility in Diffusion Transformers, confirming safety of cross-resolution training (1024px LoRA base, 512px DPO) (§11).
-12. **Betker, J., et al. (2023)**. *Improving Image Generation with Better Captions*. Computer Science Technical Report.
-    - *Role*: Empirical 95/5 mix ratio of dense VLM-generated captions vs. original concise source captions to balance prompt adherence with conversational inference (§6.2, §8.6).
-
----
-
-## 7. Sources Verified in this Document
+## Citation index (for quick lookup)
 
 | Source | What it verified |
 |---|---|
@@ -484,11 +331,9 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | `huggingface.co/datasets/nateraw/parti-prompts` (dataset card) | Apache 2.0, `.tsv` format |
 | arXiv:2602.23438 (Gopal et al.) — DesignSense-10k paper, its arXiv license badge | CC BY-NC-ND 4.0, no public data release |
 | arXiv:2605.20731's related-work section | DesignPref confirmed not yet released |
-| arXiv:2409.19830 — GameLabel-10K paper; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, base64+bytes schema adapter |
-| QwenLM GitHub changelog, HF community thread (Feb–Apr 2026) | Qwen-Image-2.0 weights never released; procedural rule adopted |
+| arXiv:2409.19830 — GameLabel-10K paper; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, unconfirmed schema |
+| QwenLM GitHub changelog, HF community thread (Feb–Apr 2026) | Qwen-Image-2.0 weights never released |
 | Unsloth documentation, Google Gemma 4 announcement, HF LICENSE file | Gemma 4 31B Dense vs. 26B-A4B MoE incompatibility, Apache 2.0 |
 | `diffusers` GitHub issue #10800 | `enable_sequential_cpu_offload()` incompatible with bnb NF4; `enable_model_cpu_offload()` confirmed working |
 | `transformers`/`bitsandbytes` documentation (`BitsAndBytesConfig`) | `llm_int8_enable_fp32_cpu_offload` requirement and FP32 CPU-storage behavior |
 | Unsloth issue tracker | No documented CPU-offload support |
-| `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
-

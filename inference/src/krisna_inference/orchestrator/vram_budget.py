@@ -43,21 +43,6 @@ class _BaseLedger:
     registry: dict = field(default_factory=lambda: REGISTRY)
     _resident: dict = field(default_factory=dict)
     _attr: str = "vram_gb"
-    safety_margin_gb: float = 0.0
-    """Extra headroom subtracted from the effective envelope before an
-    admission check. Defaults to 0.0 for both ledgers — no behavior
-    change unless a caller opts in. Left as an explicit opt-in rather
-    than a nonzero default because at least one registered tier (Critic,
-    low-VRAM mode) is sized to fit its envelope with exactly zero
-    headroom on paper; a nonzero default here would make that tier
-    permanently inadmissible (it has no fallback_tier), trading a real
-    problem for a worse one. See swap_orchestrator.py's
-    `vram_safety_margin_gb` for the caller-facing opt-in and the same
-    reasoning in full. Real GPU memory has overhead (CUDA context,
-    fragmentation, activations) the declared vram_gb estimate doesn't
-    capture, so operators running close to the edge on real hardware
-    should raise this explicitly rather than assume it's safe by
-    default."""
 
     @property
     def resident_tiers(self) -> list:
@@ -69,13 +54,13 @@ class _BaseLedger:
 
     @property
     def free_gb(self) -> float:
-        return self.envelope_gb - self.safety_margin_gb - self.used_gb
+        return self.envelope_gb - self.used_gb
 
     def would_fit(self, tier) -> bool:
         spec = self.registry[tier]
         if tier in self._resident:
             return True
-        return self.used_gb + getattr(spec, self._attr) <= self.envelope_gb - self.safety_margin_gb
+        return self.used_gb + getattr(spec, self._attr) <= self.envelope_gb
 
     def admit(self, tier) -> None:
         """Reserve budget for a tier that is about to be loaded. Raises if
@@ -85,8 +70,7 @@ class _BaseLedger:
         if tier in self._resident:
             return
         cost = getattr(spec, self._attr)
-        effective_envelope = self.envelope_gb - self.safety_margin_gb
-        if self.used_gb + cost > effective_envelope:
+        if self.used_gb + cost > self.envelope_gb:
             raise VRAMBudgetExceededError(
                 requested_gb=self.used_gb + cost,
                 budget_gb=self.envelope_gb,

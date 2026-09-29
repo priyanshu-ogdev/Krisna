@@ -59,23 +59,6 @@ class BlobStore:
     def path_for(self, ref: str) -> Path:
         return self.root / ref.removeprefix("blob://")
 
-    def delete(self, ref: str) -> bool:
-        """Delete the file backing `ref` from disk if present.
-
-        Returns True if deleted, False if file did not exist.
-        Raises ValueError if ref is not a valid blob:// ref.
-        """
-        if not ref.startswith("blob://"):
-            raise ValueError(f"Not a blob ref: {ref!r}")
-        path = self.root / ref.removeprefix("blob://")
-        if path.exists():
-            try:
-                path.unlink()
-                return True
-            except OSError:
-                return False
-        return False
-
 
 def resolve_dtype(name: str):
     """Lazy torch dtype lookup — only imports torch when actually called."""

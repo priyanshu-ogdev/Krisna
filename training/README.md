@@ -17,10 +17,9 @@ full reasoning + citations behind that split):
 | Subpackage | Trains | Method | Status |
 |---|---|---|---|
 | `sketch/` | Sketch tier (MaskGIT-lineage) | From scratch, two-stage progressive resolution | **Active** |
-| `polish/` | Z-Image-Turbo | LoRA fine-tune (+ Diffusion-DPO via `dpo_dataset.py`) | **Active** |
-| `preference/` | — (not a model) | Builds/exports DPO preference-pair data from data-forge's real, human-labeled pairs | **Active** — canonical replacement for legacy `dpo/` |
+| `polish/` | Z-Image-Turbo | LoRA fine-tune (+ Diffusion-DPO, data prepped by `dpo/`) | **Active** |
 | `data_forge_bridge/` | — (not a model) | Re-tokenizes/re-encodes data-forge's raw images through this package's own working tokenizers | **Active** — the only path real training data reaches this package |
-| `dpo/` | — (not a model) | Backward-compatibility forwarder to `preference/` | **Active (Legacy alias)** |
+| `dpo/` | — (not a model) | Builds/exports DPO preference-pair data from data-forge's real, human-labeled pairs | **Active** (data prep only — no DPO trainer is wired up yet, see "What's next" below) |
 | `planner/` | Qwen3.5-9B Planner | BF16 LoRA chat-SFT | **Deprecated** — Planner ships frozen (RAG retrieval instead, see `inference/README.md`) |
 | `critic/` | Gemma 4 31B Critic | QLoRA via Unsloth | **Deprecated** — Critic ships frozen (on-demand product feature) |
 
@@ -32,8 +31,7 @@ docstring for exactly what to revert if that happens.
 ## Complete walkthrough — from data-forge output to a trained checkpoint
 
 This is the real, end-to-end sequence, tier by tier. Every command below
-is copy-pasteable from the monorepo root. On Windows, native PowerShell scripts
-(`.ps1`) are available alongside the bash scripts (`.sh`).
+is copy-pasteable from the monorepo root.
 
 **1. Run data-forge first** (see `../data-forge/README.md`) — this
 produces `<DATA_ROOT>/model_data/` and `<DATA_ROOT>/preference_pairs/`,
@@ -41,39 +39,29 @@ the two directories every sync script below reads from.
 
 **2. Sketch tier** (from scratch, real UI screenshots):
 ```bash
-# Bash (Linux / Git Bash)
 ./scripts/training/setup_env_training.sh
 ./scripts/training/download_vqgan.sh
 ./scripts/training/sync_from_data_forge_sketch.sh <data_forge_model_data_dir> ./data/sketch_train_256
-./scripts/training/train_sketch_stage1.sh   # 256px, from scratch (configs/sketch_stage1_256.yaml)
-./scripts/training/train_sketch_stage2.sh   # 512px, progressive init from stage 1 (configs/sketch_stage2_512.yaml)
-
-# PowerShell (Windows)
-.\scripts\training\setup_env_training.ps1
-.\scripts\training\download_vqgan.ps1
-python scripts/data-forge/sync_to_training.py --data-root <DATA_ROOT>
-.\scripts\training\train_all.ps1 -Tier sketch-stage1
-.\scripts\training\train_all.ps1 -Tier sketch-stage2
+./scripts/training/train_sketch_stage1.sh   # 256px, from scratch
+./scripts/training/train_sketch_stage2.sh   # 512px, progressive init from stage 1
+# -> checkpoint lands wherever configs/sketch_train_stage2_512.yaml's
+#    output_dir points; move/symlink it into models/sketch_tier/, see
+#    ../models/README.md
 ```
 
 **3. Polish tier (Z-Image-Turbo)** — base fine-tune, then optionally DPO
 alignment on top:
 ```bash
-# Bash (Linux / Git Bash)
 ./scripts/training/setup_env_diffusers_training.sh
 ./scripts/training/sync_from_data_forge_polish.sh <data_forge_model_data_dir> ./data/polish_default_train
-./scripts/training/train_polish_default_lora.sh  # configs/polish_stage1_default_lora.yaml
-
-# PowerShell (Windows)
-.\scripts\training\setup_env_diffusers_training.ps1
-python scripts/data-forge/sync_to_training.py --data-root <DATA_ROOT>
-.\scripts\training\train_all.ps1 -Tier polish-default
+./scripts/training/train_polish_default_lora.sh
+# -> LoRA adapter lands in models/polish_default_lora/, see
+#    KRISNA_POLISH_DEFAULT_LORA_PATH in ../inference/README.md
 
 # Optional: DPO preference data, prepped from data-forge's real pairs
 ./scripts/training/sync_from_data_forge_dpo.sh <data_forge_data_root>
-./scripts/training/train_polish_dpo.sh  # configs/polish_stage2_dpo_general.yaml
-# Or in PowerShell:
-.\scripts\training\train_all.ps1 -Tier polish-dpo
+# -> populates a local PreferenceStore db — no DPO trainer consumes this
+#    yet, see "What's next" below.
 ```
 
 **4. Point the inference layer at what you trained** — see
@@ -141,55 +129,9 @@ since that cross-tier contract doesn't exist yet either).
 
 - Training the sketch tier itself (see "Inference layer" above for what
   IS built vs. missing there).
-- The two pipeline-specific API details flagged in `train_dpo.py`
-  (`encode_prompt()`'s return shape, the transformer's forward-call
-  signature) aren't independently verified against Z-Image-Turbo's real
-  pipeline class — see the inline comments at those exact call sites.
-- Real training dynamics for `train_dpo.py` against actual weights —
-  the loss math is verified (see below), a live GPU run is not.
-
-## DPO alignment — Diffusion-DPO for a flow-matching model
-
-`training/src/krisna_training/polish/dpo_loss.py` +
-`train_dpo.py` — a real, tested consumer for `dpo/`'s preference-pair
-exports, closing what was previously an open gap in this project. See
-`../docs/architecture/RESEARCH_AND_CITATIONS.md` §4.5 for the full
-derivation: this is **not** the original Diffusion-DPO loss applied
-unmodified (that formulation assumes DDPM-style noise prediction;
-Z-Image-Turbo predicts a flow-matching velocity instead) — it's a
-published, cited adaptation (MotionFlux, arXiv:2508.19527) that
-substitutes velocity-prediction error for noise-prediction error inside
-the same DPO structure, plus an optional flow-matching anchor
-regularization term to guard against reward-hacking-style drift.
-
-**Verified, via real mathematical tests, not just shape checks** (`../tests/training/test_dpo_loss.py`):
-the loss equals exactly `log(2)` when the policy hasn't diverged from the
-reference (the standard closed-form DPO sanity check), rewards/penalizes
-preference alignment correctly in both directions, a real gradient step
-measurably improves the chosen-side prediction, and the flow-matching
-sign convention is self-consistent (predicting the target velocity and
-taking one Euler step from the noised latent exactly recovers the clean
-latent).
-
-**Not verified — needs a real GPU run**: actual training dynamics against
-real Z-Image-Turbo weights, whether the default `beta=2000.0` (carried
-over from Wallace et al.'s SD1.5/SDXL-tuned range) transfers reasonably
-to this model, and two pipeline-specific API details flagged directly in
-`train_dpo.py`'s inline comments (`encode_prompt()`'s return shape, the
-transformer's forward-call signature) that weren't independently checked
-against Z-Image-Turbo's live pipeline code.
-
-```bash
-./scripts/training/sync_from_data_forge_dpo.sh <data_forge_data_root>
-# Run via shell script or CLI (canonical config: polish_stage2_dpo_general.yaml):
-./scripts/training/train_polish_dpo.sh training/configs/polish_stage2_dpo_general.yaml
-# Or via installed console script:
-# krisna-train-dpo --preference-db krisna_preference_pairs.db --blob-root krisna_blobs
-# Stage 2 (UI-domain — DesignSense-10k/DesignPref) has zero usable data
-# right now (see RESEARCH_AND_CITATIONS.md §2.8-2.9) — the yaml's
-# `source` list is the only thing to change once either dataset is
-# actually public.
-```
+- The actual DPO training loop consuming `src/krisna_training/dpo/dpo_dataset_export.py`'s
+  output — this repo builds and exports the preference pairs, not the
+  trainer.
 
 ## Polish tier training (Z-Image LoRA; Qwen-Image-Edit — honest gap)
 
@@ -201,25 +143,15 @@ real risk — so this wraps diffusers' own **official, maintained** LoRA
 training scripts instead of reinventing them.
 
 ```bash
-# Setup diffusers training dependencies
 ./scripts/training/setup_env_diffusers_training.sh     # clones diffusers, installs example deps
-# Or on Windows PowerShell:
-.\scripts\training\setup_env_diffusers_training.ps1
-
-# Prepare dataset into HuggingFace imagefolder format:
 ./scripts/training/prepare_polish_dataset.sh <image_dir> ./data/polish_default_train [captions.json]
-# Or in PowerShell:
-.\scripts\training\prepare_polish_dataset.ps1 -ImageDir <image_dir> -OutputDir ./data/polish_default_train -CaptionsPath [captions.json]
-
-# Train Z-Image DreamBooth LoRA (canonical config: polish_stage1_default_lora.yaml):
-./scripts/training/train_polish_default_lora.sh
+./scripts/training/train_polish_default_lora.sh         # Z-Image, via the official script
 ```
 
 **Z-Image (polish_default): real, working.** Wraps
 `train_dreambooth_lora_z_image.py`
 (github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora_z_image.py),
-diffusers' own maintained script. `configs/polish_stage1_default_lora.yaml`
-(legacy alias: `configs/polish_default_lora_z_image.yaml`)
+diffusers' own maintained script. `configs/polish_default_lora_z_image.yaml`
 holds the run parameters; the shell script translates them into the
 `accelerate launch` call. Base model is `Tongyi-MAI/Z-Image` — the
 **undistilled** foundation model, not `Z-Image-Turbo`. This corrects an
@@ -372,23 +304,4 @@ anywhere in this pipeline; that source key existing doesn't mean anything
 currently writes it, but it's worth removing in a future pass rather than
 leaving the data structure able to represent a pattern the project
 explicitly rules out.
-
-## CLI Entry Points
-
-When `krisna-training` is installed (`pip install -e training/`), the following console commands are available directly:
-
-- `krisna-train-sketch --config <path-to-yaml>`: Run MaskGIT sketch tier training loop.
-- `krisna-train-dpo --preference-db <path> --blob-root <path> [options]`: Run Diffusion-DPO alignment trainer.
-- `krisna-sync-rag --source <data-forge-model-data> --dest <target-data-dir>`: Synchronize UICrit RAG corpus for the frozen planner.
-
-## Canonical Configuration Layout
-
-Canonical configs reside in `training/configs/` with clear stage-tiered naming:
-- `sketch_stage1_256.yaml`: 256px MaskGIT training from scratch.
-- `sketch_stage2_512.yaml`: 512px progressive continuation with interpolated positional embeddings.
-- `polish_stage1_default_lora.yaml`: Z-Image DreamBooth LoRA training.
-- `polish_stage2_dpo_general.yaml`: Flow-matching Diffusion-DPO alignment.
-- `deprecated_planner_lora.yaml` / `deprecated_critic_qlora.yaml`: Reference configs for deprecated tiers.
-
-Legacy config filenames (`sketch_train_stage1_256.yaml`, `sketch_train_stage2_512.yaml`, `polish_default_lora_z_image.yaml`, `dpo_z_image_stage1_general.yaml`) are fully retained for backward compatibility.
 

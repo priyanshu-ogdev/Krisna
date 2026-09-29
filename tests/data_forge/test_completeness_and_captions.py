@@ -20,38 +20,41 @@ def _mk_record(domain: str, encoding_paths: dict | None) -> ManifestRecord:
 
 
 class TestCompletenessPredicate:
-    def test_ui_first_and_general_design_require_same_two_artifacts(self):
-        """Sync audit item #1: vq_tokens dropped from the required set.
-        data-forge's maskgit_vq encoder had no working implementation
-        (engine.py's loader always raised RuntimeError) and its only
-        caller (s08_encoding.py's VQ-token branch) has been removed, so
-        requiring vq_tokens would make ui_first records permanently
-        unable to satisfy is_encoding_complete() — which is exactly what
-        was silently happening before this fix (see
-        docs/review/01_sketch_tier.md). ui_first and general_design now
-        require the identical artifact set."""
+    def test_ui_first_requires_three_artifacts(self):
+        """qwen_image_latent dropped from the required set: Qwen-Image-
+        Edit-2511 ships frozen now (no data-forge training branch for it —
+        see s08_encoding.py's Branch 2 removal)."""
         assert required_artifacts_for("ui_first") == {
-            "z_image_latent", "control_map",
+            "z_image_latent", "control_map", "vq_tokens",
         }
+
+    def test_general_design_requires_two_artifacts_not_three(self):
+        """The core fix: a general_design record correctly lacking
+        vq_tokens must NOT be flagged incomplete — Stage 8's VQ branch is
+        deliberately domain-gated to ui_first only."""
         assert required_artifacts_for("general_design") == {
             "z_image_latent", "control_map",
         }
 
     def test_ui_first_complete_record(self):
         rec = _mk_record("ui_first", {
-            "z_image_latent": "a", "control_map": "c",
+            "z_image_latent": "a", "control_map": "c", "vq_tokens": "d",
         })
         assert is_encoding_complete(rec) is True
-        assert missing_artifacts(rec) == set()
 
-    def test_ui_first_missing_control_map_is_incomplete(self):
+    def test_ui_first_missing_vq_tokens_is_incomplete(self):
         rec = _mk_record("ui_first", {
-            "z_image_latent": "a",
+            "z_image_latent": "a", "control_map": "c",
         })
         assert is_encoding_complete(rec) is False
-        assert missing_artifacts(rec) == {"control_map"}
+        assert missing_artifacts(rec) == {"vq_tokens"}
 
-    def test_general_design_complete_record(self):
+    def test_general_design_without_vq_tokens_is_complete(self):
+        """This is the exact case that would have been a false positive
+        before this fix — s09_heldout.py would have needed to flag every
+        correctly-processed general_design record as broken under a
+        blanket rule that required an artifact Stage 8 never produces for
+        this domain."""
         rec = _mk_record("general_design", {
             "z_image_latent": "a", "control_map": "c",
         })

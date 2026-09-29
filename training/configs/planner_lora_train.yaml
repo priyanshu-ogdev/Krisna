@@ -1,18 +1,3 @@
-# ==============================================================================
-# [DEPRECATED] PLANNER SFT CONFIG — ARCHIVAL / REFERENCE ONLY
-# ==============================================================================
-# Per the canonical Product & Research Requirements Document (§6, no-RLHF revision),
-# the Planner (Qwen3.5-9B) is kept FROZEN at inference. The live inference stack
-# (inference/src/krisna_inference/backends/planner_backend.py) relies on in-context
-# learning and UICrit RAG retrieval (planner_rag_corpus/uicrit_critiques.jsonl).
-#
-# Consequently:
-# 1. Data-forge does NOT produce or export a planner SFT dataset (s09 was deleted).
-# 2. The manifest_path "./data/planner_sft/manifest.jsonl" is never populated.
-# 3. Training this config produces an adapter that the live inference stack cannot load.
-# 4. Do not run this config for production training.
-# ==============================================================================
-# Original architectural notes:
 # Planner BF16 LoRA training — §6.1: BF16 only, never QLoRA (documented
 # degradation with Qwen3.5's hybrid Gated DeltaNet + Gated Attention arch).
 
