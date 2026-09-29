@@ -42,10 +42,10 @@ class HeldoutStage(Stage):
         # failure would still flow into training_pool/heldout as if fully
         # processed, silently degrading whichever model's training loop
         # expects that artifact to exist. Uses the domain-aware predicate
-        # in utils/completeness.py so general_design records (which
-        # correctly lack vq_tokens — see s08_encoding.py's domain gate)
-        # aren't wrongly excluded for "missing" an artifact they were
-        # never supposed to have.
+        # in utils/completeness.py. As of the maskgit_vq removal (sync
+        # audit item #1), ui_first and general_design records require the
+        # same artifact set — there is no longer a domain-specific extra
+        # to exclude anyone for lacking.
         encoded = []
         incomplete_count = 0
         for rec in candidates:

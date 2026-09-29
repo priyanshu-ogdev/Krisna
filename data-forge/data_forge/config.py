@@ -182,7 +182,9 @@ class PathsConfig:
     scrubbed: str = "scrubbed/"
     processed_root: str = "processed/"
     latents_zimage: str = "processed/latents_zimage/"
-    vq_tokens_sketch: str = "processed/vq_tokens_sketch/"
+    # REMOVED: vq_tokens_sketch. Sync audit item #1 — its only reader was
+    # s08_encoding.py's maskgit_vq branch, deleted along with the dead
+    # encoder (see models.yaml, inference/engine.py).
     control_tokens: str = "processed/control_tokens/"
     training_pool: str = "training_pool/"
     heldout: str = "heldout/"
@@ -339,7 +341,6 @@ def _parse_paths(data: dict[str, Any]) -> PathsConfig:
     if isinstance(processed, dict):
         pc.processed_root = processed.get("root", pc.processed_root)
         pc.latents_zimage = processed.get("latents_zimage", pc.latents_zimage)
-        pc.vq_tokens_sketch = processed.get("vq_tokens_sketch", pc.vq_tokens_sketch)
         pc.control_tokens = processed.get("control_tokens", pc.control_tokens)
         pc.dpo_latents = processed.get("dpo_latents", pc.dpo_latents)
     for key in (

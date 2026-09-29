@@ -152,16 +152,14 @@ encoders:
     expected_downsample: 8
     vram_estimate_gb: 2
 
-  maskgit_vq:
-    model_id: "TencentARC/Open-MAGVIT2"
-    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
-    # this file once network access to Hugging Face is available, before
-    # any production-scale training run.
-    dtype: "float16"
-    device: "cuda"
-    role: "sketch_tier_vq_tokens"
-    vram_estimate_gb: 2
+  # REMOVED: maskgit_vq (TencentARC/Open-MAGVIT2). Sync audit item #1 —
+  # this entry had no working encode/decode implementation behind it
+  # (engine.py's loader always raised RuntimeError by design), and its
+  # only producer (s08_encoding.py's Sketch Tier VQ Tokens branch) has
+  # been deleted. The real Sketch tier tokenizer is
+  # `boris/vqgan_f16_16384`, loaded directly by
+  # training/sketch/vq_tokenizer.py — a different codebook, never routed
+  # through data-forge. See docs/review/01_sketch_tier.md.
 
 # ---------------------------------------------------------------------------
 # vLLM Server Settings (shared across Tier-1, Tier-2, OCR)

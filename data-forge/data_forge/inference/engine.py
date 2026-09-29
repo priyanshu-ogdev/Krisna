@@ -290,33 +290,13 @@ class ModelEngine:
                         revision=spec.revision,
                     ).to(spec.device).eval()
 
-                elif key == "maskgit_vq":
-                    # Open-MAGVIT2 is distributed as a research codebase (OmegaConf
-                    # config + custom `load_vqgan_new` loader via the open-magvit2
-                    # PyPI package), NOT as a transformers-compatible AutoModel repo.
-                    # AutoModel.from_pretrained(..., trust_remote_code=True) is not
-                    # confirmed to work against this repo. Fail loudly and clearly
-                    # rather than let a confusing transformers stack trace stand in
-                    # for "this needs a custom wrapper."
-                    try:
-                        from transformers import AutoModel
-
-                        model = AutoModel.from_pretrained(
-                            spec.model_id,
-                            torch_dtype=dtype,
-                            trust_remote_code=True,
-                            revision=spec.revision,
-                        ).to(spec.device).eval()
-                    except Exception as e:
-                        raise RuntimeError(
-                            f"Failed to load '{spec.model_id}' via AutoModel.from_pretrained "
-                            "(this is expected — Open-MAGVIT2 is not a transformers-native repo). "
-                            "You likely need a custom wrapper: load the OmegaConf config + "
-                            "checkpoint the way TencentARC/Open-MAGVIT2's own repo does (see the "
-                            "`open-magvit2` PyPI package's `load_vqgan_new`), then adapt "
-                            ".encode()/.decode() to the interface s08_encoding.py expects. "
-                            f"Original error: {e}"
-                        ) from e
+                # REMOVED: `elif key == "maskgit_vq"`. This loader always
+                # raised RuntimeError by design (Open-MAGVIT2 isn't a
+                # transformers-native repo), which meant s08_encoding.py's
+                # VQ-token branch failed on every ui_first record and
+                # `is_encoding_complete()` was never true for that domain.
+                # The encoder entry, its only caller, and this loader were
+                # removed together — see models.yaml and s08_encoding.py.
 
                 else:
                     log.warning("unknown_encoder", key=key)
