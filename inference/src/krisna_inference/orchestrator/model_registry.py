@@ -10,10 +10,17 @@ Z-Image-Turbo, Qwen-Image-Edit-2511, Gemma 4) are implemented in
 `inference/factory.py::real_backend_factory` — not stubs, real loading
 code. See each backend's module docstring for its actual quantization
 (NF4/4-bit for Planner/Critic/Quality-Polish per PRD §6's frozen-model
-decisions, NF4/DPO-fine-tuned for Default-Polish) and each `vram_gb`
-value below must stay consistent with what that backend actually loads —
-see planner_backend.py's docstring for a real example of this drifting
-apart once and getting caught.
+decisions; Default-Polish is the one exception — bf16, deliberately
+*not* quantized, because its LoRA was trained against a bf16/fp16 base
+and NF4-quantizing the base at inference without having trained against
+a quantized base would be a real precision mismatch — see
+`polish_default_backend.py`'s `load()` for the full reasoning) and each
+`vram_gb` value below must stay consistent with what that backend
+actually loads — see planner_backend.py's docstring for a real example
+of this drifting apart once and getting caught, and
+`docs/review/13_ram_offload_and_precision_audit.md` for a second one
+(this file's own `POLISH_DEFAULT` entry claimed NF4 for over a session
+before being caught — same failure mode, different tier).
 """
 
 from __future__ import annotations
@@ -62,8 +69,23 @@ REGISTRY: dict[Tier, ModelSpec] = {
         always_resident=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
-        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo", vram_gb=8.0,
-        quantization="NF4/NVFP4",
+        # bf16, ~14GB ESTIMATE (not yet measured on real hardware) —
+        # corrected from a previous 8.0GB figure that assumed NF4
+        # quantization this backend never actually applies (confirmed by
+        # reading polish_default_backend.py: `torch_dtype=resolve_dtype
+        # (self.dtype)` with no `quantization_config`, and deliberately
+        # so — see that file's `load()` comment on why NF4 here would be
+        # a train/inference precision mismatch against the bf16/fp16-
+        # trained LoRA). Arithmetic: Z-Image-Turbo is 6B params (Tongyi-
+        # MAI, 2025) at 2 bytes/param bf16 = ~12GB for the DiT alone,
+        # plus a text encoder and VAE the model card doesn't break out
+        # separately — 14.0 is a conservative round-up, consistent with
+        # Tongyi-MAI's own published "<16GB" full-pipeline guidance as an
+        # upper bound. Needs a real hardware measurement to replace this
+        # estimate with a confirmed number — see
+        # docs/review/13_ram_offload_and_precision_audit.md.
+        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo", vram_gb=14.0,
+        quantization="bf16 (deliberately unquantized — matches LoRA training precision)",
     ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511", vram_gb=16.0,
@@ -89,8 +111,9 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 # Low-VRAM / CPU-offload registry — targets a 12-16GB GPU instead of the
 # PRD §3 default 16-24GB envelope, offloading the rest to system RAM.
 #
-# Two DIFFERENT, real offload mechanisms are in play here, with very
-# different RAM-cost implications — conflating them would give a
+# THREE real offload mechanisms are in play here (was two — Polish
+# Default's is new, added alongside the vram_gb correction above), with
+# very different RAM-cost implications — conflating them would give a
 # misleading picture of what this actually costs:
 #
 # 1. Diffusion pipelines (Polish Default/Quality) use diffusers'
@@ -102,6 +125,12 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 #    transformer) between GPU/CPU, keeping their already-quantized dtype
 #    intact while idle on CPU — vram_gb + ram_gb below sums to
 #    approximately the original full-VRAM number, not more.
+#    Polish Default is bf16, not NF4 (see REGISTRY entry above) — the
+#    GH #10800 incompatibility is specific to bnb 4-bit tensors and does
+#    not apply to this tier, but `enable_model_cpu_offload()` is used
+#    here regardless, for consistency with Polish Quality's mechanism
+#    rather than introducing a second, differently-justified offload
+#    path for one tier only (see polish_default_backend.py's comment).
 #
 # 2. The Critic (Gemma 4, loaded via plain transformers+bitsandbytes when
 #    offloading — NOT unsloth's FastModel, which has no documented/
@@ -126,7 +155,26 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: REGISTRY[Tier.PLANNER],   # unchanged — already small
     Tier.SKETCH: REGISTRY[Tier.SKETCH],     # unchanged — already small
-    Tier.POLISH_DEFAULT: REGISTRY[Tier.POLISH_DEFAULT],  # unchanged — 8.0GB already fits
+    Tier.POLISH_DEFAULT: ModelSpec(
+        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo",
+        # ESTIMATE, same caveat as the REGISTRY entry above — this one
+        # additionally assumes `enable_model_cpu_offload()`'s real-world
+        # saving here is bounded by which single submodule dominates this
+        # model's size. Z-Image-Turbo's DiT transformer (the bulk of its
+        # 6B params) can't itself be offloaded away mid-forward-pass —
+        # only the text encoder and VAE can sit on CPU while idle. So the
+        # GPU floor is roughly "DiT alone" (~12GB) rather than "DiT +
+        # everything else" (~14GB): a real but modest ~2GB saving, unlike
+        # Polish Quality's offload (mechanism 1 above, same call) where
+        # more of the pipeline's weight is outside its single largest
+        # submodule. Fits its own 12GB low-VRAM envelope with
+        # approximately zero headroom, same situation as the Critic entry
+        # below — see swap_orchestrator.py's `vram_safety_margin_gb` for
+        # the opt-in mitigation, and validate this split against a real
+        # run before trusting it at the boundary.
+        vram_gb=12.0, ram_gb=2.0,
+        quantization="bf16 (deliberately unquantized) + diffusers enable_model_cpu_offload()",
+    ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511",
         vram_gb=10.0, ram_gb=10.0,   # ESTIMATE — see mechanism (1) above;

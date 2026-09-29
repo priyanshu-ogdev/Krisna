@@ -24,19 +24,29 @@ class TestGetRegistry:
         for spec in REGISTRY.values():
             assert spec.ram_gb == 0.0
 
-    def test_low_vram_registry_reduces_the_two_large_tiers(self):
+    def test_low_vram_registry_reduces_the_offloadable_tiers(self):
+        """Was 'the two large tiers' — now three: Polish Default's
+        vram_gb=8.0 assumed NF4 quantization the backend never actually
+        applied (see model_registry.py's corrected comment and
+        docs/review/13_ram_offload_and_precision_audit.md). Its real bf16
+        footprint (~14GB) doesn't already fit a 12GB target, so it now
+        gets the same enable_model_cpu_offload() treatment as Polish
+        Quality."""
+        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].vram_gb < REGISTRY[Tier.POLISH_DEFAULT].vram_gb
         assert LOW_VRAM_REGISTRY[Tier.POLISH_QUALITY].vram_gb < REGISTRY[Tier.POLISH_QUALITY].vram_gb
         assert LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb < REGISTRY[Tier.CRITIC].vram_gb
+        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].ram_gb > 0.0
         assert LOW_VRAM_REGISTRY[Tier.POLISH_QUALITY].ram_gb > 0.0
         assert LOW_VRAM_REGISTRY[Tier.CRITIC].ram_gb > 0.0
 
     def test_low_vram_registry_leaves_small_tiers_unchanged(self):
         """Planner and Sketch are already small enough that offloading
-        them buys nothing but latency — confirm they're untouched."""
+        them buys nothing but latency — confirm they're untouched. Polish
+        Default is NOT in this group (see the reduces_the_offloadable_tiers
+        test above) — it used to be, incorrectly."""
         assert LOW_VRAM_REGISTRY[Tier.PLANNER].vram_gb == REGISTRY[Tier.PLANNER].vram_gb
         assert LOW_VRAM_REGISTRY[Tier.PLANNER].ram_gb == 0.0
         assert LOW_VRAM_REGISTRY[Tier.SKETCH].vram_gb == REGISTRY[Tier.SKETCH].vram_gb
-        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].vram_gb == REGISTRY[Tier.POLISH_DEFAULT].vram_gb
 
     def test_every_swappable_tier_fits_a_12gb_envelope_alone_in_low_vram_mode(self):
         """The actual claim being made to the user: each swappable tier,

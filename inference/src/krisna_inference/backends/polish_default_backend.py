@@ -5,6 +5,11 @@ PyPI release yet (see huggingface.co/Tongyi-MAI/Z-Image-Turbo). Turbo is
 distilled without classifier-free guidance: guidance_scale MUST be 0.0
 (non-zero degrades quality per the model card), and 9 inference steps is
 the documented sweet spot (~8 actual DiT forwards).
+
+Loaded at bf16, never NF4-quantized — see `load()`'s comment for why
+that's the correct choice (matches the LoRA's bf16/fp16 training
+precision) and `model_registry.py`'s `quantization` field for this tier,
+which used to claim NF4 incorrectly.
 """
 
 from __future__ import annotations
@@ -27,12 +32,17 @@ class ZImageTurboBackend(ModelBackend):
         dtype: str = "bfloat16",
         num_inference_steps: int = 9,
         lora_adapter_path: str | None = None,
+        enable_cpu_offload: bool = False,   # low-VRAM mode — see model_registry.py's
+                                              # LOW_VRAM_REGISTRY comment for the
+                                              # estimated GPU/RAM split this produces
+                                              # for this tier specifically.
     ) -> None:
         super().__init__(spec)
         self.model_id = model_id
         self.dtype = dtype
         self.num_inference_steps = num_inference_steps
         self.lora_adapter_path = lora_adapter_path
+        self.enable_cpu_offload = enable_cpu_offload
         self._pipe = None
 
     async def load(self) -> None:
@@ -58,7 +68,38 @@ class ZImageTurboBackend(ModelBackend):
                 # only for whether it loads without error.
                 pipe.load_lora_weights(self.lora_adapter_path)
                 log.info("z_image_lora_applied", extra={"adapter": self.lora_adapter_path})
-            pipe.to("cuda")
+            # Deliberately NOT NF4-quantized, unlike Polish-Quality/Planner/
+            # Critic — confirmed by reading training/polish/train_dpo.py:
+            # the LoRA this tier loads was trained against a bf16/fp16 base
+            # (`torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16"
+            # else torch.float16`), never NF4/QLoRA. Quantizing the base
+            # here without having trained the adapter against a quantized
+            # base would be a genuine train/inference precision mismatch —
+            # the LoRA's weights are only validated relative to the
+            # full-precision activations they were trained against. bf16
+            # here is the *correct* match to training, not a missed
+            # optimization; see model_registry.py's `quantization` field
+            # for this tier, corrected to state this explicitly after an
+            # earlier revision of this file's own docstring wrongly implied
+            # NF4 was in use (`docs/review/13_ram_offload_and_precision_audit.md`).
+            if self.enable_cpu_offload:
+                # enable_model_cpu_offload() ONLY — never
+                # enable_sequential_cpu_offload(). The latter has a
+                # confirmed, documented incompatibility with bnb NF4
+                # (diffusers GH issue #10800) that doesn't apply here since
+                # this backend never quantizes — but staying consistent
+                # with polish_quality_backend.py's choice (and its
+                # docstring's reasoning) rather than introducing a second,
+                # differently-reasoned offload call for one tier only.
+                # Moves whole submodules (text encoder, VAE, DiT transformer)
+                # between GPU/CPU on demand; the DiT itself dominates this
+                # model's size (~6B params), so this mainly frees whatever
+                # the text encoder + VAE cost while they're idle — see
+                # model_registry.py's LOW_VRAM_REGISTRY comment for the
+                # actual estimated split.
+                pipe.enable_model_cpu_offload()
+            else:
+                pipe.to("cuda")
             return pipe
 
         try:

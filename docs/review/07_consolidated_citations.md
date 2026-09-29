@@ -90,12 +90,13 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | 12 | Frontend read the wrong conversation-history field names | **Fixed** — see §4, verified via live integration test |
 | 12 | `model_registry.py`'s `POLISH_DEFAULT` `vram_gb=8.0` looks under-sized for a 6B-param bf16 model against Z-Image-Turbo's own published VRAM guidance | **Open** — needs a real hardware measurement; see §5 |
 | 12 | Phase 4's Gemma-4 citation gap | **Fixed** — primary source found, see §5 and citation #26 |
+| 13 | `model_registry.py`'s `POLISH_DEFAULT` declared `quantization="NF4/NVFP4"` was factually false — backend never applied it, by design (train/inference precision match); `vram_gb=8.0` inherited that false assumption | **Fixed** — see `13_ram_offload_and_precision_audit.md`; quantization label corrected, `vram_gb` recomputed to 14.0 (arithmetic-grounded estimate, still pending real-hardware measurement), RAM-offload (`enable_model_cpu_offload()`) added and wired through `factory.py`, `LOW_VRAM_REGISTRY` entry added (12.0GB/2.0GB RAM) |
 
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
 2. **Confirm the sketch-tier hyperparameter fixes actually run** — they're syntax-checked and logically sound, but genuinely unverified against `torch` in this environment. Worth a real run before trusting them fully.
-3. **Measure Polish-Default's real VRAM footprint on actual hardware** (Phase 12 finding) and correct `model_registry.py` if `8.0`GB is indeed under-sized — this affects the orchestrator's OOM-prevention guarantee, not just bookkeeping.
+3. **Measure Polish-Default's real VRAM footprint on actual hardware** (Phase 12/13 finding) and confirm `model_registry.py`'s corrected `14.0`GB (`REGISTRY`) / `12.0GB+2.0GB RAM` (`LOW_VRAM_REGISTRY`) figures — these are now arithmetic-grounded, not wrong, but still not measured.
 4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phase 12 (`12_post_upgrade_resync_audit.md`) is a later follow-up session's changelog against this same set — see that file for anything after this line.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–13 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
