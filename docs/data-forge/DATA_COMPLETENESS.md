@@ -25,11 +25,28 @@ codebase.
 | Planner (Qwen3.5-9B) | **None — frozen** | Real critique text for RAG retrieval (not training data) | `s01_5_uicrit_join` → `s12`'s `planner_rag_corpus/` | **Complete.** UICrit's real human critiques, retrieved at inference, no fine-tune. |
 | Sketch tier (MaskGIT-lineage) | From scratch | UI-domain images + VQ tokens, `ui_first` only | `s08_encoding` (domain-gated) | **Complete.** ~410K real UI images across RICO/CLAY/Enrico/WebUI (see `DATA_SOURCES.md` for the count breakdown). |
 | Z-Image-Turbo (polish) | LoRA/QLoRA | Latents + captions, all domains | `s08_encoding` | **Complete.** PD12M/CC12M + the UI pool above. |
-| Z-Image-Turbo DPO alignment | Diffusion-DPO | Real human preference pairs | `s01_6_preference_pairs` → `s08_5_dpo_encoding` | **Partially complete.** Stage-1 (general aesthetic: Pick-a-Pic v2 + HPDv2) is real and fetchable. Stage-2 (UI/design-domain: DesignSense-10k + DesignPref) has **zero currently-fetchable pairs** — both datasets are real and published but neither has a confirmed public download location as of this revision; see `DATA_SOURCES.md`. |
+| Z-Image-Turbo DPO alignment | Diffusion-DPO | Real human preference pairs | `s01_6_preference_pairs` → `train_dpo.py` (live-encodes; see note below) | **Partially complete.** Stage-1 (general aesthetic: Pick-a-Pic v2 + HPDv2) is real and fetchable. Stage-2 (UI/design-domain: DesignSense-10k + DesignPref) has **zero currently-fetchable pairs** — both datasets are real and published but neither has a confirmed public download location as of this revision; see `DATA_SOURCES.md`. |
 | Qwen-Image-Edit-2511 (polish, quality) | **None — frozen** | none | — | **Complete by design.** Zero-shot ICL + SDEdit-style inference-time conditioning; no paired edit-task data needed at all. |
 | Gemma 4 31B (Critic) | **None — frozen** | none | — | **Complete by design.** Zero-shot VLM-as-judge, on-demand product feature; data-forge never loads this model. |
 
-The one open item that actually matters for training readiness: **Stage-2 UI-domain DPO data doesn't exist publicly yet.** This isn't a pipeline defect — `s01_6_preference_pairs`/`s08_5_dpo_encoding` are built and tested and will pick the data up automatically the moment DesignSense-10k or DesignPref gets a real public repo (the registry watcher, Stage 11, is configured to flag exactly this). Until then, Z-Image-Turbo's DPO alignment runs on Stage-1 (general aesthetic) data only — a real, disclosed limitation to report as such, not paper over, per the PRD's own ablation (c): does general-preference DPO transfer to the UI domain, evaluated against TASTE's held-out multi-axis human agreement.
+**Correction (this revision):** the table above used to route the DPO
+column through `s08_5_dpo_encoding` as if it were the live encoding
+step. It isn't — that stage is **disabled by default**
+(`configs/pipeline.yaml`: `s08_5_dpo_encoding.enabled: false`), confirmed
+to have zero real consumers: `training/polish/train_dpo.py` resolves
+`chosen_ref`/`rejected_ref` through the shared `BlobStore` and calls
+`vae.encode(...)` on the raw images itself, at train time, never reading
+`s08_5_dpo_encoding.py`'s `.safetensors` output. This is the same
+bypass pattern as `sync_sketch_tier.py` re-tokenizing Sketch-tier images
+instead of trusting data-forge's own encoding — see
+`s08_5_dpo_encoding.py`'s own module docstring and
+`docs/review/15_data_forge_finalization.md` for the full history. What
+data-forge is actually responsible for, and does correctly, is
+`s01_6_preference_pairs` — deduping, safety-scrubbing, and staging the
+raw preference-pair images and prompts that `train_dpo.py` then reads
+directly.
+
+The one open item that actually matters for training readiness: **Stage-2 UI-domain DPO data doesn't exist publicly yet.** This isn't a pipeline defect — `s01_6_preference_pairs` is built and tested and will pick the data up automatically the moment DesignSense-10k or DesignPref gets a real public repo (the registry watcher, Stage 11, is configured to flag exactly this). Until then, Z-Image-Turbo's DPO alignment runs on Stage-1 (general aesthetic) data only — a real, disclosed limitation to report as such, not paper over, per the PRD's own ablation (c): does general-preference DPO transfer to the UI domain, evaluated against TASTE's held-out multi-axis human agreement.
 
 ## Traceable data flow, end to end (current, v16)
 
@@ -55,16 +72,21 @@ preference_pairs/{pickapic_v2,hpdv2}/{pair_id}.json + _a.png/_b.png
         │
         ▼  s01_6_preference_pairs (cross-source dedup, face-blur,
         │   NSFW/safety classification — drops unsafe pairs entirely)
-        ▼  s08_5_dpo_encoding (encodes both images through Z-Image-
-        │   Turbo's own VAE — same latent space the policy model
-        │   generates in)
-        ▼  s12_model_data_export
-model_data/dpo_alignment/general/{pickapic_v2,hpdv2}/
+        │
+        ▼  training/data_forge_bridge/sync_dpo_pairs.py (NOT s08_5_dpo_
+        │   encoding + s12_model_data_export — see the correction above.
+        │   Resolves each pair's raw images through the shared BlobStore
+        │   into a PreferenceStore sqlite db)
+        ▼  train_dpo.py reads the db directly, live-encoding each pair
+           through Z-Image-Turbo's own VAE at train time (same latent
+           space the policy model generates in — same reasoning
+           s08_5_dpo_encoding.py's now-unused code intended, just
+           executed at train time instead of pre-computed)
 ```
 
-DesignSense-10k and DesignPref would flow through the identical path,
-landing in `model_data/dpo_alignment/domain/` — the code is built and
-tested end-to-end for this, but as of this revision both datasets have
+DesignSense-10k and DesignPref would flow through the identical path
+once fetchable — the code is built and tested end-to-end for this, but
+as of this revision both datasets have
 `repo_id: null` in `datasets.yaml` (see the status table above and
 `DATA_SOURCES.md`), so this path currently produces zero output for
 either. `s01_fetch` logs a clean `missing_repo_id` error rather than
