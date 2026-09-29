@@ -14,10 +14,7 @@ fi
 source .venv/bin/activate
 pip install -e "$DIFFUSERS_DIR"
 pip install -r "$DIFFUSERS_DIR/examples/dreambooth/requirements.txt"
-if [ -f "$DIFFUSERS_DIR/examples/dreambooth/requirements_z_image.txt" ]; then
-    pip install -r "$DIFFUSERS_DIR/examples/dreambooth/requirements_z_image.txt"
-fi
-pip install accelerate peft
+pip install accelerate
 
 echo -e "\033[1;32mDone.\033[0m"
 echo -e "\033[1;33mOfficial Z-Image LoRA script: $DIFFUSERS_DIR/examples/dreambooth/train_dreambooth_lora_z_image.py\033[0m"

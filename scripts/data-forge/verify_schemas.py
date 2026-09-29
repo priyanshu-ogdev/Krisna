@@ -14,11 +14,6 @@ import json
 import sys
 from pathlib import Path
 
-_DATA_FORGE_DIR = Path(__file__).resolve().parents[2] / "data-forge"
-for _p in (_DATA_FORGE_DIR, _DATA_FORGE_DIR / "src"):
-    if _p.exists() and str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
-
 from data_forge.inference.structured_output import (
     AuditOutput,
     CaptionOutput,
@@ -27,7 +22,6 @@ from data_forge.inference.structured_output import (
     SafetyOutput,
     StructureOutput,
 )
-
 
 # Filenames must match what's actually in configs/schemas/ ("_output.json",
 # not "_schema.json" — the old mapping pointed at files that don't exist,
@@ -102,7 +96,7 @@ def compare(filename: str, static: dict, generated: dict) -> list[str]:
 
 
 def main() -> None:
-    base_dir = Path(__file__).parent.parent.parent / "data-forge"
+    base_dir = Path(__file__).parent.parent
     schemas_dir = base_dir / "configs" / "schemas"
 
     mismatches = 0

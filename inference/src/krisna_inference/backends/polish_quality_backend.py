@@ -110,35 +110,6 @@ class QwenImageEditBackend(ModelBackend):
             if "out of memory" in msg:
                 raise OOMSimulatedError(str(e)) from e
             raise BackendLoadError(f"Failed to load Qwen-Image-Edit-2511: {e}") from e
-
-        # B3: verify `strength` kwarg is actually accepted by this pipeline
-        # version before we try to pass it at inference time. diffusers'
-        # QwenImageEditPlusPipeline family is architecturally different from
-        # the classic img2img pipelines where `strength` is standard; whether
-        # the Edit-Plus variant exposes it depends on the diffusers version.
-        # Inspecting after load (not at __init__) because the pipeline class
-        # is only available after importing diffusers inside _load_sync().
-        import inspect
-        try:
-            sig = inspect.signature(self._pipe.__call__)
-            if "strength" not in sig.parameters:
-                log.warning(
-                    "qwen_edit_strength_kwarg_unavailable",
-                    extra={
-                        "model_id": self.model_id,
-                        "note": "`strength` not in QwenImageEditPlusPipeline.__call__ "
-                                "signature for this diffusers version. SDEdit-style partial "
-                                "denoising will be skipped (edit_strength set to None). "
-                                "Verify the correct kwarg name for your installed diffusers "
-                                "version and update polish_quality_backend.py accordingly.",
-                    },
-                )
-                self.edit_strength = None  # prevents TypeError in _run_sync()
-        except (TypeError, ValueError):
-            # inspect.signature() can fail on some C-extension __call__s;
-            # in that case, attempt the kwarg and let TypeError surface naturally.
-            pass
-
         self._loaded = True
 
     async def unload(self) -> None:
@@ -190,20 +161,26 @@ class QwenImageEditBackend(ModelBackend):
             if init_image is None:
                 raise ValueError(f"Unrecognized handoff_image_ref format: {handoff_image_ref!r}")
 
-            kwargs_for_pipe = dict(
+            result = self._pipe(
                 image=[init_image],
                 prompt=edit_instruction,
                 num_inference_steps=self.num_inference_steps,
                 true_cfg_scale=self.true_cfg_scale,
+                # UNVERIFIED against QwenImageEditPlusPipeline specifically:
+                # `strength` is confirmed on diffusers' QwenImageImg2ImgPipeline
+                # and QwenImageInpaintPipeline (0-1, SDEdit-style partial
+                # denoising), but the Edit/Edit-Plus pipeline family is
+                # architecturally different (instruction+reference-image
+                # editing, not classic img2img noise scheduling) and was NOT
+                # independently confirmed to expose this exact kwarg before
+                # this revision. If this pipeline version rejects it, this
+                # raises a clear TypeError at call time rather than silently
+                # ignoring edit_strength — check the installed diffusers
+                # version's QwenImageEditPlusPipeline.__call__ signature and
+                # either confirm this kwarg name or find the pipeline's real
+                # equivalent control before relying on this in production.
+                strength=self.edit_strength,
             )
-            # Only pass `strength` when B3's post-load check confirmed the
-            # kwarg exists. If QwenImageEditPlusPipeline doesn't expose it
-            # for this diffusers version, self.edit_strength is set to None
-            # during load() and we skip it rather than raising TypeError.
-            if self.edit_strength is not None:
-                kwargs_for_pipe["strength"] = self.edit_strength
-
-            result = self._pipe(**kwargs_for_pipe)
             return result.images[0]
 
         image = await asyncio.to_thread(_run_sync)

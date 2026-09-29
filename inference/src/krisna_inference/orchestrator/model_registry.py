@@ -10,17 +10,10 @@ Z-Image-Turbo, Qwen-Image-Edit-2511, Gemma 4) are implemented in
 `inference/factory.py::real_backend_factory` — not stubs, real loading
 code. See each backend's module docstring for its actual quantization
 (NF4/4-bit for Planner/Critic/Quality-Polish per PRD §6's frozen-model
-decisions; Default-Polish is the one exception — bf16, deliberately
-*not* quantized, because its LoRA was trained against a bf16/fp16 base
-and NF4-quantizing the base at inference without having trained against
-a quantized base would be a real precision mismatch — see
-`polish_default_backend.py`'s `load()` for the full reasoning) and each
-`vram_gb` value below must stay consistent with what that backend
-actually loads — see planner_backend.py's docstring for a real example
-of this drifting apart once and getting caught, and
-`docs/review/13_ram_offload_and_precision_audit.md` for a second one
-(this file's own `POLISH_DEFAULT` entry claimed NF4 for over a session
-before being caught — same failure mode, different tier).
+decisions, NF4/DPO-fine-tuned for Default-Polish) and each `vram_gb`
+value below must stay consistent with what that backend actually loads —
+see planner_backend.py's docstring for a real example of this drifting
+apart once and getting caught.
 """
 
 from __future__ import annotations
@@ -62,13 +55,6 @@ REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5,
         quantization="4-bit (fast mode: Qwen3.5-4B available)",
         always_resident=True,
-        # NOTE for the opt-in vLLM path (KRISNA_PLANNER_BACKEND=vllm, see
-        # planner_backend_vllm.py): vLLM's own gpu_memory_utilization is a
-        # fraction of the REAL, live GPU's total memory, computed FROM
-        # this vram_gb value at load time (not hardcoded) — see that
-        # backend's load() docstring. This declared vram_gb is still the
-        # single source of truth either way; only how it gets translated
-        # into a concrete admission check differs by backend.
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="UI-domain MaskGIT/MaskGIL sketch tier",
@@ -76,23 +62,8 @@ REGISTRY: dict[Tier, ModelSpec] = {
         always_resident=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
-        # bf16, ~14GB ESTIMATE (not yet measured on real hardware) —
-        # corrected from a previous 8.0GB figure that assumed NF4
-        # quantization this backend never actually applies (confirmed by
-        # reading polish_default_backend.py: `torch_dtype=resolve_dtype
-        # (self.dtype)` with no `quantization_config`, and deliberately
-        # so — see that file's `load()` comment on why NF4 here would be
-        # a train/inference precision mismatch against the bf16/fp16-
-        # trained LoRA). Arithmetic: Z-Image-Turbo is 6B params (Tongyi-
-        # MAI, 2025) at 2 bytes/param bf16 = ~12GB for the DiT alone,
-        # plus a text encoder and VAE the model card doesn't break out
-        # separately — 14.0 is a conservative round-up, consistent with
-        # Tongyi-MAI's own published "<16GB" full-pipeline guidance as an
-        # upper bound. Needs a real hardware measurement to replace this
-        # estimate with a confirmed number — see
-        # docs/review/13_ram_offload_and_precision_audit.md.
-        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo", vram_gb=14.0,
-        quantization="bf16 (deliberately unquantized — matches LoRA training precision)",
+        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo", vram_gb=8.0,
+        quantization="NF4/NVFP4",
     ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511", vram_gb=16.0,
@@ -118,9 +89,8 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 # Low-VRAM / CPU-offload registry — targets a 12-16GB GPU instead of the
 # PRD §3 default 16-24GB envelope, offloading the rest to system RAM.
 #
-# THREE real offload mechanisms are in play here (was two — Polish
-# Default's is new, added alongside the vram_gb correction above), with
-# very different RAM-cost implications — conflating them would give a
+# Two DIFFERENT, real offload mechanisms are in play here, with very
+# different RAM-cost implications — conflating them would give a
 # misleading picture of what this actually costs:
 #
 # 1. Diffusion pipelines (Polish Default/Quality) use diffusers'
@@ -132,12 +102,6 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 #    transformer) between GPU/CPU, keeping their already-quantized dtype
 #    intact while idle on CPU — vram_gb + ram_gb below sums to
 #    approximately the original full-VRAM number, not more.
-#    Polish Default is bf16, not NF4 (see REGISTRY entry above) — the
-#    GH #10800 incompatibility is specific to bnb 4-bit tensors and does
-#    not apply to this tier, but `enable_model_cpu_offload()` is used
-#    here regardless, for consistency with Polish Quality's mechanism
-#    rather than introducing a second, differently-justified offload
-#    path for one tier only (see polish_default_backend.py's comment).
 #
 # 2. The Critic (Gemma 4, loaded via plain transformers+bitsandbytes when
 #    offloading — NOT unsloth's FastModel, which has no documented/
@@ -162,39 +126,7 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: REGISTRY[Tier.PLANNER],   # unchanged — already small
     Tier.SKETCH: REGISTRY[Tier.SKETCH],     # unchanged — already small
-    Tier.POLISH_DEFAULT: ModelSpec(
-        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo",
-        # ESTIMATE, same caveat as the REGISTRY entry above — this one
-        # additionally assumes `enable_model_cpu_offload()`'s real-world
-        # saving here is bounded by which single submodule dominates this
-        # model's size. Z-Image-Turbo's DiT transformer (the bulk of its
-        # 6B params) can't itself be offloaded away mid-forward-pass —
-        # only the text encoder and VAE can sit on CPU while idle. So the
-        # GPU floor is roughly "DiT alone" (~12GB) rather than "DiT +
-        # everything else" (~14GB): a real but modest ~2GB saving, unlike
-        # Polish Quality's offload (mechanism 1 above, same call) where
-        # more of the pipeline's weight is outside its single largest
-        # submodule. Fits its own 12GB low-VRAM envelope with
-        # approximately zero headroom. UPGRADE: this comment used to say
-        # "same situation as the Critic entry below" — that cross-
-        # reference went stale once Critic's own zero-headroom sizing was
-        # fixed (11.5/45.0, below) and this comment wasn't updated
-        # alongside it. Genuinely different situations, not just an
-        # unfixed duplicate: Critic's GPU-resident target was a
-        # continuously adjustable knob (how much of an LLM stays
-        # resident vs. offloads, with a computable RAM cost per GB
-        # moved), so shading it down and recomputing the RAM side was a
-        # real, justified fix. This tier's 12GB figure is already "the
-        # DiT alone, everything else already offloaded" — there's no
-        # further partial-offload knob to turn without switching to
-        # `enable_sequential_cpu_offload()`'s per-layer latency cost,
-        # which this project has declined elsewhere for the same reason.
-        # See swap_orchestrator.py's `vram_safety_margin_gb` for the
-        # opt-in mitigation, and validate this split against a real run
-        # before trusting it at the boundary.
-        vram_gb=12.0, ram_gb=2.0,
-        quantization="bf16 (deliberately unquantized) + diffusers enable_model_cpu_offload()",
-    ),
+    Tier.POLISH_DEFAULT: REGISTRY[Tier.POLISH_DEFAULT],  # unchanged — 8.0GB already fits
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511",
         vram_gb=10.0, ram_gb=10.0,   # ESTIMATE — see mechanism (1) above;
@@ -204,45 +136,11 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     ),
     Tier.CRITIC: ModelSpec(
         tier=Tier.CRITIC, name="Gemma 4 31B Dense",
-        vram_gb=11.5, ram_gb=45.0,   # UPGRADE (was vram_gb=12.0, ram_gb=40.0):
-                                      # 12.0 was picked to exactly equal the
-                                      # 12GB low-VRAM target envelope
-                                      # (service.py's KRISNA_VRAM_ENVELOPE_GB
-                                      # default) — zero headroom on paper
-                                      # against a target that itself doesn't
-                                      # account for CUDA context, allocator
-                                      # fragmentation, or activation memory.
-                                      # Dropping the GPU-resident target to
-                                      # 11.5GB bakes in ~0.5GB (~4%) real
-                                      # headroom against a 12GB card. This is
-                                      # NOT free — offloading less to the GPU
-                                      # means MORE params move to CPU at FP32
-                                      # (see mechanism (2) above), so ram_gb
-                                      # must go up too, not stay at 40.0:
-                                      # recomputed via the same method as
-                                      # before (bytes/param implied by the
-                                      # 18.0GB full-NF4 footprint above,
-                                      # applied to the new 11.5GB GPU split)
-                                      # gives ~44.3GB, rounded up to 45.0GB —
-                                      # still comfortably under the 48.0GB
-                                      # default RAM envelope (swap_orchestrator's
-                                      # ram_envelope_gb), so this doesn't just
-                                      # relocate the zero-headroom problem from
-                                      # the VRAM ledger onto the RAM ledger.
-                                      # KRISNA_CRITIC_MAX_GPU_GB's default in
-                                      # backends/factory.py MUST stay in sync
-                                      # with this vram_gb value.
-                                      # REGRESSION NOTE (now recurring —
-                                      # third time this fix has been lost
-                                      # from an uploaded working copy in
-                                      # this review; see docs/review's
-                                      # latest phase for the full pattern):
-                                      # if this drifts back to 12.0/40.0
-                                      # again, the issue is upstream of any
-                                      # single fix — something in how these
-                                      # working copies get produced between
-                                      # sessions isn't carrying edits forward.
-                                      # Still an estimate pending a real run.
+        vram_gb=12.0, ram_gb=40.0,   # ESTIMATE — see mechanism (2) above,
+                                      # this one is a real, computed lower
+                                      # bound from bnb's documented fp32
+                                      # CPU-offload behavior, not a guess;
+                                      # validate against a real run regardless
         quantization="NF4 (GPU-resident) + FP32 CPU offload via plain "
                       "transformers+bitsandbytes, NOT unsloth — see "
                       "critic_worker.py's _load() offload branch",
@@ -307,9 +205,7 @@ class MockBackend(ModelBackend):
     load_latency_s: float = 0.01
     unload_latency_s: float = 0.005
     fail_loads: int = 0          # number of times load() should raise OOM before succeeding
-    fail_runs: int = 0           # number of times run() should raise OOM before succeeding
     _load_attempts: int = field(default=0, init=False)
-    _run_attempts: int = field(default=0, init=False)
     _loaded: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
@@ -332,12 +228,6 @@ class MockBackend(ModelBackend):
     async def run(self, **kwargs):
         if not self._loaded:
             raise RuntimeError(f"{self.spec.name} is not loaded")
-        self._run_attempts += 1
-        if self._run_attempts <= self.fail_runs:
-            raise OOMSimulatedError(
-                f"[mock] simulated OOM running {self.spec.name} "
-                f"(attempt {self._run_attempts}/{self.fail_runs})"
-            )
         await asyncio.sleep(0.01)
         base = {"tier": self.spec.tier.value, "mock_output": True, "input_echo": kwargs}
 
@@ -348,13 +238,7 @@ class MockBackend(ModelBackend):
         # keys — this is the de facto output contract each tier owes the
         # orchestration layer.
         if self.spec.tier == Tier.PLANNER:
-            base["reply_text"] = "(mock planner reply)"
-            base["design_state_delta"] = {
-                "stage": "sketching",
-                "constraint_updates": kwargs.get("constraints") or {},
-                "tool_call": None,
-                "reasoning_note": "Proceeding with current constraints.",
-            }
+            base["mock_output_text"] = "(mock planner reply)"
         elif self.spec.tier == Tier.SKETCH:
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
             base["vq_tokens_ref"] = f"vq_grid::{hash(str(rev)) & 0xFFFF:x}"

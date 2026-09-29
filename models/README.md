@@ -1,9 +1,9 @@
 # models/ — Trained Checkpoint Artifacts
 
 Not code — this is where trained checkpoints land, consumed by both
-`inference/runtime/` (for manual testing) and by setting the corresponding
+`inference-runtime/` (for manual testing) and by setting the corresponding
 `KRISNA_*` environment variable when running the real service
-(`scripts/inference/run_service.sh` / `.ps1`), per [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) §6–§7.
+(`scripts/inference/run_service.sh`).
 
 ```
 models/
@@ -19,20 +19,12 @@ models/
 │       SYNC_DESIGN.md. Not a "trained" artifact — retrieval corpus, not
 │       a checkpoint — kept here anyway since it's the one non-frozen
 │       input the Planner backend needs at load time.)
-└── dpo_checkpoints/            <- KRISNA_POLISH_DEFAULT_LORA_PATH (deploy
-                                    a DPO checkpoint the same way as the
-                                    base LoRA — see docs/review/11_scripts_review.md
-                                    for why it's the same env var, not a
-                                    separate one)
-                                    Stage 1 general + Stage 2 domain, per
-                                    data-forge's dpo_alignment/{general,
-                                    domain}/ split. A real, tested trainer
-                                    exists (training/src/krisna_training/
-                                    polish/train_dpo.py, launched via
-                                    scripts/training/train_polish_dpo.sh)
-                                    — this directory just ships empty
-                                    until someone actually runs it, same
-                                    as every other subdirectory here.
+└── dpo_checkpoints/            <- future: Z-Image-Turbo DPO-aligned
+                                    checkpoints (Stage 1 general +
+                                    Stage 2 domain, per data-forge's
+                                    dpo_alignment/{general,domain}/ split
+                                    — no DPO trainer is wired up yet, see
+                                    training/README.md's "what's next")
 ```
 
 Each subdirectory's own checkpoint format is whatever the training code
@@ -46,5 +38,5 @@ is whatever `diffusers`' official training script writes via
 artifacts, not source) — populate it by actually running the training
 scripts in `training/README.md`, or point the `KRISNA_*` env vars at
 wherever your checkpoints really live instead of moving them here. The
-directory structure above is a convention `inference/runtime/` defaults
+directory structure above is a convention `inference-runtime/` defaults
 to, not a hard requirement.

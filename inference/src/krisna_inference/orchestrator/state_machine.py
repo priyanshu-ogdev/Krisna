@@ -81,12 +81,11 @@ TRANSITIONS: dict[tuple[ResidencyState, SwapTrigger], ResidencyState] = {
     (ResidencyState.CRITIC_RESIDENT, SwapTrigger.CRITIC_DONE): ResidencyState.SWAPPING_BACK_FROM_CRITIC,
     (ResidencyState.SWAPPING_BACK_FROM_CRITIC, SwapTrigger.BASELINE_RESTORED): ResidencyState.IDLE_RESIDENT,
 
-    # OOM can strike during outbound swap or during runtime generation.
-    # Both route to the same recovery state — recovery restores baseline residency.
+    # OOM can strike during either outbound swap. Both route to the same
+    # recovery state — recovery doesn't need to know which tier it was
+    # trying to reach, only that it must restore baseline residency.
     (ResidencyState.SWAPPING_TO_POLISH, SwapTrigger.OOM): ResidencyState.ERROR_RECOVERY,
     (ResidencyState.SWAPPING_TO_CRITIC, SwapTrigger.OOM): ResidencyState.ERROR_RECOVERY,
-    (ResidencyState.POLISH_RESIDENT, SwapTrigger.OOM): ResidencyState.ERROR_RECOVERY,
-    (ResidencyState.CRITIC_RESIDENT, SwapTrigger.OOM): ResidencyState.ERROR_RECOVERY,
     (ResidencyState.ERROR_RECOVERY, SwapTrigger.RECOVERY_COMPLETE): ResidencyState.IDLE_RESIDENT,
 }
 

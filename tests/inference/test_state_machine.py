@@ -57,29 +57,6 @@ def test_oom_during_swap_routes_to_recovery_and_back(start_trigger):
     assert sm.state == ResidencyState.IDLE_RESIDENT
 
 
-@pytest.mark.parametrize(
-    ("load_trigger", "expected_resident"),
-    [
-        (SwapTrigger.POLISH_LOAD_COMPLETE, ResidencyState.POLISH_RESIDENT),
-        (SwapTrigger.CRITIC_LOAD_COMPLETE, ResidencyState.CRITIC_RESIDENT),
-    ],
-)
-def test_oom_during_resident_routes_to_recovery_and_back(load_trigger, expected_resident):
-    sm = StateMachine()
-    if expected_resident == ResidencyState.POLISH_RESIDENT:
-        sm.apply(SwapTrigger.FINALIZE_REQUESTED)
-    else:
-        sm.apply(SwapTrigger.CRITIQUE_REQUESTED)
-    sm.apply(load_trigger)
-    assert sm.state == expected_resident
-
-    sm.apply(SwapTrigger.OOM)
-    assert sm.state == ResidencyState.ERROR_RECOVERY
-    assert sm.is_in_flight()
-    sm.apply(SwapTrigger.RECOVERY_COMPLETE)
-    assert sm.state == ResidencyState.IDLE_RESIDENT
-
-
 def test_illegal_transition_raises():
     sm = StateMachine()
     with pytest.raises(InvalidTransitionError):

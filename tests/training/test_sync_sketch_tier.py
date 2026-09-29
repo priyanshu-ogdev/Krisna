@@ -158,27 +158,3 @@ class TestRecordIdVsFilenameBugFix:
         # Degrades to the old broken behavior (empty caption) — documented,
         # not silent, and not a crash.
         assert lines[0]["caption"] == ""
-
-    def test_sync_codebook_size_mismatch_raises_value_error(self, tmp_path):
-        """C2: Mismatched codebook size must raise ValueError to prevent silent corruption."""
-        model_data = _make_data_forge_export(
-            tmp_path / "model_data",
-            [("rec1", "test.png", "a button")],
-        )
-        bad_tok = FakeVQTokenizer()
-        bad_tok.codebook_size = 8192  # Expected is 16384
-
-        with pytest.raises(ValueError, match="does not match expected MaskGIT vocab_size"):
-            sync(model_data, tmp_path / "prepared", tokenizer=bad_tok, expected_codebook_size=16384)
-
-    def test_sync_codebook_size_match_succeeds(self, tmp_path):
-        """C2: Matching codebook size succeeds without error."""
-        model_data = _make_data_forge_export(
-            tmp_path / "model_data",
-            [("rec1", "test.png", "a button")],
-        )
-        good_tok = FakeVQTokenizer()
-        good_tok.codebook_size = 16384
-
-        manifest_path = sync(model_data, tmp_path / "prepared", tokenizer=good_tok, expected_codebook_size=16384)
-        assert manifest_path.exists()

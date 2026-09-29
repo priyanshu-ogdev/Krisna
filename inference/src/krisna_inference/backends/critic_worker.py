@@ -9,43 +9,15 @@ There is no AI-judge-labeled training data generated anywhere in this
 pipeline; this worker's output is a live product feature, not a data
 source for any training job.
 
-Why this is still a separate process — UPDATED reasoning (this review pass
-closes out `docs/review/27_prd_open_risks_research.md`'s own "not yet
-executed" item): the ORIGINAL justification here was that the Planner
-needed a `transformers` built from git main for Qwen3.5 support, which
-was true when this was written but has since been resolved — Qwen3.5 is
-natively supported in `transformers>=5.2.0`, a tagged PyPI release (Feb
-2026), confirmed via two independent sources (see
-`docs/architecture/RESEARCH_AND_CITATIONS.md` and
-`docs/review/27_prd_open_risks_research.md` §2.1). So the ORIGINAL
-version-range conflict this split was built to route around no longer
-exists — `transformers>=5.2.0` and `transformers==5.5.0` are not in
-conflict, and diffusers' own actual floor (verified directly from its
-setup.py: `transformers>=4.41.2`, no upper bound) doesn't conflict with
-either.
-
-The split is still correct and still necessary, but for a DIFFERENT,
-more specific reason, found during this pass: `transformers==5.5.0` is
-not an arbitrary compatible pin — it is the last version before a
-confirmed regression in bnb-4bit dequantization for Unsloth's
-prequantized checkpoints (exactly what this tier loads). Verified via
-unslothai/unsloth-zoo PR #1227's own measurement: on real hardware,
-`unsloth/gemma-4-31B-it-unsloth-bnb-4bit` loads with all 352/352 modules
-correctly dequantized (`quant_state` present) on transformers 5.5.0, but
-0/352 on transformers 5.17.0 — a real forward-pass-breaking defect,
-tracked upstream as unslothai/unsloth#9867, #10010, #10017, #10276. So
-holding this tier at exactly 5.5.0 is a deliberate regression-avoidance
-pin, not a stale/lazy one — and it's specifically because of THIS pin
-that the split earns its keep: it lets the other three tiers (Planner,
-Sketch, Polish) move forward onto newer transformers/diffusers releases
-over time without being held back by a Critic-specific regression that
-has nothing to do with them, and without forcing Critic to eat whatever
-transformers changes land for everyone else. Collapsing this back into
-one venv would mean either every tier is capped at 5.5.0 forever, or
-Critic silently breaks the next time someone bumps the shared pin for
-an unrelated reason — this worker/subprocess split is what prevents
-that from ever happening silently. Concretely: this worker runs in its
-own venv (see requirements-critic.txt) and talks to the main
+Why this is still a separate process: `unsloth` (used here purely for
+fast NF4 inference loading, not for any adapter training) caps
+`transformers<=5.5.0`, and Gemma 4 itself needs `transformers>=5.5.0` —
+that pins transformers to EXACTLY 5.5.0 for this tier. The planner tier
+(planner_backend.py) needs a `transformers` built from git main for Qwen3.5
+support, which is newer than 5.5.0 and not interchangeable with it. Both
+tiers cannot be satisfied by one `pip install` in one venv. Rather than
+silently picking one pin and quietly breaking the other tier, this worker
+runs in its own venv (see requirements-critic.txt) and talks to the main
 orchestrator process over stdin/stdout JSON lines — the same shape as the
 vLLM-subprocess pattern already used in the data-forge project's engine.py.
 

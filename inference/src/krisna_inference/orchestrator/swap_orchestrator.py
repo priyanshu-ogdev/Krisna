@@ -58,22 +58,6 @@ from krisna_inference.orchestrator.vram_budget import RAMLedger, VRAMLedger
 log = logging.getLogger("krisna_inference (formerly krisna_orchestrator).swap")
 
 
-def _is_oom_error(exc: BaseException) -> bool:
-    """Check whether an exception represents a simulated or runtime CUDA OOM."""
-    if isinstance(exc, OOMSimulatedError):
-        return True
-    try:
-        import torch
-
-        if isinstance(exc, torch.cuda.OutOfMemoryError):
-            return True
-    except Exception:
-        pass
-    msg = str(exc).lower()
-    return "out of memory" in msg or ("cuda" in msg and "oom" in msg)
-
-
-
 @dataclass
 class SwapResult:
     ok: bool
@@ -105,17 +89,6 @@ class SwapOrchestrator:
     load_timeout_s: float = 30.0
     baseline_restore_retries: int = 5   # extra attempts, per policy note (5) above
     backend_factory: Callable[[Any], ModelBackend] = default_backend_factory
-    vram_safety_margin_gb: float = 0.0
-    """Optional extra headroom subtracted from `envelope_gb` before every
-    admission check (see vram_budget.py's _BaseLedger.safety_margin_gb).
-    Defaults to 0.0 — no behavior change from prior versions. Left as an
-    explicit opt-in rather than a nonzero default because at least one
-    registered tier (Critic, low-VRAM mode) is sized to fit its envelope
-    with exactly zero headroom on paper; a nonzero default here would
-    make that tier permanently inadmissible (it has no fallback_tier),
-    which would trade a real problem for a worse one. Operators running
-    close to the edge on real hardware should raise this explicitly, not
-    rely on it being safe by default."""
 
     state: StateMachine = field(init=False)
     registry: dict[Tier, Any] = field(init=False)
@@ -128,7 +101,7 @@ class SwapOrchestrator:
     def __post_init__(self) -> None:
         self.state = StateMachine(ResidencyState.IDLE_RESIDENT)
         self.registry = get_registry(low_vram=self.low_vram)
-        self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry, safety_margin_gb=self.vram_safety_margin_gb)
+        self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry)
         self.ram_ledger = RAMLedger(envelope_gb=self.ram_envelope_gb, registry=self.registry)
         self.backends = {tier: self.backend_factory(spec) for tier, spec in self.registry.items()}
         self._swap_lock = asyncio.Lock()
@@ -165,35 +138,7 @@ class SwapOrchestrator:
                 f"(state={self.state.state.value}). Try again shortly."
             )
         planner_out = await self.backends[Tier.PLANNER].run(**kwargs)
-
-        # BUG FOUND ON REVIEW (mid-turn constraint staleness): Sketch used
-        # to receive the SAME `constraints` kwarg the caller passed in
-        # BEFORE this turn's Planner call ran — meaning if the Planner's
-        # OWN design_state_delta.constraint_updates changed style/
-        # palette/layout_hints THIS turn (e.g. user says "make it dark
-        # mode" and the Planner correctly extracts that), the Sketch
-        # image generated in this SAME turn still used the OLD
-        # constraints, since the caller (flows.py) only applies
-        # constraint_updates onto persisted DesignState AFTER this whole
-        # call returns — one turn too late for THIS turn's sketch. The
-        # user would see a chat reply confirming "switching to dark
-        # mode" next to a sketch that visibly isn't. Fixed by merging the
-        # same delta the caller will apply afterward into a local copy of
-        # `constraints` here too, via the shared apply_constraint_updates
-        # helper (constraint_merge.py) — kept in a dependency-neutral
-        # module specifically so this file still doesn't need to import
-        # DesignState/pydantic to do this (see that module's docstring).
-        from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
-
-        delta = planner_out.get("design_state_delta") or {}
-        constraint_updates = delta.get("constraint_updates") or {}
-        sketch_kwargs = dict(kwargs)
-        if constraint_updates and isinstance(kwargs.get("constraints"), dict):
-            sketch_kwargs["constraints"] = apply_constraint_updates(
-                kwargs["constraints"], constraint_updates
-            )
-
-        sketch_out = await self.backends[Tier.SKETCH].run(**sketch_kwargs, planner_output=planner_out)
+        sketch_out = await self.backends[Tier.SKETCH].run(**kwargs, planner_output=planner_out)
         return {"planner": planner_out, "sketch": sketch_out}
 
     # ------------------------------------------------------------------ #
@@ -223,61 +168,13 @@ class SwapOrchestrator:
 
         self.state.apply(SwapTrigger.POLISH_LOAD_COMPLETE)
 
-        active_tier: Tier | None = result.tier_used
-        output = None
         try:
-            try:
-                output = await self.backends[active_tier].run(**run_kwargs)
-            except Exception as e:
-                fallback = self.registry[active_tier].fallback_tier if active_tier else None
-                if _is_oom_error(e) and fallback is not None:
-                    log.warning(
-                        "tier_run_oom_fallback",
-                        extra={
-                            "tier": active_tier.value,
-                            "fallback": fallback.value,
-                            "error": str(e),
-                        },
-                    )
-                    # Unload failed tier and attempt fallback
-                    await self._unload_one(active_tier)
-                    active_tier = None
-
-                    # Load fallback tier
-                    await self._load_one(fallback)
-                    active_tier = fallback
-                    output = await self.backends[fallback].run(**run_kwargs)
-                    result.tier_used = fallback
-                    result.degraded = True
-                elif _is_oom_error(e):
-                    log.warning(
-                        "tier_run_oom_no_fallback",
-                        extra={"tier": active_tier.value if active_tier else "unknown", "error": str(e)},
-                    )
-                    if active_tier is not None:
-                        await self._unload_one(active_tier)
-                        active_tier = None
-                    return await self._enter_recovery(preferred_tier, result.attempts + 1)
-                else:
-                    raise
-        except Exception as exc:
-            if _is_oom_error(exc):
-                log.warning(
-                    "tier_fallback_run_oom",
-                    extra={"error": str(exc)},
-                )
-                if active_tier is not None:
-                    await self._unload_one(active_tier)
-                    active_tier = None
-                return await self._enter_recovery(preferred_tier, result.attempts + 2)
-            raise
+            output = await self.backends[result.tier_used].run(**run_kwargs)
         finally:
-            if self.state.state == ResidencyState.POLISH_RESIDENT:
-                self.state.apply(SwapTrigger.POLISH_DONE)
-                if active_tier is not None:
-                    await self._unload_one(active_tier)
-                await self._restore_baseline()
-                self.state.apply(SwapTrigger.BASELINE_RESTORED)
+            self.state.apply(SwapTrigger.POLISH_DONE)
+            await self._unload_one(result.tier_used)
+            await self._restore_baseline()
+            self.state.apply(SwapTrigger.BASELINE_RESTORED)
 
         result.output = output
         return result
@@ -301,29 +198,13 @@ class SwapOrchestrator:
             return result
 
         self.state.apply(SwapTrigger.CRITIC_LOAD_COMPLETE)
-        active_tier: Tier | None = Tier.CRITIC
-        output = None
         try:
-            try:
-                output = await self.backends[Tier.CRITIC].run(**run_kwargs)
-            except Exception as e:
-                if _is_oom_error(e):
-                    log.warning(
-                        "critic_run_oom",
-                        extra={"tier": Tier.CRITIC.value, "error": str(e)},
-                    )
-                    if active_tier is not None:
-                        await self._unload_one(active_tier)
-                        active_tier = None
-                    return await self._enter_recovery(Tier.CRITIC, result.attempts + 1)
-                raise
+            output = await self.backends[Tier.CRITIC].run(**run_kwargs)
         finally:
-            if self.state.state == ResidencyState.CRITIC_RESIDENT:
-                self.state.apply(SwapTrigger.CRITIC_DONE)
-                if active_tier is not None:
-                    await self._unload_one(active_tier)
-                await self._restore_baseline()
-                self.state.apply(SwapTrigger.BASELINE_RESTORED)
+            self.state.apply(SwapTrigger.CRITIC_DONE)
+            await self._unload_one(Tier.CRITIC)
+            await self._restore_baseline()
+            self.state.apply(SwapTrigger.BASELINE_RESTORED)
 
         result.output = output
         return result

@@ -90,31 +90,6 @@ def build_lora_model(cfg: PlannerTrainConfig):
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_id)
     base_model = AutoModelForCausalLM.from_pretrained(cfg.base_model_id, dtype=torch.bfloat16)
-    base_model.config.use_cache = False   # required alongside gradient
-                                            # checkpointing for causal-LM
-                                            # training — KV-cache is an
-                                            # inference-only optimization,
-                                            # incompatible with activation
-                                            # recomputation during training.
-
-    # UPGRADE (A6000 48GB training-memory audit): this 9B model loads
-    # fully unquantized in bf16 (~18GB weights alone) with no gradient
-    # checkpointing at all. At batch_size=4/max_length=4096
-    # (planner_lora_train.yaml), the standard dense-transformer activation
-    # memory approximation (Korthikanti et al. 2022) gives an upper bound
-    # around 245GB without checkpointing — nowhere close to fitting a
-    # 48GB card even accounting for this being a full-attention
-    # approximation of a cheaper hybrid architecture. With checkpointing,
-    # ~7.7GB.
-    #
-    # Order matters and is a documented pitfall: enable_input_require_grads()
-    # must be called on the BASE model before get_peft_model() wraps it.
-    # Without this, frozen-base + LoRA + gradient-checkpointing silently
-    # breaks backward — the LoRA adapter receives zero gradient updates
-    # the whole run (confirmed via huggingface/peft#522,
-    # huggingface/transformers#26334, huggingface/transformers#42489).
-    base_model.gradient_checkpointing_enable()
-    base_model.enable_input_require_grads()
 
     target_modules = discover_target_modules(base_model, include_patterns=cfg.lora_target_patterns)
     log.info("lora_target_modules", extra={"modules": target_modules})

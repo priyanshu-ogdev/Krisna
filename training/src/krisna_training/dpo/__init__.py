@@ -1,31 +1,9 @@
-"""DPO preference-pair pipeline and database layer.
+"""DPO preference-pair pipeline — PRD §6: "Diffusion-DPO on ranked candidate
+pairs ... small-batch, seeded by UICrit + synthetic + Gemma-derived pairs."
 
-Re-exports core classes and utilities from `krisna_training.preference`
-for backwards compatibility.
+This builds and stores (chosen, rejected) image-ref pairs from three
+sources — verifier-stack rankings, Gemma critique scores, and imported
+UICrit human ratings — and exports them in a standard DPO training format.
+It does NOT implement the actual DPO training loop; that's a separate
+training-pipeline build, out of scope here.
 """
-
-from __future__ import annotations
-
-from krisna_training.preference import (
-    DEFAULT_MIN_SCORE_GAP,
-    VALID_SOURCES,
-    PreferencePair,
-    PreferenceStore,
-    aggregate_verifier_score,
-    build_pair_from_candidates,
-    export_jsonl,
-    import_records,
-    rank_candidates,
-)
-
-__all__ = [
-    "PreferencePair",
-    "PreferenceStore",
-    "VALID_SOURCES",
-    "rank_candidates",
-    "aggregate_verifier_score",
-    "build_pair_from_candidates",
-    "DEFAULT_MIN_SCORE_GAP",
-    "import_records",
-    "export_jsonl",
-]

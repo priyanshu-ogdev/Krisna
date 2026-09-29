@@ -62,7 +62,7 @@ Orchestrator (Chunk-Based)
   Stage 6  Structure Extract        -- Tier-1
   Stage 7  Routing & Shard          -- --
   Stage 8  Encoding (Z-Image + VQ)  -- VAEs/VQ
-  Stage 8.5  DPO Encoding (disabled by default) -- VAE (see note below — Stage 1.6's output is actually consumed by training/'s sync_dpo_pairs.py, not this stage)
+  Stage 8.5  DPO Encoding           -- VAE (consumes Stage 1.6's output)
   Stage 9  Heldout Carve            -- --
   Stage 10  Audit Pass              -- Tier-1 + Tier-2
   Stage 11  Registry Watch          -- --
@@ -75,34 +75,12 @@ safety, captioning, structure extraction, and encoding — this is what feeds
 the Sketch Tier and Z-Image-Turbo's base fine-tune. Preference pairs (Pick-a-
 Pic v2, HPDv2, DesignSense-10k, DesignPref) are a **separate stream**: Stage
 1.6 dedups/blurs/safety-classifies them directly (they never enter the
-SQLite manifest — a ranked pair isn't a single-image record). **Correction:**
-this used to say Stage 8.5 "encodes them into DPO training latents
-afterward" — that stage is disabled by default
-(`configs/pipeline.yaml`: `enabled: false`) and has zero real consumers;
-`training/data_forge_bridge/sync_dpo_pairs.py` reads Stage 1.6's raw pair
-images directly via the shared BlobStore, and `train_dpo.py` live-encodes
-them at train time instead. See `docs/data-forge/DATA_COMPLETENESS.md`
-and `s08_5_dpo_encoding.py`'s own module docstring for the full history.
-Stage 12 pulls from the main stream to build `model_data/`; the
-preference-pair stream is consumed directly by the training bridge above,
-not through Stage 12.
+SQLite manifest — a ranked pair isn't a single-image record), and Stage 8.5
+encodes them into DPO training latents afterward. Stage 12 pulls from both
+streams to build `model_data/`.
 
 `05` and `05-OCR` are two distinct, separately-registered stages
-(`s05_recaption` and `s05_ocr_enrichment`), each with its own dedicated module
-under `data_forge/stages/` (`s05_recaption.py` and `s05_ocr_enrichment.py`).
-
-### Python API Usage
-
-Core abstractions can be imported directly from the top-level package:
-```python
-from data_forge import (
-    Manifest,
-    PipelineConfig,
-    load_config,
-    Orchestrator,
-    register_all_stages,
-)
-```
+(`s05_recaption` and `s05_ocr_enrichment`).
 
 ## Requirements
 
@@ -158,8 +136,7 @@ data-forge run --stages 0,1,2
 # Run just the preference-pair post-processing (dedup/blur/safety)
 data-forge run --stages 1.6
 
-# Run just the DPO latent encoding (disabled by default — see the note
-# above; only useful if you've re-enabled it for a specific reason)
+# Run just the DPO latent encoding
 data-forge run --stages 8.5
 
 # Registry watcher (schedule via Task Scheduler) — also watches for
@@ -174,7 +151,7 @@ data-forge manifest query --status excluded_pending_review
 
 All configuration lives in `configs/`:
 - `pipeline.yaml` — stage toggles, thresholds, paths, chunk sizes, storage estimates
-- `models.yaml` — pinned model versions, quant settings, VRAM budgets. Only `z_image_vae` remains as an encoder — no `qwen_image_vae`, no `critic` model entry (both removed; those models are frozen, data-forge never loads them), and `maskgit_vq` was removed (sync audit item #1: it never had a working implementation, and its only caller was dead code — see `docs/review/01_sketch_tier.md`)
+- `models.yaml` — pinned model versions, quant settings, VRAM budgets. Only `z_image_vae` and `maskgit_vq` encoders — no `qwen_image_vae`, no `critic` model entry (both removed; those models are frozen, data-forge never loads them)
 - `datasets.yaml` — 15 registered sources; see the table below
 
 Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
@@ -198,7 +175,7 @@ Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 | 06 | Structure | Tier-1 | UI layout JSON extraction |
 | 07 | Routing | -- | Domain tagging + shard assignment (`ui_first` vs `general_design`) |
 | 08 | Encoding | VAEs/VQ | Z-Image-Turbo latents + MaskGIT VQ tokens (`ui_first`-only) + control maps. **No Qwen-Image-Edit-2511 branch** — that model is frozen |
-| 08.5 | DPO Encoding — **disabled by default** | VAE | Would encode Stage 1.6's preference pairs into Z-Image-Turbo's latent space; `train_dpo.py` live-encodes instead and never reads this stage's output — see the note above |
+| 08.5 | DPO Encoding | VAE | Encodes Stage 1.6's preference pairs into Z-Image-Turbo's latent space for Diffusion-DPO |
 | 09 | Heldout Carve | -- | Stratified eval split; rejects encoding-incomplete records first |
 | 10 | Audit Pass | Tier-1 + Tier-2 | VLM-as-judge on 2-5% sample |
 | 11 | Registry Watch | -- | Model/dataset release polling, including explicit watches for DesignSense-10k/DesignPref |

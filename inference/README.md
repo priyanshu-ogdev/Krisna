@@ -46,13 +46,15 @@ implementations plus a real one:
   `load()`/`run()`/`unload()` through the common `ModelBackend`
   interface).
 
-### Canonical Specification (§7.4)
+### Note on §7.4
 
-The canonical state machine specification is formalized in [docs/PRD.md §7.4](file:///d:/Krisna/docs/PRD.md).
-The transition table implemented in `state_machine.py` matches that canonical
-specification exactly: `IDLE_RESIDENT` → `SWAPPING_TO_POLISH` → `POLISH_RESIDENT`
-→ `SWAPPING_BACK_FROM_POLISH` → `IDLE_RESIDENT` (and symmetric for Critic), with
-all `ERROR_RECOVERY` transitions cleanly reverting to `IDLE_RESIDENT`.
+The PRD text handed off for this build was cut off partway through §7.4
+("Why not the DGX Spark..." — before the state-machine spec's body
+appeared). `state_machine.py`'s module docstring explains this: the
+transition table implemented here is a reconstruction from what IS fully
+specified elsewhere (§5.3's sequence diagrams, §3's goals, §6's
+`fallback_tier` relationship), not the verbatim original spec. If the
+actual §7.4 differs, that table is the place to reconcile.
 
 ## Layout
 
@@ -89,8 +91,7 @@ inference/src/krisna_inference/
 ./scripts/inference/setup_env.sh
 ./scripts/inference/run_service.sh
 # in another terminal:
-python inference/runtime/run_agentic_session.py --finalize --critique
-# or: krisna-session --finalize --critique
+python inference-runtime/run_agentic_session.py --finalize --critique
 ```
 This exercises the full conversational-turn → finalize → critique
 sequence against `MockBackend` — real orchestration logic (VRAM/RAM
@@ -110,7 +111,7 @@ export KRISNA_PLANNER_RAG_CORPUS_DIR=./models/planner_rag_index   # or data-forg
 
 ./scripts/inference/run_service.sh
 # or, for a scriptable smoke test instead of the full service:
-python inference/runtime/run_agentic_session.py --real --finalize --critique
+python inference-runtime/run_agentic_session.py --real --finalize --critique
 ```
 
 **3. Low-VRAM mode**, if your GPU is 12-16GB instead of 24GB — see the
@@ -146,22 +147,12 @@ chmod +x scripts/*/*.sh   # if the executable bit didn't survive the zip
 | GET  | `/health` | liveness + residency state + VRAM snapshot |
 | POST | `/session` | create a session (§5.1 Design State) |
 | GET  | `/session/{id}` | fetch current Design State |
-| GET  | `/session/{id}/render` | serves finalized image render as raw PNG bytes |
-| POST | `/session/{id}/message` | §5.3 conversational turn (forwards multi-turn history & prior critique) |
-| POST | `/session/{id}/finalize` | §5.3 finalize (`{"quality": true}` for Qwen-Image-Edit-2511, default Z-Image-Turbo; auto-synthesizes rich prompt from intent) |
+| POST | `/session/{id}/message` | §5.3 conversational turn |
+| POST | `/session/{id}/finalize` | §5.3 finalize (`{"quality": true}` for Qwen-Image-Edit-2511, default Z-Image-Turbo) |
 | POST | `/session/{id}/critique` | §5.3 critique pass (Gemma 4 31B). Body: `{"compare_against_image_ref": ..., "compare_against_score": ...}` (both optional — builds a DPO pair when given) |
 | GET  | `/orchestrator/status` | residency state + VRAM + whether conversation is currently available |
 | GET  | `/preference-pairs/stats` | pair counts by source |
 | POST | `/preference-pairs/export` | writes a DPO JSONL export, optional `?source=` filter |
-
-### Agentic Multi-Turn Pipeline Synchronization (§5.3)
-
-Krisna's conversational pipeline connects all tiers in a closed multi-turn feedback loop:
-1. **Multi-Turn Context Forwarding**: Every conversational turn forwards prior dialog history (`[turn.model_dump() for turn in state.conversation_history]`) into `PlannerBackend.run()`. Turns 2+ maintain full conversational memory.
-2. **Structured Constraint Delta Merging**: Structured JSON updates emitted by the Planner (`style`, `palette`, `layout_hints`, `locked_regions`) are parsed and merged directly into `state.constraints`.
-3. **Critic Feedback Loop Closure**: Following a critique pass, `state.critique.result` is passed into `orchestrator.run_conversational_turn(prior_critique=...)`. The Planner formats critique scores, dimension evaluations, and suggested edits directly into its prompt.
-4. **CLIP Text Conditioning Grounding**: `SketchBackend` enriches the prompt with active design constraints (`message (style; palette; layout)`), preventing conditioning drift.
-5. **Finalize Prompt Synthesis**: When `prompt` is not explicitly provided, `flows.finalize` derives an enriched prompt from conversation history and active constraints for both Polish and Verifiers.
 
 Example session, end to end:
 
@@ -178,9 +169,6 @@ curl -s -X POST $BASE/session/$SID/finalize -H "Content-Type: application/json" 
   -d '{"quality": false}'
 
 curl -s -X POST $BASE/session/$SID/critique
-
-# Fetch the rendered image bytes directly
-curl -s $BASE/session/$SID/render -o render.png
 ```
 
 ## OOM / VRAM behavior, concretely
@@ -237,44 +225,29 @@ after checking what's actually documented to work (not assumed):
 **The important, easy-to-miss cost this second mechanism has**:
 bitsandbytes stores the CPU-offloaded portion in **FP32, not 4-bit** — an
 8x per-parameter size increase relative to NF4. For Gemma 4 31B Dense
-(~30.7B params), offloading enough to bring GPU residency down to
-~11.5GB (deliberately kept below the 12GB target card for real headroom
-— see `model_registry.py`'s `LOW_VRAM_REGISTRY[Tier.CRITIC]` comment)
-means roughly a third of the model's parameters living on the CPU side
-at FP32: **~11.1B params x 4 bytes ≈ 45GB of system RAM** — not a small
+(~30.7B params), offloading enough to bring GPU residency down to ~12GB
+means roughly a third of the model's parameters living on the CPU side at
+FP32: **~10B params x 4 bytes ≈ 40GB of system RAM** — not a small
 number, and not proportional to the VRAM saved. This is a real, computed
 lower bound from bitsandbytes' own documented behavior, not a guess — see
 `model_registry.py`'s `LOW_VRAM_REGISTRY` comment for the full math. The
 diffusion-pipeline offload above doesn't have this problem (no fp32
 upcast), which is why `POLISH_QUALITY`'s RAM cost estimate (~10GB) is so
-much smaller than `CRITIC`'s (~45GB) despite `CRITIC`'s smaller VRAM
+much smaller than `CRITIC`'s (~40GB) despite `CRITIC`'s smaller VRAM
 target.
 
 | Tier | Full-VRAM mode | Low-VRAM mode | Offload mechanism |
 |---|---|---|---|
 | Planner | 6.5GB / 0GB RAM | unchanged — already small | none, not needed |
 | Sketch | 3.0GB / 0GB RAM | unchanged — already small | none, not needed |
-| Polish Default (Z-Image-Turbo) | 14.0GB / 0GB RAM | 12.0GB / 2.0GB RAM | `enable_model_cpu_offload()` — a real but modest saving, since the DiT dominates this pipeline's weight (see the offloading-mechanism discussion above) |
+| Polish Default (Z-Image-Turbo) | 8.0GB / 0GB RAM | unchanged — already fits 12GB | none, not needed |
 | Polish Quality (Qwen-Image-Edit-2511) | 16.0GB / 0GB RAM | **~10GB / ~10GB RAM (estimate)** | `enable_model_cpu_offload()` |
-| Critic (Gemma 4 31B) | 18.0GB / 0GB RAM | **11.5GB / 45.0GB RAM (computed, ~0.5GB headroom vs. a 12GB card — see docs/review/06 and 18)** | plain transformers+bnb, `max_memory` + `llm_int8_enable_fp32_cpu_offload` |
-
-UPGRADE: this table previously showed Polish Default at its pre-fix
-`8.0GB` (the registry's declared `quantization` for that tier used to be
-wrong — see `docs/review/13_ram_offload_and_precision_audit.md` for the
-full story) and Critic at its pre-headroom-fix `~12GB/~40GB` (zero
-headroom against its own 12GB target — see `docs/review/06` and the
-several review phases that found this exact fix reverting and reapplied
-it). Both corrected here to match `model_registry.py`'s actual current
-values, not re-described from memory.
+| Critic (Gemma 4 31B) | 18.0GB / 0GB RAM | **~12GB / ~40GB RAM (computed lower bound)** | plain transformers+bnb, `max_memory` + `llm_int8_enable_fp32_cpu_offload` |
 
 Two configurable env vars for the Critic specifically:
-`KRISNA_CRITIC_MAX_GPU_GB` (default `11.5` — deliberately kept below the
-12GB target card rather than equal to it, to leave real headroom for
-CUDA context/fragmentation/activation memory; must be changed together
-with `LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb` in `model_registry.py` if
-you override it), `KRISNA_CRITIC_MAX_CPU_GB`
+`KRISNA_CRITIC_MAX_GPU_GB` (default `12.0`), `KRISNA_CRITIC_MAX_CPU_GB`
 (default `64`) — raise the CPU cap if your box has more RAM than the
-default assumes, or lower the GPU cap further if 11.5GB is still too much
+default assumes, or lower the GPU cap further if 12GB is still too much
 for your card (at the cost of an even larger RAM requirement, per the
 math above).
 
@@ -282,7 +255,7 @@ math above).
 themselves (which diffusers/bitsandbytes APIs to call, and which
 combination is safe) are verified against real documentation and known
 GitHub issues, not guessed. The exact `vram_gb`/`ram_gb` numbers in
-`LOW_VRAM_REGISTRY` are reasoned estimates (Critic's ~45GB figure is a
+`LOW_VRAM_REGISTRY` are reasoned estimates (Critic's ~40GB figure is a
 computed lower bound from documented behavior; Polish Quality's ~10GB/
 ~10GB is a rough estimate, not a benchmark) — validate against a real run
 on your actual hardware and adjust the registry numbers to match what you
@@ -373,23 +346,11 @@ checks this directly against `factory.py`'s source, not just behavior.
 
 ### Critic tier isolation — read this before wiring it up
 
-Gemma 4 31B (via Unsloth) needs `transformers==5.5.0` pinned **exactly** —
-UPDATED reasoning as of this review pass (closes out
-`docs/review/27_prd_open_risks_research.md`'s "not yet executed" item):
-this is NOT because the Planner needs an incompatible git-main
-`transformers` build (that was true when this section was first written,
-but Qwen3.5 has since shipped native support in `transformers>=5.2.0`, a
-tagged PyPI release — see `docs/architecture/RESEARCH_AND_CITATIONS.md`).
-The real, current reason is more specific: `transformers==5.5.0` is the
-last version before a confirmed regression in bnb-4bit dequantization for
-Unsloth's prequantized checkpoints — verified via unslothai/unsloth-zoo
-PR #1227's own measurement (352/352 modules correctly dequantized on
-5.5.0, 0/352 on 5.17.0; tracked upstream as unslothai/unsloth#9867,
-#10010, #10017, #10276). **This pin is why the split still earns its
-keep**: it decouples this tier's regression-avoidance pin from whatever
-transformers/diffusers versions the other three tiers move onto over
-time, so a version bump made for Planner/Sketch/Polish's benefit can
-never silently re-break Critic (or vice versa).
+Gemma 4 31B (via Unsloth) needs `transformers==5.5.0` pinned **exactly**
+(`unsloth_zoo` caps `transformers<=5.5.0`, Gemma 4 itself needs `>=5.5.0`).
+The Planner tier (Qwen3.5) needs `transformers` built from git main, which
+is newer than 5.5.0 and not interchangeable with it. **These two pins
+cannot both be satisfied in one venv.**
 
 Rather than silently picking one pin and quietly breaking the other tier,
 the Critic tier runs `critic_worker.py` as a **separate subprocess in its
@@ -399,13 +360,6 @@ project's `engine.py`. Note this isolation reasoning is about
 `transformers` version pins, not about training — it applies whether or
 not this tier is ever fine-tuned, which is why it's unaffected by the
 freeze.
-
-`requirements-critic.txt` also pins explicit minimum `unsloth`/
-`unsloth_zoo` versions (rather than leaving them floating) — verified via
-the same PR that the pre-fix ceiling on some earlier unsloth_zoo releases
-(`transformers<=4.57.6`, unslothai/unsloth#4022) would otherwise have
-made `transformers==5.5.0` unresolvable depending on exactly which
-unsloth_zoo release pip happened to land on at build time.
 
 ```bash
 ./scripts/training/setup_env_critic.sh   # creates ./venv-critic, isolated deps
@@ -423,70 +377,6 @@ restored, the system doesn't get stuck.
 Gemma 4's critique output uses `critique_source: "gemma4_31b_frozen"`
 (renamed from `"gemma4_31b_qlora"`, which implied a trained adapter that
 never gets applied under the final PRD) — see `critic_worker.py::CRITIQUE_SOURCE`.
-
-### Planner tier vLLM opt-in — read this before enabling it
-
-The Planner (Qwen3.5-9B) defaults to the same transformers-based backend
-it has always used (`planner_backend.py`). A second, **opt-in, not
-default** backend (`planner_backend_vllm.py`) is available for real
-inference-speed gains on the one tier that runs many times per session
-(PRD §5.3: "the loop that runs dozens of times per session"). See
-`docs/review/29_vllm_planner_migration_research.md` for the full research
-trail; summary here:
-
-- vLLM 0.17+ added native support for Qwen3.5's Gated DeltaNet hybrid
-  architecture — real fused kernels, a hybrid KV-cache manager, CUDA
-  graphs, not just a wrapper.
-- `vllm==0.29.0`'s own declared wheel metadata (verified directly, not
-  from docs) requires `transformers>=5.10.4` (no ceiling) and an EXACT
-  `torch==2.13.0` — a stricter pin than the main venv's `torch>=2.6.0`,
-  which is why this is a **third isolated venv/subprocess**, exactly
-  like the Critic tier, not a reason to force it into an existing venv.
-- `bitsandbytes` isn't declared anywhere in vLLM's metadata; the
-  well-supported path is AWQ/GPTQ/compressed-tensors. This backend
-  therefore does **not** reuse the main venv's NF4 checkpoint — it
-  defaults to `RedHatAI/Qwen3.5-9B-quantized.w4a16`, a real, documented
-  GPTQ W4A16 checkpoint from `llm-compressor`'s maintaining org. Its
-  accuracy has not been independently re-verified by this project;
-  evaluate before relying on it in production (PRD Appendix C.4's own
-  discipline: verify at adoption, not announcement).
-- **Nothing here has been run against real GPU hardware in this
-  project's own environment.** Everything above is verified at the
-  package-metadata level, plus one independently-reported measured
-  result (community report, RTX PRO 6000). That's why this is wired as
-  an explicit opt-in rather than a default-path replacement.
-
-```bash
-# Build with the third venv included (skipped by default):
-docker build --build-arg INSTALL_VLLM_PLANNER=true -f docker/Dockerfile.inference .
-
-# Or locally:
-python3.11 -m venv ./venv-planner
-./venv-planner/bin/pip install -r inference/requirements-planner.txt
-
-export KRISNA_PLANNER_BACKEND=vllm
-export KRISNA_USE_REAL_BACKENDS=1
-# KRISNA_PLANNER_VLLM_VENV_PYTHON defaults to ./venv-planner/bin/python
-./scripts/inference/run_service.sh
-```
-
-If `./venv-planner` doesn't exist, `PlannerBackendVLLM.load()` fails
-immediately with a clear message, same as the Critic tier's equivalent
-failure path — a request against this tier fails cleanly rather than a
-confusing subprocess crash.
-
-A real, load-bearing detail if you do enable this: vLLM's own
-`gpu_memory_utilization` is a fraction of the REAL, live GPU's total
-memory that it greedily reserves up front for its own KV cache — this is
-NOT the same thing as this project's own `VRAMLedger` (§7.2), and the two
-don't automatically agree. Left at vLLM's own default (0.92), this
-backend would try to grab ~92% of the whole physical card the moment it
-loads, starving or OOM-crashing the Sketch tier, which is supposed to be
-co-resident with the Planner in the idle/conversing state (PRD §5.3).
-This backend computes it dynamically from the ledger's own declared
-`vram_gb` budget instead (see `planner_backend_vllm.py`'s
-`compute_gpu_memory_utilization_fraction`) — pass an explicit value only
-to override that.
 
 ### What's genuinely still missing
 
@@ -593,23 +483,23 @@ prompt, source)` rows. Three ways pairs get built:
 scripts expect — or hit `/preference-pairs/export` on the running service.
 The actual DPO training loop is a separate build, out of scope here.
 
-## Production Docker Containerization & Dual-Venv Isolation
+## What's next (not built here)
 
-For release and production deployments, Krisna Inference is containerized with strict dependency isolation:
-
-```bash
-# Launch multi-service GPU stack (FastAPI Inference on 8420 + Web Studio on 3000)
-docker compose up -d
-
-# Or using host preflight launchers:
-./scripts/docker/run_docker.sh --build                     # Linux / macOS
-.\scripts\docker\run_docker.ps1 -Build                    # Windows native PowerShell
-```
-
-### Multi-Environment Isolation Architecture
-- `/opt/venv-inference`: Main tier virtualenv running `torch>=2.6.0`, `transformers>=5.2.0`, `diffusers>=0.31.0`, SwapOrchestrator, Planner (Qwen3.5), Sketch (MaskGIT), and Polish models.
-- `/opt/venv-critic`: Isolated Critic tier virtualenv running `transformers==5.5.0` + `unsloth` + `unsloth_zoo` for Gemma 4 31B Dense.
-- Out-of-process communication: `CriticBackend` talks to `critic_worker.py` over stdin/stdout JSON lines without Python symbol collisions.
-- Hardware fail-fast diagnostics: `python scripts/inference/check_hardware.py --require-gpu` validates NVIDIA GPU presence, CUDA driver, compute capability, and VRAM before launching. MockBackend is strictly reserved for CI and automated testing.
-
+- **Every tier now has real training code, and it can now be fed real
+  data via the data-forge sync bridge.** What's left is genuinely
+  "run it," not "write it":
+- **The actual DPO training loop.** This is the most concrete remaining
+  gap: `sync_from_data_forge_dpo.sh` now imports REAL human-labeled pairs
+  (Pick-a-Pic v2, HPDv2, and — once data-forge's own registry watcher
+  confirms their repo_ids — DesignSense-10k/DesignPref) into
+  `PreferenceStore`, and `dpo_dataset_export.py` can already turn those
+  into a standard DPO JSONL. There is still no trainer that consumes that
+  JSONL and actually runs Diffusion-DPO against Z-Image-Turbo.
+- The actual Qwen-Image-Edit LoRA training implementation (DiffSynth-Studio
+  integration or a real Kontext-script adaptation) — currently just an
+  honestly-documented gap with two real, cited paths forward, since
+  diffusers itself has no official script for it yet.
+- A UI-domain-tuned VQ tokenizer for the sketch tier eventually, to
+  replace the general-purpose default the data-forge sync currently
+  re-tokenizes through.
 

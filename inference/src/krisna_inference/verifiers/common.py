@@ -1,22 +1,9 @@
 """Shared CLIP model — loaded ONCE and reused by clip_alignment.py,
-aesthetic_safety.py (aesthetic half), handoff_consistency.py, and
-sketch_backend.py, rather than each caller loading its own copy.
-
-Thread-safety (D3 fix): SketchBackend.run() and VerifierStack methods both
-call into this singleton from asyncio.to_thread() workers — meaning two OS
-threads can share the same model object simultaneously. CLIP inference is
-fast (~5ms), so serializing calls with a threading.Lock adds negligible
-latency while eliminating the CUDA kernel race condition that would result
-from two threads calling into the same GPU model object concurrently.
-
-The lock is per-instance (not global), so if a future caller constructs its
-own ClipEmbedder with a different model_id (not using the singleton), it gets
-its own lock and there is no cross-instance blocking.
+aesthetic_safety.py (aesthetic half), and handoff_consistency.py, rather
+than each verifier loading its own copy of the same weights.
 """
 
 from __future__ import annotations
-
-import threading
 
 
 class ClipEmbedder:
@@ -24,10 +11,6 @@ class ClipEmbedder:
         self.model_id = model_id
         self._model = None
         self._processor = None
-        # D3: serializes concurrent embed_text/embed_image calls from
-        # asyncio.to_thread workers (SketchBackend + VerifierStack share this
-        # singleton — see module docstring for why a lock is needed here).
-        self._lock = threading.Lock()
 
     def load(self) -> None:
         if self._model is not None:
@@ -61,27 +44,22 @@ class ClipEmbedder:
     def embed_image(self, image):
         import torch
 
-        with self._lock:
-            inputs = self._processor(images=image, return_tensors="pt").to(self._model.device)
-            with torch.no_grad():
-                feats = self._model.get_image_features(**inputs)
-            return feats / feats.norm(dim=-1, keepdim=True)
+        inputs = self._processor(images=image, return_tensors="pt").to(self._model.device)
+        with torch.no_grad():
+            feats = self._model.get_image_features(**inputs)
+        return feats / feats.norm(dim=-1, keepdim=True)
 
     def embed_text(self, text: str):
         import torch
 
-        with self._lock:
-            inputs = self._processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(
-                self._model.device
-            )
-            with torch.no_grad():
-                feats = self._model.get_text_features(**inputs)
-            return feats / feats.norm(dim=-1, keepdim=True)
+        inputs = self._processor(text=[text], return_tensors="pt", padding=True, truncation=True).to(
+            self._model.device
+        )
+        with torch.no_grad():
+            feats = self._model.get_text_features(**inputs)
+        return feats / feats.norm(dim=-1, keepdim=True)
 
     def image_text_similarity(self, image, text: str) -> float:
-        # embed_image and embed_text each acquire the lock internally;
-        # call them separately (not inside a single outer lock block) so
-        # the lock is held for the shortest possible time per operation.
         img_feat = self.embed_image(image)
         txt_feat = self.embed_text(text)
         return float((img_feat @ txt_feat.T).item())

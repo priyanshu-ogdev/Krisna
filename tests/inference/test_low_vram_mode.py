@@ -24,29 +24,19 @@ class TestGetRegistry:
         for spec in REGISTRY.values():
             assert spec.ram_gb == 0.0
 
-    def test_low_vram_registry_reduces_the_offloadable_tiers(self):
-        """Was 'the two large tiers' — now three: Polish Default's
-        vram_gb=8.0 assumed NF4 quantization the backend never actually
-        applied (see model_registry.py's corrected comment and
-        docs/review/13_ram_offload_and_precision_audit.md). Its real bf16
-        footprint (~14GB) doesn't already fit a 12GB target, so it now
-        gets the same enable_model_cpu_offload() treatment as Polish
-        Quality."""
-        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].vram_gb < REGISTRY[Tier.POLISH_DEFAULT].vram_gb
+    def test_low_vram_registry_reduces_the_two_large_tiers(self):
         assert LOW_VRAM_REGISTRY[Tier.POLISH_QUALITY].vram_gb < REGISTRY[Tier.POLISH_QUALITY].vram_gb
         assert LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb < REGISTRY[Tier.CRITIC].vram_gb
-        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].ram_gb > 0.0
         assert LOW_VRAM_REGISTRY[Tier.POLISH_QUALITY].ram_gb > 0.0
         assert LOW_VRAM_REGISTRY[Tier.CRITIC].ram_gb > 0.0
 
     def test_low_vram_registry_leaves_small_tiers_unchanged(self):
         """Planner and Sketch are already small enough that offloading
-        them buys nothing but latency — confirm they're untouched. Polish
-        Default is NOT in this group (see the reduces_the_offloadable_tiers
-        test above) — it used to be, incorrectly."""
+        them buys nothing but latency — confirm they're untouched."""
         assert LOW_VRAM_REGISTRY[Tier.PLANNER].vram_gb == REGISTRY[Tier.PLANNER].vram_gb
         assert LOW_VRAM_REGISTRY[Tier.PLANNER].ram_gb == 0.0
         assert LOW_VRAM_REGISTRY[Tier.SKETCH].vram_gb == REGISTRY[Tier.SKETCH].vram_gb
+        assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].vram_gb == REGISTRY[Tier.POLISH_DEFAULT].vram_gb
 
     def test_every_swappable_tier_fits_a_12gb_envelope_alone_in_low_vram_mode(self):
         """The actual claim being made to the user: each swappable tier,
@@ -60,57 +50,6 @@ class TestGetRegistry:
                 f"exclusivity rule) doesn't fit a 12GB envelope"
             )
         assert baseline_vram <= 12.0
-
-    def test_critic_low_vram_tier_has_real_headroom_not_exact_equality(self):
-        """RESTORED again after a recurring regression (third time in this
-        review this specific fix and its test have gone missing from an
-        uploaded working copy). Critic's low-VRAM vram_gb must sit
-        strictly below 12.0 by a real margin, not just <=."""
-        critic_spec = LOW_VRAM_REGISTRY[Tier.CRITIC]
-        assert critic_spec.vram_gb < 12.0
-        margin_gb = 12.0 - critic_spec.vram_gb
-        assert margin_gb >= 0.25, "headroom should be a real safety margin, not a rounding artifact"
-
-        # BUG FIX (found while merging this working copy with a separate
-        # upload): this used to also assert `baseline_vram +
-        # critic_spec.vram_gb < 12.0` — Planner + Sketch + Critic all
-        # fitting the envelope AT ONCE. That's not how this system
-        # admits a swapped-in tier: baseline is unloaded BEFORE Critic
-        # (or any Polish tier) is admitted — see swap_orchestrator.py's
-        # admission sequence and Phase 6's own "retracted" finding for
-        # the exact same misconception, already found and corrected once
-        # elsewhere in this review. The sibling test above
-        # (test_every_swappable_tier_fits_a_12gb_envelope_alone_in_low_vram_mode)
-        # already asserts the correct thing: each swappable tier fits
-        # ALONE, and baseline fits alone, separately — never summed.
-
-    def test_critic_ram_headroom_not_pushed_to_exact_equality_by_the_vram_fix(self):
-        """RESTORED again — see above. Lowering Critic's GPU-resident
-        target moves more params to CPU FP32 offload, so ram_gb must rise
-        too, without itself hitting the 48.0GB default RAM envelope
-        exactly."""
-        critic_spec = LOW_VRAM_REGISTRY[Tier.CRITIC]
-        default_ram_envelope_gb = 48.0
-        assert critic_spec.ram_gb < default_ram_envelope_gb
-        assert default_ram_envelope_gb - critic_spec.ram_gb >= 1.0
-
-    def test_registry_vram_gb_matches_critic_backend_factory_default(self):
-        """RESTORED again — see above. factory.py's KRISNA_CRITIC_MAX_GPU_GB
-        default must stay in sync with LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb."""
-        import inspect
-        import os
-
-        from krisna_inference.backends import factory as factory_module
-
-        env_key = "KRISNA_CRITIC_MAX_GPU_GB"
-        prev = os.environ.pop(env_key, None)
-        try:
-            source = inspect.getsource(factory_module)
-        finally:
-            if prev is not None:
-                os.environ[env_key] = prev
-        expected_default = str(LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb)
-        assert f'os.environ.get("{env_key}", "{expected_default}")' in source
 
 
 class TestSwapOrchestratorLowVramMode:

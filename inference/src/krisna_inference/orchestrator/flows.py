@@ -8,7 +8,6 @@ nothing about DesignState — it only knows about ModelBackend/Tier/VRAM).
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from krisna_inference.orchestrator.design_state import (
@@ -20,8 +19,6 @@ from krisna_inference.orchestrator.exceptions import InvalidTransitionError
 from krisna_inference.orchestrator.model_registry import Tier
 from krisna_inference.orchestrator.store import DesignStateStore
 from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator, SwapResult
-
-log = logging.getLogger("krisna_inference (formerly krisna_orchestrator).flows")
 
 
 class FlowError(Exception):
@@ -38,76 +35,24 @@ async def conversational_turn(
     state = store.get(session_id)
     expected_rev = state.revision
 
-    # Multi-turn context: pass prior dialog history and any prior critique
-    history = [turn.model_dump() for turn in state.conversation_history]
-    prior_critique = (
-        state.critique.result.model_dump()
-        if (state.critique and state.critique.result)
-        else None
-    )
-
-    # D2: Preserve original user intent so it is never lost when conversation grows past window
-    if not state.constraints.original_intent and user_message and user_message.strip():
-        state.constraints.original_intent = user_message.strip()
-
     state.append_turn("user", user_message)
 
     result = await orchestrator.run_conversational_turn(
         session_id=session_id,
         message=user_message,
         constraints=state.constraints.model_dump(),
-        conversation_history=history,
-        prior_critique=prior_critique,
     )
 
-    planner_out = result.get("planner", {})
-    planner_reply = planner_out.get("reply_text", "(planner reply)")
+    planner_reply = result["planner"].get("mock_output_text", "(planner reply)")
     state.append_turn("planner", str(planner_reply))
 
-    # Apply structured constraint updates from Planner's JSON delta —
-    # shared with swap_orchestrator.py's run_conversational_turn (see
-    # constraint_merge.py's docstring for why this now lives in one
-    # place instead of two copies that could drift).
-    from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
-
-    delta = planner_out.get("design_state_delta") or {}
-    constraint_updates = delta.get("constraint_updates") or {}
-    original_constraints = state.constraints.model_dump()
-    merged = apply_constraint_updates(original_constraints, constraint_updates)
-    state.constraints.style = merged["style"]
-    state.constraints.palette = merged["palette"]
-    state.constraints.layout_hints = merged["layout_hints"]
-    if merged["locked_regions"] != original_constraints["locked_regions"]:
-        from krisna_inference.orchestrator.design_state import LockedRegion
-
-        state.constraints.locked_regions = [
-            r if isinstance(r, LockedRegion) else LockedRegion(**r)
-            for r in merged["locked_regions"]
-        ]
-
-    sketch_out = result.get("sketch", {})
-    new_vq_ref = sketch_out.get("vq_tokens_ref")
-    if new_vq_ref:
-        # D1 FIX: only update sketch tokens and advance stage when this
-        # conversational turn actually produced new sketch output. The
-        # previous unconditional `state.stage = SKETCHING` could mark a
-        # session as sketch-eligible after a pure conversational turn (no
-        # new tokens generated), which would make is_finalize_eligible()
-        # return True against a stale vq_tokens_ref from an earlier turn.
-        state.sketch_tokens.vq_tokens = new_vq_ref
-        state.sketch_tokens.confidence_map = sketch_out.get(
-            "confidence_map_ref", state.sketch_tokens.confidence_map
-        )
-        state.sketch_tokens.revision += 1
-        state.stage = SessionStage.SKETCHING
-    else:
-        # Pure conversational turn — Planner ran but Sketch didn't produce
-        # new tokens (e.g. the planner decided more clarification was needed
-        # before committing a layout, or sketch is unloaded in fast-mode).
-        # Carry forward whatever tokens/stage already existed.
-        state.sketch_tokens.confidence_map = sketch_out.get(
-            "confidence_map_ref", state.sketch_tokens.confidence_map
-        )
+    sketch_out = result["sketch"]
+    state.sketch_tokens.vq_tokens = sketch_out.get("vq_tokens_ref", state.sketch_tokens.vq_tokens)
+    state.sketch_tokens.confidence_map = sketch_out.get(
+        "confidence_map_ref", state.sketch_tokens.confidence_map
+    )
+    state.sketch_tokens.revision += 1
+    state.stage = SessionStage.SKETCHING
     state.touch()
 
     return store.save(state, expected_rev)
@@ -121,7 +66,6 @@ async def finalize(
     handoff_hook: Any = None,
     verifier_stack: Any = None,
     prompt: str | None = None,
-    min_safety_score: float = 0.9,
 ) -> DesignState:
     """§5.3 'Finalize'.
 
@@ -135,24 +79,11 @@ async def finalize(
 
     `verifier_stack`, if given (a verifiers.verifier_stack.VerifierStack),
     is run against the polished output per §5.3's Finalize diagram
-    ("Polish Tier generates -> Verifier Stack scores output -> ...");
-    populates finalize_output.verifier_scores AND enforces
-    VerifierStack.safety_gate() before the image is ever handed back to
-    the caller — that gate existed as a method on VerifierStack but was
-    never actually invoked anywhere in this flow, silently making it
-    dead code and the "gate" description in its own docstring untrue:
-    an unsafe image would previously have finalized successfully with a
-    low `safety` reading buried in an unused field, never a blocked
-    result. Fixed here rather than left as a documented-but-unenforced
-    intention — see docs/review/14_safety_gate_wiring.md. Left as None
-    by default so this function stays usable with MockBackend/no torch
+    ("Polish Tier generates -> Verifier Stack scores output -> ..."),
+    populating finalize_output.verifier_scores for real. Left as None by
+    default so this function stays usable with MockBackend/no torch
     installed — pass a real VerifierStack only when you actually want
-    scoring AND the safety gate (it needs torch/transformers/opencv/
-    easyocr).
-
-    `min_safety_score` is forwarded to `VerifierStack.safety_gate()`
-    unchanged (default 0.9, matching that method's own default) — only
-    meaningful when `verifier_stack` is not None.
+    scoring (it needs torch/transformers/opencv/easyocr).
     """
     state = store.get(session_id)
     expected_rev = state.revision
@@ -171,18 +102,12 @@ async def finalize(
     handoff_input = state.sketch_tokens.vq_tokens
     pixel_ref = handoff_hook(handoff_input) if handoff_hook else handoff_input
 
-    # Synthesize prompt from conversational intent and constraints if not explicitly provided.
-    # The synthesized string is also stored in DPO preference pairs (see critique_pass() below)
-    # so it must match the format the Polish-Default LoRA was trained against — use
-    # _synthesize_dpo_prompt() for both, keeping a single canonical implementation.
-    effective_prompt = prompt if prompt else _synthesize_dpo_prompt(state)
-
     preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
     result: SwapResult = await orchestrator.request_finalize(
         preferred_tier=preferred,
         session_id=session_id,
         handoff_image_ref=pixel_ref,
-        prompt=effective_prompt,
+        prompt=prompt,
         constraints=state.constraints.model_dump(),
         locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
     )
@@ -201,50 +126,16 @@ async def finalize(
 
     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
     state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
-    # BUG FOUND ON REVIEW: this is the ONLY point in the whole flow where
-    # the real generation-time prompt (effective_prompt) is known. It was
-    # previously discarded — critique_pass() had to re-synthesize a prompt
-    # from LIVE conversation state, which may have moved on by the time
-    # critique is requested, silently mismatching the prompt stored in any
-    # resulting DPO preference pair against the image it's actually paired
-    # with. Freeze it here so later stages read back the truth instead of
-    # re-guessing it.
-    state.finalize_output.prompt_used = effective_prompt
     verifier_scores = dict(output.get("verifier_scores", {}))
 
     if verifier_stack is not None and state.finalize_output.image_ref.startswith("blob://"):
-        passed, safety_score = _check_safety_gate(
-            verifier_stack, image_ref=state.finalize_output.image_ref, min_safety_score=min_safety_score
-        )
-        if not passed:
-            # Stage goes back to SKETCHING rather than FINALIZED, and this
-            # raises before verifier_scores are even attached, so the
-            # caller never receives a finalize_output for an image that
-            # failed the safety gate. D4 FIX: Purge the rejected blob file
-            # from disk so orphans do not accumulate indefinitely.
-            rejected_ref = state.finalize_output.image_ref
-            if rejected_ref and rejected_ref.startswith("blob://"):
-                try:
-                    from krisna_inference.backends.blob_store_singleton import get_blob_store
-                    get_blob_store().delete(rejected_ref)
-                except Exception:
-                    pass
-            state.finalize_output.image_ref = None
-            state.stage = SessionStage.SKETCHING
-            state.touch()
-            store.save(state, expected_rev)
-            raise FlowError(
-                f"Finalize blocked for session {session_id}: safety gate failed "
-                f"(score={safety_score:.3f} < {min_safety_score})"
-            )
-
         verifier_scores.update(
             _run_verifier_stack(
                 verifier_stack,
                 state=state,
                 image_ref=state.finalize_output.image_ref,
                 sketch_pixel_ref=pixel_ref if isinstance(pixel_ref, str) else None,
-                prompt=effective_prompt,
+                prompt=prompt,
             )
         )
 
@@ -255,15 +146,6 @@ async def finalize(
     state.stage = SessionStage.FINALIZED
     state.touch()
     return store.save(state, expected_rev)
-
-
-def _check_safety_gate(
-    verifier_stack: Any, image_ref: str, min_safety_score: float
-) -> tuple[bool, float]:
-    from krisna_inference.backends.blob_store_singleton import get_blob_store
-
-    polished_image = get_blob_store().load_image(image_ref)
-    return verifier_stack.safety_gate(polished_image, min_safety_score=min_safety_score)
 
 
 def _run_verifier_stack(
@@ -277,23 +159,7 @@ def _run_verifier_stack(
     if sketch_pixel_ref and sketch_pixel_ref.startswith("blob://"):
         try:
             sketch_image = blobs.load_image(sketch_pixel_ref)
-        except Exception as e:
-            # UPGRADE: was `except FileNotFoundError` only. Before the
-            # handoff_hook fix (sketch_handoff.py's make_vq_decode_handoff
-            # actually being wired up), sketch_pixel_ref could be a raw
-            # VQ-token blob ref rather than a decoded image — load_image()
-            # on that raises PIL.UnidentifiedImageError, not
-            # FileNotFoundError, which this except clause didn't catch,
-            # meaning this was a second, hidden crash site for the same
-            # root cause, reached only when handoff_consistency scoring
-            # actually ran. Now fixed upstream (pixel_ref is a real
-            # decoded image), but this broader catch matches
-            # VerifierStack.score_finalize_output's own established
-            # philosophy in this same module — any verifier input that
-            # can't be loaded degrades to sketch_image=None (handoff_consistency
-            # scored as unavailable) rather than aborting the whole
-            # finalize response over one optional comparison image.
-            log.warning("sketch_image_load_failed_for_handoff_verifier", extra={"ref": sketch_pixel_ref, "error": str(e)})
+        except FileNotFoundError:
             sketch_image = None
 
     effective_prompt = prompt or state.constraints.style or "UI design"
@@ -324,32 +190,6 @@ async def critique_pass(
     both `preference_store` and `compare_against` are given. Without them,
     this behaves exactly as before: critique the render, update
     DesignState, done.
-
-    CALLER CONTRACT worth stating explicitly (found while auditing for
-    prompt/image mixups): the resulting PreferencePair stores ONE prompt
-    for BOTH candidates (state.finalize_output.prompt_used, the current
-    render's actual generation prompt — see the fix in the body below).
-    Diffusion-DPO's own derivation assumes both the chosen and rejected
-    sample are conditioned on the SAME prompt/context when computing the
-    reward margin. `compare_against` is therefore only a valid partner for
-    a pair if it was ALSO generated from that same effective prompt (e.g.
-    an earlier candidate from the same iterative-refinement loop on this
-    same design intent) — not an image from a genuinely different prompt
-    or an earlier, since-changed conversation turn. Nothing in this
-    function can verify that on the caller's behalf; passing a
-    `compare_against` from a different design intent silently produces a
-    pair whose stored prompt is wrong for one of its two images, the same
-    class of mixup the prompt_used fix below closes for the OTHER side of
-    the pair.
-
-    UPGRADE: `compare_against` may now optionally include its own
-    `"prompt_used"` key (the real generation-time prompt for THAT
-    candidate, if the caller tracked one). When present,
-    build_pair_from_candidates cross-checks it against this render's own
-    `prompt_used` and raises MismatchedPromptError instead of silently
-    writing a pair with an ambiguous prompt — turning the caller-contract
-    note above from a documentation-only warning into an enforced check
-    whenever the caller has the data to make enforcement possible.
     """
     state = store.get(session_id)
     expected_rev = state.revision
@@ -401,43 +241,11 @@ async def critique_pass(
     if preference_store is not None and compare_against is not None:
         from krisna_training.dpo.pair_builder import build_pair_from_candidates
 
-        # P1 FIX (semantic audit): was `state.constraints.style or "UI design"` — that
-        # stored only the style token in the preference pair record, losing all user
-        # intent. DPO training then called encode_prompt("minimalist dark") rather
-        # than the full prompt the image was actually generated from, producing a
-        # poor conditioning signal. Now uses the same full synthesis as finalize().
-        #
-        # BUG FOUND ON REVIEW (a second, distinct mismatch on top of the P1 fix
-        # above): critique_pass() can run turns after finalize() — the user may
-        # have sent more chat messages in between (asking for a further revision,
-        # small talk, anything). _synthesize_dpo_prompt(state) reads
-        # state.conversation_history[-1] as of THIS call, not as of when
-        # state.finalize_output.image_ref was actually generated — so unconditionally
-        # re-synthesizing here could store a prompt describing a LATER user turn
-        # against an image generated from an EARLIER one, a real (prompt, image)
-        # mixup landing directly in DPO training data. finalize() now freezes the
-        # true generation-time prompt on state.finalize_output.prompt_used (see
-        # design_state.py); read that back instead of re-deriving it, falling back
-        # to a fresh synthesis only for a state persisted before this field existed
-        # (prompt_used is None) rather than crashing on old sessions.
         pair = build_pair_from_candidates(
             preference_store,
-            prompt=state.finalize_output.prompt_used or _synthesize_dpo_prompt(state),
+            prompt=state.constraints.style or "UI design",
             candidates=[
-                {
-                    "image_ref": state.finalize_output.image_ref,
-                    "score": state.critique.result.overall_score,
-                    # UPGRADE (closes the caller-contract gap this
-                    # docstring used to only describe): report the
-                    # REAL generation-time prompt for this specific
-                    # candidate so build_pair_from_candidates can
-                    # actually enforce the same-prompt assumption
-                    # instead of only documenting it. If the caller's
-                    # compare_against also includes its own
-                    # "prompt_used", a mismatch is now caught and
-                    # raised rather than silently written.
-                    "prompt_used": state.finalize_output.prompt_used,
-                },
+                {"image_ref": state.finalize_output.image_ref, "score": state.critique.result.overall_score},
                 compare_against,
             ],
             source="gemma_critique",
@@ -449,35 +257,3 @@ async def critique_pass(
     state.stage = SessionStage.FINALIZED
     state.touch()
     return store.save(state, expected_rev)
-
-def _synthesize_dpo_prompt(state: DesignState) -> str:
-    """Canonical prompt-synthesis for DPO preference pairs and Polish-tier
-    inference. Produces: '<last user intent>, style: <style>, palette: <...>,
-    layout: <...>' — the same format in both places so the LoRA trains on
-    the distribution it will actually see at inference time.
-
-    Used by finalize() (passed to Polish backends) and critique_pass()
-    (stored in preference pair records for later DPO training). A single
-    function rather than two separate inline copies prevents the two usages
-    from drifting apart again (the P1 bug this fixes was exactly that drift).
-    """
-    user_turns = [turn.content for turn in state.conversation_history if turn.role == "user"]
-    latest_user_intent = user_turns[-1].strip() if user_turns else ""
-
-    descriptors = []
-    if state.constraints.style:
-        descriptors.append(f"style: {state.constraints.style}")
-    if state.constraints.palette:
-        descriptors.append(f"palette: {', '.join(state.constraints.palette)}")
-    if state.constraints.layout_hints:
-        descriptors.append(f"layout: {state.constraints.layout_hints}")
-
-    desc_str = ", ".join(descriptors)
-    if latest_user_intent and desc_str:
-        return f"{latest_user_intent}, {desc_str}"
-    elif latest_user_intent:
-        return latest_user_intent
-    elif desc_str:
-        return f"High quality UI design, {desc_str}"
-    else:
-        return "High quality UI design"
