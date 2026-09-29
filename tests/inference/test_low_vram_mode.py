@@ -61,6 +61,47 @@ class TestGetRegistry:
             )
         assert baseline_vram <= 12.0
 
+    def test_critic_low_vram_tier_has_real_headroom_not_exact_equality(self):
+        """RESTORED again after a recurring regression (third time in this
+        review this specific fix and its test have gone missing from an
+        uploaded working copy). Critic's low-VRAM vram_gb must sit
+        strictly below 12.0 by a real margin, not just <=."""
+        critic_spec = LOW_VRAM_REGISTRY[Tier.CRITIC]
+        assert critic_spec.vram_gb < 12.0
+        margin_gb = 12.0 - critic_spec.vram_gb
+        assert margin_gb >= 0.25, "headroom should be a real safety margin, not a rounding artifact"
+
+        baseline_vram = LOW_VRAM_REGISTRY[Tier.PLANNER].vram_gb + LOW_VRAM_REGISTRY[Tier.SKETCH].vram_gb
+        assert baseline_vram + critic_spec.vram_gb < 12.0
+
+    def test_critic_ram_headroom_not_pushed_to_exact_equality_by_the_vram_fix(self):
+        """RESTORED again — see above. Lowering Critic's GPU-resident
+        target moves more params to CPU FP32 offload, so ram_gb must rise
+        too, without itself hitting the 48.0GB default RAM envelope
+        exactly."""
+        critic_spec = LOW_VRAM_REGISTRY[Tier.CRITIC]
+        default_ram_envelope_gb = 48.0
+        assert critic_spec.ram_gb < default_ram_envelope_gb
+        assert default_ram_envelope_gb - critic_spec.ram_gb >= 1.0
+
+    def test_registry_vram_gb_matches_critic_backend_factory_default(self):
+        """RESTORED again — see above. factory.py's KRISNA_CRITIC_MAX_GPU_GB
+        default must stay in sync with LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb."""
+        import inspect
+        import os
+
+        from krisna_inference.backends import factory as factory_module
+
+        env_key = "KRISNA_CRITIC_MAX_GPU_GB"
+        prev = os.environ.pop(env_key, None)
+        try:
+            source = inspect.getsource(factory_module)
+        finally:
+            if prev is not None:
+                os.environ[env_key] = prev
+        expected_default = str(LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb)
+        assert f'os.environ.get("{env_key}", "{expected_default}")' in source
+
 
 class TestSwapOrchestratorLowVramMode:
     @pytest.mark.asyncio

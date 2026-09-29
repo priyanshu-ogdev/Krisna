@@ -8,6 +8,7 @@ nothing about DesignState — it only knows about ModelBackend/Tier/VRAM).
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from krisna_inference.orchestrator.design_state import (
@@ -19,6 +20,8 @@ from krisna_inference.orchestrator.exceptions import InvalidTransitionError
 from krisna_inference.orchestrator.model_registry import Tier
 from krisna_inference.orchestrator.store import DesignStateStore
 from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator, SwapResult
+
+log = logging.getLogger("krisna_inference (formerly krisna_orchestrator).flows")
 
 
 class FlowError(Exception):
@@ -43,7 +46,7 @@ async def conversational_turn(
         constraints=state.constraints.model_dump(),
     )
 
-    planner_reply = result["planner"].get("mock_output_text", "(planner reply)")
+    planner_reply = result["planner"].get("reply_text", "(planner reply)")
     state.append_turn("planner", str(planner_reply))
 
     sketch_out = result["sketch"]
@@ -202,7 +205,23 @@ def _run_verifier_stack(
     if sketch_pixel_ref and sketch_pixel_ref.startswith("blob://"):
         try:
             sketch_image = blobs.load_image(sketch_pixel_ref)
-        except FileNotFoundError:
+        except Exception as e:
+            # UPGRADE: was `except FileNotFoundError` only. Before the
+            # handoff_hook fix (sketch_handoff.py's make_vq_decode_handoff
+            # actually being wired up), sketch_pixel_ref could be a raw
+            # VQ-token blob ref rather than a decoded image — load_image()
+            # on that raises PIL.UnidentifiedImageError, not
+            # FileNotFoundError, which this except clause didn't catch,
+            # meaning this was a second, hidden crash site for the same
+            # root cause, reached only when handoff_consistency scoring
+            # actually ran. Now fixed upstream (pixel_ref is a real
+            # decoded image), but this broader catch matches
+            # VerifierStack.score_finalize_output's own established
+            # philosophy in this same module — any verifier input that
+            # can't be loaded degrades to sketch_image=None (handoff_consistency
+            # scored as unavailable) rather than aborting the whole
+            # finalize response over one optional comparison image.
+            log.warning("sketch_image_load_failed_for_handoff_verifier", extra={"ref": sketch_pixel_ref, "error": str(e)})
             sketch_image = None
 
     effective_prompt = prompt or state.constraints.style or "UI design"

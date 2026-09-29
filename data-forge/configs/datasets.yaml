@@ -376,6 +376,60 @@ datasets:
       annotation_file: "train.json"
       sample_size: 60000
 
+  gamelabel_10k:
+    display_name: "GameLabel-10K"
+    source_type: "huggingface"
+    repo_id: "Jonathan-Zhou/GameLabel-10k"
+    revision: "main"       # only used for license/metadata purposes here —
+                            # the actual fetch reads from parquet_revision
+                            # below, not this field.
+    category: "dpo_preference_general"
+    expected_record_count: 9800     # "slightly under 10 thousand labels,
+                                     # 7000 unique prompts" per the paper's
+                                     # own abstract (arXiv:2409.19830) —
+                                     # note this is real pairwise labels,
+                                     # not deduplicated final DPO pairs;
+                                     # ties (img0_votes == img1_votes,
+                                     # including 0-0) are dropped by
+                                     # _fetch_gamelabel_csv, so the actual
+                                     # written pair count will be lower.
+    license_url: "https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k"
+    license_status: "verified"
+    license_notes: >
+      Apache 2.0, confirmed on the live dataset card. Real crowdsourced
+      human preference votes (mobile-game players, rewarded with in-game
+      currency — arXiv:2409.19830), NOT AI-judge/synthetic labeling.
+      General T2I domain (game-style/illustrative prompts), same category
+      as Pick-a-Pic/HPDv2 above — supplements Stage-1 general DPO signal,
+      does not close the Stage-2 UI-domain gap (designsense_10k/designpref
+      below remain unreleased for that).
+    fetch_config:
+      # download_mode "preference_pair" does NOT work here — CONFIRMED
+      # against the live dataset (HF's own dataset-viewer output for this
+      # repo, not guessed): img0_votes/img1_votes are vote COUNTS (int,
+      # 0-5 — up to 5 players voted per pair), not a fixed 0/1 label
+      # column, and img0_encoding/img1_encoding are plain strings (a
+      # base64-encoded JPEG wrapped in a stray Python b'...' bytes-repr)
+      # rather than the standard HF {"bytes": ...} image-feature dict
+      # the generic fetcher's image-column auto-detection looks for.
+      # download_mode: "gamelabel_csv" uses a dedicated adapter instead
+      # (see fetcher.py::_fetch_gamelabel_csv) that derives a win/lose
+      # label from the vote counts (dropping ties) and decodes the real
+      # encoding.
+      download_mode: "gamelabel_csv"
+      # Reads via the "refs/convert/parquet" revision HF auto-generates
+      # for CSV-formatted dataset repos — confirmed this mirror exists
+      # for this specific repo before wiring it (its own tree listing
+      # shows "Update parquet files", a "default" subset) — rather than
+      # streaming the raw 2.26GB data.csv directly. Override
+      # parquet_revision here if that auto-conversion ever changes shape.
+      parquet_revision: "refs/convert/parquet"
+      sample_size: 20000   # real dataset is ~9800 labels total per the
+                            # paper — this cap is deliberately generous
+                            # (never binds), kept only for consistency
+                            # with the other preference-pair entries'
+                            # sample_size convention.
+
   # ---------------------------------------------------------------------
   # DPO Preference-Pair Datasets — UI/design domain. This is the actual
   # gap-closer: Pick-a-Pic/HPDv2 above are general-photo aesthetic, not

@@ -82,11 +82,31 @@ def flow_matching_dpo_loss(
 
     `beta`: the DPO inverse-temperature. Wallace et al. (§5.1) report
     beta in [2000, 5000] working well for SD1.5/SDXL's epsilon-prediction
-    formulation — kept as this project's default starting point since no
-    Z-Image-Turbo-specific sweep has been run; this is exactly the kind
-    of hyperparameter that needs real tuning against real validation
-    output, not a value to trust blindly. See train_dpo.py's config for
-    how to override it.
+    formulation, and this project's default (2000) matches their own
+    SD1.5 setting exactly — a real, verified citation, not a rounded
+    guess.
+
+    UPGRADE — worth weighing before the next real sweep, found while
+    re-verifying this citation directly: beta's optimum is architecture/
+    dataset-dependent, and more recent work sweeping it specifically for
+    models closer to Z-Image-Turbo's own flow-matching/rectified-flow
+    formulation found meaningfully LOWER optimal values than Wallace et
+    al.'s epsilon-prediction setting. Linear-DPO (arXiv:2605.21123,
+    §E.3) swept beta in {100, 250, 500, 1000, 2000} and found the best
+    PickScore at beta=250 for SD1.5 and beta=500 for SDXL — and, more
+    directly relevant here, beta=500 for SD3-M (a flow-matching model,
+    architecturally closer to Z-Image-Turbo than either SD1.5 or SDXL
+    are) on HPSv3. Separately, DeRaDiff (arXiv:2601.20198) demonstrates
+    beta=250 causing visually severe reward-hacking on SDXL — the risk
+    runs in both directions, not just "lower is safer." None of this
+    pins down Z-Image-Turbo's own optimum (still genuinely unknown, no
+    sweep run here), but it's a real, specific reason to treat 2000 as
+    one reasonable starting point among several worth trying, not
+    the presumptive default — a sweep across roughly {250, 500, 1000,
+    2000} on real validation output, mirroring Linear-DPO's own range,
+    is better-motivated than starting from 2000 alone and assuming it
+    transfers from an epsilon-prediction setting. See train_dpo.py's
+    config for how to override it.
 
     `fm_anchor_weight`: 0.0 (disabled) by default — MotionFlux's own
     ablation shows the anchor term stabilizing training against reward-

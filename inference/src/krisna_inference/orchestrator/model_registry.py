@@ -184,11 +184,45 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     ),
     Tier.CRITIC: ModelSpec(
         tier=Tier.CRITIC, name="Gemma 4 31B Dense",
-        vram_gb=12.0, ram_gb=40.0,   # ESTIMATE — see mechanism (2) above,
-                                      # this one is a real, computed lower
-                                      # bound from bnb's documented fp32
-                                      # CPU-offload behavior, not a guess;
-                                      # validate against a real run regardless
+        vram_gb=11.5, ram_gb=45.0,   # UPGRADE (was vram_gb=12.0, ram_gb=40.0):
+                                      # 12.0 was picked to exactly equal the
+                                      # 12GB low-VRAM target envelope
+                                      # (service.py's KRISNA_VRAM_ENVELOPE_GB
+                                      # default) — zero headroom on paper
+                                      # against a target that itself doesn't
+                                      # account for CUDA context, allocator
+                                      # fragmentation, or activation memory.
+                                      # Dropping the GPU-resident target to
+                                      # 11.5GB bakes in ~0.5GB (~4%) real
+                                      # headroom against a 12GB card. This is
+                                      # NOT free — offloading less to the GPU
+                                      # means MORE params move to CPU at FP32
+                                      # (see mechanism (2) above), so ram_gb
+                                      # must go up too, not stay at 40.0:
+                                      # recomputed via the same method as
+                                      # before (bytes/param implied by the
+                                      # 18.0GB full-NF4 footprint above,
+                                      # applied to the new 11.5GB GPU split)
+                                      # gives ~44.3GB, rounded up to 45.0GB —
+                                      # still comfortably under the 48.0GB
+                                      # default RAM envelope (swap_orchestrator's
+                                      # ram_envelope_gb), so this doesn't just
+                                      # relocate the zero-headroom problem from
+                                      # the VRAM ledger onto the RAM ledger.
+                                      # KRISNA_CRITIC_MAX_GPU_GB's default in
+                                      # backends/factory.py MUST stay in sync
+                                      # with this vram_gb value.
+                                      # REGRESSION NOTE (now recurring —
+                                      # third time this fix has been lost
+                                      # from an uploaded working copy in
+                                      # this review; see docs/review's
+                                      # latest phase for the full pattern):
+                                      # if this drifts back to 12.0/40.0
+                                      # again, the issue is upstream of any
+                                      # single fix — something in how these
+                                      # working copies get produced between
+                                      # sessions isn't carrying edits forward.
+                                      # Still an estimate pending a real run.
         quantization="NF4 (GPU-resident) + FP32 CPU offload via plain "
                       "transformers+bitsandbytes, NOT unsloth — see "
                       "critic_worker.py's _load() offload branch",
@@ -286,7 +320,7 @@ class MockBackend(ModelBackend):
         # keys — this is the de facto output contract each tier owes the
         # orchestration layer.
         if self.spec.tier == Tier.PLANNER:
-            base["mock_output_text"] = "(mock planner reply)"
+            base["reply_text"] = "(mock planner reply)"
         elif self.spec.tier == Tier.SKETCH:
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
             base["vq_tokens_ref"] = f"vq_grid::{hash(str(rev)) & 0xFFFF:x}"

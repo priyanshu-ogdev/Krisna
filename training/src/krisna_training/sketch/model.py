@@ -41,6 +41,7 @@ class SketchModelConfig:
     ffn_dim: int = 2048
     dropout: float = 0.1
     prompt_dim: int = 4096           # matches the placeholder in inference/sketch_backend.py
+    use_gradient_checkpointing: bool = False   # see build_model()'s docstring
 
     @property
     def mask_token_id(self) -> int:
@@ -54,14 +55,36 @@ class SketchModelConfig:
 def build_model(config: SketchModelConfig):
     """Returns a torch.nn.Module. Kept as a function (not a class users
     instantiate directly) so torch is only imported when actually building
-    a model, preserving this package's lazy-import discipline."""
+    a model, preserving this package's lazy-import discipline.
+
+    UPGRADE — `use_gradient_checkpointing`: Stage 2 (512px, grid 32x32 =
+    1024 tokens/image, vs. Stage 1's 256) doesn't just need 4x the memory
+    Stage 1 used — full self-attention is O(n^2) in sequence length, so
+    attention FLOPs alone are ~16x more per sample; sketch_train_stage2_512.yaml's
+    batch_size=16 (vs. Stage 1's 32) only offsets this to a net ~8x
+    compute/memory increase per step. `nn.TransformerEncoderLayer` below
+    (batch_first=True, norm_first=True, no explicit attention mask) likely
+    dispatches to PyTorch's scaled_dot_product_attention fast path
+    (memory-linear flash-attention, head_dim=64 in range) even during
+    training, but that depends on PyTorch version/kernel selection this
+    environment can't verify. Gradient checkpointing is the version-
+    independent safeguard: recompute each encoder layer during backward
+    instead of storing activations, trading ~30% more compute time for a
+    hard reduction in peak memory. Implemented by manually iterating
+    `self.encoder.layers` (see forward() below) rather than restructuring
+    the module — `nn.TransformerEncoder` here has `norm=None` (final_norm
+    is applied separately), so this preserves state_dict key compatibility
+    with existing checkpoints exactly.
+    """
     import torch
     import torch.nn as nn
+    import torch.utils.checkpoint
 
     class SketchTransformer(nn.Module):
         def __init__(self, cfg: SketchModelConfig) -> None:
             super().__init__()
             self.cfg = cfg
+            self.use_gradient_checkpointing = cfg.use_gradient_checkpointing
             # +1 embedding row for the mask token, beyond the real vocab.
             self.token_embed = nn.Embedding(cfg.vocab_size + 1, cfg.hidden_dim)
             self.pos_embed = nn.Parameter(torch.zeros(cfg.seq_len, cfg.hidden_dim))
@@ -85,6 +108,13 @@ def build_model(config: SketchModelConfig):
             self.token_head = nn.Linear(cfg.hidden_dim, cfg.vocab_size)
             self.critic_head = nn.Linear(cfg.hidden_dim, 1)
 
+        def _run_encoder(self, x: "torch.Tensor") -> "torch.Tensor":
+            if self.use_gradient_checkpointing and self.training:
+                for layer in self.encoder.layers:
+                    x = torch.utils.checkpoint.checkpoint(layer, x, use_reentrant=False)
+                return x
+            return self.encoder(x)
+
         def forward(self, tokens: "torch.Tensor", mask: "torch.Tensor", prompt_embedding: "torch.Tensor"):
             """tokens: [B, N] long, mask token id at masked positions.
             mask: [B, N] {0,1}, unused by the forward math itself (tokens
@@ -101,7 +131,7 @@ def build_model(config: SketchModelConfig):
             prompt_ctx = self.prompt_proj(prompt_embedding).unsqueeze(1)  # [B, 1, hidden_dim]
             x = torch.cat([prompt_ctx, x], dim=1)  # prefix-conditioning
 
-            x = self.encoder(x)
+            x = self._run_encoder(x)
             x = self.final_norm(x)
             x = x[:, 1:, :]  # drop the prompt-context position before the heads
 

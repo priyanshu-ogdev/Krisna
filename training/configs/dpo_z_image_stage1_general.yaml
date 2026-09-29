@@ -31,6 +31,8 @@ resolution: 512
 beta: 2000.0
 fm-anchor-weight: 0.0
 learning-rate: 1e-5
+lr-warmup-steps: 100
+lr-scheduler: "constant_with_warmup"
 lora-rank: 32
 train-batch-size: 1
 gradient-accumulation-steps: 4

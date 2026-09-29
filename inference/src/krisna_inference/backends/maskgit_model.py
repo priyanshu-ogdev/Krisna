@@ -124,9 +124,35 @@ class MaskGITSketchModel:
         prompt_embedding,
         num_rounds: int = 8,
         prior_tokens: "list[int] | None" = None,
+        guidance_scale: float = 0.0,
+        uncond_embedding=None,
     ) -> dict:
         """Runs one interactive sketch round (~8 steps per §5's architecture
         diagram — cheap enough for many conversational rounds).
+
+        guidance_scale: classifier-free guidance strength, t, per Muse's
+        own formula (Chang et al. 2023, "Muse: Text-To-Image Generation
+        via Masked Generative Transformers", §2.7 — the actual T2I
+        MaskGIT-lineage paper this project's architecture already
+        follows, whose 10% training-time conditioning-dropout rate
+        matches this project's own `cfg_dropout_prob` default, see
+        sketch/train.py):
+
+            l_g = (1 + t) * l_c - t * l_u
+
+        where l_c is the conditional logits (this prompt_embedding) and
+        l_u is the unconditional logits (uncond_embedding, zeros by
+        default — the same zero-vector convention training's collate_fn
+        uses for CFG-dropped samples). t=0 recovers plain conditional
+        decoding with no extra cost (unconditional forward pass skipped
+        entirely) — the default, so existing callers unaffected.
+
+        Per Muse's own reported refinement: guidance is linearly ramped
+        from 0 up to `guidance_scale` across sampling rounds rather than
+        held constant, to preserve sample diversity in early rounds
+        while sharpening prompt adherence by the final rounds.
+        Implemented as `t_step = guidance_scale * (step / num_rounds)`.
+        See docs/review/17_sketch_inference_conditioning_and_cfg.md.
 
         Returns {"tokens": [...], "confidence_map": [...]} — a full H*W
         grid where masked positions from THIS round are filled with the
@@ -141,6 +167,9 @@ class MaskGITSketchModel:
         confidence = [0.0] * n
 
         device = next(self.module.parameters()).device
+        if guidance_scale > 0.0 and uncond_embedding is None:
+            uncond_embedding = torch.zeros_like(prompt_embedding)
+
         for step in range(1, num_rounds + 1):
             mask_fraction = cosine_mask_schedule(step, num_rounds)
             # Target CUMULATIVE reveal count by the end of this step — NOT
@@ -166,11 +195,18 @@ class MaskGITSketchModel:
                 logits, critic_scores = self.module(
                     token_tensor, mask_tensor, prompt_embedding=prompt_embedding
                 )
+                if guidance_scale > 0.0:
+                    t_step = guidance_scale * (step / num_rounds)
+                    uncond_logits, _ = self.module(
+                        token_tensor, mask_tensor, prompt_embedding=uncond_embedding
+                    )
+                    logits = (1.0 + t_step) * logits - t_step * uncond_logits
             probs = torch.softmax(logits[0], dim=-1)
             predicted = probs.argmax(dim=-1)
             gen_confidence = probs.max(dim=-1).values
             # Token-Critic gating: don't trust the generator's own softmax
             # alone — combine with the critic head's independent score.
+            # critic_scores stays from the CONDITIONAL forward pass only.
             combined_confidence = (gen_confidence * critic_scores[0]).tolist()
 
             candidates = [i for i in visit_order if tokens[i] == self.mask_token_id]
