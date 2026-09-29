@@ -168,10 +168,23 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         # Polish Quality's offload (mechanism 1 above, same call) where
         # more of the pipeline's weight is outside its single largest
         # submodule. Fits its own 12GB low-VRAM envelope with
-        # approximately zero headroom, same situation as the Critic entry
-        # below — see swap_orchestrator.py's `vram_safety_margin_gb` for
-        # the opt-in mitigation, and validate this split against a real
-        # run before trusting it at the boundary.
+        # approximately zero headroom. UPGRADE: this comment used to say
+        # "same situation as the Critic entry below" — that cross-
+        # reference went stale once Critic's own zero-headroom sizing was
+        # fixed (11.5/45.0, below) and this comment wasn't updated
+        # alongside it. Genuinely different situations, not just an
+        # unfixed duplicate: Critic's GPU-resident target was a
+        # continuously adjustable knob (how much of an LLM stays
+        # resident vs. offloads, with a computable RAM cost per GB
+        # moved), so shading it down and recomputing the RAM side was a
+        # real, justified fix. This tier's 12GB figure is already "the
+        # DiT alone, everything else already offloaded" — there's no
+        # further partial-offload knob to turn without switching to
+        # `enable_sequential_cpu_offload()`'s per-layer latency cost,
+        # which this project has declined elsewhere for the same reason.
+        # See swap_orchestrator.py's `vram_safety_margin_gb` for the
+        # opt-in mitigation, and validate this split against a real run
+        # before trusting it at the boundary.
         vram_gb=12.0, ram_gb=2.0,
         quantization="bf16 (deliberately unquantized) + diffusers enable_model_cpu_offload()",
     ),
