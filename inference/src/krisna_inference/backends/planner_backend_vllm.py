@@ -239,10 +239,27 @@ class PlannerBackendVLLM(PlannerBackend):
             from pathlib import Path as _Path
 
             from krisna_inference.backends.planner_backend import _RAG_CORPUS_RELATIVE_PATH
-            from krisna_inference.backends.planner_rag import UICritRAGIndex
+            from krisna_inference.backends.planner_rag import UICritRAGIndex, resolve_embed_fn_from_env
 
             corpus_path = _Path(self.rag_corpus_dir) / _RAG_CORPUS_RELATIVE_PATH
-            self._rag_index = await asyncio.to_thread(UICritRAGIndex.from_jsonl, corpus_path)
+            # UPGRADE (docs/review/31_planner_retrieval_upgrade.md): same
+            # shared, opt-in embedding resolution as planner_backend.py —
+            # see resolve_embed_fn_from_env's own docstring for why this
+            # is one shared function rather than two copies. A load
+            # failure here is a real configuration bug (the model ships
+            # baked into this image at build time), so the vLLM worker
+            # subprocess — already spawned and loaded by this point — is
+            # torn down too, matching every other failure path in this
+            # method, rather than left running while load() itself fails.
+            try:
+                embed_fn = await asyncio.to_thread(resolve_embed_fn_from_env)
+            except Exception as e:
+                await self._kill()
+                raise BackendLoadError(
+                    f"Planner RAG embedding model failed to load "
+                    f"(KRISNA_PLANNER_RAG_EMBEDDINGS=1): {e}"
+                ) from e
+            self._rag_index = await asyncio.to_thread(UICritRAGIndex.from_jsonl, corpus_path, embed_fn)
         else:
             from krisna_inference.backends.planner_rag import UICritRAGIndex
 
