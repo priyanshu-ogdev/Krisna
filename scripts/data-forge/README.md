@@ -11,6 +11,16 @@ python scripts/data-forge/pin_revisions.py           # dry run
 python scripts/data-forge/pin_revisions.py --apply    # writes real SHAs
 ```
 
+`verify_schemas.py` — pre-flight structural check of every hand-authored
+JSON Schema in `data-forge/configs/schemas/` against the corresponding
+Pydantic model's generated schema (required fields + property
+types/enums, not byte-for-byte, since the static files are deliberately
+simplified). Run it before shipping a `structured_output.py` change:
+
+```bash
+python scripts/data-forge/verify_schemas.py
+```
+
 Everything else about data-forge's automation is its own installed CLI,
 not shell scripts:
 

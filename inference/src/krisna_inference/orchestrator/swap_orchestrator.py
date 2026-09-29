@@ -89,6 +89,17 @@ class SwapOrchestrator:
     load_timeout_s: float = 30.0
     baseline_restore_retries: int = 5   # extra attempts, per policy note (5) above
     backend_factory: Callable[[Any], ModelBackend] = default_backend_factory
+    vram_safety_margin_gb: float = 0.0
+    """Optional extra headroom subtracted from `envelope_gb` before every
+    admission check (see vram_budget.py's _BaseLedger.safety_margin_gb).
+    Defaults to 0.0 — no behavior change from prior versions. Left as an
+    explicit opt-in rather than a nonzero default because at least one
+    registered tier (Critic, low-VRAM mode) is sized to fit its envelope
+    with exactly zero headroom on paper; a nonzero default here would
+    make that tier permanently inadmissible (it has no fallback_tier),
+    which would trade a real problem for a worse one. Operators running
+    close to the edge on real hardware should raise this explicitly, not
+    rely on it being safe by default."""
 
     state: StateMachine = field(init=False)
     registry: dict[Tier, Any] = field(init=False)
@@ -101,7 +112,7 @@ class SwapOrchestrator:
     def __post_init__(self) -> None:
         self.state = StateMachine(ResidencyState.IDLE_RESIDENT)
         self.registry = get_registry(low_vram=self.low_vram)
-        self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry)
+        self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry, safety_margin_gb=self.vram_safety_margin_gb)
         self.ram_ledger = RAMLedger(envelope_gb=self.ram_envelope_gb, registry=self.registry)
         self.backends = {tier: self.backend_factory(spec) for tier, spec in self.registry.items()}
         self._swap_lock = asyncio.Lock()

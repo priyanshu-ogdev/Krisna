@@ -43,6 +43,17 @@ class _BaseLedger:
     registry: dict = field(default_factory=lambda: REGISTRY)
     _resident: dict = field(default_factory=dict)
     _attr: str = "vram_gb"
+    safety_margin_gb: float = 0.0
+    """Extra headroom subtracted from the effective envelope before an
+    admission check. Default 0.0 (no behavior change for existing
+    callers/tests). VRAMLedger sets a non-zero default — see there for
+    why: at least one registered tier (Critic, low-VRAM mode) is sized
+    to fit its envelope with exactly zero headroom on paper, and real
+    GPU memory has overhead (CUDA context, fragmentation, activations)
+    the declared vram_gb estimate doesn't capture. RAMLedger keeps the
+    0.0 default since system RAM doesn't have the same fragmentation
+    risk profile and its estimates already carry their own documented
+    slack (see model_registry.py's RAM-offload comments)."""
 
     @property
     def resident_tiers(self) -> list:
@@ -54,13 +65,13 @@ class _BaseLedger:
 
     @property
     def free_gb(self) -> float:
-        return self.envelope_gb - self.used_gb
+        return self.envelope_gb - self.safety_margin_gb - self.used_gb
 
     def would_fit(self, tier) -> bool:
         spec = self.registry[tier]
         if tier in self._resident:
             return True
-        return self.used_gb + getattr(spec, self._attr) <= self.envelope_gb
+        return self.used_gb + getattr(spec, self._attr) <= self.envelope_gb - self.safety_margin_gb
 
     def admit(self, tier) -> None:
         """Reserve budget for a tier that is about to be loaded. Raises if
@@ -70,7 +81,8 @@ class _BaseLedger:
         if tier in self._resident:
             return
         cost = getattr(spec, self._attr)
-        if self.used_gb + cost > self.envelope_gb:
+        effective_envelope = self.envelope_gb - self.safety_margin_gb
+        if self.used_gb + cost > effective_envelope:
             raise VRAMBudgetExceededError(
                 requested_gb=self.used_gb + cost,
                 budget_gb=self.envelope_gb,

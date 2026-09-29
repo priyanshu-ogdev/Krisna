@@ -9,10 +9,18 @@ against ground truth, not just wired up and hoped to work).
 from __future__ import annotations
 
 
-def compute_loss(logits, critic_scores, targets, mask, critic_loss_weight: float = 0.5):
+def compute_loss(
+    logits, critic_scores, targets, mask, critic_loss_weight: float = 0.5,
+    label_smoothing: float = 0.1,
+):
     """logits: [B, N, vocab_size]. critic_scores: [B, N] in [0,1].
     targets: [B, N] ground-truth token ids (meaningful only where mask=1).
     mask: [B, N] {0,1} float/long — 1 at masked (loss-relevant) positions.
+
+    label_smoothing defaults to 0.1, matching Chang et al. 2022's
+    (MaskGIT) reported training setup — previously this was left at
+    PyTorch's F.cross_entropy default of 0.0, an unintentional deviation
+    caught during a design-sync review, not a considered choice.
 
     Returns (total_loss, token_loss, critic_loss) — all scalars.
     """
@@ -24,7 +32,8 @@ def compute_loss(logits, critic_scores, targets, mask, critic_loss_weight: float
 
     # Token cross-entropy, masked positions only.
     ce = F.cross_entropy(
-        logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), reduction="none"
+        logits.reshape(-1, logits.shape[-1]), targets.reshape(-1),
+        reduction="none", label_smoothing=label_smoothing,
     ).reshape(targets.shape)
     token_loss = (ce * mask_f).sum() / num_masked
 

@@ -29,6 +29,21 @@ optimizer: "adamW"
 use_8bit_adam: true
 mixed_precision: "bf16"
 seed: 0
+# Explicitly pinned to match the DPO stage's `lora-rank: 32`
+# (dpo_z_image_stage1_general.yaml) — previously unset here, silently
+# deferring to whatever train_dreambooth_lora_z_image.py's own default
+# is. Since polish_default_backend.py composes this LoRA with the DPO
+# stage at inference time, an unpinned/uncoordinated rank here risked a
+# capacity mismatch between the two stages. Caught during a design-sync
+# review, not a considered choice originally — see
+# docs/review/02_polish_tier.md for the full writeup. NOTE: confirm this
+# flag name (`rank`) matches whatever version of
+# train_dreambooth_lora_z_image.py is actually vendored into
+# third_party/diffusers before running — diffusers dreambooth-LoRA
+# scripts have used `--rank` consistently across recent releases, but
+# this hasn't been verified against Z-Image's specific script version in
+# this environment (no network access to fetch third_party/diffusers here).
+rank: 32
 
 # --instance_prompt is required by the official script even when per-image
 # captions are used via metadata.jsonl (some script versions still want a

@@ -3,19 +3,46 @@ per image — produced by prepare_dataset.py. Each record is either
 `{"tokens": [...], "caption": "..."}` (inlined, fine for smaller datasets)
 or `{"tokens_path": "shard/0001.npy", "caption": "..."}` (for larger runs
 where inlining every token grid into one JSONL file gets unwieldy).
+
+Records may also carry `"source_caption"`: the original, short, human/
+source-dataset caption (e.g. Screen2Words' ~6.6-word-average summaries),
+distinct from `"caption"` (the dense, VLM-recaptioned description used
+by default). See `caption_mix_ratio` below for why this exists.
 """
 
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 
 
 class SketchTokenDataset:
-    def __init__(self, manifest_path: str | Path, grid_h: int, grid_w: int) -> None:
+    def __init__(
+        self, manifest_path: str | Path, grid_h: int, grid_w: int,
+        caption_mix_ratio: float = 0.95,
+    ) -> None:
+        """caption_mix_ratio: probability of using the dense, VLM-
+        recaptioned `caption` on any given access; the complement uses
+        the original short `source_caption` when one exists for that
+        record (silently falls back to `caption` when it doesn't, e.g.
+        records with no source-dataset label at all).
+
+        Default 0.95 matches Betker et al. 2023's ("Improving Image
+        Generation with Better Captions" / DALL-E 3) reported optimum: a
+        95%/5% synthetic/ground-truth blend, chosen randomly *per
+        training access* (not fixed per image), specifically to
+        regularize against the model overfitting to the VLM captioner's
+        own phrasing/length distribution — which is not what real users
+        type at inference time. See
+        docs/review/09_synthetic_data_audit.md and
+        docs/review/10_synthetic_data_generalization_fix.md for the full
+        writeup of why this exists in this repo specifically.
+        """
         self.manifest_path = Path(manifest_path)
         self.grid_h = grid_h
         self.grid_w = grid_w
+        self.caption_mix_ratio = caption_mix_ratio
         self.records: list[dict] = []
         with self.manifest_path.open() as f:
             for line in f:
@@ -43,4 +70,11 @@ class SketchTokenDataset:
                 f"{expected_len} ({self.grid_h}x{self.grid_w}). Was this "
                 "manifest built for a different grid resolution?"
             )
-        return {"tokens": tokens, "caption": record.get("caption", "")}
+
+        dense_caption = record.get("caption", "")
+        source_caption = record.get("source_caption")
+        if source_caption and random.random() >= self.caption_mix_ratio:
+            caption = source_caption
+        else:
+            caption = dense_caption
+        return {"tokens": tokens, "caption": caption}

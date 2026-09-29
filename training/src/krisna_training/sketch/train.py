@@ -35,7 +35,21 @@ class TrainConfig:
     batch_size: int = 32
     lr: float = 3e-4
     weight_decay: float = 0.01
+    adam_beta1: float = 0.9
+    adam_beta2: float = 0.96            # Chang et al. 2022 (MaskGIT) use Adam
+                                         # (beta1=0.9, beta2=0.96), a lower
+                                         # second-moment decay than PyTorch's
+                                         # default 0.999 — a real stabilization
+                                         # choice for masked-token transformer
+                                         # training, not an arbitrary pick.
+                                         # Previously this fell through to
+                                         # AdamW's default 0.999 unintentionally
+                                         # (no explicit betas= was passed at
+                                         # all) — caught during a design-sync
+                                         # review, not a considered deviation.
     warmup_steps: int = 1000
+    caption_mix_ratio: float = 0.95   # see dataset.py::SketchTokenDataset
+    cfg_dropout_prob: float = 0.1     # see make_collate_fn
     total_steps: int = 100_000
     critic_loss_weight: float = 0.5
     log_every: int = 50
@@ -70,7 +84,22 @@ def build_model_config(cfg: TrainConfig):
     )
 
 
-def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int):
+def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int, cfg_dropout_prob: float = 0.1):
+    """cfg_dropout_prob: probability of replacing a sample's real text
+    embedding with the zero/null embedding, independent of which caption
+    (dense or source) was used. Standard classifier-free-guidance
+    conditioning dropout (Ho & Salimans, 2022, "Classifier-Free Diffusion
+    Guidance") — training the model to also handle unconditional
+    generation is what makes CFG usable at inference at all, and 10% is
+    the commonly-used default in the text-to-image literature this
+    project's own citations doc already draws on (e.g. Imagen, Saharia et
+    al. 2022). Previously this project had NO conditioning-dropout
+    mechanism anywhere — the model only ever saw real captions during
+    training, meaning inference-time CFG (if used) would be running on a
+    model that never learned the unconditional branch it needs. Caught
+    during a design-sync review, not a considered omission — see
+    docs/review/10_synthetic_data_generalization_fix.md.
+    """
     def collate(batch):
         import torch
 
@@ -94,6 +123,9 @@ def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int):
 
         if text_embedder is not None:
             embeds = torch.cat([text_embedder.embed_text(c or "UI design") for c in captions], dim=0)
+            if cfg_dropout_prob > 0:
+                drop = torch.rand(embeds.shape[0]) < cfg_dropout_prob
+                embeds[drop] = 0.0
         else:
             # No embedder configured — zero conditioning (still trains the
             # unconditional token-filling objective, just without style
@@ -125,7 +157,7 @@ def train(cfg: TrainConfig) -> None:
         log.warning("no_cuda_available", extra={"note": "training on CPU will be extremely slow"})
 
     model_cfg = build_model_config(cfg)
-    dataset = SketchTokenDataset(cfg.manifest_path, cfg.grid_h, cfg.grid_w)
+    dataset = SketchTokenDataset(cfg.manifest_path, cfg.grid_h, cfg.grid_w, cfg.caption_mix_ratio)
 
     text_embedder = None
     try:
@@ -141,7 +173,7 @@ def train(cfg: TrainConfig) -> None:
         batch_size=cfg.batch_size,
         shuffle=True,
         num_workers=cfg.num_workers,
-        collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim),
+        collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim, cfg.cfg_dropout_prob),
         drop_last=True,
     )
 
@@ -156,7 +188,10 @@ def train(cfg: TrainConfig) -> None:
             _init_from_smaller_grid(model, model_cfg, cfg.init_from)
         model.to(device)
 
-    optimizer = AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    optimizer = AdamW(
+        model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay,
+        betas=(cfg.adam_beta1, cfg.adam_beta2),
+    )
 
     def lr_lambda(step: int) -> float:
         if step < cfg.warmup_steps:

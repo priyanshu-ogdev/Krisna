@@ -4,7 +4,10 @@ All shell scripts, split by which package they serve. Every script
 assumes it's run from the monorepo root (e.g. `./scripts/inference/
 run_service.sh`, not `cd scripts/inference && ./run_service.sh`).
 
-- **`data-forge/`** — currently empty; data-forge's automation is its own
+- **`data-forge/`** — `pin_revisions.py` (resolves dataset/model revisions
+  to real commit SHAs) and `verify_schemas.py` (checks the hand-authored
+  JSON Schemas in `configs/schemas/` against their Pydantic models — see
+  `data-forge/README.md`). Everything else is data-forge's own installed
   CLI (`data-forge run`, `data-forge manifest ...`), not shell scripts.
 - **`training/`** — env setup (`setup_env_training.sh`,
   `setup_env_critic.sh`, `setup_env_diffusers_training.sh`), dataset prep

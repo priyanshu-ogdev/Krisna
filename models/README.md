@@ -19,12 +19,20 @@ models/
 │       SYNC_DESIGN.md. Not a "trained" artifact — retrieval corpus, not
 │       a checkpoint — kept here anyway since it's the one non-frozen
 │       input the Planner backend needs at load time.)
-└── dpo_checkpoints/            <- future: Z-Image-Turbo DPO-aligned
-                                    checkpoints (Stage 1 general +
-                                    Stage 2 domain, per data-forge's
-                                    dpo_alignment/{general,domain}/ split
-                                    — no DPO trainer is wired up yet, see
-                                    training/README.md's "what's next")
+└── dpo_checkpoints/            <- KRISNA_POLISH_DEFAULT_LORA_PATH (deploy
+                                    a DPO checkpoint the same way as the
+                                    base LoRA — see docs/review/11_scripts_review.md
+                                    for why it's the same env var, not a
+                                    separate one)
+                                    Stage 1 general + Stage 2 domain, per
+                                    data-forge's dpo_alignment/{general,
+                                    domain}/ split. A real, tested trainer
+                                    exists (training/src/krisna_training/
+                                    polish/train_dpo.py, launched via
+                                    scripts/training/train_polish_dpo.sh)
+                                    — this directory just ships empty
+                                    until someone actually runs it, same
+                                    as every other subdirectory here.
 ```
 
 Each subdirectory's own checkpoint format is whatever the training code

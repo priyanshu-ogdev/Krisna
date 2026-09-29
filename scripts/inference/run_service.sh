@@ -14,7 +14,8 @@ if [ "${KRISNA_USE_REAL_BACKENDS:-0}" = "1" ]; then
     if [ "${KRISNA_LOW_VRAM_MODE:-0}" = "1" ]; then
         echo -e "\033[1;35mKRISNA_LOW_VRAM_MODE=1 — targeting a ${KRISNA_VRAM_ENVELOPE_GB:-12.0}GB GPU envelope,\033[0m"
         echo -e "\033[1;35moffloading the rest to system RAM (up to ${KRISNA_RAM_ENVELOPE_GB:-64.0}GB).\033[0m"
-        echo -e "\033[1;35mSee docs/inference/LOW_VRAM_MODE.md for the real cost breakdown —\033[0m"
+        echo -e "\033[1;35mSee docs/architecture/RESEARCH_AND_CITATIONS.md §4 and\033[0m"
+        echo -e "\033[1;35mdocs/review/06_inference_orchestrator.md for the real cost breakdown —\033[0m"
         echo -e "\033[1;35mthe Critic tier's offload alone can need ~40GB system RAM.\033[0m"
     fi
 else
