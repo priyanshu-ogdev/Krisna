@@ -19,7 +19,7 @@ full reasoning + citations behind that split):
 | `sketch/` | Sketch tier (MaskGIT-lineage) | From scratch, two-stage progressive resolution | **Active** |
 | `polish/` | Z-Image-Turbo | LoRA fine-tune (+ Diffusion-DPO, data prepped by `dpo/`) | **Active** |
 | `data_forge_bridge/` | — (not a model) | Re-tokenizes/re-encodes data-forge's raw images through this package's own working tokenizers | **Active** — the only path real training data reaches this package |
-| `dpo/` | — (not a model) | Builds/exports DPO preference-pair data from data-forge's real, human-labeled pairs | **Active** (data prep only — no DPO trainer is wired up yet, see "What's next" below) |
+| `dpo/` | — (not a model) | Builds/exports DPO preference-pair data from data-forge's real, human-labeled pairs | **Active** — data prep + a real, tested trainer (`src/krisna_training/polish/train_dpo.py`), see "DPO alignment" below |
 | `planner/` | Qwen3.5-9B Planner | BF16 LoRA chat-SFT | **Deprecated** — Planner ships frozen (RAG retrieval instead, see `inference/README.md`) |
 | `critic/` | Gemma 4 31B Critic | QLoRA via Unsloth | **Deprecated** — Critic ships frozen (on-demand product feature) |
 
@@ -60,8 +60,8 @@ alignment on top:
 
 # Optional: DPO preference data, prepped from data-forge's real pairs
 ./scripts/training/sync_from_data_forge_dpo.sh <data_forge_data_root>
-# -> populates a local PreferenceStore db — no DPO trainer consumes this
-#    yet, see "What's next" below.
+# -> populates a local PreferenceStore db, consumed by
+#    ./scripts/training/train_polish_dpo.sh below
 ```
 
 **4. Point the inference layer at what you trained** — see
@@ -129,9 +129,52 @@ since that cross-tier contract doesn't exist yet either).
 
 - Training the sketch tier itself (see "Inference layer" above for what
   IS built vs. missing there).
-- The actual DPO training loop consuming `src/krisna_training/dpo/dpo_dataset_export.py`'s
-  output — this repo builds and exports the preference pairs, not the
-  trainer.
+- The two pipeline-specific API details flagged in `train_dpo.py`
+  (`encode_prompt()`'s return shape, the transformer's forward-call
+  signature) aren't independently verified against Z-Image-Turbo's real
+  pipeline class — see the inline comments at those exact call sites.
+- Real training dynamics for `train_dpo.py` against actual weights —
+  the loss math is verified (see below), a live GPU run is not.
+
+## DPO alignment — Diffusion-DPO for a flow-matching model
+
+`training/src/krisna_training/polish/dpo_loss.py` +
+`train_dpo.py` — a real, tested consumer for `dpo/`'s preference-pair
+exports, closing what was previously an open gap in this project. See
+`../docs/architecture/RESEARCH_AND_CITATIONS.md` §4.5 for the full
+derivation: this is **not** the original Diffusion-DPO loss applied
+unmodified (that formulation assumes DDPM-style noise prediction;
+Z-Image-Turbo predicts a flow-matching velocity instead) — it's a
+published, cited adaptation (MotionFlux, arXiv:2508.19527) that
+substitutes velocity-prediction error for noise-prediction error inside
+the same DPO structure, plus an optional flow-matching anchor
+regularization term to guard against reward-hacking-style drift.
+
+**Verified, via real mathematical tests, not just shape checks** (`../tests/training/test_dpo_loss.py`):
+the loss equals exactly `log(2)` when the policy hasn't diverged from the
+reference (the standard closed-form DPO sanity check), rewards/penalizes
+preference alignment correctly in both directions, a real gradient step
+measurably improves the chosen-side prediction, and the flow-matching
+sign convention is self-consistent (predicting the target velocity and
+taking one Euler step from the noised latent exactly recovers the clean
+latent).
+
+**Not verified — needs a real GPU run**: actual training dynamics against
+real Z-Image-Turbo weights, whether the default `beta=2000.0` (carried
+over from Wallace et al.'s SD1.5/SDXL-tuned range) transfers reasonably
+to this model, and two pipeline-specific API details flagged directly in
+`train_dpo.py`'s inline comments (`encode_prompt()`'s return shape, the
+transformer's forward-call signature) that weren't independently checked
+against Z-Image-Turbo's live pipeline code.
+
+```bash
+./scripts/training/sync_from_data_forge_dpo.sh <data_forge_data_root>
+./scripts/training/train_polish_dpo.sh training/configs/dpo_z_image_stage1_general.yaml
+# Stage 2 (UI-domain — DesignSense-10k/DesignPref) has zero usable data
+# right now (see RESEARCH_AND_CITATIONS.md §2.8-2.9) — the yaml's
+# `source` list is the only thing to change once either dataset is
+# actually public.
+```
 
 ## Polish tier training (Z-Image LoRA; Qwen-Image-Edit — honest gap)
 

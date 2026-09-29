@@ -54,6 +54,7 @@ dependencies = [
     # --- Networking ---
     "httpx>=0.27",
     "huggingface-hub>=0.24",
+    "ruamel.yaml>=0.18",  # scripts/pin_revisions.py — comment-preserving YAML edits
 
     # --- Logging ---
     "structlog>=24.4",

@@ -82,31 +82,11 @@ def flow_matching_dpo_loss(
 
     `beta`: the DPO inverse-temperature. Wallace et al. (§5.1) report
     beta in [2000, 5000] working well for SD1.5/SDXL's epsilon-prediction
-    formulation, and this project's default (2000) matches their own
-    SD1.5 setting exactly — a real, verified citation, not a rounded
-    guess.
-
-    UPGRADE — worth weighing before the next real sweep, found while
-    re-verifying this citation directly: beta's optimum is architecture/
-    dataset-dependent, and more recent work sweeping it specifically for
-    models closer to Z-Image-Turbo's own flow-matching/rectified-flow
-    formulation found meaningfully LOWER optimal values than Wallace et
-    al.'s epsilon-prediction setting. Linear-DPO (arXiv:2605.21123,
-    §E.3) swept beta in {100, 250, 500, 1000, 2000} and found the best
-    PickScore at beta=250 for SD1.5 and beta=500 for SDXL — and, more
-    directly relevant here, beta=500 for SD3-M (a flow-matching model,
-    architecturally closer to Z-Image-Turbo than either SD1.5 or SDXL
-    are) on HPSv3. Separately, DeRaDiff (arXiv:2601.20198) demonstrates
-    beta=250 causing visually severe reward-hacking on SDXL — the risk
-    runs in both directions, not just "lower is safer." None of this
-    pins down Z-Image-Turbo's own optimum (still genuinely unknown, no
-    sweep run here), but it's a real, specific reason to treat 2000 as
-    one reasonable starting point among several worth trying, not
-    the presumptive default — a sweep across roughly {250, 500, 1000,
-    2000} on real validation output, mirroring Linear-DPO's own range,
-    is better-motivated than starting from 2000 alone and assuming it
-    transfers from an epsilon-prediction setting. See train_dpo.py's
-    config for how to override it.
+    formulation — kept as this project's default starting point since no
+    Z-Image-Turbo-specific sweep has been run; this is exactly the kind
+    of hyperparameter that needs real tuning against real validation
+    output, not a value to trust blindly. See train_dpo.py's config for
+    how to override it.
 
     `fm_anchor_weight`: 0.0 (disabled) by default — MotionFlux's own
     ablation shows the anchor term stabilizing training against reward-
@@ -157,74 +137,6 @@ def flow_matching_velocity_target(clean_latent: torch.Tensor, noise: torch.Tenso
     train_dreambooth_lora_flux.py), used here rather than re-derived from
     a paper's notation. See module docstring for why the sign matters."""
     return noise - clean_latent
-
-
-def apply_flow_matching_shift(u: torch.Tensor, shift: float) -> torch.Tensor:
-    """UPGRADE (quality/consistency finding, this review pass): rectified-
-    flow / flow-matching models (SD3, FLUX, and — per this project's own
-    citations doc — Z-Image's lineage) are trained and sampled with a
-    RESOLUTION-DEPENDENT timestep shift, not a raw Uniform/logit-normal
-    draw used directly as sigma. Esser et al. 2024 ("Scaling Rectified
-    Flow Transformers for High-Resolution Image Synthesis", the SD3
-    paper), Eq. 23:
-
-        t_shifted = shift * t / (1 + (shift - 1) * t)
-
-    where `shift` is tied to the token-sequence length the model was
-    actually trained at (higher resolution -> more tokens -> larger
-    shift). diffusers' own flow-matching training/inference scripts
-    apply this via the scheduler's configured `shift`
-    (`FlowMatchEulerDiscreteScheduler.config.shift`), not by re-deriving
-    it per batch — that same convention is followed here: `train_dpo.py`
-    reads `shift` off the loaded pipeline's real scheduler config and
-    passes it through to this function, defaulting to 1.0 (the identity
-    — `t_shifted == t`, i.e. exactly the previous unshifted behavior)
-    when the scheduler doesn't declare one, so this is backward-
-    compatible rather than a silent behavior change for any pipeline
-    that doesn't use shifting.
-
-    Why this matters here specifically: the base fine-tune stage
-    (`polish_stage1_default_lora.yaml`, resolution=1024, via diffusers'
-    OFFICIAL train_dreambooth_lora_z_image.py) goes through that
-    script's own scheduler-based sampling, which already applies
-    whatever shift the pretrained scheduler config declares. This DPO
-    script previously used the raw `u` from
-    `compute_density_for_timestep_sampling` directly as `sigma` with NO
-    shift applied at all — a systematic noise-level-distribution
-    mismatch between the two training stages the DPO adapter continues
-    from (finding #2's fix), undermining the very continuity that fix
-    establishes. Reading the shift from the SAME pretrained pipeline
-    both stages load closes this gap without inventing a new value.
-    """
-    if shift == 1.0:
-        return u
-    return shift * u / (1.0 + (shift - 1.0) * u)
-
-
-def ema_warmup_decay(step: int, target_decay: float) -> float:
-    """UPGRADE (finding, this review pass): a fixed EMA decay of e.g.
-    0.9995 applied from step 0 has a half-life of
-    ln(2)/(1-decay) ~= 1386 steps — for a DPO run at the project's own
-    default max-train-steps=1000 (or even a few thousand after the
-    --target-passes rescale), the EMA snapshot used for the FINAL saved
-    adapter would still be meaningfully anchored to the adapter's
-    pre-training (random-init, or "whatever the base fine-tune already
-    was") state rather than having converged toward the DPO-trained
-    weights — defeating the point of adding EMA in the first place.
-    Standard fix, used across widely-deployed diffusion training codebases
-    (e.g. the original Stable Diffusion / diffusers EMA implementations):
-    ramp decay up from a low value early in training rather than pinning
-    it at the target from step 0:
-
-        decay(step) = min(target_decay, (1 + step) / (10 + step))
-
-    At step=0 this gives decay=0.1 (EMA moves almost entirely toward the
-    live weights on the first update), rising smoothly toward
-    target_decay as training progresses — the EMA shadow tracks real
-    progress instead of lagging behind an uninformative initialization
-    for hundreds of steps on a short run.
-    """
-    return min(target_decay, (1.0 + step) / (10.0 + step))
 
 
 def noise_latent_at_timestep(clean_latent: torch.Tensor, noise: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:

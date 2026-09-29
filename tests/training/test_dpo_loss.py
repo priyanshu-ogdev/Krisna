@@ -12,8 +12,7 @@ from __future__ import annotations
 import math
 
 import pytest
-
-torch = pytest.importorskip("torch")
+import torch
 
 from krisna_training.polish.dpo_loss import (
     flow_matching_dpo_loss,

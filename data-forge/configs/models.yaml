@@ -20,7 +20,7 @@ models:
     # with quantization: null / dtype: "auto") before a production run.
     model_id: "QuantTrio/Qwen3.6-35B-A3B-AWQ"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     quantization: "awq"
@@ -44,7 +44,7 @@ models:
     # for this model. Pinned to a third-party requantizer.
     model_id: "QuantTrio/Qwen3.6-27B-AWQ"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     quantization: "awq"
@@ -66,7 +66,7 @@ models:
   ocr:
     model_id: "deepseek-ai/DeepSeek-OCR-2"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     quantization: null                  # Small enough to run at fp16 (~6GB)
@@ -88,7 +88,7 @@ models:
   embeddings:
     model_id: "openai/clip-vit-large-patch14-336"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     dtype: "float16"
@@ -137,7 +137,7 @@ encoders:
     # repo root — engine.py loads it with subfolder="vae" accordingly.
     model_id: "Tongyi-MAI/Z-Image-Turbo"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     dtype: "float16"
@@ -155,7 +155,7 @@ encoders:
   maskgit_vq:
     model_id: "TencentARC/Open-MAGVIT2"
     revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/pin_revisions.py against
+    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
     # this file once network access to Hugging Face is available, before
     # any production-scale training run.
     dtype: "float16"
