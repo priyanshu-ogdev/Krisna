@@ -225,29 +225,44 @@ after checking what's actually documented to work (not assumed):
 **The important, easy-to-miss cost this second mechanism has**:
 bitsandbytes stores the CPU-offloaded portion in **FP32, not 4-bit** — an
 8x per-parameter size increase relative to NF4. For Gemma 4 31B Dense
-(~30.7B params), offloading enough to bring GPU residency down to ~12GB
-means roughly a third of the model's parameters living on the CPU side at
-FP32: **~10B params x 4 bytes ≈ 40GB of system RAM** — not a small
+(~30.7B params), offloading enough to bring GPU residency down to
+~11.5GB (deliberately kept below the 12GB target card for real headroom
+— see `model_registry.py`'s `LOW_VRAM_REGISTRY[Tier.CRITIC]` comment)
+means roughly a third of the model's parameters living on the CPU side
+at FP32: **~11.1B params x 4 bytes ≈ 45GB of system RAM** — not a small
 number, and not proportional to the VRAM saved. This is a real, computed
 lower bound from bitsandbytes' own documented behavior, not a guess — see
 `model_registry.py`'s `LOW_VRAM_REGISTRY` comment for the full math. The
 diffusion-pipeline offload above doesn't have this problem (no fp32
 upcast), which is why `POLISH_QUALITY`'s RAM cost estimate (~10GB) is so
-much smaller than `CRITIC`'s (~40GB) despite `CRITIC`'s smaller VRAM
+much smaller than `CRITIC`'s (~45GB) despite `CRITIC`'s smaller VRAM
 target.
 
 | Tier | Full-VRAM mode | Low-VRAM mode | Offload mechanism |
 |---|---|---|---|
 | Planner | 6.5GB / 0GB RAM | unchanged — already small | none, not needed |
 | Sketch | 3.0GB / 0GB RAM | unchanged — already small | none, not needed |
-| Polish Default (Z-Image-Turbo) | 8.0GB / 0GB RAM | unchanged — already fits 12GB | none, not needed |
+| Polish Default (Z-Image-Turbo) | 14.0GB / 0GB RAM | 12.0GB / 2.0GB RAM | `enable_model_cpu_offload()` — a real but modest saving, since the DiT dominates this pipeline's weight (see the offloading-mechanism discussion above) |
 | Polish Quality (Qwen-Image-Edit-2511) | 16.0GB / 0GB RAM | **~10GB / ~10GB RAM (estimate)** | `enable_model_cpu_offload()` |
-| Critic (Gemma 4 31B) | 18.0GB / 0GB RAM | **~12GB / ~40GB RAM (computed lower bound)** | plain transformers+bnb, `max_memory` + `llm_int8_enable_fp32_cpu_offload` |
+| Critic (Gemma 4 31B) | 18.0GB / 0GB RAM | **11.5GB / 45.0GB RAM (computed, ~0.5GB headroom vs. a 12GB card — see docs/review/06 and 18)** | plain transformers+bnb, `max_memory` + `llm_int8_enable_fp32_cpu_offload` |
+
+UPGRADE: this table previously showed Polish Default at its pre-fix
+`8.0GB` (the registry's declared `quantization` for that tier used to be
+wrong — see `docs/review/13_ram_offload_and_precision_audit.md` for the
+full story) and Critic at its pre-headroom-fix `~12GB/~40GB` (zero
+headroom against its own 12GB target — see `docs/review/06` and the
+several review phases that found this exact fix reverting and reapplied
+it). Both corrected here to match `model_registry.py`'s actual current
+values, not re-described from memory.
 
 Two configurable env vars for the Critic specifically:
-`KRISNA_CRITIC_MAX_GPU_GB` (default `12.0`), `KRISNA_CRITIC_MAX_CPU_GB`
+`KRISNA_CRITIC_MAX_GPU_GB` (default `11.5` — deliberately kept below the
+12GB target card rather than equal to it, to leave real headroom for
+CUDA context/fragmentation/activation memory; must be changed together
+with `LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb` in `model_registry.py` if
+you override it), `KRISNA_CRITIC_MAX_CPU_GB`
 (default `64`) — raise the CPU cap if your box has more RAM than the
-default assumes, or lower the GPU cap further if 12GB is still too much
+default assumes, or lower the GPU cap further if 11.5GB is still too much
 for your card (at the cost of an even larger RAM requirement, per the
 math above).
 
@@ -255,7 +270,7 @@ math above).
 themselves (which diffusers/bitsandbytes APIs to call, and which
 combination is safe) are verified against real documentation and known
 GitHub issues, not guessed. The exact `vram_gb`/`ram_gb` numbers in
-`LOW_VRAM_REGISTRY` are reasoned estimates (Critic's ~40GB figure is a
+`LOW_VRAM_REGISTRY` are reasoned estimates (Critic's ~45GB figure is a
 computed lower bound from documented behavior; Polish Quality's ~10GB/
 ~10GB is a rough estimate, not a benchmark) — validate against a real run
 on your actual hardware and adjust the registry numbers to match what you
