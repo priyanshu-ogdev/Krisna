@@ -309,15 +309,81 @@ Documented here rather than silently resolved one way or the other:
   as a prompt-level instruction, not a genuine differential-diffusion
   mask parameter — diffusers' locked-region API for this pipeline family
   was still moving as of this build.
-- **No DPO trainer is wired up yet.** `training/src/krisna_training/dpo/`
-  builds and exports real preference-pair data (from data-forge's
-  human-labeled sources, §2 above); nothing in this repo currently
-  consumes that export to actually run a Diffusion-DPO training loop
-  against Z-Image-Turbo.
+- **`train_dpo.py`'s `encode_prompt()` return shape and the transformer's
+  forward-call signature are not independently verified against
+  Z-Image-Turbo's specific pipeline class** — flagged inline in the code
+  itself (same discipline as the `strength` kwarg above). The loss math
+  driving the training loop is verified (§4.5 below); this specific
+  pipeline-calling-convention detail is not, and needs a real
+  `Tongyi-MAI/Z-Image-Turbo` pipeline inspection to nail down before a
+  production run.
 
 ---
 
-## Citation index (for quick lookup)
+## 4.5 Diffusion-DPO for a flow-matching model — closing a previously-open gap
+
+**The gap, as it stood**: `training/src/krisna_training/dpo/` built and
+exported real preference-pair data (§2's human-labeled sources), but
+nothing consumed it — there was no trainer.
+
+**Why this isn't "just apply Diffusion-DPO"**: the original formulation
+(Wallace et al., "Diffusion Model Alignment Using Direct Preference
+Optimization", CVPR 2024, Eq. 46) is derived for DDPM-style models
+predicting **noise** (epsilon). Z-Image-Turbo is a **flow-matching**
+model predicting a **velocity** — a different prediction target with
+different loss geometry. The DDPM-derived loss doesn't transfer
+unmodified.
+
+**The adaptation used, verified against real published precedent, not
+invented for this project**: MotionFlux (Bin et al., arXiv:2508.19527,
+§3.6) applies exactly the substitution needed — replacing the epsilon-
+prediction squared-error terms in Wallace et al.'s sigmoid-of-difference
+structure with velocity-prediction squared-error terms — to align a
+rectified-flow-matching motion-generation model via DPO, citing Wallace
+et al. as its own base formulation. The same paper also documents a real
+failure mode (reward-hacking-style drift from the pretraining
+distribution when optimizing DPO on a diffusion/flow model in isolation)
+and addresses it with a flow-matching anchor regularization term — also
+implemented here (`fm_anchor_weight`, off by default pending a real
+sweep).
+
+**What was verified vs. what needs a real GPU run**:
+- **Verified, via genuine mathematical tests** (`tests/training/
+  test_dpo_loss.py`), not just shape/smoke checks: the loss equals
+  exactly `log(2)` when the policy hasn't diverged from the reference (the
+  standard DPO closed-form sanity check — true for any correctly-
+  implemented DPO-family loss), the loss correctly rewards the policy
+  fitting the chosen sample better than the reference and correctly
+  penalizes the opposite, a real gradient step measurably moves the
+  chosen-side prediction toward its target, the anchor term's on/off
+  behavior, and — specific to the flow-matching adaptation — that the
+  velocity-target and noising-interpolant sign conventions are mutually
+  consistent (predicting the target velocity and taking one Euler step
+  from the noised latent recovers the original clean latent exactly).
+- **Sign/target convention**: `target = noise - clean_latent`, matching
+  diffusers' own `train_dreambooth_lora_sd3.py`/`train_dreambooth_lora_
+  flux.py` scripts — deliberately not hand-derived from a paper's own
+  notation (papers disagree on which endpoint is t=0 vs t=1; getting this
+  backwards would be a silent, serious bug).
+- **API surface used to wire the loop together** (`transformer.
+  add_adapter(LoraConfig(...))`, `model.save_pretrained()` once PEFT-
+  wrapped): confirmed real via direct research — a diffusers maintainer's
+  own bug-report example calls `add_adapter()` on a real diffusers
+  transformer model (github.com/huggingface/peft/issues/2494), and
+  PEFT's own quickstart confirms `save_pretrained()` as the standard
+  save call afterward. An earlier draft used an unconfirmed
+  `save_lora_adapter()` method name that was never found documented
+  anywhere in the same research pass — caught and replaced before it
+  could ship as an untested guess.
+- **Not verified, and can't be from this environment**: real training
+  dynamics against actual Z-Image-Turbo weights, whether the default
+  `beta=2000.0` (Wallace et al.'s own SD1.5/SDXL-tuned range) transfers
+  reasonably to this model, and the two pipeline-specific API details
+  flagged above.
+
+---
+
+## 5. Open questions this project deliberately leaves open
 
 | Source | What it verified |
 |---|---|
@@ -337,3 +403,6 @@ Documented here rather than silently resolved one way or the other:
 | `diffusers` GitHub issue #10800 | `enable_sequential_cpu_offload()` incompatible with bnb NF4; `enable_model_cpu_offload()` confirmed working |
 | `transformers`/`bitsandbytes` documentation (`BitsAndBytesConfig`) | `llm_int8_enable_fp32_cpu_offload` requirement and FP32 CPU-storage behavior |
 | Unsloth issue tracker | No documented CPU-offload support |
+| Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization" (CVPR 2024) | Original Diffusion-DPO formulation (DDPM/noise-prediction), `beta` range |
+| Bin et al., MotionFlux (arXiv:2508.19527) | Velocity-prediction DPO substitution for flow-matching models, flow-matching anchor regularization |
+| `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |

@@ -84,15 +84,30 @@ silently skipping with no signal.
   "confirmed against the live repo." Confirm before a production-scale
   run, same discipline as every other unverified item flagged throughout
   this pipeline.
-- **Model-revision pinning.** Every `revision: "main"` in
-  `models.yaml`/`datasets.yaml` is unpinned by design (this repo was
+- **Model-revision pinning — RESOLVED.** Every `revision: "main"` in
+  `models.yaml`/`datasets.yaml` was unpinned by design (this repo was
   built without live network access to resolve real commit SHAs).
-  **`scripts/pin_revisions.py` is referenced throughout this codebase's
-  comments as the fix but was never actually written** — this is a real,
-  pre-existing gap, not something the monorepo restructuring broke.
-  Before a production run: either write that script (walk
-  `models.yaml`/`datasets.yaml`, resolve each `revision: "main"` to a
-  real commit SHA via the HuggingFace API, rewrite in place), or pin
+  **`scripts/data-forge/pin_revisions.py` now exists** — it was
+  referenced throughout this codebase's comments for a long time as the
+  fix but never actually written; it's real now, not just documented.
+  Verified: correctly resolves every real pinnable entry (6 in
+  `models.yaml`, all `source_type: "huggingface"` entries in
+  `datasets.yaml` with a non-null `repo_id`) via the HuggingFace API,
+  skips already-pinned entries and `repo_id: null` entries (DesignSense-
+  10k/DesignPref) without erroring, and — the part that would have
+  shipped a real bug if untested — produces a byte-for-byte no-op
+  round-trip on everything it doesn't touch and a single-line, comment-
+  preserving diff on what it does (an earlier draft of this script
+  silently reformatted every list in both files and turned `null` values
+  into empty scalars on every run, a real `ruamel.yaml` default-settings
+  quirk, caught by literally diffing a load-then-dump round trip against
+  the untouched file before trusting it). See
+  `../../tests/data_forge/test_pin_revisions.py`.
+
+  ```bash
+  python scripts/data-forge/pin_revisions.py           # dry run, prints only
+  python scripts/data-forge/pin_revisions.py --apply    # writes real SHAs
+  ```
   manually.
 
 ---

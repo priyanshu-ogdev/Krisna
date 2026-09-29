@@ -125,17 +125,14 @@ class TestResolveDatasetRevisions:
 
 
 class TestResolveModelRevisions:
-    def test_finds_all_five_real_pinnable_entries(self):
-        """Five, not six: encoders.maskgit_vq was removed (sync audit item
-        #1) — the encoder had no working implementation and its only
-        caller was deleted along with it."""
+    def test_finds_all_six_real_pinnable_entries(self):
         with patch("huggingface_hub.HfApi", return_value=_fake_api()):
             results = pin_revisions.resolve_model_revisions(REAL_MODELS_YAML, only=None, apply=False)
 
         keys = {r["key"] for r in results}
         assert keys == {
             "models.tier1", "models.tier2", "models.ocr", "models.embeddings",
-            "encoders.z_image_vae",
+            "encoders.z_image_vae", "encoders.maskgit_vq",
         }
 
     def test_product_planner_has_no_revision_field_and_is_not_touched(self):
@@ -153,7 +150,7 @@ class TestResolveModelRevisions:
         original_lines = target.read_text().splitlines()
 
         with patch("huggingface_hub.HfApi", return_value=_fake_api("modelTestSha777")):
-            results = pin_revisions.resolve_model_revisions(target, only={"encoders.z_image_vae"}, apply=True)
+            results = pin_revisions.resolve_model_revisions(target, only={"encoders.maskgit_vq"}, apply=True)
 
         assert results[0]["status"] == "resolved"
         new_lines = target.read_text().splitlines()
