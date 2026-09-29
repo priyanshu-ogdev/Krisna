@@ -45,15 +45,19 @@ class _BaseLedger:
     _attr: str = "vram_gb"
     safety_margin_gb: float = 0.0
     """Extra headroom subtracted from the effective envelope before an
-    admission check. Default 0.0 (no behavior change for existing
-    callers/tests). VRAMLedger sets a non-zero default — see there for
-    why: at least one registered tier (Critic, low-VRAM mode) is sized
-    to fit its envelope with exactly zero headroom on paper, and real
-    GPU memory has overhead (CUDA context, fragmentation, activations)
-    the declared vram_gb estimate doesn't capture. RAMLedger keeps the
-    0.0 default since system RAM doesn't have the same fragmentation
-    risk profile and its estimates already carry their own documented
-    slack (see model_registry.py's RAM-offload comments)."""
+    admission check. Defaults to 0.0 for both ledgers — no behavior
+    change unless a caller opts in. Left as an explicit opt-in rather
+    than a nonzero default because at least one registered tier (Critic,
+    low-VRAM mode) is sized to fit its envelope with exactly zero
+    headroom on paper; a nonzero default here would make that tier
+    permanently inadmissible (it has no fallback_tier), trading a real
+    problem for a worse one. See swap_orchestrator.py's
+    `vram_safety_margin_gb` for the caller-facing opt-in and the same
+    reasoning in full. Real GPU memory has overhead (CUDA context,
+    fragmentation, activations) the declared vram_gb estimate doesn't
+    capture, so operators running close to the edge on real hardware
+    should raise this explicitly rather than assume it's safe by
+    default."""
 
     @property
     def resident_tiers(self) -> list:

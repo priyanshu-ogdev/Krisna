@@ -151,7 +151,7 @@ data-forge manifest query --status excluded_pending_review
 
 All configuration lives in `configs/`:
 - `pipeline.yaml` — stage toggles, thresholds, paths, chunk sizes, storage estimates
-- `models.yaml` — pinned model versions, quant settings, VRAM budgets. Only `z_image_vae` and `maskgit_vq` encoders — no `qwen_image_vae`, no `critic` model entry (both removed; those models are frozen, data-forge never loads them)
+- `models.yaml` — pinned model versions, quant settings, VRAM budgets. Only `z_image_vae` remains as an encoder — no `qwen_image_vae`, no `critic` model entry (both removed; those models are frozen, data-forge never loads them), and `maskgit_vq` was removed (sync audit item #1: it never had a working implementation, and its only caller was dead code — see `docs/review/01_sketch_tier.md`)
 - `datasets.yaml` — 15 registered sources; see the table below
 
 Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.

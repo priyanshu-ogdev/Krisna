@@ -6,28 +6,29 @@ own training packages expect (`training/sketch/dataset.py`,
 Two real format mismatches were found while building this, not papered
 over:
 
-1. **Sketch tier's VQ tokenizer identity doesn't match.** data-forge's
-   `sketch_tier_maskgit/vq_tokens/*.pt` files come from `maskgit_vq`
-   (TencentARC/Open-MAGVIT2) — but that encoder's own loading code in
-   data-forge's `engine.py` raises `RuntimeError` on purpose, because
-   Open-MAGVIT2 needs a custom `.encode()`/`.decode()` wrapper that
-   hasn't been built and verified there yet (see that file's own comment:
-   "AutoModel.from_pretrained(..., trust_remote_code=True) is not
-   confirmed to work against this repo"). Meanwhile, THIS project's
+1. **Sketch tier's VQ tokenizer identity didn't match, and data-forge's
+   side has since been deleted rather than fixed.** data-forge used to
+   produce `sketch_tier_maskgit/vq_tokens/*.pt` via a `maskgit_vq`
+   encoder (TencentARC/Open-MAGVIT2) — but that encoder's loading code in
+   data-forge's `engine.py` raised `RuntimeError` on purpose, on every
+   single call, because Open-MAGVIT2 needs a custom `.encode()`/
+   `.decode()` wrapper that was never built. THIS project's
    `training/sketch/vq_tokenizer.py` uses a different, real, verified-
-   working tokenizer (`boris/vqgan_f16_16384`). The two are incompatible
-   token spaces — you cannot decode Open-MAGVIT2 tokens with the
-   boris/vqgan_f16_16384 decoder or vice versa.
+   working tokenizer (`boris/vqgan_f16_16384`) — an incompatible token
+   space even if the other encoder had worked.
 
    `sync_sketch_tier.py` resolves this the honest way: it does NOT
-   consume data-forge's `.pt` VQ tokens at all. It re-tokenizes
-   data-forge's raw `images/` (linked by data-forge's export — see the
-   data-forge-side fix that added this) through THIS project's own
-   working `VQTokenizer`. This is real, extra encode time you wouldn't
-   need if both sides agreed on one tokenizer — flagged here rather than
-   silently accepted, since "why are we re-tokenizing images data-forge
-   already tokenized" is a fair question whose answer is "because the
-   other tokenizer doesn't actually work yet."
+   consume data-forge's VQ tokens. It re-tokenizes data-forge's raw
+   `images/` (linked by data-forge's export) through THIS project's own
+   working `VQTokenizer`. Sync audit item #1 removed the dead
+   `maskgit_vq` encoder, its config entry, and its only caller entirely
+   from data-forge (see that project's `models.yaml`,
+   `inference/engine.py`, `stages/s08_encoding.py`) rather than fixing
+   the wrapper — nothing on this side ever depended on it, and the dead
+   branch was additionally causing every `ui_first` record to fail
+   data-forge's own completeness check (see
+   `docs/review/01_sketch_tier.md` for the full history). This project's
+   re-tokenize step is unchanged and still the source of truth.
 
 2. **Z-Image-Turbo's precomputed latents have no consumer.** Same root
    cause as #1's fix on the data-forge side: the OFFICIAL diffusers

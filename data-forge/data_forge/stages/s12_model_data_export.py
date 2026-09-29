@@ -11,8 +11,7 @@ exports the frozen models and the paper's evaluation actually need:
 
     model_data/
       sketch_tier_maskgit/
-        vq_tokens/                 <- ui_first records only, complete encodings only
-        images/                    <- matching scrubbed images
+        images/                    <- ui_first records only, complete encodings only
         captions.jsonl             <- {record_id, caption, image_filename}; image_filename
                                        is the actual join key for filename-keyed consumers —
                                        record_id is a random uuid4, unrelated to the linked
@@ -114,15 +113,16 @@ class ModelDataExportStage(Stage):
             r for r in manifest.get_training_pool()
             if r.domain == "ui_first" and is_encoding_complete(r)
         ]
-        linked = 0
         images_linked = 0
         captions = []
         for rec in records:
-            if "vq_tokens" in (rec.encoding_paths or {}):
-                src = config.data_root / rec.encoding_paths["vq_tokens"]
-                if src.exists():
-                    link_or_copy(src, model_dir / "vq_tokens" / src.name)
-                    linked += 1
+            # REMOVED: vq_tokens/ linking. Sync audit item #1 — data-forge's
+            # maskgit_vq encoder (and s08_encoding.py's branch that called
+            # it) is gone, so rec.encoding_paths never has a "vq_tokens" key
+            # anymore. Images are still linked below, which is what
+            # training/data_forge_bridge/sync_sketch_tier.py actually reads
+            # (it re-tokenizes raw images through boris/vqgan_f16_16384
+            # rather than consuming this folder's vq_tokens/).
             # BUG FIX: consumers joining this file back to the linked
             # images/ directory need the ACTUAL linked filename, not
             # record_id — rec.id is a random uuid4 (see manifest.py's
@@ -141,16 +141,12 @@ class ModelDataExportStage(Stage):
             if rec.scrubbed_image_path:
                 src = config.data_root / rec.scrubbed_image_path
                 if src.exists():
-                    # Linked alongside vq_tokens/ — a consumer whose VQ
-                    # tokenizer doesn't match maskgit_vq's codebook (Open-
-                    # MAGVIT2's actual .encode()/.decode() wrapper is still
-                    # unverified — see engine.py's own RuntimeError for it)
-                    # needs the raw image to re-tokenize with a different,
-                    # working tokenizer instead. Previously this export
-                    # only linked vq_tokens/, which meant "sketch_tier_
-                    # maskgit is a complete training folder" wasn't
-                    # actually true for any consumer that couldn't load
-                    # those .pt files.
+                    # Raw images are the actual training input: training's
+                    # data_forge_bridge (sync_sketch_tier.py) re-tokenizes
+                    # these through the real tokenizer (boris/vqgan_f16_
+                    # 16384) rather than reading a vq_tokens/ folder — the
+                    # data-forge-native maskgit_vq encoding path has been
+                    # removed entirely (see s08_encoding.py, models.yaml).
                     link_or_copy(src, model_dir / "images" / src.name)
                     images_linked += 1
                     image_filename = src.name
@@ -181,10 +177,9 @@ class ModelDataExportStage(Stage):
         )
         self._write_summary(model_dir, {
             "records": len(records),
-            "vq_tokens_linked": linked,
             "images_linked": images_linked,
         })
-        return {"linked": linked, "records": len(records)}
+        return {"linked": images_linked, "records": len(records)}
 
     def _export_zimage(self, manifest: Manifest, config: PipelineConfig, root) -> dict[str, int]:
         model_dir = root / "polish_zimage_turbo"

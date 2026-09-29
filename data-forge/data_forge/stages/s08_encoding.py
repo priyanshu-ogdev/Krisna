@@ -125,42 +125,34 @@ class EncodingStage(Stage):
                 # (see s08_5_dpo_encoding.py's docstring for why those are
                 # kept separate).
 
-                # Branch 2 (was 3): Sketch Tier VQ Tokens
-                # BUG FIX / COMPLETENESS GAP: this branch had no domain
-                # check at all — it ran for every record regardless of
-                # domain, including general_design (PD12M/CC12M-sourced)
-                # images that will never be used to train the sketch tier,
-                # which the PRD explicitly scopes as UI-domain-only. That
-                # wasted a meaningful amount of GPU time and disk space
-                # (VQ tokens for records with no possible use) at this
-                # pipeline's target corpus scale. general_design records
-                # legitimately end up with three artifacts instead of
-                # four — that's correct, not a completeness gap; see
-                # docs/DATA_COMPLETENESS.md for why the "encoding
-                # complete" check below only requires vq_tokens for
-                # ui_first records specifically.
-                if rec.domain == "ui_first":
-                    try:
-                        vq_model = engine.get_encoder("maskgit_vq")
-                        vq_tensor = image_to_tensor(image).unsqueeze(0).to("cuda", dtype=torch.float16)
-                        with torch.no_grad():
-                            vq_output = vq_model.encode(vq_tensor)
-                            # Handle different VQ model output formats
-                            if isinstance(vq_output, tuple):
-                                vq_tokens = vq_output[0]
-                            elif hasattr(vq_output, "encoding_indices"):
-                                vq_tokens = vq_output.encoding_indices
-                            else:
-                                vq_tokens = vq_output
+                # REMOVED: "Branch 2 (was 3): Sketch Tier VQ Tokens" via
+                # data-forge's own `maskgit_vq` (Open-MAGVIT2) encoder.
+                # UPGRADE (sync audit item #1): this branch was dead code —
+                # engine.py's maskgit_vq loader always raised RuntimeError
+                # by design (Open-MAGVIT2 isn't a transformers-native repo),
+                # so the try/except here caught that failure on every single
+                # ui_first record and silently produced zero vq_tokens.
+                # That in turn meant `is_encoding_complete()`
+                # (utils/completeness.py) was False for every ui_first
+                # record, which meant s09_heldout excluded ALL of them as
+                # "encoding_incomplete" and s12_model_data_export's
+                # `_export_sketch_tier` / training-pool filters produced an
+                # EMPTY sketch tier every run — silent, pipeline-wide data
+                # loss for the entire ui_first domain, not just an orphaned
+                # config entry. Also, even had this branch succeeded, its
+                # output was never consumed: training's data_forge_bridge
+                # (`sync_sketch_tier.py`) re-tokenizes the raw, linked
+                # `images/` through the real training tokenizer
+                # (`boris/vqgan_f16_16384`) instead of reading vq_tokens/.
+                # Fix is the encoder deletion (models.yaml), the loader
+                # deletion (engine.py), and dropping `vq_tokens` from
+                # utils/completeness.py's `_REQUIRED_UI_FIRST_ONLY` set so
+                # ui_first records are no longer required to have an
+                # artifact nothing produces or consumes anymore. See
+                # docs/review/01_sketch_tier.md and
+                # docs/DATA_COMPLETENESS.md for the full history.
 
-                        vq_path = paths["vq_tokens_sketch"] / f"{rec.id}.pt"
-                        torch.save(vq_tokens.cpu(), str(vq_path))
-                        encoding_paths["vq_tokens"] = str(vq_path.relative_to(config.data_root))
-                        record_bytes += vq_path.stat().st_size
-                    except Exception as e:
-                        log.warning("vq_encode_failed", record_id=rec.id, error=str(e))
-
-                # Branch 3 (was 4): Control Maps (Layout JSON from Stage 6 + Canny edges)
+                # Branch 2 (was 3, was 4): Control Maps (Layout JSON from Stage 6 + Canny edges)
                 try:
                     stage_cfg = config.get_stage("s08_encoding")
                     canny_low = stage_cfg.get("canny_low_threshold", 50)
