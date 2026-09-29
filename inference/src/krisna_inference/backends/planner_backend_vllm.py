@@ -195,12 +195,11 @@ class PlannerBackendVLLM(PlannerBackend):
         self._proc.stdin.write(request)
         self._proc.stdin.flush()
 
-        if sys.platform != "win32":
-            ready, _, _ = select.select([self._proc.stdout], [], [], effective_timeout)
-            if not ready:
-                raise BackendLoadError(
-                    f"Planner (vLLM) worker '{cmd}' timed out after {effective_timeout}s"
-                )
+        ready, _, _ = select.select([self._proc.stdout], [], [], effective_timeout)
+        if not ready:
+            raise BackendLoadError(
+                f"Planner (vLLM) worker '{cmd}' timed out after {effective_timeout}s"
+            )
         line = self._proc.stdout.readline()
         if not line:
             stderr_tail = self._proc.stderr.read()

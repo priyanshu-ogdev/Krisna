@@ -62,6 +62,13 @@ REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5,
         quantization="4-bit (fast mode: Qwen3.5-4B available)",
         always_resident=True,
+        # NOTE for the opt-in vLLM path (KRISNA_PLANNER_BACKEND=vllm, see
+        # planner_backend_vllm.py): vLLM's own gpu_memory_utilization is a
+        # fraction of the REAL, live GPU's total memory, computed FROM
+        # this vram_gb value at load time (not hardcoded) — see that
+        # backend's load() docstring. This declared vram_gb is still the
+        # single source of truth either way; only how it gets translated
+        # into a concrete admission check differs by backend.
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="UI-domain MaskGIT/MaskGIL sketch tier",
@@ -300,7 +307,9 @@ class MockBackend(ModelBackend):
     load_latency_s: float = 0.01
     unload_latency_s: float = 0.005
     fail_loads: int = 0          # number of times load() should raise OOM before succeeding
+    fail_runs: int = 0           # number of times run() should raise OOM before succeeding
     _load_attempts: int = field(default=0, init=False)
+    _run_attempts: int = field(default=0, init=False)
     _loaded: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
@@ -323,6 +332,12 @@ class MockBackend(ModelBackend):
     async def run(self, **kwargs):
         if not self._loaded:
             raise RuntimeError(f"{self.spec.name} is not loaded")
+        self._run_attempts += 1
+        if self._run_attempts <= self.fail_runs:
+            raise OOMSimulatedError(
+                f"[mock] simulated OOM running {self.spec.name} "
+                f"(attempt {self._run_attempts}/{self.fail_runs})"
+            )
         await asyncio.sleep(0.01)
         base = {"tier": self.spec.tier.value, "mock_output": True, "input_echo": kwargs}
 
@@ -334,6 +349,12 @@ class MockBackend(ModelBackend):
         # orchestration layer.
         if self.spec.tier == Tier.PLANNER:
             base["reply_text"] = "(mock planner reply)"
+            base["design_state_delta"] = {
+                "stage": "sketching",
+                "constraint_updates": kwargs.get("constraints") or {},
+                "tool_call": None,
+                "reasoning_note": "Proceeding with current constraints.",
+            }
         elif self.spec.tier == Tier.SKETCH:
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
             base["vq_tokens_ref"] = f"vq_grid::{hash(str(rev)) & 0xFFFF:x}"
