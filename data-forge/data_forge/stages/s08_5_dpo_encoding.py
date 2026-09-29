@@ -1,5 +1,24 @@
 """Stage 8.5: DPO Latent Encoding.
 
+DISABLED BY DEFAULT (configs/pipeline.yaml `s08_5_dpo_encoding.enabled:
+false`) — confirmed, this pass, to have zero real consumers anywhere in
+training/ or inference/. `train_dpo.py` resolves chosen_ref/rejected_ref
+through the shared BlobStore and re-encodes from raw images itself
+(`vae.encode(batch["chosen_pixel_values"]...)`), the same way
+sync_sketch_tier.py bypasses the Sketch tier's own data-forge encoding.
+Every enabled run of this stage was spending real GPU-encode time and
+disk space on `.safetensors` latents nothing reads — see
+docs/review/02_polish_tier.md's original finding (same orphaned-producer
+shape as the removed `maskgit_vq` stage) and
+docs/review/15_data_forge_finalization.md for this pass's disposition.
+Left in the codebase rather than deleted outright, unlike maskgit_vq,
+because there's a real option worth deciding on deliberately rather than
+foreclosing: wiring this into train_dpo.py as a fast path (skip live
+VAE-encoding when precomputed latents already exist) would be a genuine
+speed win if DPO training ever becomes GPU-time-constrained. Re-enable
+only after that wiring exists, or for a specific one-off analysis that
+needs the latents directly — not for a normal pipeline run.
+
 Encodes the deduped, face-blurred preference pairs from
 s01_6_preference_pairs.py into Z-Image-Turbo's latent space, ready for a
 standard Diffusion-DPO training loop.

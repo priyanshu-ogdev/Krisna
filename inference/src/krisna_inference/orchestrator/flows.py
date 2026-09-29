@@ -66,6 +66,7 @@ async def finalize(
     handoff_hook: Any = None,
     verifier_stack: Any = None,
     prompt: str | None = None,
+    min_safety_score: float = 0.9,
 ) -> DesignState:
     """§5.3 'Finalize'.
 
@@ -79,11 +80,24 @@ async def finalize(
 
     `verifier_stack`, if given (a verifiers.verifier_stack.VerifierStack),
     is run against the polished output per §5.3's Finalize diagram
-    ("Polish Tier generates -> Verifier Stack scores output -> ..."),
-    populating finalize_output.verifier_scores for real. Left as None by
-    default so this function stays usable with MockBackend/no torch
+    ("Polish Tier generates -> Verifier Stack scores output -> ...");
+    populates finalize_output.verifier_scores AND enforces
+    VerifierStack.safety_gate() before the image is ever handed back to
+    the caller — that gate existed as a method on VerifierStack but was
+    never actually invoked anywhere in this flow, silently making it
+    dead code and the "gate" description in its own docstring untrue:
+    an unsafe image would previously have finalized successfully with a
+    low `safety` reading buried in an unused field, never a blocked
+    result. Fixed here rather than left as a documented-but-unenforced
+    intention — see docs/review/14_safety_gate_wiring.md. Left as None
+    by default so this function stays usable with MockBackend/no torch
     installed — pass a real VerifierStack only when you actually want
-    scoring (it needs torch/transformers/opencv/easyocr).
+    scoring AND the safety gate (it needs torch/transformers/opencv/
+    easyocr).
+
+    `min_safety_score` is forwarded to `VerifierStack.safety_gate()`
+    unchanged (default 0.9, matching that method's own default) — only
+    meaningful when `verifier_stack` is not None.
     """
     state = store.get(session_id)
     expected_rev = state.revision
@@ -129,6 +143,26 @@ async def finalize(
     verifier_scores = dict(output.get("verifier_scores", {}))
 
     if verifier_stack is not None and state.finalize_output.image_ref.startswith("blob://"):
+        passed, safety_score = _check_safety_gate(
+            verifier_stack, image_ref=state.finalize_output.image_ref, min_safety_score=min_safety_score
+        )
+        if not passed:
+            # Mirrors the `not result.ok` rollback above exactly — stage
+            # goes back to SKETCHING rather than FINALIZED, and this
+            # raises before verifier_scores are even attached, so the
+            # caller never receives a finalize_output for an image that
+            # failed the safety gate. The image itself stays on disk
+            # (blob store has no delete-on-reject path today — out of
+            # scope for this fix, but worth flagging: a rejected blob is
+            # currently orphaned, not purged).
+            state.stage = SessionStage.SKETCHING
+            state.touch()
+            store.save(state, expected_rev)
+            raise FlowError(
+                f"Finalize blocked for session {session_id}: safety gate failed "
+                f"(score={safety_score:.3f} < {min_safety_score})"
+            )
+
         verifier_scores.update(
             _run_verifier_stack(
                 verifier_stack,
@@ -146,6 +180,15 @@ async def finalize(
     state.stage = SessionStage.FINALIZED
     state.touch()
     return store.save(state, expected_rev)
+
+
+def _check_safety_gate(
+    verifier_stack: Any, image_ref: str, min_safety_score: float
+) -> tuple[bool, float]:
+    from krisna_inference.backends.blob_store_singleton import get_blob_store
+
+    polished_image = get_blob_store().load_image(image_ref)
+    return verifier_stack.safety_gate(polished_image, min_safety_score=min_safety_score)
 
 
 def _run_verifier_stack(
