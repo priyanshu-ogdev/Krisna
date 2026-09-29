@@ -50,12 +50,28 @@ async def conversational_turn(
     state.append_turn("planner", str(planner_reply))
 
     sketch_out = result["sketch"]
-    state.sketch_tokens.vq_tokens = sketch_out.get("vq_tokens_ref", state.sketch_tokens.vq_tokens)
+    new_vq_tokens_ref = sketch_out.get("vq_tokens_ref")
+    state.sketch_tokens.vq_tokens = new_vq_tokens_ref or state.sketch_tokens.vq_tokens
     state.sketch_tokens.confidence_map = sketch_out.get(
         "confidence_map_ref", state.sketch_tokens.confidence_map
     )
     state.sketch_tokens.revision += 1
-    state.stage = SessionStage.SKETCHING
+    # BUG FIX: this used to set stage=SKETCHING unconditionally, on every
+    # conversational turn, even if `sketch_out` carried no new
+    # `vq_tokens_ref` at all. In the current architecture the Sketch
+    # backend runs on every turn, so this was latent, not live — but
+    # `is_finalize_eligible()` returns True purely from
+    # `state.stage == SKETCHING` plus a non-empty `sketch_tokens.vq_tokens`,
+    # and a session reloaded from the store could carry a stale
+    # `vq_tokens` from an earlier turn. A future change that makes the
+    # Sketch call conditional (e.g. skip it for a pure clarifying
+    # question) would silently make stage=SKETCHING true without any
+    # actual sketch existing for the turn that set it — a session could
+    # then become finalize-eligible without ever having produced fresh
+    # sketch tokens. Only advance the stage when this turn genuinely
+    # produced one.
+    if new_vq_tokens_ref:
+        state.stage = SessionStage.SKETCHING
     state.touch()
 
     return store.save(state, expected_rev)

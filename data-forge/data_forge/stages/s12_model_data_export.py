@@ -224,7 +224,8 @@ class ModelDataExportStage(Stage):
                     link_or_copy(src, model_dir / "images" / src.name)
                     images_linked += 1
                     image_filename = src.name
-            captions.append({"record_id": rec.id, "caption": rec.caption, "image_filename": image_filename})
+            captions.append({"record_id": rec.id, "caption": rec.caption, "image_filename": image_filename,
+                              "source_caption": rec.source_caption})
 
         (model_dir / "captions.jsonl").write_text(
             "\n".join(json.dumps(c) for c in captions), encoding="utf-8"
