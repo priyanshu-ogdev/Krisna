@@ -15,7 +15,14 @@ pretrained_model_name_or_path: "Tongyi-MAI/Z-Image"
 instance_data_dir: "./data/polish_default_train"
 output_dir: "./checkpoints/polish_default_lora"
 
-resolution: 1024
+resolution: 1024   # NOTE: the DPO refinement stage that continues this
+                    # adapter (dpo_z_image_stage1_general.yaml) trains at
+                    # 512 — RESEARCHED and likely architecturally safe
+                    # (Z-Image-Turbo's MMDiT/RoPE lineage is inherently
+                    # resolution-flexible, unlike learned position
+                    # embeddings) but still not confirmed as a
+                    # deliberate choice anywhere in this repo — see that
+                    # file's comment for the full research and citations.
 train_batch_size: 1
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
@@ -51,5 +58,15 @@ rank: 32
 # captions from dataset_prep.py.
 instance_prompt: "a UI design"
 
-validation_prompt: null   # set to something to get periodic validation renders
+validation_prompt: "a UI design"  # UPGRADE (finding #3): re-enabled — diffusers' own
+                          # built-in periodic sample generation is a cheap
+                          # qualitative validation signal this project has
+                          # zero of otherwise for the base LoRA stage (no
+                          # heldout eval loss exists for diffusers'
+                          # train_dreambooth_lora_z_image.py path — that
+                          # script is vendored/official, not owned by this
+                          # repo, so a real heldout LOSS loop isn't wired
+                          # here the way it is for sketch/train.py and
+                          # polish/train_dpo.py; this is the cheap
+                          # substitute the PRD (§3 gap list) already names.   # set to something to get periodic validation renders
 validation_epochs: 25

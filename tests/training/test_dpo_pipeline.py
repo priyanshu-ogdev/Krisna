@@ -130,3 +130,50 @@ def test_export_jsonl_filters_by_source(pref_store: PreferenceStore, tmp_path):
     out_path = tmp_path / "dpo_uicrit_only.jsonl"
     count = export_jsonl(pref_store, out_path, source="uicrit_seed")
     assert count == 1
+
+
+def test_build_pair_from_candidates_raises_on_mismatched_prompt_used(pref_store: PreferenceStore):
+    """Regression test for the (prompt, image) mixup class of bug fixed
+    in flows.py's finalize()/critique_pass() — see design_state.py's
+    prompt_used field. A candidate reporting a DIFFERENT prompt_used
+    than the pair's own `prompt` argument must raise, not silently write
+    a pair with a wrong prompt for one of its two images."""
+    from krisna_training.dpo.pair_builder import MismatchedPromptError
+
+    candidates = [
+        {"image_ref": "blob://a.png", "score": 0.9, "prompt_used": "dark dashboard"},
+        {"image_ref": "blob://b.png", "score": 0.3, "prompt_used": "dark dashboard, collapsible sidebar"},
+    ]
+    with pytest.raises(MismatchedPromptError):
+        build_pair_from_candidates(
+            pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+        )
+    assert pref_store.count() == 0
+
+
+def test_build_pair_from_candidates_allows_matching_prompt_used(pref_store: PreferenceStore):
+    """Same prompt_used on both candidates (and matching the `prompt`
+    argument) is the normal, correct case and must not raise."""
+    candidates = [
+        {"image_ref": "blob://a.png", "score": 0.9, "prompt_used": "dark dashboard"},
+        {"image_ref": "blob://b.png", "score": 0.3, "prompt_used": "dark dashboard"},
+    ]
+    pair = build_pair_from_candidates(
+        pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+    )
+    assert pair is not None
+    assert pref_store.count() == 1
+
+
+def test_build_pair_from_candidates_ignores_missing_prompt_used(pref_store: PreferenceStore):
+    """A candidate that omits prompt_used entirely (older callers, or a
+    caller that genuinely doesn't track it) must not trigger the check —
+    this is additive validation, not a new required field."""
+    candidates = [
+        {"image_ref": "blob://a.png", "score": 0.9},
+        {"image_ref": "blob://b.png", "score": 0.3, "prompt_used": "dark dashboard"},
+    ]
+    pair = build_pair_from_candidates(
+        pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+    )
+    assert pair is not None

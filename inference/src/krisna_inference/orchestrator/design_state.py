@@ -56,6 +56,7 @@ class Constraints(BaseModel):
     palette: list[str] = Field(default_factory=list)  # hex strings
     layout_hints: str | None = None
     locked_regions: list[LockedRegion] = Field(default_factory=list)
+    original_intent: str | None = None  # D2: preserves original user intent across long conversations
 
 
 class SketchTokens(BaseModel):
@@ -79,6 +80,19 @@ class FinalizeOutput(BaseModel):
     renderer_used: RendererUsed = None
     image_ref: str | None = None
     verifier_scores: VerifierScores = Field(default_factory=VerifierScores)
+    # BUG FOUND ON REVIEW (training-data integrity — see flows.py's
+    # finalize()/critique_pass()): the prompt actually used to GENERATE
+    # this image was previously never persisted anywhere. critique_pass()
+    # — which can run turns after finalize(), once the user has sent more
+    # chat messages — re-synthesized "the" prompt from state.conversation_
+    # history at CRITIQUE time and stored THAT in the resulting DPO
+    # preference pair, silently mismatching it against the image that was
+    # actually rendered under the ORIGINAL, now-stale prompt. That is a
+    # real (prompt, image) mixup baked directly into DPO training data —
+    # exactly the failure mode that teaches a model to associate the wrong
+    # text with an image. finalize() now freezes the real generation-time
+    # prompt here; critique_pass() reads it back instead of re-deriving it.
+    prompt_used: str | None = None
 
 
 class CritiqueDimensionScore(BaseModel):

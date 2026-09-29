@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -31,7 +32,7 @@ class CriticBackend(ModelBackend):
     def __init__(
         self,
         spec,
-        worker_python: str = "./venv-critic/bin/python",
+        worker_python: str | None = None,
         model_id: str = "unsloth/gemma-4-31B-it-unsloth-bnb-4bit",
         startup_timeout_s: float = 60.0,
         call_timeout_s: float = 120.0,
@@ -41,6 +42,10 @@ class CriticBackend(ModelBackend):
                                              # confirmed ~40GB system-RAM cost
     ) -> None:
         super().__init__(spec)
+        if worker_python is None:
+            worker_python = os.environ.get("KRISNA_CRITIC_VENV_PYTHON") or (
+                "./venv-critic/Scripts/python.exe" if sys.platform == "win32" else "./venv-critic/bin/python"
+            )
         self.worker_python = worker_python
         self.model_id = model_id
         self.startup_timeout_s = startup_timeout_s

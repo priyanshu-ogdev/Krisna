@@ -28,16 +28,25 @@ class SketchTokenDataset:
         record (silently falls back to `caption` when it doesn't, e.g.
         records with no source-dataset label at all).
 
-        Default 0.95 matches Betker et al. 2023's ("Improving Image
-        Generation with Better Captions" / DALL-E 3) reported optimum: a
-        95%/5% synthetic/ground-truth blend, chosen randomly *per
-        training access* (not fixed per image), specifically to
-        regularize against the model overfitting to the VLM captioner's
-        own phrasing/length distribution — which is not what real users
-        type at inference time. See
-        docs/review/09_synthetic_data_audit.md and
-        docs/review/10_synthetic_data_generalization_fix.md for the full
-        writeup of why this exists in this repo specifically.
+        KEPT at 0.95, matching the PRD (§6.2, §8.6), all four sketch
+        YAML configs, and TrainConfig's dataclass default — this
+        constructor default was the one place still disagreeing (a
+        stale P2a "fix" to 0.85 that was never applied anywhere else).
+
+        The P2a rationale's underlying worry is real (train/inference
+        caption-length mismatch: dense VLM captions vs. short imperative
+        user prompts like "make me a dark dashboard"), but its proposed
+        fix was checked against the actual source rather than trusted at
+        face value. Betker et al. 2023 (DALL-E 3) explicitly swept the
+        synthetic/short caption blend ratio and found that a very high
+        percentage of synthetic (dense) captions maximized model
+        performance — and this held even when evaluated with
+        ground-truth (short, human-style) prompts, i.e. the exact P2a
+        scenario. So more dense-caption exposure during training, not
+        less, is what the cited paper's own sweep supports. 0.95 is the
+        right ratio; cfg_dropout_prob (see make_collate_fn in train.py)
+        is the mechanism that actually protects the unconditional/
+        short-prompt path at inference.
         """
         self.manifest_path = Path(manifest_path)
         self.grid_h = grid_h
