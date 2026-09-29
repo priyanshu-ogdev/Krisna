@@ -1,5 +1,12 @@
 # Phase 5 — Data Pipeline (data-forge, cross-cutting)
 
+> **RESOLVED (post-Phase-1 follow-up session):** this phase's completeness
+> logic (`utils/completeness.py`, `s09_heldout.py`,
+> `s12_model_data_export.py`) has been corrected as a direct consequence
+> of the Phase 1 `maskgit_vq` fix — see
+> `docs/review/12_post_upgrade_resync_audit.md` §1. Re-verified with the
+> full `tests/data_forge` suite (114 passed).
+
 This phase closes out the licensing/dedup question left open in Phase 1,
 and reviews the remaining cross-cutting correctness properties (safety,
 PII, domain balance) that every model phase depends on.
