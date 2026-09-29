@@ -40,7 +40,15 @@ class SketchModelConfig:
     n_heads: int = 8
     ffn_dim: int = 2048
     dropout: float = 0.1
-    prompt_dim: int = 4096           # matches the placeholder in inference/sketch_backend.py
+    prompt_dim: int = 768            # CLIP ViT-L/14 text-embedding dim — was
+                                       # 4096 (an arbitrary placeholder from
+                                       # before Phase 17's real CLIP
+                                       # integration), left stale even after
+                                       # both real training configs
+                                       # (sketch_train_stage{1,2}_*.yaml)
+                                       # correctly moved to 768. Corrected so
+                                       # the default itself reflects what's
+                                       # actually used, not a leftover guess.
     use_gradient_checkpointing: bool = False   # see build_model()'s docstring
 
     @property

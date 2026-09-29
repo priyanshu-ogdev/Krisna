@@ -131,7 +131,14 @@ class SketchBackend(ModelBackend):
         def _run_sync():
             import torch
 
-            prompt_dim = getattr(self._model.module.cfg, "prompt_dim", 4096)
+            # Fallback of 768 (CLIP ViT-L/14's real text-embedding dim),
+            # not the stale 4096 placeholder this used to say — only
+            # matters if a loaded checkpoint's saved config is somehow
+            # missing `prompt_dim` entirely (every real checkpoint from
+            # the current training configs carries prompt_dim=768), but
+            # a fallback should degrade to the actually-correct value,
+            # not an arbitrary one — see model.py's matching fix.
+            prompt_dim = getattr(self._model.module.cfg, "prompt_dim", 768)
             device = next(self._model.module.parameters()).device
             guidance_scale = self.guidance_scale
 

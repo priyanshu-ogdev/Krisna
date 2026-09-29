@@ -158,19 +158,24 @@ pairwise dataset whose data has not yet been released."* There is no repo
 to find because there isn't one yet. Same `repo_id: null` /
 registry-watcher treatment as DesignSense-10k.
 
-### 2.10 GameLabel-10K — found, deliberately not integrated
+### 2.10 GameLabel-10K — found, then integrated (Phase 20)
 
 Surfaced during the DesignSense-10k/DesignPref re-check.
 **Confirmed real**: `Jonathan-Zhou/GameLabel-10k`, Apache 2.0,
 arXiv:2409.19830, ~10K human-labeled image-preference pairs from
 mobile-game crowdsourcing, already demonstrated improving Flux-Schnell
-via DPO/LoRA. **Not wired in**: ships as a single 2.26GB `data.csv`, not
-parquet — doesn't fit either existing preference-pair fetch shape, and
-its exact column names weren't independently confirmed against the live
-file before this project's scope closed. Documented in
-`docs/data-forge/DATA_SOURCES.md` as a vetted candidate for future
-integration, specifically to avoid repeating the HPDv2/PD12M pattern of
-wiring in a fetch path against a guessed schema.
+via DPO/LoRA. **Initially not wired in**: ships as a single 2.26GB
+`data.csv`, not parquet — doesn't fit either existing preference-pair
+fetch shape, and its exact column names weren't independently confirmed
+against the live file at the time. **Since integrated**
+(`docs/review/20_gamelabel_10k_integration.md`): the live schema was
+confirmed directly (vote-count columns, not a fixed label; a
+non-standard base64+bytes-repr image encoding — neither matched what was
+initially assumed), a dedicated fetch adapter was written for that exact
+shape, and it's now a real Stage-1 general-aesthetic DPO source
+alongside Pick-a-Pic v2 and HPDv2, verified end-to-end against real
+pandas/PIL rather than shipped on the strength of the schema-confirmation
+alone.
 
 ---
 
@@ -221,6 +226,39 @@ the declared budget. This is explicitly *not* a claim that 4-bit
 inference quality is validated for this model — that remains a genuinely
 open question (see §5 below) — it's a claim that the budget and the
 actual loading code now agree with each other, which they didn't before.
+
+### 3.4 Sketch tier — classifier-free guidance was trained for but never used at inference (found and fixed)
+
+**Finding**: Phase 10's synthetic-data audit added CFG conditioning
+dropout (`cfg_dropout_prob=0.1`) to Sketch-tier training specifically so
+the model would learn an unconditional distribution alongside the
+conditional one — the entire point of which is to enable
+classifier-free guidance at sampling time. Tracing the actual inference
+path (`sketch_backend.py`, `maskgit_model.py`) found this training
+investment was never used: `sketch_backend.py` sent an unconditional
+zero prompt embedding on every call (never real CLIP text conditioning),
+and `maskgit_model.py`'s `sample()` never performed the guidance
+computation at all — a model trained to support CFG was being sampled
+as if it hadn't been.
+
+**Fix, verified against the primary source rather than implemented from
+a plausible-sounding description**: Muse (Chang et al., "Muse:
+Text-to-Image Generation via Masked Generative Transformers", ICML
+2023, arXiv:2301.00704) is the citable precedent for CFG in exactly this
+model family (masked-generative, not diffusion). Its §2.7 specifies the
+training-time dropout rate (10% — matching this project's own default,
+confirmed the same design choice rather than a coincidental match), the
+guidance formula (`ℓ_g = (1+t)ℓ_c - tℓ_u`), and a linearly-ramped
+guidance schedule through sampling rather than a constant scale ("to
+reduce the hit to diversity," in the paper's own words). Implemented
+verbatim: `sketch_backend.py` now sends real CLIP text conditioning,
+and `maskgit_model.py`'s sampler applies the exact formula above with
+the same linear ramp. Verified two ways: numerically (a numpy-backed
+torch stub driving the real `sample()` code, confirming the formula's
+arithmetic), and by refetching Muse's own paper text directly and
+checking the formula, dropout rate, and ramp description against it
+line-by-line — all three matched exactly, no correction needed to the
+implementation once traced.
 
 ---
 
@@ -346,10 +384,25 @@ sweep).
   anywhere in the same research pass — caught and replaced before it
   could ship as an untested guess.
 - **Not verified, and can't be from this environment**: real training
-  dynamics against actual Z-Image-Turbo weights, whether the default
-  `beta=2000.0` (Wallace et al.'s own SD1.5/SDXL-tuned range) transfers
-  reasonably to this model, and the two pipeline-specific API details
-  flagged above.
+  dynamics against actual Z-Image-Turbo weights, and the two
+  pipeline-specific API details flagged above.
+- **`beta` default, refined beyond Wallace et al.'s own range**: Wallace
+  et al.'s SD1.5/SDXL setting (`beta` in [2000, 5000], epsilon-
+  prediction) is this implementation's documented starting point, but a
+  further check against papers doing real β-sweeps on models
+  architecturally closer to Z-Image-Turbo (flow-matching, not
+  epsilon-prediction) found meaningfully lower optima: Linear-DPO
+  (arXiv:2605.21123, §E.3) swept `beta` in {100, 250, 500, 1000, 2000}
+  and found the best PickScore at `beta=250` for SD1.5, `beta=500` for
+  SDXL, and — most directly relevant, since it's a flow-matching model
+  like Z-Image-Turbo — `beta=500` for SD3-M on HPSv3. DeRaDiff
+  (arXiv:2601.20198) shows the risk cuts both ways: `beta=250` caused
+  visually severe reward-hacking on SDXL. `dpo_loss.py`'s docstring now
+  recommends sweeping `{250, 500, 1000, 2000}` on real validation output
+  before committing to a default, rather than treating Wallace et al.'s
+  epsilon-prediction-tuned range as an unquestioned transfer to this
+  flow-matching model, or overcorrecting to a new unverified guess in
+  the other direction.
 
 ---
 
@@ -407,4 +460,8 @@ Documented here rather than silently resolved one way or the other:
 | Unsloth issue tracker | No documented CPU-offload support |
 | Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization" (CVPR 2024) | Original Diffusion-DPO formulation (DDPM/noise-prediction), `beta` range |
 | Bin et al., MotionFlux (arXiv:2508.19527) | Velocity-prediction DPO substitution for flow-matching models, flow-matching anchor regularization |
+| Linear-DPO (arXiv:2605.21123, §E.3); DeRaDiff (arXiv:2601.20198) | Real β-sweep results on models closer to Z-Image-Turbo's flow-matching architecture (SD3-M best at β=500); β=250 reward-hacking risk on SDXL |
+| Chang et al., "Muse: Text-to-Image Generation via Masked Generative Transformers" (ICML 2023, arXiv:2301.00704), §2.7 | Classifier-free guidance formula, 10% training-time conditioning dropout, and linear guidance ramp for masked-generative (non-diffusion) image models — re-verified directly against the paper text, not just cited from memory |
+| Qwen Team, Alibaba — Qwen3.5 Small Model Series (0.8B/2B/4B/9B) release notes, dated 2026-03-02 | Confirms Qwen3.5-9B's real release, hybrid Gated DeltaNet + Gated Attention architecture, native multimodal training |
+| Tongyi-MAI, Alibaba — Z-Image technical report (`github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`), 2025 | Primary source for Z-Image-Turbo's Decoupled-DMD/DMDR distillation and S3-DiT architecture — the Polish-Default tier's actual base model | 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |

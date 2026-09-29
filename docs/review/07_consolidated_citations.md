@@ -105,6 +105,9 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | 22 | Three shell-script "next step" hints (Sketch stage 1/2, VQGAN download), claimed added in a prior session, were not actually present on disk | **Fixed again** — see §3 |
 | 22 | `tests/training/test_dpo_loss.py`'s bare `import torch` broke collection for the ENTIRE `pytest tests/` run when torch is absent, contradicting the root README's own "skips cleanly" claim | **Fixed** — see §4; matches the established `importorskip` pattern, 356 tests now collect and run cleanly (346 pass, 10 skip) |
 | 22 | Root README and `src/README.md` both stale — no mention of the root scripts or `inference-frontend/`; `src/README.md` listed API endpoints that never existed | **Fixed** — see §5; both rewritten against verified current code |
+| 23 | `inference/README.md`'s VRAM/RAM table and three prose mentions described pre-fix Polish-Default (8.0GB) and Critic (~12GB/~40GB) figures as current, found in a prior session's own follow-up pass | **Confirmed fixed** — see `23_s08_5_stale_doc_sweep.md` §1 |
+| 23 | `s08_5_dpo_encoding` described as active/load-bearing across `data-forge/README.md` and three `docs/data-forge/*.md` files despite being disabled since Phase 15 — the same doc-drift class, left as "a known cleanup item" by a prior session under time pressure | **Fixed** — see §2; every table, flow diagram, and prose mention corrected against the real `sync_dpo_pairs.py` → `train_dpo.py` path |
+| 24 | `sketch_backend.py`'s CFG shape-mismatch-guard fallback and `model.py`'s `prompt_dim` dataclass default both used a stale placeholder (4096) instead of CLIP ViT-L/14's real 768-dim output — dormant on any real checkpoint (which correctly carries 768), but a landmine for a legacy/malformed one | **Fixed** — see `24_tensor_shape_final_check.md`; both defaults corrected to 768 |
 
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
@@ -113,4 +116,4 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–22 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–24 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.

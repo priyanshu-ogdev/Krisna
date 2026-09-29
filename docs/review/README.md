@@ -34,11 +34,13 @@ those are left visible, not silently edited away.
 | `20_gamelabel_10k_integration.md` | Integrates GameLabel-10K (confirmed real via live search, Apache 2.0) into the DPO preference-pair pipeline, after confirming its actual column schema against the live dataset rather than the paper's description — it doesn't fit either existing fetch mode. Catches two real bugs before shipping (a lenient `base64.b64decode()` accepting garbage input, and a `NameError`-class scoping bug identical in shape to one caught in Phase 19), both found by executing the code against synthetic data matching the confirmed real format rather than trusting it on inspection |
 | `21_frontend_and_scripts_merge.md` | Merges two working copies that had diverged (one with extensive training/inference fixes, this session's own with a newer frontend design) rather than discarding either. Finds and fixes two more real bugs in a *restored* test (one re-encoded a misconception Phase 6 already retracted; one had a stale post-fix value), finds the Phase-16 escalation-ordering docstring fix had regressed a second time and reapplies it, adds a missing `frontend` setup phase to `setup.sh`, and verifies the Muse CFG citation from `17` line-by-line against the actual primary source (arXiv:2301.00704) rather than trusting it — confirmed exact |
 | `22_root_orchestration_and_vqgan_gap.md` | Traces the full root-tooling chain (`setup.sh` → `run_data_forge.sh` → `train.sh` → install-for-inference → `run_inference.sh` → `inference-frontend/`) end-to-end and finds one real, previously-undiscovered gap: `download_weights.py` had zero awareness of the VQGAN decoder `service.py` requires for every real Finalize call — fixed with auto-discovery + auto-download. Also finds three shell-script "next step" hints claimed-added in a prior session were never actually on disk (reapplied), a real test-suite bug where one file's bare `import torch` broke collection for the *entire* `pytest tests/` run (fixed to match the established `importorskip` pattern), and rewrites both the root README and `src/README.md`, which were stale and in the latter case listed API endpoints that never existed |
+| `23_s08_5_stale_doc_sweep.md` | Confirms `inference/README.md`'s VRAM/RAM table fix (Polish-Default, Critic) landed correctly, and finishes a sweep a prior session started but left incomplete under time pressure: `s08_5_dpo_encoding` was still described as an active, load-bearing DPO stage across `data-forge/README.md` and three `docs/data-forge/*.md` files, despite being disabled since Phase 15 with zero real consumers — every table, flow diagram, and prose mention corrected against the real `sync_dpo_pairs.py` → `train_dpo.py` path |
+| `24_tensor_shape_final_check.md` | Final tensor/dimension-consistency pass across the data pipeline and training code: confirms progressive-resolution positional-embedding interpolation, grid dimensions across Sketch training stages, CFG collate-function shapes, and DPO VAE latent scaling are all correct — then finds and fixes one real stale placeholder (`prompt_dim`'s fallback default was 4096, a pre-Phase-17 leftover, when CLIP ViT-L/14's real dimension and both training configs' actual value is 768) |
 
 ## What's fixed vs. still open
 
 Full list with status is in `07_consolidated_citations.md`'s rollup
-table (updated through Phase 22). Short version: five items fixed and
+table (updated through Phase 23). Short version: five items fixed and
 verified in the original six-phase pass (label smoothing, AdamW betas, a
 stale docstring, a pinned LoRA rank, a VRAM safety-margin capability),
 one retracted finding (the "VRAM bug" turned out to be a review error),
@@ -55,10 +57,14 @@ conditioning and CFG fixes in `17` (citation independently re-verified
 in `21`), a four-tier training-memory audit in `18`, the Finalize-crash
 and JSON-leak fixes in `19`, the GameLabel-10K integration in `20`, a
 merge of two divergent working copies plus two more test bugs and a
-`setup.sh` gap in `21`, and — in `22` — the VQGAN installer gap (the
-last real missing link between training output and a working inference
-run), three more claimed-but-missing script hints reapplied, a test-
-collection bug, and both README files brought current.
+`setup.sh` gap in `21`, the VQGAN installer gap (the last real missing
+link between training output and a working inference run) plus three
+more claimed-but-missing script hints, a test-collection bug, and both
+README files brought current in `22`, and — in `23` — the completion of
+a stale-documentation sweep (`s08_5_dpo_encoding` described as active
+across `data-forge/README.md` and three `docs/data-forge/*.md` files
+for at least two sessions after being disabled) that a prior session
+had started but left as "a known cleanup item."
 **Top remaining items:** (1) verifying
 the exact real usable-image count for the Sketch tier once the
 RICO-license/dedup/join interaction is exercised against a real pipeline
