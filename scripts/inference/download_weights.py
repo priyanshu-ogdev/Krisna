@@ -168,6 +168,49 @@ def download_model(m: HFModel, dest_root: Path, max_retries: int = 3) -> Path:
     raise RuntimeError(f"Failed to download {m.repo_id} after {max_retries} attempts: {last_exc}") from last_exc
 
 
+# boris/vqgan_f16_16384 — same two static files scripts/training/
+# download_vqgan.sh fetches via curl, reimplemented here with Python's
+# stdlib urllib so the installer has no new dependency and so it can
+# emit this project's own JSON-event-per-line contract like every other
+# download in this script, instead of a shell script's plain stdout.
+VQGAN_CONFIG_URL = "https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=/configs/model.yaml&dl=1"
+VQGAN_CKPT_URL = "https://heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/files/?p=/ckpts/last.ckpt&dl=1"
+
+
+def download_vqgan(dest_dir: Path, max_retries: int = 3) -> tuple[Path, Path]:
+    import urllib.request
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = dest_dir / "last.ckpt"
+    config_path = dest_dir / "model.yaml"
+
+    for label, url, path in [("model.yaml", VQGAN_CONFIG_URL, config_path),
+                              ("last.ckpt", VQGAN_CKPT_URL, ckpt_path)]:
+        if path.exists() and path.stat().st_size > 0:
+            emit("vqgan_file_already_present", file=label, path=str(path))
+            continue
+        emit("vqgan_download_start", file=label, url=url, dest=str(path))
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Streamed, not read() in one shot — last.ckpt is a real
+                # multi-hundred-MB checkpoint file.
+                with urllib.request.urlopen(url, timeout=60) as resp, open(path, "wb") as f:
+                    while chunk := resp.read(1024 * 1024):
+                        f.write(chunk)
+                emit("vqgan_download_complete", file=label, path=str(path), attempt=attempt)
+                break
+            except Exception as e:  # noqa: BLE001 — retried, then surfaced to the caller
+                last_exc = e
+                emit("vqgan_download_retry", file=label, attempt=attempt, max_retries=max_retries, error=str(e))
+                time.sleep(min(2 ** attempt, 30))
+        else:
+            emit("vqgan_download_failed", file=label, error=str(last_exc))
+            raise RuntimeError(f"Failed to download {label} after {max_retries} attempts: {last_exc}") from last_exc
+
+    return ckpt_path, config_path
+
+
 def locate_local_artifact(
     label: str, candidate: str | None, search_globs: list[str], required: bool
 ) -> Path | None:
@@ -257,6 +300,24 @@ def main() -> int:
     ap.add_argument("--critic-worker-python", default="./venv-critic/bin/python",
                      help="Path to the Critic tier's isolated venv interpreter (see "
                           "scripts/training/setup_env_critic.sh). Only recorded, not created.")
+    ap.add_argument("--vqgan-checkpoint", default=None,
+                     help="Path to boris/vqgan_f16_16384's last.ckpt (the VQGAN decoder the "
+                          "Sketch tier's tokens are decoded through at Finalize — see "
+                          "orchestrator/service.py's VQTokenizer construction, which reads "
+                          "KRISNA_VQGAN_CHECKPOINT/KRISNA_VQGAN_CONFIG). Auto-discovered under "
+                          "checkpoints/vqgan/ (scripts/training/download_vqgan.sh's own default "
+                          "destination) if not given; downloaded automatically if not found "
+                          "there either, since without it every real /finalize call fails with "
+                          "PIL.UnidentifiedImageError before this was even understood as a "
+                          "missing-checkpoint problem (see docs/review/19_agentic_workflow_io_audit.md) "
+                          "— and, until this option existed, NOTHING in the installer flow ever "
+                          "surfaced that requirement at all.")
+    ap.add_argument("--vqgan-config", default=None,
+                     help="Path to boris/vqgan_f16_16384's model.yaml — see --vqgan-checkpoint.")
+    ap.add_argument("--skip-vqgan", action="store_true",
+                     help="Skip the VQGAN decoder. Finalize will fail at runtime without it — "
+                          "only pass this if you already manage KRISNA_VQGAN_CHECKPOINT/"
+                          "KRISNA_VQGAN_CONFIG some other way.")
     ap.add_argument("--dry-run", action="store_true",
                      help="Resolve and report everything (disk space, HF repos, local artifacts) "
                           "without downloading or writing .env.inference.")
@@ -324,6 +385,37 @@ def main() -> int:
             resolved_paths["KRISNA_SKETCH_CHECKPOINT"] = str(sketch_ckpt)
     except FileNotFoundError as e:
         failures.append(str(e))
+
+    # VQGAN decoder (boris/vqgan_f16_16384) — required for Finalize to
+    # produce real pixels from the Sketch tier's VQ tokens (see
+    # orchestrator/service.py's VQTokenizer construction). Auto-
+    # discovered under checkpoints/vqgan/ first (download_vqgan.sh's own
+    # default destination — reuse it if it's already there rather than
+    # re-downloading); actually downloaded here if not found, since
+    # nothing in the installer flow surfaced this requirement before.
+    if not args.skip_vqgan:
+        vqgan_ckpt = Path(args.vqgan_checkpoint).expanduser().resolve() if args.vqgan_checkpoint else None
+        vqgan_cfg = Path(args.vqgan_config).expanduser().resolve() if args.vqgan_config else None
+        if vqgan_ckpt and vqgan_cfg and vqgan_ckpt.exists() and vqgan_cfg.exists():
+            emit("local_artifact_found", label="VQGAN", path=str(vqgan_ckpt), source="explicit")
+        else:
+            default_dir = REPO_ROOT / "checkpoints" / "vqgan"
+            existing_ckpt, existing_cfg = default_dir / "last.ckpt", default_dir / "model.yaml"
+            if existing_ckpt.exists() and existing_cfg.exists():
+                emit("local_artifact_found", label="VQGAN", path=str(existing_ckpt), source="auto_discovered")
+                vqgan_ckpt, vqgan_cfg = existing_ckpt, existing_cfg
+            elif not args.dry_run:
+                try:
+                    vqgan_ckpt, vqgan_cfg = download_vqgan(default_dir)
+                except Exception as e:  # noqa: BLE001 — collected, reported at the end
+                    failures.append(f"VQGAN checkpoint: {e}")
+                    vqgan_ckpt = vqgan_cfg = None
+            else:
+                emit("model_download_skipped_dry_run", tier="vqgan", repo_id="boris/vqgan_f16_16384")
+                vqgan_ckpt = vqgan_cfg = None
+        if vqgan_ckpt and vqgan_cfg and not args.dry_run:
+            resolved_paths["KRISNA_VQGAN_CHECKPOINT"] = str(vqgan_ckpt)
+            resolved_paths["KRISNA_VQGAN_CONFIG"] = str(vqgan_cfg)
 
     # LoRA is genuinely optional — Polish Default runs frozen without it,
     # just without the project's own fine-tune (see factory.py's comment

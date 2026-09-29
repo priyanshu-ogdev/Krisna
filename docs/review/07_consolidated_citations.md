@@ -101,6 +101,10 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | 21 | A separate test (`test_low_vram_env_var_sets_critic_max_gpu_gb`) still asserted the pre-fix `max_gpu_gb == 12.0` instead of the corrected `11.5` | **Fixed** — see §2 |
 | 21 | `data-forge/orchestrator.py`'s module docstring + duplicate "Phase 5" numbering (fixed once already) had reverted again in a later uploaded working copy | **Fixed again** — see §3 |
 | 21 | `setup.sh` had no phase for `inference-frontend/` — no way for a fresh operator to discover or install the Node control panel | **Fixed** — see §4; new `frontend` phase, not in the default list, plus a next-steps mention |
+| 22 | `scripts/inference/download_weights.py` (the real inference installer) had zero awareness of the VQGAN decoder `service.py` requires for every real Finalize call — an operator following the documented setup flow would hit a guaranteed runtime crash with no prior signal | **Fixed** — see `22_root_orchestration_and_vqgan_gap.md` §2; auto-discovery + auto-download added, verified via dry-run |
+| 22 | Three shell-script "next step" hints (Sketch stage 1/2, VQGAN download), claimed added in a prior session, were not actually present on disk | **Fixed again** — see §3 |
+| 22 | `tests/training/test_dpo_loss.py`'s bare `import torch` broke collection for the ENTIRE `pytest tests/` run when torch is absent, contradicting the root README's own "skips cleanly" claim | **Fixed** — see §4; matches the established `importorskip` pattern, 356 tests now collect and run cleanly (346 pass, 10 skip) |
+| 22 | Root README and `src/README.md` both stale — no mention of the root scripts or `inference-frontend/`; `src/README.md` listed API endpoints that never existed | **Fixed** — see §5; both rewritten against verified current code |
 
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
@@ -109,4 +113,4 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–21 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–22 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
