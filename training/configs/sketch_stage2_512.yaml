@@ -56,3 +56,12 @@ target_epochs: 1.0
 # estimate across both progressive-resolution stages, on the project's
 # real A6000 48GB training target (PRD §3).
 gradient_accumulation_steps: 2
+
+# UPGRADE (SOTA research pass): 2D axial RoPE instead of a learned
+# absolute position table. false = exact prior behavior, no change.
+# See model.py's SketchModelConfig.use_2d_rope docstring for the full
+# citation trail (Seedream 3.0 tech report's "cross-modality RoPE",
+# FLUX/SD3-class DiT practice) and why this is a NEW-run choice, not a
+# drop-in upgrade for an already-trained checkpoint.
+use_2d_rope: false
+rope_base: 10000.0

@@ -92,6 +92,18 @@ class TestAugmentationProbability(unittest.TestCase):
 
         # Mock transform to identity
         ds.transform = lambda img: img
+        # REGRESSION FOUND ON REVIEW: this manual object.__new__ + hand-
+        # wired construction bypasses __init__ entirely, so it never
+        # picks up any attribute __init__ sets — including flip_prob,
+        # added in a later review pass. __getitem__ reads self.flip_prob
+        # unconditionally, so every test using this fixture started
+        # raising AttributeError the moment that attribute was added,
+        # with no test failure ever surfacing it in this environment
+        # (no pytest run happened between that change and this one). Real
+        # callers always go through __init__, which sets this correctly —
+        # this fixture needs to be kept in sync with __init__'s real
+        # attributes by hand precisely because it deliberately bypasses it.
+        ds.flip_prob = 0.0
 
         # Patch blobs.load_image to return a dummy object
         class _FakeBlobs:

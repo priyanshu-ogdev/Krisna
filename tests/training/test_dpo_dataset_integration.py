@@ -49,6 +49,10 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img  # identity transform
+            # REGRESSION FOUND ON REVIEW: object.__new__ bypasses __init__,
+            # so it never picks up flip_prob (added in a later review
+            # pass) — __getitem__ reads self.flip_prob unconditionally.
+            ds.flip_prob = 0.0
 
             # Mock BlobStore.load_image to return a fake PIL image
             fake_blobs = MagicMock()
@@ -76,6 +80,7 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img
+            ds.flip_prob = 0.0  # see test_dataset_len_and_getitem_keys for why this is needed
             fake_blobs = MagicMock()
             fake_blobs.load_image.return_value = self._fake_image()
             ds.blobs = fake_blobs
@@ -97,6 +102,7 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img
+            ds.flip_prob = 0.0  # see test_dataset_len_and_getitem_keys for why this is needed
             fake_blobs = MagicMock()
             fake_blobs.load_image.return_value = self._fake_image()
             ds.blobs = fake_blobs

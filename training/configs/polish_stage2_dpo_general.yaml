@@ -91,3 +91,21 @@ flip-prob: 0.0
 # train-batch-size.
 val-batch-size: null
 val-batches: 20
+
+# UPGRADE (SOTA research pass): REPA (Representation Alignment,
+# Yu et al. 2024, arXiv:2410.06940) auxiliary loss. 0.0 = disabled
+# (default, no behavior change). See train_dpo.py's --repa-weight and
+# polish/repa.py's module docstring for the full method, citation, and
+# an explicit statement that this project's short DPO fine-tune of an
+# already-pretrained model is an honest extrapolation from the paper's
+# from-scratch-pretraining regime, not a guaranteed win — measure
+# against the heldout validation loop (val-every above) before trusting
+# it helped.
+repa-weight: 0.0
+# REQUIRED if repa-weight > 0 — a real dotted path into the policy
+# transformer to hook (e.g. "transformer_blocks.8"). Never guessed;
+# left null so enabling repa-weight without also setting this fails
+# loudly with an actionable error rather than silently doing nothing.
+repa-hook-module: null
+repa-encoder: "facebook/dinov2-base"
+repa-image-size: 224

@@ -1,12 +1,54 @@
 """VQ tokenizer — encode images to discrete tokens, decode tokens back to
 pixels. The sketch tier operates entirely in this token space.
 
-Default checkpoint: boris/vqgan_f16_16384 — a real, publicly downloadable
-PyTorch VQGAN (taming-transformers architecture: github.com/CompVis/
-taming-transformers), f=16 spatial downsample, 16384-entry codebook,
-pretrained on ImageNet then fine-tuned on CC3M + a YFCC100M subset for
-better faces/people/text coverage. A 256x256 image tokenizes to a 16x16
-(256-token) grid; 512x512 to 32x32 (1024 tokens).
+CORRECTED THIS REVIEW PASS (real factual error, verified via web search
+against the actual sources rather than left as prose): the checkpoint
+this module actually downloads by default (DEFAULT_CONFIG_URL/
+DEFAULT_CKPT_URL, heibox.uni-heidelberg.de/d/a7530b09fed84f80a887/) is
+CompVis's original `vqgan_imagenet_f16_16384` — the plain, ImageNet-
+only-pretrained checkpoint (confirmed: this is the exact canonical
+heibox link CompVis's own taming-transformers README table lists for
+"VQGAN ImageNet (f=16), 16384", and the same link the wider VQGAN+CLIP
+community's own download scripts use, e.g. AlexKM/vqgan-clp's README,
+labeled "#ImageNet 16384"). vocab_size=16384 (this project's configs)
+is CORRECT for that checkpoint — no config bug there.
+
+What was WRONG in a prior revision of this docstring: it claimed this
+downloads "boris/vqgan_f16_16384" and gets that checkpoint's CC3M +
+YFCC100M fine-tuning benefits ("better faces/people/text coverage").
+That is a DIFFERENT, separate checkpoint boris/vqgan_f16_16384's own
+model card explicitly says it "started from" this exact same heibox
+link as ITS base — i.e. boris's fine-tuned derivative and this
+module's actual download target are related but NOT the same weights.
+This module gets the vanilla ImageNet checkpoint, not boris's
+text/face/people-improved fine-tune — a real, previously-undetected
+misattribution, not a cosmetic naming slip: for a UI-generation project
+where on-screen text legibility is a recurring, explicit concern
+elsewhere in this codebase (OCR readability verifier scores, the flip-
+augmentation text-mirroring caveat in polish/dpo_dataset.py), boris's
+actual fine-tuned checkpoint would plausibly reconstruct/represent
+small on-screen text and UI chrome BETTER than the vanilla ImageNet-
+only codebook this module currently uses — ImageNet's own class
+distribution has essentially no dense-text-on-screen imagery, so a
+codebook trained only on it has no particular incentive to represent
+small glyph shapes well. Real upgrade candidate, NOT applied here:
+swapping to boris's actual checkpoint (or a UI-domain VQGAN, per this
+docstring's own note below) would need its own real download URL
+verified against boris/vqgan_f16_16384's actual HF file listing rather
+than reused from this module's current (different) URLs, and should be
+evaluated on real reconstruction fidelity for UI screenshots specifically
+before swapping the default — silently changing a foundational
+tokenizer without that evaluation would be exactly the kind of
+unverified guess this project's own review discipline exists to avoid.
+
+Default checkpoint (as actually downloaded, not as previously
+misdescribed): the plain CompVis vqgan_imagenet_f16_16384 — a real,
+publicly downloadable PyTorch VQGAN (taming-transformers architecture:
+github.com/CompVis/taming-transformers), f=16 spatial downsample,
+genuinely 16384-entry codebook, pretrained on ImageNet only (no CC3M/
+YFCC100M fine-tuning, contrary to a prior revision of this docstring).
+A 256x256 image tokenizes to a 16x16 (256-token) grid; 512x512 to 32x32
+(1024 tokens).
 
 This is NOT a UI-domain-tuned tokenizer — it's a general-purpose one used
 here because it's real and grounded, versus fabricating a "UI VQGAN" that
@@ -113,27 +155,29 @@ class VQTokenizer:
     def decode(self, tokens: "list[int]", grid_h: int, grid_w: int):
         """tokens: flat list of token ids (grid_h * grid_w). Returns a PIL.Image.
 
-        UNVERIFIED ASSUMPTION (flagged, not silently assumed correct —
-        same "flag rather than guess" discipline as this project's other
-        unverified third-party API surfaces, e.g. train_dpo.py's
-        --lora-target-modules): this treats `tokens` as ROW-MAJOR over
-        (grid_h, grid_w) — i.e. index i corresponds to (y=i//grid_w,
-        x=i%grid_w) — because that's the near-universal convention
-        across taming-transformers-family VQGAN implementations
-        (min_encoding_indices flattened from a [B,H,W] activation map,
-        height varying slower than width) and because encode()'s own
-        `indices.reshape(-1)` depends on that same convention holding.
-        This ordering assumption is depended on by TWO OTHER places that
-        can't detect a violation themselves: maskgit_model.py's
-        halton_token_order() computes grid coordinates as
-        `idx = y * grid_w + x`, and training.sketch.model's learned
-        pos_embed is a flat [seq_len, hidden_dim] table with no
-        structural (H, W) awareness at all — if the real installed
-        taming-transformers version ever flattened indices in a
-        different order, tokens would silently decode to the WRONG
-        spatial position with no error, only a visibly-scrambled image.
-        Not verified against the actual upstream source in this
-        environment (no network access to inspect the real class).
+        VERIFIED (this review pass — previously flagged as unverified,
+        now confirmed directly against the real upstream source rather
+        than left as an assumption): fetched CompVis/taming-transformers'
+        actual `taming/modules/vqvae/quantize.py` (master branch).
+        `VectorQuantizer.forward()` does
+        `z = z.permute(0, 2, 3, 1).contiguous(); z_flattened =
+        z.view(-1, self.e_dim)` — flattening a contiguous (B, H, W, C)
+        tensor via `.view(-1, ...)` is a row-major (C-order) flatten,
+        meaning index = h * W + w (for B=1) — H varies slower than W,
+        exactly the convention this class assumes. A community-verified
+        working reconstruction (CompVis/taming-transformers GitHub issue
+        #135) independently confirms the same:
+        `self.quantize.embedding(code_b).reshape(1, 16, 16, 256)` — a
+        (1, H, W, C) reshape of the flat indices, same ordering. This
+        ordering is depended on by TWO OTHER places that can't detect a
+        violation themselves: maskgit_model.py's halton_token_order()
+        computes grid coordinates as `idx = y * grid_w + x`, and
+        training.sketch.model's learned pos_embed is a flat
+        [seq_len, hidden_dim] table with no structural (H, W) awareness
+        at all. Still worth a real smoke-test decode against the actual
+        installed package version once one is available in an
+        environment with network access — pinned dependency versions
+        can drift — but this is no longer an open assumption.
         """
         import torch
         from PIL import Image
