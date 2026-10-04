@@ -9,7 +9,8 @@ from krisna_training.data_forge_bridge.sync_polish_default import sync
 
 
 def _make_data_forge_export(root, records):
-    """records: list of (record_id, image_filename, caption).
+    """records: list of (record_id, image_filename, caption) or
+    (record_id, image_filename, caption, source_caption).
 
     BUG FIX: this fixture used to name each image file after its
     record_id and include no image_filename field in captions.jsonl —
@@ -23,9 +24,14 @@ def _make_data_forge_export(root, records):
     images_dir = zimage_dir / "images"
     images_dir.mkdir(parents=True)
     captions = []
-    for record_id, image_filename, caption in records:
+    for record in records:
+        record_id, image_filename, caption = record[0], record[1], record[2]
+        source_caption = record[3] if len(record) > 3 else None
         Image.new("RGB", (4, 4), color="green").save(images_dir / image_filename)
-        captions.append({"record_id": record_id, "caption": caption, "image_filename": image_filename})
+        captions.append({
+            "record_id": record_id, "caption": caption, "image_filename": image_filename,
+            "source_caption": source_caption,
+        })
     (zimage_dir / "captions.jsonl").write_text("\n".join(json.dumps(c) for c in captions))
     return root
 
@@ -102,3 +108,45 @@ class TestRecordIdVsFilenameBugFix:
         metadata_lines = [json.loads(l) for l in (out / "metadata.jsonl").read_text().strip().split("\n")]
         # Degrades to the shared-instance-prompt fallback, not a crash.
         assert metadata_lines[0]["text"] == "a UI design"
+
+
+class TestSourceCaptionSurvivesEndToEnd:
+    """Regression test for the bug found in docs/review/34_model_review_3_
+    polish_default.md: sync_polish_default.py used to build a plain
+    {filename: caption_string} dict, discarding source_caption before it
+    ever reached prepare() — making caption_mix_ratio completely inert
+    for the real data-forge pipeline, even though it worked correctly
+    when load_captions() was tested directly against a JSONL file path.
+    This test exercises the ACTUAL sync() entrypoint end to end, not
+    load_captions()/prepare() in isolation, since that's exactly the
+    seam where the bug lived."""
+
+    def test_source_caption_reaches_metadata_jsonl_at_mix_ratio_0(self, tmp_path):
+        model_data = _make_data_forge_export(
+            tmp_path / "model_data",
+            [("uuid-1", "a.png", "a dense VLM description of a login screen", "login screen")],
+        )
+        out = sync(model_data, tmp_path / "prepared", caption_mix_ratio=0.0)
+
+        rec = json.loads((out / "metadata.jsonl").read_text().strip())
+        assert rec["text"] == "login screen"
+
+    def test_dense_caption_reaches_metadata_jsonl_at_mix_ratio_1(self, tmp_path):
+        model_data = _make_data_forge_export(
+            tmp_path / "model_data",
+            [("uuid-1", "a.png", "a dense VLM description of a login screen", "login screen")],
+        )
+        out = sync(model_data, tmp_path / "prepared", caption_mix_ratio=1.0)
+
+        rec = json.loads((out / "metadata.jsonl").read_text().strip())
+        assert rec["text"] == "a dense VLM description of a login screen"
+
+    def test_record_with_no_source_caption_is_unaffected(self, tmp_path):
+        model_data = _make_data_forge_export(
+            tmp_path / "model_data",
+            [("uuid-1", "a.png", "dense only, no source label available")],  # no 4th tuple element
+        )
+        out = sync(model_data, tmp_path / "prepared", caption_mix_ratio=0.0)
+
+        rec = json.loads((out / "metadata.jsonl").read_text().strip())
+        assert rec["text"] == "dense only, no source label available"

@@ -49,15 +49,21 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img  # identity transform
-            # REGRESSION FOUND ON REVIEW: object.__new__ bypasses __init__,
-            # so it never picks up flip_prob (added in a later review
-            # pass) — __getitem__ reads self.flip_prob unconditionally.
-            ds.flip_prob = 0.0
 
             # Mock BlobStore.load_image to return a fake PIL image
             fake_blobs = MagicMock()
             fake_blobs.load_image.return_value = self._fake_image()
             ds.blobs = fake_blobs
+            # BUG FOUND ON REVIEW (docs/review/33_model_review_2_data_training_connection.md):
+            # object.__new__() bypasses __init__ entirely, so any
+            # attribute __init__ sets never gets set here — flip_prob
+            # was added to __init__ in a later review pass and this
+            # manual-construction pattern was never updated to match,
+            # so __getitem__'s self.flip_prob access raised
+            # AttributeError. Matches __init__'s own default (0.0 — no
+            # augmentation) so these tests exercise the same default
+            # behavior a real caller would get.
+            ds.flip_prob = 0.0
 
             self.assertEqual(len(ds), 1)
 
@@ -80,10 +86,19 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img
-            ds.flip_prob = 0.0  # see test_dataset_len_and_getitem_keys for why this is needed
             fake_blobs = MagicMock()
             fake_blobs.load_image.return_value = self._fake_image()
             ds.blobs = fake_blobs
+            # BUG FOUND ON REVIEW (docs/review/33_model_review_2_data_training_connection.md):
+            # object.__new__() bypasses __init__ entirely, so any
+            # attribute __init__ sets never gets set here — flip_prob
+            # was added to __init__ in a later review pass and this
+            # manual-construction pattern was never updated to match,
+            # so __getitem__'s self.flip_prob access raised
+            # AttributeError. Matches __init__'s own default (0.0 — no
+            # augmentation) so these tests exercise the same default
+            # behavior a real caller would get.
+            ds.flip_prob = 0.0
 
             # Force augmentation by patching random.random to return 0.0 < 0.30
             with patch("krisna_training.polish.dpo_dataset.random.random", return_value=0.0):
@@ -102,10 +117,19 @@ class TestPreferencePairDatasetIntegration(unittest.TestCase):
             ds = object.__new__(PreferencePairDataset)
             ds.pairs = store.list()
             ds.transform = lambda img: img
-            ds.flip_prob = 0.0  # see test_dataset_len_and_getitem_keys for why this is needed
             fake_blobs = MagicMock()
             fake_blobs.load_image.return_value = self._fake_image()
             ds.blobs = fake_blobs
+            # BUG FOUND ON REVIEW (docs/review/33_model_review_2_data_training_connection.md):
+            # object.__new__() bypasses __init__ entirely, so any
+            # attribute __init__ sets never gets set here — flip_prob
+            # was added to __init__ in a later review pass and this
+            # manual-construction pattern was never updated to match,
+            # so __getitem__'s self.flip_prob access raised
+            # AttributeError. Matches __init__'s own default (0.0 — no
+            # augmentation) so these tests exercise the same default
+            # behavior a real caller would get.
+            ds.flip_prob = 0.0
 
             # Force augmentation OFF by patching random.random to return 1.0 > 0.30
             with patch("krisna_training.polish.dpo_dataset.random.random", return_value=1.0):

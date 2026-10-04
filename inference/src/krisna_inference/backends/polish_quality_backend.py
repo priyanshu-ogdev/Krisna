@@ -12,9 +12,19 @@ added back without re-reading this note first.
 §5.4: "Stage 2's actual job is refining a rough Stage-1 sketch into a
 finished render, which is an edit operation on existing content, not
 generation from a blank slate" — this backend always calls the pipeline in
-its edit mode (image=handoff image, not a blank generation), and applies
-region-locking via edit strength per-region (§5: "differential-diffusion-
-style edit strength") using DesignState.constraints.locked_regions.
+its edit mode (image=handoff image, not a blank generation), using
+DesignState.constraints.locked_regions.
+
+Region locking is CURRENTLY prompt-text-based only ("Do not modify these
+locked regions: ..." appended to the edit instruction, see
+_edit_instruction_from_constraints below), not the differential-
+diffusion-style per-region edit-strength mechanism §5 originally
+describes — confirmed this review pass (docs/review/
+36_model_review_4_polish_quality.md), not just an open uncertainty:
+QwenImageEditPlusPipeline has no `strength`/mask-based region-control
+parameter at all in its real `__call__` signature at this project's
+currently pinned diffusers commit. See edit_strength's own constructor
+docstring for the full finding.
 
 Uses QwenImageEditPlusPipeline (the 2511 release's multi-reference-capable
 variant) rather than the base QwenImageEditPipeline, loaded NF4-quantized
@@ -39,19 +49,52 @@ class QwenImageEditBackend(ModelBackend):
         spec,
         model_id: str = "Qwen/Qwen-Image-Edit-2511",
         dtype: str = "bfloat16",
+        # VERIFIED THIS REVIEW PASS (docs/review/36_model_review_4_polish_quality.md):
+        # 40 looks like a deviation from QwenImageEditPlusPipeline.__call__'s
+        # own bare signature default of 50 — it isn't. That 50 is just a
+        # generic Python fallback baked into the pipeline CLASS, not a
+        # recommendation specific to this CHECKPOINT. 40 is the real,
+        # official Qwen-Image-Edit-2511 model-card setting — confirmed via
+        # two independent sources: the official w3ss GGUF model card's own
+        # usage snippet (`"num_inference_steps": 40`) and a hosted-API
+        # provider's docs explicitly noting "the upstream model card
+        # demonstrates 40 steps with true_cfg_scale 4.0". Both values here
+        # were already correct; this comment is the citation that was
+        # previously missing, not a value change.
         num_inference_steps: int = 40,
         true_cfg_scale: float = 4.0,
         # SDEdit-style partial denoising strength — how much of the
-        # handoff image's structure to preserve vs. regenerate. 1.0 =
-        # full regeneration (ignores init image structure); lower values
-        # preserve more of the Stage-1 sketch's layout. This is the
-        # "SDEdit-style partial denoising" half of the frozen-model
-        # inference strategy the PRD describes — the ICL edit-instruction
-        # half was already implemented in run() below, this was the
-        # missing piece. 0.65 is a reasonable UI-refinement default
-        # (preserve overall layout, regenerate detail/texture/lighting);
-        # tune per PRD §5's "Stage 80/100" framing once real handoff
-        # images are available to evaluate against.
+        # handoff image's structure to preserve vs. regenerate, IF this
+        # pipeline version supports it (see load()'s B3 check).
+        #
+        # DEFINITIVELY CONFIRMED THIS REVIEW PASS (docs/review/36_model_
+        # review_4_polish_quality.md), not just "version-uncertain" as
+        # the B3 check below originally framed it: checked out the EXACT
+        # commit requirements-inference.txt pins
+        # (cc8644b447d8f11074d3df06d0ee0e3e7c91bf75) and read
+        # QwenImageEditPlusPipeline.__call__'s real signature directly —
+        # `strength` does not exist anywhere in it, zero occurrences.
+        # This means, as currently pinned, edit_strength NEVER has any
+        # effect — B3's runtime check always fires, always sets this to
+        # None, always skips it. This is not a bug in the detection logic
+        # (which correctly, defensively discovers this and degrades
+        # gracefully rather than raising TypeError) — it's a confirmed
+        # fact about this pipeline's real current API surface, previously
+        # documented here as an open uncertainty rather than a known
+        # non-functional state. Qwen-Image-Edit is an instruction-based
+        # edit pipeline (closer to InstructPix2Pix/FLUX-Kontext) rather
+        # than an SDEdit partial-noise pipeline — "how much changes" is
+        # controlled through the edit INSTRUCTION TEXT and
+        # `true_cfg_scale`, not a numeric strength parameter, which may
+        # be why this pipeline family never grew one. Kept as a
+        # constructor parameter (not removed) specifically because the
+        # detection is version-aware and forward-compatible: a future
+        # diffusers release could add `strength` without any code change
+        # needed here, just this pin moving forward. 0.65 is the value
+        # that WOULD apply if a future version adds support — a
+        # reasonable UI-refinement default (preserve overall layout,
+        # regenerate detail/texture/lighting) per PRD §5's "Stage 80/100"
+        # framing, not a currently-active setting.
         edit_strength: float = 0.65,
         enable_cpu_offload: bool = False,   # low-VRAM mode — see module docstring's
                                               # low-VRAM-mode section for the real,
@@ -110,6 +153,44 @@ class QwenImageEditBackend(ModelBackend):
             if "out of memory" in msg:
                 raise OOMSimulatedError(str(e)) from e
             raise BackendLoadError(f"Failed to load Qwen-Image-Edit-2511: {e}") from e
+
+        # B3: verify `strength` kwarg is actually accepted by this pipeline
+        # version before we try to pass it at inference time. CONFIRMED
+        # (docs/review/36_model_review_4_polish_quality.md): at the exact
+        # diffusers commit this project currently pins
+        # (requirements-inference.txt, cc8644b447d8f11074d3df06d0ee0e3e7c91bf75),
+        # QwenImageEditPlusPipeline.__call__ has no `strength` parameter
+        # at all — this check WILL always fire against that pin, not a
+        # hypothetical. Kept as a runtime check rather than a hardcoded
+        # skip specifically so a future diffusers version bump that adds
+        # `strength` support is picked up automatically with zero code
+        # changes here. Inspecting after load (not at __init__) because
+        # the pipeline class is only available after importing diffusers
+        # inside _load_sync().
+        import inspect
+        try:
+            sig = inspect.signature(self._pipe.__call__)
+            if "strength" not in sig.parameters:
+                log.warning(
+                    "qwen_edit_strength_kwarg_unavailable",
+                    extra={
+                        "model_id": self.model_id,
+                        "note": "`strength` not in QwenImageEditPlusPipeline.__call__ "
+                                "for this diffusers version (confirmed absent at this "
+                                "project's currently pinned commit). SDEdit-style partial "
+                                "denoising is skipped entirely (edit_strength=None); "
+                                "'how much changes' is controlled via the edit instruction "
+                                "text and true_cfg_scale instead. If a future diffusers "
+                                "pin bump adds `strength` support, this check picks it up "
+                                "automatically — no code change needed here.",
+                    },
+                )
+                self.edit_strength = None  # prevents TypeError in _run_sync()
+        except (TypeError, ValueError):
+            # inspect.signature() can fail on some C-extension __call__s;
+            # in that case, attempt the kwarg and let TypeError surface naturally.
+            pass
+
         self._loaded = True
 
     async def unload(self) -> None:
@@ -161,26 +242,20 @@ class QwenImageEditBackend(ModelBackend):
             if init_image is None:
                 raise ValueError(f"Unrecognized handoff_image_ref format: {handoff_image_ref!r}")
 
-            result = self._pipe(
+            kwargs_for_pipe = dict(
                 image=[init_image],
                 prompt=edit_instruction,
                 num_inference_steps=self.num_inference_steps,
                 true_cfg_scale=self.true_cfg_scale,
-                # UNVERIFIED against QwenImageEditPlusPipeline specifically:
-                # `strength` is confirmed on diffusers' QwenImageImg2ImgPipeline
-                # and QwenImageInpaintPipeline (0-1, SDEdit-style partial
-                # denoising), but the Edit/Edit-Plus pipeline family is
-                # architecturally different (instruction+reference-image
-                # editing, not classic img2img noise scheduling) and was NOT
-                # independently confirmed to expose this exact kwarg before
-                # this revision. If this pipeline version rejects it, this
-                # raises a clear TypeError at call time rather than silently
-                # ignoring edit_strength — check the installed diffusers
-                # version's QwenImageEditPlusPipeline.__call__ signature and
-                # either confirm this kwarg name or find the pipeline's real
-                # equivalent control before relying on this in production.
-                strength=self.edit_strength,
             )
+            # Only pass `strength` when B3's post-load check confirmed the
+            # kwarg exists. If QwenImageEditPlusPipeline doesn't expose it
+            # for this diffusers version, self.edit_strength is set to None
+            # during load() and we skip it rather than raising TypeError.
+            if self.edit_strength is not None:
+                kwargs_for_pipe["strength"] = self.edit_strength
+
+            result = self._pipe(**kwargs_for_pipe)
             return result.images[0]
 
         image = await asyncio.to_thread(_run_sync)
@@ -200,11 +275,14 @@ def _edit_instruction_from_constraints(constraints: dict, locked_regions: list |
         instruction += f" {hints}."
     if locked_regions:
         # Differential-diffusion-style region locking: tell the model which
-        # regions must not change, in addition to whatever real mask-based
-        # edit-strength mechanism the pipeline exposes (region masks are a
-        # pipeline-version-specific parameter — kept as a prompt-level
-        # instruction here since diffusers' exact locked-region API for
-        # this pipeline is still moving; tighten this once it stabilizes).
+        # regions must not change. UPDATED (docs/review/
+        # 36_model_review_4_polish_quality.md): this is the ONLY
+        # region-locking mechanism currently in effect, not "in addition
+        # to" a mask-based one — confirmed QwenImageEditPlusPipeline has
+        # no mask/region-control parameter at all in its real __call__
+        # signature at this project's pinned diffusers commit. Prompt-
+        # text instruction is the whole mechanism today; revisit if a
+        # future diffusers version adds a real mask-based API.
         reasons = "; ".join(r.get("reason", "locked region") for r in locked_regions)
         instruction += f" Do not modify these locked regions: {reasons}."
     return instruction

@@ -38,7 +38,34 @@ def prepare(
 
     captions: dict[str, str] = {}
     if captions_path and Path(captions_path).exists():
-        captions = json.loads(Path(captions_path).read_text())
+        cpath = Path(captions_path)
+        raw_text = cpath.read_text(encoding="utf-8").strip()
+        if raw_text:
+            if cpath.suffix.lower() == ".jsonl" or ("\n" in raw_text and not raw_text.startswith("[")):
+                for line in raw_text.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        rec = json.loads(line)
+                    except Exception:
+                        continue
+                    fname = rec.get("image_filename") or rec.get("filename") or rec.get("source_image") or rec.get("record_id")
+                    if fname:
+                        captions[Path(fname).name] = rec.get("caption", "")
+            else:
+                try:
+                    loaded = json.loads(raw_text)
+                    if isinstance(loaded, dict):
+                        captions = loaded
+                    elif isinstance(loaded, list):
+                        for item in loaded:
+                            if isinstance(item, dict):
+                                fname = item.get("image_filename") or item.get("filename") or item.get("source_image")
+                                if fname:
+                                    captions[Path(fname).name] = item.get("caption", "")
+                except Exception as e:
+                    log.warning("captions_load_failed", extra={"path": str(cpath), "error": str(e)})
 
     image_paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS)
     if not image_paths:
@@ -48,8 +75,14 @@ def prepare(
     manifest_path = output_dir / "manifest.jsonl"
 
     written = 0
+    # UPGRADE (docs/review/33_model_review_2_data_training_connection.md):
+    # was one .npy file per image, same I/O bottleneck fixed in
+    # sync_sketch_tier.py — see token_shard_writer.py's module docstring.
+    from krisna_training.sketch.token_shard_writer import TokenShardWriter
+
+    writer = TokenShardWriter(tokens_dir, expected_token_len=grid_h * grid_w)
     with manifest_path.open("w") as manifest_file:
-        for i, image_path in enumerate(image_paths):
+        for image_path in image_paths:
             try:
                 image = Image.open(image_path).convert("RGB").resize((image_size, image_size))
                 tokens = tokenizer.encode(image)
@@ -57,18 +90,16 @@ def prepare(
                 log.warning("tokenize_failed", extra={"path": str(image_path), "error": str(e)})
                 continue
 
-            import numpy as np
-
-            token_file = f"tokens/{i:07d}.npy"
-            np.save(tokens_dir / f"{i:07d}.npy", np.array(tokens, dtype="int32"))
-
+            shard_path, index_in_shard = writer.add(tokens)
             record = {
-                "tokens_path": token_file,
+                "tokens_shard": shard_path,
+                "tokens_index": index_in_shard,
                 "caption": captions.get(image_path.name, ""),
                 "source_image": str(image_path),
             }
             manifest_file.write(json.dumps(record) + "\n")
             written += 1
+    writer.close()
 
     log.info(
         "prepare_dataset_complete",

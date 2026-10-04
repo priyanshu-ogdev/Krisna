@@ -120,13 +120,59 @@ class SketchBackend(ModelBackend):
 
         # The user's actual message, forwarded via **kwargs from
         # SwapOrchestrator.run_conversational_turn (the same kwargs dict
-        # PlannerBackend.run(message=...) receives). Falls back to
-        # "UI design" (not a zero vector) on empty/missing text, matching
-        # collate_fn's own fallback for records with no usable caption —
-        # a genuine zero vector is reserved for the CFG unconditional
-        # branch below.
+        # PlannerBackend.run(message=...) receives). Grounded with active
+        # constraints (style, palette, layout) so CLIP text embeddings
+        # accurately condition MaskGIT sketch generation.
         message = (kwargs.get("message") or "").strip()
-        prompt_text = message or "UI design"
+        constraints = kwargs.get("constraints") or {}
+        style_desc = []
+        if constraints.get("style"):
+            style_desc.append(str(constraints["style"]))
+        if constraints.get("palette") and isinstance(constraints["palette"], list):
+            pal_str = ", ".join(str(c) for c in constraints["palette"] if c)
+            if pal_str:
+                style_desc.append(f"colors: {pal_str}")
+        if constraints.get("layout_hints"):
+            hints_str = str(constraints["layout_hints"]).strip()
+            if hints_str:
+                style_desc.append(f"layout: {hints_str}")
+
+        # BUG FOUND ON REVIEW (docs/review/32_model_review_2_sketch.md):
+        # `planner_output` was accepted as a parameter and passed on
+        # EVERY conversational turn by
+        # swap_orchestrator.run_conversational_turn, but was never
+        # actually read anywhere in this method — the same "accepted but
+        # silently ignored" pattern already found once in
+        # polish_default_backend.py (handoff_image_ref). Its
+        # design_state_delta.reasoning_note is the Planner's own <=2-
+        # sentence synthesis of design intent (e.g. "User wants a
+        # warmer, friendlier feel with rounded corners") — richer,
+        # design-vocabulary-appropriate prose that the terse
+        # style/palette/layout_hints tags alone can't capture, and a
+        # genuine Model-1-to-Model-2 connection this tier was silently
+        # discarding. Bounded to a short character cap (not just left
+        # unbounded) because CLIP's tokenizer truncates SILENTLY at 77
+        # tokens (verifiers/common.py::embed_text, truncation=True) —
+        # without a cap, a long reasoning_note appended after the user's
+        # own message could push the message itself past the truncation
+        # point on a long turn, which would be a worse outcome than not
+        # using reasoning_note at all.
+        reasoning_note = ""
+        if isinstance(planner_output, dict):
+            delta = planner_output.get("design_state_delta") or {}
+            reasoning_note = str(delta.get("reasoning_note") or "").strip()
+        if reasoning_note:
+            style_desc.append(reasoning_note[:160])
+
+        constraint_str = "; ".join(style_desc)
+        if message and constraint_str:
+            prompt_text = f"{message} ({constraint_str})"
+        elif message:
+            prompt_text = message
+        elif constraint_str:
+            prompt_text = f"UI design ({constraint_str})"
+        else:
+            prompt_text = "UI design"
 
         def _run_sync():
             import torch
