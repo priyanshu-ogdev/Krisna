@@ -1,7 +1,7 @@
 # Krisna — Agentic Design System
 
 > [!IMPORTANT]
-> **Canonical Master Document**: The formal, authoritative system specification is [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) (Product & Research Requirements Document — Final No-RLHF Revision). All architecture, hardware envelopes, state machines, and citations conform strictly to it.
+> **Canonical Master Document**: The formal, authoritative system specification is [docs/PRD.md](docs/PRD.md) (Product & Research Requirements Document — Final No-RLHF Revision). All architecture, hardware envelopes, state machines, and citations conform strictly to it.
 
 A conversational, agentic UI-design system: a Planner discusses intent, a
 Sketch tier generates a partial draft, a Polish tier finalizes a

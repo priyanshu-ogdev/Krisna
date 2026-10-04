@@ -3,7 +3,7 @@
 Comprehensive reference for single-GPU serving, swap orchestration, and multi-turn agentic flows.
 
 > [!IMPORTANT]
-> **Canonical Specification**: Defined in [docs/PRD.md §5](file:///d:/Krisna/docs/PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](file:///d:/Krisna/docs/PRD.md#7-inference-orchestration) (Inference Orchestration).
+> **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration).
 > Krisna is a **swap orchestrator** that never keeps more than one large generative tier GPU-resident at a time.
 
 ---
@@ -147,8 +147,8 @@ FastAPI service exposed on default port `8420`:
 
 ## 8. Related Documentation
 
-- **[inference/README.md](file:///d:/Krisna/inference/README.md)**: Serving setup, mock vs real backends, Docker flags, and requirements.
-- **[inference/frontend/README.md](file:///d:/Krisna/inference/frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
-- **[inference/runtime/README.md](file:///d:/Krisna/inference/runtime/README.md)**: CLI harness for multi-turn manual testing.
-- **[docs/review/28_docker_isolation_and_hardware_preflight.md](file:///d:/Krisna/docs/review/28_docker_isolation_and_hardware_preflight.md)**: Phase 28 research and verification report.
+- **[inference/README.md](../../inference/README.md)**: Serving setup, mock vs real backends, Docker flags, and requirements.
+- **[inference/frontend/README.md](../../inference/frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
+- **[inference/runtime/README.md](../../inference/runtime/README.md)**: CLI harness for multi-turn manual testing.
+- **[docs/review/28_docker_isolation_and_hardware_preflight.md](../review/28_docker_isolation_and_hardware_preflight.md)**: Phase 28 research and verification report.
 

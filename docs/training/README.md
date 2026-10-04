@@ -3,7 +3,7 @@
 Comprehensive reference and mathematical derivations for training the generative components of Krisna's agentic UI pipeline.
 
 > [!IMPORTANT]
-> **Canonical Specification**: Defined in [docs/PRD.md §6](file:///d:/Krisna/docs/PRD.md#6-model-stack-the-no-rlhf-loop-revision) (The No-RLHF Model Stack) and [docs/PRD.md §8](file:///d:/Krisna/docs/PRD.md#8-data-pipeline-data-forge).
+> **Canonical Specification**: Defined in [docs/PRD.md §6](../PRD.md#6-model-stack-the-no-rlhf-loop-revision) (The No-RLHF Model Stack) and [docs/PRD.md §8](../PRD.md#8-data-pipeline-data-forge).
 > Of the five model tiers, exactly **two** are trained; three ship frozen.
 
 ---
@@ -70,6 +70,6 @@ $$\mathcal{L}_{\text{anchor}} = \|v_\theta(x_t^w, t, c) - v_{\text{ref}}(x_t^w, 
 ## 4. Runbooks & Detailed Guides
 
 - **[TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)**: End-to-end execution guide on Intel Core i9 + NVIDIA RTX A6000 under Windows PowerShell.
-- **[training/README.md](file:///d:/Krisna/training/README.md)**: Package setup, dataset preparation, and command-line execution walkthrough.
-- **[SYNC_DESIGN.md](file:///d:/Krisna/docs/architecture/SYNC_DESIGN.md)**: Data-Forge to Training sync contract.
+- **[training/README.md](../../training/README.md)**: Package setup, dataset preparation, and command-line execution walkthrough.
+- **[SYNC_DESIGN.md](../architecture/SYNC_DESIGN.md)**: Data-Forge to Training sync contract.
 
