@@ -94,14 +94,44 @@ class ZImageTurboBackend(ModelBackend):
                 # Standard diffusers LoRA loading — the output of
                 # training/polish's Z-Image LoRA wrapper (see that
                 # package's docstring: it trains against Tongyi-MAI/Z-Image,
-                # the undistilled base, not Z-Image-Turbo directly, per the
-                # community-reported finding that Turbo's distillation
-                # gradients are unreliable for LoRA/fine-tuning). Turbo and
+                # the undistilled base, not Z-Image-Turbo directly).
+                #
+                # CITATION ADDED (docs/review/34_model_review_3_polish_default.md):
+                # the "community-reported finding" this comment used to
+                # vaguely gesture at is now a real, found, specific source
+                # — a Tongyi-MAI training-strategies writeup
+                # (huggingface.co/blog/kelseye/training-strategies-of-z-image-turbo)
+                # that documents training a LoRA directly on Z-Image-Turbo
+                # causing the model to effectively "de-distill": inference
+                # quality actually IMPROVES when reverting to the
+                # non-accelerated 30-step/cfg=2 sampling regime, meaning the
+                # 8-step/no-CFG acceleration this project's whole Polish-
+                # Default tier is built around gets silently destroyed by
+                # naive LoRA fine-tuning on Turbo directly. Training on the
+                # undistilled base (this project's actual approach) avoids
+                # that specific failure mode.
+                #
+                # OPEN QUESTION, flagged rather than silently assumed
+                # resolved: that same source names a DIFFERENT, more
+                # specialized technique — "Differential LoRA" via a preset
+                # adapter (community example: ostris/zimage_turbo_training_
+                # adapter) — specifically designed to let a LoRA customize
+                # Turbo WHILE preserving its 8-step acceleration, which this
+                # project's current undistilled-base approach doesn't
+                # directly address (it sidesteps the de-distillation
+                # problem by training elsewhere, but still only verifies
+                # that the resulting adapter LOADS onto Turbo, not that
+                # applying it preserves Turbo's own distilled sampling
+                # quality as well as a preset Differential-LoRA approach
+                # might). Worth evaluating as a follow-up, not yet done —
+                # matches this project's "flag the open question honestly"
+                # discipline (see PRD §11's own open-questions list, which
+                # this effectively extends with one more item). Turbo and
                 # the undistilled model share the same DiT architecture, so
                 # the adapter's module names/shapes should match — but
-                # loading a De-Turbo-trained adapter onto the Turbo
-                # checkpoint here is UNVERIFIED for actual output quality,
-                # only for whether it loads without error.
+                # loading a de-Turbo-trained adapter onto the Turbo
+                # checkpoint here remains UNVERIFIED for actual output
+                # quality, only for whether it loads without error.
                 pipe.load_lora_weights(self.lora_adapter_path)
                 log.info("z_image_lora_applied", extra={"adapter": self.lora_adapter_path})
             # Deliberately NOT NF4-quantized, unlike Polish-Quality/Planner/

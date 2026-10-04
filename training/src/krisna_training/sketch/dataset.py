@@ -1,8 +1,27 @@
 """Dataset for sketch-tier training. Reads a JSONL manifest — one record
-per image — produced by prepare_dataset.py. Each record is either
-`{"tokens": [...], "caption": "..."}` (inlined, fine for smaller datasets)
-or `{"tokens_path": "shard/0001.npy", "caption": "..."}` (for larger runs
-where inlining every token grid into one JSONL file gets unwieldy).
+per image — produced by prepare_dataset.py or sync_sketch_tier.py. Each
+record is one of:
+  - `{"tokens": [...], "caption": "..."}` — inlined, fine for small/test
+    datasets, kept for backward compatibility with any existing manifest.
+  - `{"tokens_path": "tokens/0001234.npy", "caption": "..."}` — one .npy
+    file per image. LEGACY format, also kept for backward compatibility,
+    but no longer written by either producer — see `tokens_shard` below
+    for why.
+  - `{"tokens_shard": "tokens/shard_00003.npy", "tokens_index": 42,
+    "caption": "..."}` — UPGRADE (docs/review/
+    33_model_review_2_data_training_connection.md): the current, default
+    format both producers write. At PRD §8.3's target corpus scale
+    (100K-500K images), one `.npy` file per image means hundreds of
+    thousands of individual small files — a real, well-known I/O
+    bottleneck (per-sample open()/read()/close() syscall overhead
+    dominates at this scale, worse on network-mounted storage or with
+    many parallel DataLoader workers). Consolidated shards
+    (training/sketch/token_shard_writer.py) are opened via
+    `np.load(path, mmap_mode="r")` ONCE per shard in __init__ — safe and
+    standard across forked DataLoader worker processes (each gets its
+    own OS-level mapping to the same file via the page cache) — and read
+    per-sample as a cheap slice against the memory-mapped array, with no
+    per-sample file-open cost at all.
 
 Records may also carry `"source_caption"`: the original, short, human/
 source-dataset caption (e.g. Screen2Words' ~6.6-word-average summaries),
@@ -53,6 +72,11 @@ class SketchTokenDataset:
         self.grid_w = grid_w
         self.caption_mix_ratio = caption_mix_ratio
         self.records: list[dict] = []
+        # Opened lazily, one mmap per distinct shard file referenced by
+        # any record — not eagerly for every possible shard on disk, in
+        # case a manifest only actually touches a subset (e.g. a
+        # held-out split carved from the same shard pool).
+        self._shard_arrays: dict[str, "object"] = {}
         with self.manifest_path.open() as f:
             for line in f:
                 line = line.strip()
@@ -62,10 +86,26 @@ class SketchTokenDataset:
     def __len__(self) -> int:
         return len(self.records)
 
+    def _get_shard_array(self, shard_relative_path: str):
+        if shard_relative_path not in self._shard_arrays:
+            import numpy as np
+
+            shard_path = self.manifest_path.parent / shard_relative_path
+            # mmap_mode="r": pages faulted in lazily on access, not one
+            # eager read of the whole shard — keeps memory footprint low
+            # even for a large shard, while still avoiding per-sample
+            # file-open overhead (the file is opened once here, not once
+            # per __getitem__ call).
+            self._shard_arrays[shard_relative_path] = np.load(shard_path, mmap_mode="r")
+        return self._shard_arrays[shard_relative_path]
+
     def __getitem__(self, idx: int) -> dict:
         record = self.records[idx]
         if "tokens" in record:
             tokens = record["tokens"]
+        elif "tokens_shard" in record:
+            arr = self._get_shard_array(record["tokens_shard"])
+            tokens = arr[record["tokens_index"]].tolist()
         else:
             import numpy as np
 

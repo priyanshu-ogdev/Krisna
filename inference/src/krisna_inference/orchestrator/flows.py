@@ -72,6 +72,19 @@ async def conversational_turn(
 
     delta = planner_out.get("design_state_delta") or {}
     constraint_updates = delta.get("constraint_updates") or {}
+
+    # UPGRADE (docs/review/35_model_review_3_resync.md): persist this
+    # turn's reasoning_note so _synthesize_dpo_prompt() — used for both
+    # Polish-tier generation and DPO training-data prompts — can enrich
+    # its prompt the same way sketch_backend.py's run() already does
+    # with the SAME turn's live planner_output. Only overwrite when this
+    # turn's delta actually carries a non-empty note; a turn where the
+    # Planner has nothing new to add (reasoning_note empty/missing)
+    # should not erase the last meaningful one.
+    new_reasoning_note = str(delta.get("reasoning_note") or "").strip()
+    if new_reasoning_note:
+        state.last_planner_reasoning_note = new_reasoning_note
+
     original_constraints = state.constraints.model_dump()
     merged = apply_constraint_updates(original_constraints, constraint_updates)
     state.constraints.style = merged["style"]
@@ -471,6 +484,25 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
         descriptors.append(f"palette: {', '.join(state.constraints.palette)}")
     if state.constraints.layout_hints:
         descriptors.append(f"layout: {state.constraints.layout_hints}")
+    # UPGRADE (docs/review/35_model_review_3_resync.md): the same
+    # Planner-reasoning-note enrichment already applied to
+    # sketch_backend.py's run(), carried forward here via the persisted
+    # state field (see DesignState.last_planner_reasoning_note's
+    # docstring for why a persisted field was needed here but not for
+    # Sketch). Bound is DELIBERATELY much more generous than Sketch's
+    # 160-character cap, not copy-pasted from it — researched this
+    # tier's actual text encoder rather than assuming the same CLIP-
+    # driven caution applies: Z-Image-Turbo's text encoder is Qwen3-4B
+    # (confirmed via its own text_encoder/config.json on HuggingFace),
+    # with diffusers/DiffSynth enforcing max_sequence_length=512 tokens
+    # — roughly 6-7x CLIP's ~77-token practical limit, not the ~50-60
+    # word budget CLIP's silent truncation forced Sketch's cap to
+    # respect. 300 characters is a defensive sanity bound (a Planner
+    # that ignored its own "<=2 sentences" instruction could in
+    # principle produce something much longer), not a tight constraint
+    # against truncation risk the way Sketch's cap was.
+    if state.last_planner_reasoning_note:
+        descriptors.append(state.last_planner_reasoning_note[:300])
 
     desc_str = ", ".join(descriptors)
     if latest_user_intent and desc_str:

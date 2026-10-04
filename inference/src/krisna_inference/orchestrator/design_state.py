@@ -137,13 +137,32 @@ class DesignState(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
+    # UPGRADE (docs/review/35_model_review_3_resync.md): same category as
+    # revision/created_at/updated_at above — not in PRD §5.1's literal
+    # JSON shape, added as an internal-only field rather than altering
+    # the PRD-defined wire contract. Persists the most recent Planner
+    # turn's design_state_delta.reasoning_note (a short, synthesized
+    # description of design intent, e.g. "User wants a warmer, friendlier
+    # feel with rounded corners") so _synthesize_dpo_prompt() — used for
+    # BOTH Polish-tier generation and DPO preference-pair training data —
+    # can enrich its prompt the same way sketch_backend.py's run() was
+    # already fixed to do with the SAME turn's live planner_output. This
+    # field exists because, unlike Sketch's run() (which receives
+    # planner_output directly from the same conversational turn),
+    # _synthesize_dpo_prompt() only has access to persisted DesignState —
+    # there was previously no field to carry this forward into a later
+    # finalize()/critique_pass() call.
+    last_planner_reasoning_note: str | None = None
+
     def to_wire(self) -> dict[str, Any]:
-        """The exact §5.1 shape (no revision/timestamps), for anything
-        that needs to match the PRD's JSON contract byte-for-byte."""
+        """The exact §5.1 shape (no revision/timestamps/internal fields),
+        for anything that needs to match the PRD's JSON contract
+        byte-for-byte."""
         d = self.model_dump(mode="json")
         d.pop("revision", None)
         d.pop("created_at", None)
         d.pop("updated_at", None)
+        d.pop("last_planner_reasoning_note", None)
         return d
 
     def touch(self) -> None:
