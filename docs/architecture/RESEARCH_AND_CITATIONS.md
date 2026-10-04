@@ -1,7 +1,7 @@
 # Research Findings & Citations
 
 > [!IMPORTANT]
-> **Canonical Reference**: This document serves as the research audit trail and methodological grounding for [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) (the canonical Product & Research Requirements Document). Every `PRD §X` cited here references sections in that master document.
+> **Canonical Reference**: This document serves as the research audit trail and methodological grounding for [docs/PRD.md](../PRD.md) (the canonical Product & Research Requirements Document). Every `PRD §X` cited here references sections in that master document.
 
 Every non-obvious architectural decision in this repo traces back to a
 specific, checked fact — not an assumption. This document is that trail:
@@ -441,7 +441,7 @@ Documented here rather than silently resolved one way or the other:
 
 ## 6. Canonical Bibliography & Primary Sources (Aligned with PRD §12)
 
-Every citation below is a confirmed primary source directly grounding decisions in [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) §12:
+Every citation below is a confirmed primary source directly grounding decisions in [docs/PRD.md](../PRD.md) §12:
 
 1. **Chang, H., et al. (2023)**. *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. [arXiv:2301.00704](https://arxiv.org/abs/2301.00704).
    - *Role*: Classifier-Free Guidance (CFG) formula ($\ell_g = (1+t)\ell_c - t\ell_u$), 10% conditioning dropout during training (`cfg_dropout_prob=0.1`), and linear guidance schedule ramp for the Sketch tier (§6.2).

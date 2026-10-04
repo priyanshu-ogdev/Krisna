@@ -48,7 +48,7 @@ implementations plus a real one:
 
 ### Canonical Specification (§7.4)
 
-The canonical state machine specification is formalized in [docs/PRD.md §7.4](file:///d:/Krisna/docs/PRD.md).
+The canonical state machine specification is formalized in [docs/PRD.md §7.4](../docs/PRD.md).
 The transition table implemented in `state_machine.py` matches that canonical
 specification exactly: `IDLE_RESIDENT` → `SWAPPING_TO_POLISH` → `POLISH_RESIDENT`
 → `SWAPPING_BACK_FROM_POLISH` → `IDLE_RESIDENT` (and symmetric for Critic), with

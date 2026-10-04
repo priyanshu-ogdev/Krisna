@@ -3,7 +3,7 @@
 Not code — this is where trained checkpoints land, consumed by both
 `inference/runtime/` (for manual testing) and by setting the corresponding
 `KRISNA_*` environment variable when running the real service
-(`scripts/inference/run_service.sh` / `.ps1`), per [docs/PRD.md](file:///d:/Krisna/docs/PRD.md) §6–§7.
+(`scripts/inference/run_service.sh` / `.ps1`), per [docs/PRD.md](../docs/PRD.md) §6–§7.
 
 ```
 models/
