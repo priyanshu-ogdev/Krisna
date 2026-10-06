@@ -180,7 +180,7 @@ class DedupEngine:
         temp_index = faiss.IndexFlatIP(d)
         temp_index.add(emb_norm)
 
-        k = min(50, n)
+        k = min(512, n)
         scores, indices = temp_index.search(emb_norm, k)
 
         duplicates: list[tuple[str, str, float]] = []
@@ -342,6 +342,9 @@ class DedupEngine:
                 id_map_len=len(self._id_map),
             )
 
+        if hasattr(self._index, "nprobe"):
+            self._index.nprobe = self._nprobe
+
         self._maybe_move_to_gpu()
         log.info("index_loaded", path=str(path), vectors=self._index.ntotal)
 
@@ -375,7 +378,7 @@ class DedupEngine:
             failed_indices: indices in image_paths that failed to load/decode.
         """
         import torch
-        from PIL import Image
+        from PIL import Image, ImageOps
 
         target_device = device or getattr(clip_model, "device", None) or next(clip_model.parameters()).device
         model_dtype = getattr(clip_model, "dtype", torch.float32)
@@ -392,9 +395,21 @@ class DedupEngine:
             for offset, p in enumerate(batch_slice):
                 orig_idx = batch_start + offset
                 try:
-                    with Image.open(p) as img:
+                    with Image.open(p) as raw_img:
+                        img = ImageOps.exif_transpose(raw_img)
                         img.load()
-                        batch_images.append(img.convert("RGB"))
+                        # Downscale massive web captures to save memory during batch processing
+                        if img.width > 1024 or img.height > 1024:
+                            img.thumbnail((768, 768), Image.Resampling.BILINEAR)
+
+                        # Cleanly composite transparency onto white to prevent UI icons from blacking out
+                        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                            rgba = img.convert("RGBA")
+                            white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                            composite = Image.alpha_composite(white_bg, rgba)
+                            batch_images.append(composite.convert("RGB"))
+                        else:
+                            batch_images.append(img.convert("RGB"))
                     batch_valid_idx.append(orig_idx)
                 except Exception as e:
                     log.warning("image_load_failed", path=str(p), error=str(e))

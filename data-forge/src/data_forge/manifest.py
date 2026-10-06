@@ -580,6 +580,18 @@ class Manifest:
                 )
         log.debug("bulk_failed_marked", count=len(record_ids), stage=stage, reason=reason)
 
+    def bulk_update_content_hashes(self, hash_pairs: list[tuple[str, str]]) -> None:
+        """Bulk-update content_hash_sha256 for records in a single transaction."""
+        if not hash_pairs:
+            return
+        now = _now_iso()
+        with self._transaction() as cur:
+            cur.executemany(
+                "UPDATE records SET content_hash_sha256 = ?, updated_at = ? WHERE id = ?",
+                [(h, now, r_id) for r_id, h in hash_pairs],
+            )
+        log.debug("bulk_content_hashes_updated", count=len(hash_pairs))
+
     # ── Queries ───────────────────────────────────────────────────────────
 
     def query_by_status(
@@ -732,7 +744,9 @@ class Manifest:
                     FROM records
                     WHERE content_hash_sha256 IN ({placeholders})
                       AND status != 'excluded_duplicate'
-                    ORDER BY rowid ASC""",
+                    ORDER BY CASE WHEN status = 'training_pool' THEN 1
+                                  WHEN status = 'deduped' THEN 2
+                                  ELSE 3 END, rowid ASC""",
                 batch,
             ).fetchall()
             for r in rows:

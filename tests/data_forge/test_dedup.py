@@ -290,3 +290,85 @@ class TestDedupStage:
         assert dedup_check._index.ntotal == 3
         assert set(dedup_check._id_map) == {r1.id, r2.id, r4.id}
         assert r3.id not in dedup_check._id_map
+
+    def test_dense_cluster_deduplication(self):
+        engine = DedupEngine(similarity_threshold=0.90)
+        # Cluster of 60 identical vectors
+        vectors = np.tile(np.array([1.0, 0.0, 0.0], dtype=np.float32), (60, 1))
+        ids = [f"clust_{i}" for i in range(60)]
+
+        duplicates, survivors = engine.dedup_batch(vectors, ids)
+
+        assert len(duplicates) == 59
+        assert len(survivors) == 1
+        assert survivors == [0]
+        # All 59 duplicates must point directly to clust_0
+        for dup_id, canonical_id, sim in duplicates:
+            assert canonical_id == "clust_0"
+
+    def test_ivf_nprobe_restored_on_load(self, tmp_path: Path):
+        engine = DedupEngine(similarity_threshold=0.90, index_type="IVF", nprobe=42)
+        vectors = np.random.randn(300, 32).astype(np.float32)
+        ids = [f"id_{i}" for i in range(300)]
+        engine.build_index(vectors, ids)
+
+        index_file = tmp_path / "ivf_test.bin"
+        engine.save_index(index_file)
+
+        engine2 = DedupEngine(similarity_threshold=0.90, nprobe=99)
+        engine2.load_index(index_file)
+        assert hasattr(engine2._index, "nprobe")
+        assert engine2._index.nprobe == 99
+
+    @pytest.mark.asyncio
+    async def test_missing_hashes_bulk_computed(self, dedup_env, tmp_path: Path):
+        manifest, config = dedup_env
+        stage = DedupStage()
+
+        raw_dir = tmp_path / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        img = Image.new("RGB", (32, 32), color="purple")
+        path1 = raw_dir / "hash_test_1.png"
+        path2 = raw_dir / "hash_test_2.png"
+        img.save(path1)
+        img.save(path2)
+
+        # Neither record has content_hash_sha256 initially
+        rec1 = manifest.create_record("test_ds", image_path="raw/hash_test_1.png")
+        rec2 = manifest.create_record("test_ds", image_path="raw/hash_test_2.png")
+        assert rec1.content_hash_sha256 is None
+        assert rec2.content_hash_sha256 is None
+
+        res = await stage.run(manifest, config, [rec1.id, rec2.id], engine=None)
+
+        assert res.metadata["exact_duplicates"] == 1
+        # Check that hash was computed and stored in manifest
+        r1_after = manifest.get_record(rec1.id)
+        assert r1_after.content_hash_sha256 is not None
+        assert r1_after.status == "deduped"
+
+        r2_after = manifest.get_record(rec2.id)
+        assert r2_after.status == "excluded_duplicate"
+        assert r2_after.duplicate_of == rec1.id
+
+    def test_transparent_png_compositing(self, tmp_path: Path):
+        # Create an RGBA transparent image
+        img = Image.new("RGBA", (64, 64), color=(0, 0, 0, 0))  # Fully transparent
+        path = tmp_path / "transparent.png"
+        img.save(path)
+
+        mock_clip = MockClipModel(dim=32)
+        mock_proc = MockClipProcessor()
+
+        embeddings, valid_idx, failed_idx = DedupEngine.generate_embeddings(
+            image_paths=[path],
+            clip_model=mock_clip,
+            clip_processor=mock_proc,
+            batch_size=10,
+        )
+
+        assert len(valid_idx) == 1
+        assert len(failed_idx) == 0
+        assert embeddings.shape == (1, 32)
+
