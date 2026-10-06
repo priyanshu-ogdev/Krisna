@@ -46,7 +46,7 @@ class PIITextRedactStage(Stage):
         records = manifest.get_records_by_ids(record_ids)
         # OCR enrichment doesn't advance status — records are still
         # "structured" when this runs, with ocr_output now populated.
-        records = [r for r in records if r.status == "structured" and r.ocr_output]
+        records = [r for r in records if r.status in ("structured", "recaptioned") and r.ocr_output]
         if not records:
             return result
 
@@ -101,7 +101,10 @@ class PIITextRedactStage(Stage):
                     px1, py1, px2, py2 = x1 * w, y1 * h, x2 * w, y2 * h
                     draw.rectangle([px1, py1, px2, py2], fill=(0, 0, 0))
 
-                img.save(img_path, quality=95)
+                if img_path.suffix.lower() in (".jpg", ".jpeg"):
+                    img.save(img_path, quality=95)
+                else:
+                    img.save(img_path)
 
                 merged_detections = list(rec.pii_detections or []) + new_detections
                 manifest.update_record(

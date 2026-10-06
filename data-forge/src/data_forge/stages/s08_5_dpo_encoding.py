@@ -99,9 +99,9 @@ class DPOEncodingStage(Stage):
                     failed += 1
                     continue
 
-                if meta.get("dedup_status") != "unique":
+                if meta.get("dedup_status") != "unique" or meta.get("safety_tier") == "unsafe":
                     # Never processed by s01_6 (duplicate/corrupt/not yet
-                    # run) — do not encode it as if it were clean.
+                    # run or unsafe) — do not encode it as if it were clean.
                     skipped += 1
                     continue
 

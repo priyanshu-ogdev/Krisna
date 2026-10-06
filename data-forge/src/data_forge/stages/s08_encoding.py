@@ -53,6 +53,8 @@ class EncodingStage(Stage):
             return result
 
         paths = config.resolved_paths
+        paths["latents_zimage"].mkdir(parents=True, exist_ok=True)
+        paths["control_tokens"].mkdir(parents=True, exist_ok=True)
         processed = failed = 0
         total_bytes = 0
 

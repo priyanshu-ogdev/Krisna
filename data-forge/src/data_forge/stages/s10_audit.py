@@ -27,7 +27,7 @@ class AuditStage(Stage):
         stage_cfg = config.get_stage("s10_audit")
 
         records = manifest.get_records_by_ids(record_ids)
-        training_records = [r for r in records if r.status == "training_pool"]
+        training_records = [r for r in records if r.status in ("training_pool", "audited")]
         if not training_records or engine is None:
             return result
 

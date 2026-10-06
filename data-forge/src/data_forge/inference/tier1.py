@@ -123,23 +123,42 @@ class Tier1Engine:
         caption: str,
         structure_json: str,
     ) -> AuditOutput | None:
-        caption_prompt = self._config.get_prompt("audit_caption")
-        structure_prompt = self._config.get_prompt("audit_structure")
+        from data_forge.inference.structured_output import AuditCaptionOutput, AuditStructureOutput
 
-        combined_prompt = (
-            f"{caption_prompt}\n\n"
-            f"## Caption to Verify\n{caption}\n\n"
-            f"---\n\n"
-            f"{structure_prompt}\n\n"
-            f"## Structural JSON to Verify\n{structure_json}"
-        )
-        result = await self._client.complete(
-            prompt=combined_prompt,
+        caption_prompt = self._config.get_prompt("audit_caption")
+        caption_full_prompt = f"{caption_prompt}\n\n## Caption to Verify\n{caption}"
+
+        caption_result = await self._client.complete(
+            prompt=caption_full_prompt,
             image_path=image_path,
-            schema=AuditOutput,
+            schema=AuditCaptionOutput,
             max_tokens=1024,
         )
-        return result if isinstance(result, AuditOutput) else None
+
+        structure_prompt = self._config.get_prompt("audit_structure")
+        structure_full_prompt = f"{structure_prompt}\n\n## Structural JSON to Verify\n{structure_json}"
+
+        structure_result = await self._client.complete(
+            prompt=structure_full_prompt,
+            image_path=image_path,
+            schema=AuditStructureOutput,
+            max_tokens=1024,
+        )
+
+        if not isinstance(caption_result, AuditCaptionOutput) or not isinstance(structure_result, AuditStructureOutput):
+            return None
+
+        return AuditOutput(
+            caption_matches_image=caption_result.caption_matches_image,
+            structure_matches_image=structure_result.structure_matches_image,
+            quality_issues=[],
+            safety_issues=[],
+            accuracy_issues=caption_result.accuracy_issues,
+            hallucination_issues=caption_result.hallucination_issues,
+            overall_pass=caption_result.overall_pass and structure_result.overall_pass,
+            confidence=min(caption_result.confidence, structure_result.confidence),
+            rationale=f"Caption: {caption_result.rationale} Structure: {structure_result.rationale}",
+        )
 
     async def batch_score_quality(
         self, image_paths: list[Path]
