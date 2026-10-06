@@ -75,6 +75,3 @@ class SchemaValidator:
 
     def validate_critique(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
         return self.validate(data, "critique_output")
-
-    def validate_synthesized_conversation(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
-        return self.validate(data, "synthesized_conversation")

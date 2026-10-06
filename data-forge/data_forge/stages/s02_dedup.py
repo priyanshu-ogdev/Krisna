@@ -101,7 +101,18 @@ class DedupStage(Stage):
         nprobe = stage_cfg.get("faiss_nprobe", 64)
         dedup_engine = DedupEngine(similarity_threshold=threshold, nprobe=nprobe)
         record_ids_valid = [r.id for r in valid_records]
-        dedup_engine.build_index(embeddings, record_ids_valid)
+        
+        index_path = config.resolved_paths["manifests"] / "faiss_index.bin"
+        if index_path.exists():
+            dedup_engine.load_index(index_path)
+            import faiss
+            # Normalize embeddings before adding to existing index
+            faiss.normalize_L2(embeddings)
+            dedup_engine._index.add(embeddings)
+            dedup_engine._id_map.extend(record_ids_valid)
+        else:
+            dedup_engine.build_index(embeddings, record_ids_valid)
+
         duplicates = dedup_engine.find_duplicates(embeddings, record_ids_valid)
 
         # Mark duplicates (keep the first in each pair)
