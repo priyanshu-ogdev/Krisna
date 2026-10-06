@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
@@ -44,21 +45,22 @@ class DedupStage(Stage):
         if stage_cfg.get("exact_hash_dedup", True):
             # 1. Fill missing content_hash_sha256 if file exists
             hashes_to_query: list[str] = []
+            computed_hashes: list[tuple[str, str]] = []
             for rec in records:
                 if not rec.content_hash_sha256 and rec.image_path:
-                    img_path = config.data_root / rec.image_path
+                    p = Path(rec.image_path)
+                    img_path = p if p.is_absolute() else (config.data_root / rec.image_path)
                     if img_path.exists():
                         try:
                             rec.content_hash_sha256 = sha256_file(img_path)
-                            manifest.update_record(
-                                record_id=rec.id,
-                                stage="dedup",
-                                content_hash_sha256=rec.content_hash_sha256,
-                            )
+                            computed_hashes.append((rec.id, rec.content_hash_sha256))
                         except Exception as e:
                             log.warning("sha256_compute_failed", id=rec.id, error=str(e))
                 if rec.content_hash_sha256:
                     hashes_to_query.append(rec.content_hash_sha256)
+
+            if computed_hashes:
+                manifest.bulk_update_content_hashes(computed_hashes)
 
             # 2. Batch query manifest for existing non-duplicate records
             existing_hash_map = manifest.check_hashes_exist(hashes_to_query)
@@ -106,7 +108,8 @@ class DedupStage(Stage):
             if not rec.image_path:
                 missing_ids.append(rec.id)
                 continue
-            img_path = config.data_root / rec.image_path
+            p = Path(rec.image_path)
+            img_path = p if p.is_absolute() else (config.data_root / rec.image_path)
             if not img_path.exists():
                 missing_ids.append(rec.id)
                 continue
@@ -170,6 +173,13 @@ class DedupStage(Stage):
             total_excluded = exact_dupes + len(missing_ids) + len(failed_indices)
             result.records_processed = len(records)
             result.records_excluded = total_excluded
+            result.metadata = {
+                "exact_duplicates": exact_dupes,
+                "missing_files": len(missing_ids),
+                "corrupt_files": len(failed_indices),
+                "semantic_duplicates": 0,
+                "surviving_records": 0,
+            }
             return result
 
         threshold = stage_cfg.get("similarity_threshold", 0.95)
