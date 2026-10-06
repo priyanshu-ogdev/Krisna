@@ -40,8 +40,24 @@ class QualityStage(Stage):
         failed = 0
 
         for rec in records:
+            img_path = config.data_root / (rec.image_path or "")
+            if not img_path.exists():
+                manifest.update_record(rec.id, "quality", new_status="excluded_failed",
+                                       reason="Image file not found", exclusion_reason="image_missing")
+                failed += 1
+                continue
+
             # Resolution pre-filter (deterministic, no model needed)
             w, h = rec.image_width or 0, rec.image_height or 0
+            if (w == 0 or h == 0) and img_path.is_file():
+                try:
+                    from PIL import Image
+                    with Image.open(img_path) as im:
+                        w, h = im.size
+                        manifest.update_record(rec.id, "quality", image_width=w, image_height=h)
+                except Exception:
+                    pass
+
             if w < min_res[0] or h < min_res[1]:
                 manifest.update_record(rec.id, "quality", new_status="excluded_low_quality",
                                        reason=f"Below min resolution: {w}x{h}", exclusion_reason="below_min_resolution")
@@ -54,12 +70,6 @@ class QualityStage(Stage):
                 continue
 
             # Aesthetic scoring via Tier-1
-            img_path = config.data_root / (rec.image_path or "")
-            if not img_path.exists():
-                manifest.update_record(rec.id, "quality", new_status="excluded_failed",
-                                       reason="Image file not found", exclusion_reason="image_missing")
-                failed += 1
-                continue
 
             quality_out = await tier1.score_quality(img_path)
             if quality_out is None:
