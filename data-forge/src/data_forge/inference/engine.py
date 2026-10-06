@@ -408,16 +408,34 @@ class ModelEngine:
             try:
                 from transformers import CLIPModel, CLIPProcessor
 
-                log.info("clip_loading", model_id=embed_spec.model_id)
+                log.info("clip_loading", model_id=embed_spec.model_id, device=device)
                 self._clip_processor = CLIPProcessor.from_pretrained(embed_spec.model_id)
-                self._clip_model = CLIPModel.from_pretrained(
-                    embed_spec.model_id,
-                    torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-                ).to(device).eval()
-                log.info("clip_loaded", model_id=embed_spec.model_id, device=device)
+
+                # Use SDPA (Scaled Dot Product Attention) on RTX A6000 Ampere GPU for maximum speed
+                attn_impl = "sdpa" if hasattr(torch.nn.functional, "scaled_dot_product_attention") else "eager"
+                try:
+                    self._clip_model = CLIPModel.from_pretrained(
+                        embed_spec.model_id,
+                        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                        attn_implementation=attn_impl,
+                    ).to(device).eval()
+                except Exception:
+                    self._clip_model = CLIPModel.from_pretrained(
+                        embed_spec.model_id,
+                        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+                    ).to(device).eval()
+
+                log.info("clip_loaded", model_id=embed_spec.model_id, device=device, attn=attn_impl)
                 return
             except Exception as e:
-                log.warning("clip_load_failed_using_mock", error=str(e), model_id=embed_spec.model_id)
+                if os.environ.get("KRISNA_ALLOW_MOCK_FALLBACK") == "1":
+                    log.warning("clip_load_failed_using_mock", error=str(e), model_id=embed_spec.model_id)
+                else:
+                    log.error("clip_load_failed", error=str(e), model_id=embed_spec.model_id)
+                    raise RuntimeError(
+                        f"Failed to load production CLIP model '{embed_spec.model_id}' on {device}: {e}. "
+                        "Set KRISNA_MOCK_CLIP=1 if explicitly running offline unit tests without GPU/weights."
+                    ) from e
 
         # Fallback / Mock CLIP for local development and offline validation
         log.info("mock_clip_loading", device=device)
@@ -441,9 +459,17 @@ class ModelEngine:
             dim: int = 768
             def __init__(self, dev: str) -> None:
                 self._dev = dev
+                self.device = torch.device(dev) if hasattr(torch, "device") else dev
+                self.dtype = torch.float32
+                self.config = type("MockConfig", (), {"projection_dim": 768})()
+                self._param = torch.nn.Parameter(torch.zeros(1))
+
+            def parameters(self) -> Any:
+                yield self._param
 
             def to(self, d: Any) -> MockCLIPModel:
                 self._dev = str(d)
+                self.device = torch.device(d) if hasattr(torch, "device") else d
                 return self
 
             def eval(self) -> MockCLIPModel:

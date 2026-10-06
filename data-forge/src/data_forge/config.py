@@ -59,6 +59,7 @@ class ModelSpec:
     load_on_demand: bool = False
     capabilities: list[str] = field(default_factory=list)
     vram_estimate_gb: float = 0.0
+    device: str = "cuda"
 
 
 @dataclass
@@ -313,6 +314,7 @@ def _parse_model_spec(data: dict[str, Any]) -> ModelSpec:
         load_on_demand=data.get("load_on_demand", False),
         capabilities=data.get("capabilities", []),
         vram_estimate_gb=data.get("vram_estimate_gb", 0.0),
+        device=data.get("device", "cuda"),
     )
 
 

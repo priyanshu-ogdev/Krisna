@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
@@ -12,10 +11,29 @@ import yaml
 
 
 def _default_data_root() -> Path:
-    """Return platform-appropriate default DATA_ROOT."""
-    if platform.system() == "Windows":
-        return Path(r"D:\data_krisna")
-    return Path("/data_krisna")
+    """Return the default DATA_ROOT when no DATA_ROOT env var is set.
+
+    UPGRADED (docs/review/26_data_root_path_consistency.md): this used to
+    return a platform-branched default (an absolute `/data_krisna` on
+    Linux, `D:\\data_krisna` on Windows). That default was never actually
+    reachable in practice, though, because the repo's own committed
+    `.env` unconditionally set `DATA_ROOT=D:\\data_krisna` and
+    data_forge/cli.py's `_load_env_file()` loads that file on every
+    platform, including the Linux/WSL2 target `run_data_forge.sh` is
+    written for. `Path("D:\\data_krisna")` on POSIX is not a drive path —
+    backslashes aren't separators there — so it silently resolved to a
+    single-component relative folder literally named "D:\\data_krisna",
+    which also disagreed with scripts/data-forge/sync_to_training.py's
+    own independent default (`REPO_ROOT / "data_krisna"`) and with
+    train.sh --help's documented default (`./data_krisna`).
+
+    Fixed by standardizing on one repo-relative default everywhere,
+    matching sync_to_training.py and train.sh, rather than branching on
+    platform.system() at all. A real per-platform override is still
+    fully supported via the DATA_ROOT env var (see .env.example); this
+    function only governs what happens when nothing is set.
+    """
+    return Path.cwd() / "data_krisna"
 
 
 @dataclass
@@ -41,6 +59,7 @@ class ModelSpec:
     load_on_demand: bool = False
     capabilities: list[str] = field(default_factory=list)
     vram_estimate_gb: float = 0.0
+    device: str = "cuda"
 
 
 @dataclass
@@ -122,7 +141,7 @@ class DatasetSpec:
     # there is exactly one list of "these are preference-pair modes" to
     # keep in sync, not two.
     PREFERENCE_PAIR_DOWNLOAD_MODES: ClassVar[frozenset[str]] = frozenset(
-        {"preference_pair", "hpdv2_ranked_list"}
+        {"preference_pair", "hpdv2_ranked_list", "gamelabel_csv"}
     )
 
     _ZERO_IMAGE_STORAGE_MODES: ClassVar[frozenset[str]] = frozenset(
@@ -250,6 +269,7 @@ class PipelineConfig:
     max_retries_per_record: int = 2
     fail_fast: bool = False
     checkpoint_enabled: bool = True
+    dry_run: bool = False
 
     # Models
     models: dict[str, ModelSpec] = field(default_factory=dict)
@@ -294,6 +314,7 @@ def _parse_model_spec(data: dict[str, Any]) -> ModelSpec:
         load_on_demand=data.get("load_on_demand", False),
         capabilities=data.get("capabilities", []),
         vram_estimate_gb=data.get("vram_estimate_gb", 0.0),
+        device=data.get("device", "cuda"),
     )
 
 
@@ -353,6 +374,25 @@ def _parse_paths(data: dict[str, Any]) -> PathsConfig:
     return pc
 
 
+def _resolve_config_path(p: str | Path) -> Path:
+    """Resolve a config path, falling back to data-forge/configs when run from repo root."""
+    path = Path(p)
+    if path.is_file():
+        return path
+    for base in (
+        Path.cwd(),
+        Path.cwd() / "data-forge",
+        Path(__file__).resolve().parent.parent,
+        Path(__file__).resolve().parent.parent.parent,
+        Path(__file__).resolve().parent.parent.parent / "data-forge",
+        Path(__file__).resolve().parent.parent.parent.parent / "data-forge",
+    ):
+        candidate = base / p
+        if candidate.is_file():
+            return candidate
+    return path
+
+
 def load_config(
     pipeline_yaml: str | Path = "configs/pipeline.yaml",
     models_yaml: str | Path = "configs/models.yaml",
@@ -373,7 +413,7 @@ def load_config(
         config.data_root = Path(env_root)
 
     # --- pipeline.yaml ---
-    pipeline_path = Path(pipeline_yaml)
+    pipeline_path = _resolve_config_path(pipeline_yaml)
     if pipeline_path.exists():
         with open(pipeline_path, encoding="utf-8") as f:
             pdata = yaml.safe_load(f) or {}
@@ -407,7 +447,7 @@ def load_config(
         )
 
     # --- models.yaml ---
-    models_path = Path(models_yaml)
+    models_path = _resolve_config_path(models_yaml)
     if models_path.exists():
         with open(models_path, encoding="utf-8") as f:
             mdata = yaml.safe_load(f) or {}
@@ -434,7 +474,7 @@ def load_config(
             )
 
     # --- datasets.yaml ---
-    datasets_path = Path(datasets_yaml)
+    datasets_path = _resolve_config_path(datasets_yaml)
     if datasets_path.exists():
         with open(datasets_path, encoding="utf-8") as f:
             ddata = yaml.safe_load(f) or {}
@@ -448,8 +488,7 @@ def load_config(
 
     # --- Resolve prompts/schemas dirs relative to pipeline.yaml location ---
     if pipeline_path.exists():
-        base_dir = pipeline_path.parent.parent  # configs/ → project root
-        config.prompts_dir = base_dir / "configs" / "prompts"
-        config.schemas_dir = base_dir / "configs" / "schemas"
+        config.prompts_dir = pipeline_path.parent / "prompts"
+        config.schemas_dir = pipeline_path.parent / "schemas"
 
     return config

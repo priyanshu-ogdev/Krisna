@@ -127,7 +127,8 @@ class MockClipProcessor:
     def __call__(self, images, return_tensors="pt", padding=True):
         tensors = []
         for img in images:
-            arr = np.array(img, dtype=np.float32) / 255.0
+            resized = img.resize((64, 64))
+            arr = np.array(resized, dtype=np.float32) / 255.0
             t = torch.from_numpy(arr).permute(2, 0, 1)
             tensors.append(t)
         return {"pixel_values": torch.stack(tensors)}
@@ -371,4 +372,106 @@ class TestDedupStage:
         assert len(valid_idx) == 1
         assert len(failed_idx) == 0
         assert embeddings.shape == (1, 32)
+
+    def test_concurrent_image_preprocessing(self, tmp_path: Path):
+        """Test multi-threaded image decompression on multi-core CPU."""
+        img_paths = []
+        raw_dir = tmp_path / "concurrent"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        for i in range(15):
+            if i % 3 == 0:
+                # RGBA transparent
+                img = Image.new("RGBA", (100, 100), color=(i * 10, i * 10, i * 10, 128))
+            elif i % 3 == 1:
+                # Oversized image (>1024)
+                img = Image.new("RGB", (1200, 1200), color=(i * 15, i * 15, i * 15))
+            else:
+                img = Image.new("RGB", (80, 80), color=(i * 12, 100, 200))
+            p = raw_dir / f"img_{i}.png"
+            img.save(p)
+            img_paths.append(p)
+
+        # Add one corrupt file
+        corrupt_p = raw_dir / "corrupt.png"
+        corrupt_p.write_bytes(b"NOT_A_VALID_PNG_FILE_DATA")
+        img_paths.append(corrupt_p)
+
+        mock_clip = MockClipModel(dim=32)
+        mock_proc = MockClipProcessor()
+
+        embeddings, valid_idx, failed_idx = DedupEngine.generate_embeddings(
+            image_paths=img_paths,
+            clip_model=mock_clip,
+            clip_processor=mock_proc,
+            batch_size=8,
+        )
+
+        assert len(valid_idx) == 15
+        assert len(failed_idx) == 1
+        assert failed_idx == [15]  # The corrupt file
+        assert embeddings.shape == (15, 32)
+        # Verify L2 normalization
+        norms = np.linalg.norm(embeddings, axis=1)
+        np.testing.assert_allclose(norms, 1.0, atol=1e-5)
+
+    def test_production_clip_fails_fast_without_mock_flag(self, monkeypatch):
+        """Ensure load_clip raises RuntimeError rather than silently faking embeddings in production."""
+        from unittest.mock import patch
+        from data_forge.inference.engine import ModelEngine
+        from data_forge.config import PipelineConfig, ModelSpec
+
+        monkeypatch.delenv("KRISNA_MOCK_CLIP", raising=False)
+        monkeypatch.delenv("KRISNA_MOCK_VLLM", raising=False)
+        monkeypatch.delenv("KRISNA_ALLOW_MOCK_FALLBACK", raising=False)
+
+        config = PipelineConfig()
+        config.models["embeddings"] = ModelSpec(
+            model_id="nonexistent-clip-model-for-testing",
+            device="cpu",
+        )
+
+        engine = ModelEngine()
+        with patch("transformers.CLIPProcessor.from_pretrained", side_effect=OSError("Weight file missing on disk")):
+            with pytest.raises(RuntimeError, match="Failed to load production CLIP model"):
+                engine.load_clip(config)
+
+    def test_mock_clip_engine_compliance(self, monkeypatch, tmp_path: Path):
+        """Ensure MockCLIPModel conforms to all PyTorch module contracts and generates embeddings."""
+        from data_forge.inference.engine import ModelEngine
+        from data_forge.config import PipelineConfig, ModelSpec
+
+        monkeypatch.setenv("KRISNA_MOCK_CLIP", "1")
+
+        config = PipelineConfig()
+        config.models["embeddings"] = ModelSpec(
+            model_id="openai/clip-vit-large-patch14-336",
+            device="cpu",
+        )
+
+        engine = ModelEngine()
+        engine.load_clip(config)
+
+        # Check model compliance
+        assert hasattr(engine.clip_model, "device")
+        assert hasattr(engine.clip_model, "parameters")
+        assert hasattr(engine.clip_model, "config")
+        assert engine.clip_model.config.projection_dim == 768
+
+        # Create dummy image
+        img_p = tmp_path / "mock_test.png"
+        Image.new("RGB", (64, 64), color="green").save(img_p)
+
+        embeddings, valid_idx, failed_idx = DedupEngine.generate_embeddings(
+            image_paths=[img_p],
+            clip_model=engine.clip_model,
+            clip_processor=engine.clip_processor,
+            batch_size=4,
+        )
+
+        assert len(valid_idx) == 1
+        assert len(failed_idx) == 0
+        assert embeddings.shape == (1, 768)
+        engine.unload_clip()
+
 
