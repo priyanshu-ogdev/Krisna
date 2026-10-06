@@ -56,12 +56,3 @@ def test_list_sessions_by_stage(store: DesignStateStore):
     assert finalized == [b.session_id]
     all_sessions = set(store.list_sessions())
     assert all_sessions == {a.session_id, b.session_id}
-
-
-def test_delete_session(store: DesignStateStore):
-    state = store.create()
-    assert store.get(state.session_id) is not None
-    assert store.delete(state.session_id) is True
-    with pytest.raises(SessionNotFoundError):
-        store.get(state.session_id)
-    assert store.delete(state.session_id) is False

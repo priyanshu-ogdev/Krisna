@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import platform
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
@@ -12,10 +11,29 @@ import yaml
 
 
 def _default_data_root() -> Path:
-    """Return platform-appropriate default DATA_ROOT."""
-    if platform.system() == "Windows":
-        return Path(r"D:\data_krisna")
-    return Path("/data_krisna")
+    """Return the default DATA_ROOT when no DATA_ROOT env var is set.
+
+    UPGRADED (docs/review/26_data_root_path_consistency.md): this used to
+    return a platform-branched default (an absolute `/data_krisna` on
+    Linux, `D:\\data_krisna` on Windows). That default was never actually
+    reachable in practice, though, because the repo's own committed
+    `.env` unconditionally set `DATA_ROOT=D:\\data_krisna` and
+    data_forge/cli.py's `_load_env_file()` loads that file on every
+    platform, including the Linux/WSL2 target `run_data_forge.sh` is
+    written for. `Path("D:\\data_krisna")` on POSIX is not a drive path —
+    backslashes aren't separators there — so it silently resolved to a
+    single-component relative folder literally named "D:\\data_krisna",
+    which also disagreed with scripts/data-forge/sync_to_training.py's
+    own independent default (`REPO_ROOT / "data_krisna"`) and with
+    train.sh --help's documented default (`./data_krisna`).
+
+    Fixed by standardizing on one repo-relative default everywhere,
+    matching sync_to_training.py and train.sh, rather than branching on
+    platform.system() at all. A real per-platform override is still
+    fully supported via the DATA_ROOT env var (see .env.example); this
+    function only governs what happens when nothing is set.
+    """
+    return Path.cwd() / "data_krisna"
 
 
 @dataclass

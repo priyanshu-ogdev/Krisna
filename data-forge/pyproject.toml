@@ -7,7 +7,7 @@ name = "data-forge"
 version = "0.14.0"
 description = "Zero-touch automated data pipeline for the Krisna project (v14 spec — no-RLHF-loop revision)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.13"
 license = { text = "Proprietary" }
 
 dependencies = [
@@ -80,7 +80,8 @@ dev = [
 data-forge = "data_forge.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["data_forge*"]
 
 [tool.ruff]
 line-length = 100

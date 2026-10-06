@@ -1,4 +1,8 @@
-"""Planner BF16 LoRA training loop.
+"""DEPRECATED (final, no-RLHF-loop PRD revision): the Planner ships FROZEN.
+This script is preserved as a reference implementation but is NOT part of the
+active training pipeline. See __init__.py for details.
+
+Planner BF16 LoRA training loop.
 
 BF16 throughout, no quantization anywhere in this file — §6.1's own
 finding is that QLoRA degrades Qwen3.5's hybrid Gated DeltaNet + Gated

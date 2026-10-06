@@ -22,23 +22,27 @@ or a frozen model needing no training data at all.
 
 ```
 krisna/
-├── docs/                # all documentation — start at docs/PRD.md & docs/README.md,
-│                           and docs/review/README.md for the full audit trail
+├── docs/                # all documentation — start at docs/README.md,
+│                           and docs/review/README.md for the full,
+│                           phase-by-phase design-sync audit
 ├── scripts/              # all shell scripts, split by package
 ├── tests/                # ALL tests, root-level — pytest tests/ runs everything
 ├── models/                # trained checkpoint artifacts (empty until you train)
 ├── data-forge/             # data pipeline: raw public datasets -> model_data/
 ├── training/                # trains the Sketch tier + Z-Image-Turbo;
 │                              deprecated Planner/Critic training kept for reference
-├── inference/                # Unified Serving & Inference Subsystem:
-│   ├── src/krisna_inference/ # SwapOrchestrator + real backends + FastAPI service
-│   ├── frontend/             # Node.js control panel & Web Studio UI (Canvas2D Generalization Visualizer)
-│   └── runtime/              # CLI session harness (run_agentic_session.py / krisna-session)
+├── inference/                # SwapOrchestrator + real backends + FastAPI service
+├── inference-runtime/         # CLI harness: run a real agentic session for testing
+├── inference-frontend/         # working Node.js control panel — Setup/Install tab
+│                                  drives the installer below; Studio tab is a full
+│                                  session UI (chat, finalize, critique, live GPU/
+│                                  RAM utilization, pixel-forming render preview)
+├── src/                        # superseded by inference-frontend/ — see src/README.md
 ├── setup.sh                    # root orchestrator: phased environment setup
-├── run_data_forge.sh / .ps1    # root orchestrator: data pipeline (Linux + Windows)
-├── train.sh / train_all.ps1    # root orchestrator: training, all four tiers
-├── run_inference.sh / .ps1     # root orchestrator: the FastAPI service + CLI session (-WithFrontend)
-└── pytest.ini                  # root-level: makes `pytest tests/` work from here
+├── run_data_forge.sh            # root orchestrator: data pipeline
+├── train.sh                      # root orchestrator: training, all four tiers
+├── run_inference.sh               # root orchestrator: the FastAPI service
+└── pytest.ini                     # root-level: makes `pytest tests/` work from here
 ```
 
 See `docs/architecture/DIRECTORY_LAYOUT.md` for exactly why it's split
@@ -71,7 +75,7 @@ next once it finishes:
   artifact; download it once, independent of which tiers you train.
 
 **3. Installing for inference** (`python3 scripts/inference/download_weights.py`,
-or drive it from `inference/frontend/`'s Setup tab) — downloads the four
+or drive it from `inference-frontend/`'s Setup tab) — downloads the four
 frozen HF models, auto-discovers your trained Sketch checkpoint and
 Polish LoRA at the exact paths step 2 produces above, downloads the
 VQGAN decoder automatically if `download_vqgan.sh` hasn't already been
@@ -84,14 +88,14 @@ connected path rather than two halves you have to wire together by hand.
 **4. Running inference** (`./run_inference.sh`, or
 `KRISNA_USE_REAL_BACKENDS=1 ./run_inference.sh` once step 3 is done) —
 starts the real FastAPI service. `source .env.inference` first (or let
-`inference/frontend/`'s own launcher do it — see below).
+`inference-frontend/`'s own launcher do it — see below).
 
 **5. Using it** — either directly against the API (`POST /session`,
 `POST /session/{id}/message`, `POST /session/{id}/finalize`,
 `POST /session/{id}/critique`, `GET /session/{id}/render` for the actual
 rendered image bytes, `GET /orchestrator/status` for live VRAM/RAM —
 both declared-budget and real hardware readings), or through
-`inference/frontend/`'s Studio tab, which is a working UI over exactly
+`inference-frontend/`'s Studio tab, which is a working UI over exactly
 these endpoints: chat with the Planner, watch a phase-pipeline diagram
 track Planner→Sketch→Polish→Critic, finalize and watch the pixel-forming
 canvas reveal the real render, critique it, and watch live GPU/RAM
@@ -120,31 +124,18 @@ assumed from the scripts' own comments.
 python3 scripts/inference/download_weights.py --dry-run   # check first
 python3 scripts/inference/download_weights.py
 
-# Preflight hardware & deployment diagnostics (NVIDIA GPU, CUDA, VRAM, Critic venv)
-python scripts/inference/check_hardware.py --require-gpu
-python scripts/inference/check_hardware.py --low-vram --json
-
-# Docker deployment (production isolated multi-venv container + Web Studio)
-./scripts/docker/run_docker.sh --build                     # Linux / macOS
-.\scripts\docker\run_docker.ps1 -Build                    # Windows native PowerShell
-docker compose up -d                                      # Or standard Docker Compose
-
-# Inference service (Bare Metal Linux & Windows)
-./run_inference.sh                                        # MockBackend — no GPU needed (test/CI)
-set -a; source .env.inference; set +a; ./run_inference.sh  # real backends (fails fast if no GPU)
-.\run_inference.ps1                                       # Windows native (PowerShell)
-.\run_inference.ps1 -Real -LowVram                        # Windows GPU with low-VRAM CPU offload
+# Inference service
+./run_inference.sh                                        # MockBackend — no GPU needed
+set -a; source .env.inference; set +a; ./run_inference.sh  # real backends
 
 # Control panel (optional — a UI over the same API; brings the real
 # backend up itself if .env.inference already exists)
-cd inference/frontend && npm start
+cd inference-frontend && npm start
 
-# Test a real agentic session against MockBackend from the CLI
-python inference/runtime/run_agentic_session.py --finalize --critique
-# Or using the package CLI entrypoint:
-krisna-session --finalize --critique
+# Test a real agentic session against MockBackend from the CLI instead
+python inference-runtime/run_agentic_session.py --finalize --critique
 
-# Run every test in the monorepo in one pass (481 passed, 1 skipped, no GPU required
+# Run every test in the monorepo in one pass (356 tests, no GPU required
 # — GPU-dependent tests are gated behind pytest.importorskip("torch")
 # and skip cleanly if it's absent)
 pytest tests/
@@ -154,24 +145,23 @@ pytest tests/
 
 | I want to... | Go to |
 |---|---|
-| Read the canonical Product & Research Requirements Document | [docs/PRD.md](docs/PRD.md) |
-| Understand the data pipeline (sources, licenses, preprocessing) | [data-forge/README.md](data-forge/README.md), [docs/data-forge/](docs/data-forge/) |
-| Train the Sketch tier or Z-Image-Turbo | [training/README.md](training/README.md), [docs/training/](docs/training/) |
-| Understand the swap orchestrator, backends, or low-VRAM mode | [inference/README.md](inference/README.md), [docs/inference/](docs/inference/) |
-| Use the working control-panel UI & Canvas2D Visualizer | [inference/frontend/README.md](inference/frontend/README.md) |
-| Manually test a trained checkpoint from the CLI | [inference/runtime/README.md](inference/runtime/README.md) |
-| Understand the data-forge ↔ training sync contract | [docs/architecture/SYNC_DESIGN.md](docs/architecture/SYNC_DESIGN.md) |
-| Understand the training ↔ inference multi-turn contract | [docs/architecture/TRAINING_INFERENCE_SYNC_DESIGN.md](docs/architecture/TRAINING_INFERENCE_SYNC_DESIGN.md) |
-| See research findings, verification trail, and citations | [docs/architecture/RESEARCH_AND_CITATIONS.md](docs/architecture/RESEARCH_AND_CITATIONS.md) |
-| See the full, phase-by-phase design-sync audit (Phase 1–27) | [docs/review/README.md](docs/review/README.md) |
+| Understand the data pipeline (sources, licenses, preprocessing) | `data-forge/README.md`, `docs/data-forge/` |
+| Train the Sketch tier or Z-Image-Turbo | `training/README.md` |
+| Understand the swap orchestrator, backends, or low-VRAM mode | `inference/README.md` |
+| Use the working control-panel UI | `inference-frontend/README.md` |
+| Manually test a trained checkpoint from the CLI | `inference-runtime/README.md` |
+| Understand the data-forge ↔ training sync contract | `docs/architecture/SYNC_DESIGN.md` |
+| See exactly what was researched/verified and why each decision was made, with citations | `docs/architecture/RESEARCH_AND_CITATIONS.md` |
+| See the full, phase-by-phase design-sync audit (21 phases and counting) — every bug found, every fix verified against real code, every citation checked against its primary source | `docs/review/README.md` |
+| See the full PRD-vs-implementation reasoning trail | `docs/architecture/`, each package's README's "what's genuinely still missing" sections |
 
 ## Test suite
 
-465 tests across the three Python packages (`data_forge`,
+356 tests across the three Python packages (`data_forge`,
 `krisna_training`, `krisna_inference`), runnable together from the root:
 
 ```bash
-pytest tests/                    # everything (465 tests)
+pytest tests/                    # everything
 pytest tests/data_forge/          # data pipeline only
 pytest tests/training/             # training only
 pytest tests/inference/             # inference/orchestrator only
@@ -179,5 +169,6 @@ pytest tests/inference/             # inference/orchestrator only
 
 No GPU required for any of the above — GPU-dependent tests use
 `pytest.importorskip("torch")` and skip cleanly if it's absent, rather
-than aborting collection for the whole run.
-
+than aborting collection for the whole run (fixed a real inconsistency
+in one test file that used a bare `import torch` instead — see
+`docs/review/21_frontend_and_scripts_merge.md`).

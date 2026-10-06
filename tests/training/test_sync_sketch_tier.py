@@ -58,7 +58,11 @@ def test_sync_writes_manifest_with_correct_captions(tmp_path):
     lines = [json.loads(l) for l in manifest_path.read_text().strip().split("\n")]
     assert len(lines) == 1
     assert lines[0]["caption"] == "a signup form"
-    assert "tokens_path" in lines[0]
+    # UPGRADE (docs/review/33_model_review_2_data_training_connection.md):
+    # consolidated shard format, not one .npy file per image — see
+    # token_shard_writer.py.
+    assert "tokens_shard" in lines[0]
+    assert "tokens_index" in lines[0]
 
 
 def test_sync_writes_real_token_files_from_tokenizer(tmp_path):
@@ -70,7 +74,8 @@ def test_sync_writes_real_token_files_from_tokenizer(tmp_path):
     lines = [json.loads(l) for l in manifest_path.read_text().strip().split("\n")]
     import numpy as np
 
-    tokens = np.load(manifest_path.parent / lines[0]["tokens_path"])
+    shard = np.load(manifest_path.parent / lines[0]["tokens_shard"])
+    tokens = shard[lines[0]["tokens_index"]]
     assert tokens.tolist() == [1, 2, 3, 4]
 
 

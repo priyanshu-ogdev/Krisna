@@ -50,23 +50,4 @@ over:
    `dpo/preference_store.py`, using data-forge's exact source keys
    (pickapic_v2, hpdv2, designsense_10k, designpref) as the `source`
    field — extended into `preference_store.VALID_SOURCES` for this.
-
-4. **Planner RAG Corpus synchronization**
-   — `sync_planner_rag.py` synchronizes human UICrit critiques into
-   `data/planner_rag_corpus/uicrit_critiques.jsonl`.
 """
-
-from krisna_training.data_forge_bridge import (
-    sync_dpo_pairs,
-    sync_planner_rag,
-    sync_polish_default,
-    sync_sketch_tier,
-)
-
-__all__ = [
-    "sync_sketch_tier",
-    "sync_polish_default",
-    "sync_dpo_pairs",
-    "sync_planner_rag",
-]
-

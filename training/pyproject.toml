@@ -26,13 +26,8 @@ dev = [
 sketch = ["torch>=2.3", "pillow>=10.4"]
 polish = ["torch>=2.3", "diffusers>=0.31", "peft>=0.13", "pillow>=10.4"]
 # DEPRECATED — see krisna_training.planner/critic's __init__.py.
-planner = ["torch>=2.3", "transformers>=5.2.0", "peft>=0.13"]
+planner = ["torch>=2.3", "transformers @ git+https://github.com/huggingface/transformers.git", "peft>=0.13"]
 critic = ["unsloth", "transformers==5.5.0", "peft>=0.13"]
-
-[project.scripts]
-krisna-train-sketch = "krisna_training.sketch.train:main"
-krisna-train-dpo = "krisna_training.polish.train_dpo:main"
-krisna-sync-rag = "krisna_training.data_forge_bridge.sync_planner_rag:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

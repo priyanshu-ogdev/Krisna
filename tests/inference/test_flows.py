@@ -321,6 +321,42 @@ async def test_conversational_turn_updates_constraints_from_planner_delta(
     assert len(updated_state.constraints.locked_regions) == 1
     assert updated_state.constraints.locked_regions[0].reason == "header brand identity"
     assert updated_state.constraints.locked_regions[0].bbox == (0.1, 0.1, 0.8, 0.2)
+    # UPGRADE (docs/review/35_model_review_3_resync.md): this test's own
+    # fake planner delta already carried a reasoning_note (see above) —
+    # confirming conversational_turn() actually persists it onto state,
+    # not just that _synthesize_dpo_prompt() uses it correctly in
+    # isolation (tested separately in test_flows_prompt_synthesis.py).
+    assert updated_state.last_planner_reasoning_note == "Applying glassmorphism styling."
+
+
+@pytest.mark.asyncio
+async def test_conversational_turn_preserves_reasoning_note_when_turn_has_none(
+    started_orchestrator: SwapOrchestrator, store: DesignStateStore
+):
+    """A turn where the Planner's delta carries an empty/missing
+    reasoning_note must not erase a meaningful one from an earlier turn —
+    see flows.py's own comment on why this is an overwrite-only-when-
+    non-empty, not an unconditional overwrite."""
+    async def empty_note_planner_run(**kwargs):
+        return {
+            "tier": "planner",
+            "reply_text": "Sure.",
+            "design_state_delta": {
+                "stage": "sketching", "constraint_updates": {}, "tool_call": None,
+                "reasoning_note": "",
+            },
+        }
+
+    started_orchestrator.backends[Tier.PLANNER].run = empty_note_planner_run
+
+    state = store.create()
+    state.last_planner_reasoning_note = "An earlier, meaningful note."
+    store.save(state, expected_revision=state.revision)
+
+    updated_state = await flows.conversational_turn(
+        started_orchestrator, store, state.session_id, "ok sounds good"
+    )
+    assert updated_state.last_planner_reasoning_note == "An earlier, meaningful note."
 
 
 @pytest.mark.asyncio

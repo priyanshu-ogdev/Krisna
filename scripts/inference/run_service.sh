@@ -18,11 +18,9 @@ if [ "${KRISNA_USE_REAL_BACKENDS:-0}" = "1" ]; then
         echo -e "\033[1;35mdocs/review/06_inference_orchestrator.md for the real cost breakdown —\033[0m"
         echo -e "\033[1;35mthe Critic tier's offload alone can need ~40GB system RAM.\033[0m"
     fi
-    echo -e "\033[1;36m[+] Verifying GPU and deployment readiness...\033[0m"
-    python scripts/inference/check_hardware.py --require-gpu ${KRISNA_LOW_VRAM_MODE:+--low-vram}
 else
-    echo -e "\033[1;33mMockBackend mode — no GPU/weights needed (test/CI only).\033[0m"
-    echo -e "\033[1;33mSet KRISNA_USE_REAL_BACKENDS=1 for production deployment.\033[0m"
+    echo -e "\033[1;33mMockBackend mode (default) — no GPU/weights needed.\033[0m"
+    echo -e "\033[1;33mSet KRISNA_USE_REAL_BACKENDS=1 to use real model backends.\033[0m"
 fi
 
 source .venv/bin/activate

@@ -145,7 +145,30 @@ class VQTokenizer:
         return indices.reshape(-1).cpu().tolist()
 
     def decode(self, tokens: "list[int]", grid_h: int, grid_w: int):
-        """tokens: flat list of token ids (grid_h * grid_w). Returns a PIL.Image."""
+        """tokens: flat list of token ids (grid_h * grid_w). Returns a PIL.Image.
+
+        UNVERIFIED ASSUMPTION (flagged, not silently assumed correct —
+        same "flag rather than guess" discipline as this project's other
+        unverified third-party API surfaces, e.g. train_dpo.py's
+        --lora-target-modules): this treats `tokens` as ROW-MAJOR over
+        (grid_h, grid_w) — i.e. index i corresponds to (y=i//grid_w,
+        x=i%grid_w) — because that's the near-universal convention
+        across taming-transformers-family VQGAN implementations
+        (min_encoding_indices flattened from a [B,H,W] activation map,
+        height varying slower than width) and because encode()'s own
+        `indices.reshape(-1)` depends on that same convention holding.
+        This ordering assumption is depended on by TWO OTHER places that
+        can't detect a violation themselves: maskgit_model.py's
+        halton_token_order() computes grid coordinates as
+        `idx = y * grid_w + x`, and training.sketch.model's learned
+        pos_embed is a flat [seq_len, hidden_dim] table with no
+        structural (H, W) awareness at all — if the real installed
+        taming-transformers version ever flattened indices in a
+        different order, tokens would silently decode to the WRONG
+        spatial position with no error, only a visibly-scrambled image.
+        Not verified against the actual upstream source in this
+        environment (no network access to inspect the real class).
+        """
         import numpy as np
         import torch
         from PIL import Image

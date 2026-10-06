@@ -28,17 +28,12 @@ dev = [
 # scripts/inference/setup_env_critic.sh, not this extra.
 backends = [
     "torch>=2.3",
-    "transformers>=5.2.0",
+    "transformers @ git+https://github.com/huggingface/transformers.git",
     "diffusers>=0.31",
     "bitsandbytes>=0.43",
     "pillow>=10.4",
     "torchvision>=0.18",
 ]
-
-[project.scripts]
-krisna-inference = "krisna_inference.orchestrator.service:main"
-krisna-session = "krisna_inference.cli:main"
-krisna-inference-cli = "krisna_inference.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

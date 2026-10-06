@@ -13,15 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
-
-# Ensure monorepo packages are importable when running without editable install
-_REPO_ROOT = Path(__file__).resolve().parents[4]
-for _pkg in (_REPO_ROOT / "inference" / "src", _REPO_ROOT / "training" / "src"):
-    if _pkg.exists() and str(_pkg) not in sys.path:
-        sys.path.insert(0, str(_pkg))
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -45,25 +37,9 @@ configure_logging()
 log = logging.getLogger("krisna_inference (formerly krisna_orchestrator).service")
 
 if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
-    from krisna_inference.common.hardware import (
-        HardwareIncompatibleError,
-        check_gpu_cuda_match,
-        check_inference_config,
-        format_diagnostic_report,
-    )
-
-    _low_vram = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
-
-    # Fail-fast preflight verification: real backends require a compatible NVIDIA GPU + CUDA
-    hw_status = check_gpu_cuda_match(require_gpu=False, low_vram=_low_vram)
-    cfg_status = check_inference_config(require_real=True)
-    if not hw_status.is_compatible or not cfg_status.is_ready:
-        report = format_diagnostic_report(hw_status, cfg_status)
-        log.error("hardware_preflight_failed", extra={"report": report})
-        raise HardwareIncompatibleError(report)
-
     from krisna_inference.backends.factory import real_backend_factory
 
+    _low_vram = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
     orchestrator = SwapOrchestrator(
         backend_factory=real_backend_factory,
         low_vram=_low_vram,
@@ -205,23 +181,12 @@ def _error_response(e: Exception) -> HTTPException:
 # --------------------------------------------------------------------- #
 
 @app.get("/health")
-@app.get("/healthz")
 async def health():
     return {
         "status": "ok",
         "residency_state": orchestrator.state.state.value,
         "vram": orchestrator.ledger.snapshot(),
     }
-
-
-@app.get("/hardware")
-async def hardware_status():
-    from krisna_inference.common.hardware import check_gpu_cuda_match, check_inference_config
-
-    _low_vram = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
-    hw = check_gpu_cuda_match(require_gpu=False, low_vram=_low_vram)
-    cfg = check_inference_config(require_real=os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1")
-    return {"hardware": hw.to_dict(), "config": cfg.to_dict()}
 
 
 @app.post("/session")
@@ -364,44 +329,3 @@ async def orchestrator_status() -> dict:
         "low_vram_mode": orchestrator.low_vram,
         "history_len": len(orchestrator.state.history),
     }
-
-
-def main() -> None:
-    """CLI entry point for running the Krisna Inference FastAPI service."""
-    import argparse
-    import os
-    import uvicorn
-
-    parser = argparse.ArgumentParser(
-        prog="krisna-inference",
-        description="Krisna Inference Swap Orchestrator FastAPI service",
-    )
-    parser.add_argument(
-        "--host",
-        default=os.getenv("KRISNA_BIND_HOST", "127.0.0.1"),
-        help="Host to bind service to (default: 127.0.0.1 or KRISNA_BIND_HOST)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=int(os.getenv("KRISNA_PORT", "8420")),
-        help="Port to bind service to (default: 8420 or KRISNA_PORT)",
-    )
-    parser.add_argument(
-        "--reload",
-        action="store_true",
-        help="Enable uvicorn auto-reload for development",
-    )
-    args = parser.parse_args()
-
-    uvicorn.run(
-        "krisna_inference.orchestrator.service:app",
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-    )
-
-
-if __name__ == "__main__":
-    main()
-

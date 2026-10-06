@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG="${1:-training/configs/polish_stage1_default_lora.yaml}"
-[[ ! -f "$CONFIG" ]] && CONFIG="training/configs/polish_default_lora_z_image.yaml"
+CONFIG="${1:-training/configs/polish_default_lora_z_image.yaml}"
 
 echo -e "\033[1;36mLaunching Z-Image LoRA training via diffusers' official script...\033[0m"
 source .venv/bin/activate

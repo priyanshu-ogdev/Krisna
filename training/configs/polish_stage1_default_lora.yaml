@@ -23,7 +23,35 @@ use_8bit_adam: true
 mixed_precision: "bf16"
 seed: 0
 rank: 32
+# BUG FOUND ON REVIEW (docs/review/34_model_review_3_polish_default.md):
+# this config sets rank=32 but never set lora_alpha at all, silently
+# leaving it at the official script's own default (verified directly
+# against examples/dreambooth/train_dreambooth_lora_z_image.py's real
+# argparse: --lora_alpha defaults to 4, matching its OWN --rank default
+# of 4 — the standard alpha==rank LoRA convention, which this config
+# broke the moment it overrode rank alone). LoRA's effective update
+# magnitude scales by alpha/rank, so this was training a rank-32 adapter
+# but applying it at only 4/32 = 1/8th the conventional scaling —
+# training would have "succeeded" with no error, just producing a much
+# weaker adaptation than the rank actually paid for in extra parameters/
+# compute. This project already found and fixed the same class of gap
+# once before, for the DPO stage's fresh-adapter LoraConfig (see
+# polish_stage2_dpo_general.yaml's own "UPGRADE (bug fix" comment and
+# train_dpo.py's LoraConfig(r=args.lora_rank, lora_alpha=args.lora_rank)
+# — alpha==rank, the correct, deliberate convention this project
+# actually follows everywhere else). Fixed to match.
+lora_alpha: 32
 
 instance_prompt: "a UI design"
-validation_prompt: null
+validation_prompt: "a UI design"  # UPGRADE (finding #3): re-enabled — diffusers' own
+                          # built-in periodic sample generation is a cheap
+                          # qualitative validation signal this project has
+                          # zero of otherwise for the base LoRA stage (no
+                          # heldout eval loss exists for diffusers'
+                          # train_dreambooth_lora_z_image.py path — that
+                          # script is vendored/official, not owned by this
+                          # repo, so a real heldout LOSS loop isn't wired
+                          # here the way it is for sketch/train.py and
+                          # polish/train_dpo.py; this is the cheap
+                          # substitute the PRD (§3 gap list) already names.
 validation_epochs: 25

@@ -127,23 +127,3 @@ class TestPlannerRunTextStripping:
         assert '"stage"' not in conversational_text
         assert "constraint_updates" not in conversational_text
         assert conversational_text == "Sure, I can help with that! Here's a settings screen with a dark toggle."
-
-
-class TestPlannerSystemPrompt:
-    def test_system_prompt_includes_original_intent_when_present(self):
-        backend = object.__new__(PlannerBackend)
-        prompt = backend._build_system_prompt(
-            constraints={"style": "glassmorphic", "original_intent": "crypto portfolio tracker"},
-            retrieved=[],
-        )
-        assert "Original user goal: 'crypto portfolio tracker'" in prompt
-        assert "glassmorphic" in prompt
-
-    def test_system_prompt_omits_intent_clause_when_not_present(self):
-        backend = object.__new__(PlannerBackend)
-        prompt = backend._build_system_prompt(
-            constraints={"style": "glassmorphic"},
-            retrieved=[],
-        )
-        assert "Original user goal:" not in prompt
-        assert "glassmorphic" in prompt

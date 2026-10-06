@@ -62,6 +62,13 @@ REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5,
         quantization="4-bit (fast mode: Qwen3.5-4B available)",
         always_resident=True,
+        # NOTE for the opt-in vLLM path (KRISNA_PLANNER_BACKEND=vllm, see
+        # planner_backend_vllm.py): vLLM's own gpu_memory_utilization is a
+        # fraction of the REAL, live GPU's total memory, computed FROM
+        # this vram_gb value at load time (not hardcoded) — see that
+        # backend's load() docstring. This declared vram_gb is still the
+        # single source of truth either way; only how it gets translated
+        # into a concrete admission check differs by backend.
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="UI-domain MaskGIT/MaskGIL sketch tier",

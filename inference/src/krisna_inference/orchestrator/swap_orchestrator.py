@@ -165,7 +165,35 @@ class SwapOrchestrator:
                 f"(state={self.state.state.value}). Try again shortly."
             )
         planner_out = await self.backends[Tier.PLANNER].run(**kwargs)
-        sketch_out = await self.backends[Tier.SKETCH].run(**kwargs, planner_output=planner_out)
+
+        # BUG FOUND ON REVIEW (mid-turn constraint staleness): Sketch used
+        # to receive the SAME `constraints` kwarg the caller passed in
+        # BEFORE this turn's Planner call ran — meaning if the Planner's
+        # OWN design_state_delta.constraint_updates changed style/
+        # palette/layout_hints THIS turn (e.g. user says "make it dark
+        # mode" and the Planner correctly extracts that), the Sketch
+        # image generated in this SAME turn still used the OLD
+        # constraints, since the caller (flows.py) only applies
+        # constraint_updates onto persisted DesignState AFTER this whole
+        # call returns — one turn too late for THIS turn's sketch. The
+        # user would see a chat reply confirming "switching to dark
+        # mode" next to a sketch that visibly isn't. Fixed by merging the
+        # same delta the caller will apply afterward into a local copy of
+        # `constraints` here too, via the shared apply_constraint_updates
+        # helper (constraint_merge.py) — kept in a dependency-neutral
+        # module specifically so this file still doesn't need to import
+        # DesignState/pydantic to do this (see that module's docstring).
+        from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+
+        delta = planner_out.get("design_state_delta") or {}
+        constraint_updates = delta.get("constraint_updates") or {}
+        sketch_kwargs = dict(kwargs)
+        if constraint_updates and isinstance(kwargs.get("constraints"), dict):
+            sketch_kwargs["constraints"] = apply_constraint_updates(
+                kwargs["constraints"], constraint_updates
+            )
+
+        sketch_out = await self.backends[Tier.SKETCH].run(**sketch_kwargs, planner_output=planner_out)
         return {"planner": planner_out, "sketch": sketch_out}
 
     # ------------------------------------------------------------------ #

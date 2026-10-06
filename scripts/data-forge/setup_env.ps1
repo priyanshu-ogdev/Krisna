@@ -6,10 +6,6 @@ Write-Host "under plain native-Windows PowerShell. Run this from Windows 11 + WS
 Write-Host "(Ubuntu) for anything past the deterministic stages, or pin/adopt an" -ForegroundColor Yellow
 Write-Host "unofficial native-Windows vLLM fork explicitly if you need one." -ForegroundColor Yellow
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $ScriptDir)
-Set-Location $RepoRoot
-
 # 1. Create and activate Conda environment
 conda create -n krisna-forge python=3.10 -y
 conda activate krisna-forge
@@ -26,9 +22,12 @@ conda install -c pytorch faiss-cpu -y
 # 3. Install PyTorch with Windows CUDA 12.4 support
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
-# 4. Install Core Dependencies & Editable data-forge package
+# 4. Install Core Dependencies
+# vLLM is intentionally NOT installed here — see the warning above. Installing
+# it via plain `pip install vllm` on native Windows will not give you a
+# working server; do that step inside WSL2 instead.
 pip install openai pydantic click pyyaml jsonschema structlog rich httpx Pillow
-pip install -e "./data-forge[dev]"
+pip install -e .[dev]
 
 Write-Host "Environment setup complete. Run: conda activate krisna-forge" -ForegroundColor Green
 Write-Host "Remember: vLLM-backed stages need WSL2 — see the warning above." -ForegroundColor Yellow

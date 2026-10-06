@@ -42,10 +42,11 @@ those are left visible, not silently edited away.
 | `28_docker_isolation_and_hardware_preflight.md` | Production Docker containerization, multi-tier virtualenv isolation (`/opt/venv-inference` vs. `/opt/venv-critic`), fail-fast hardware & CUDA preflight diagnostic engine (`krisna_inference.common.hardware` and `check_hardware.py`), service fail-fast startup guard, `docker-compose.yml` GPU stack, and upgraded installers |
 | `29_comprehensive_codebase_and_docs_audit.md` | Comprehensive codebase and docs audit: fixes `CriticBackend` missing `os` import, `SwapOrchestrator` CUDA OOM exception handling, `download_weights.py` Windows venv interpreter default, `vram_budget.py` cross-platform host RAM probe, full GameLabel-10K preference pipeline sync (S12 export, `PreferenceStore`, `sync_dpo_pairs`, DPO training configs, unit tests), `data_forge` OCR stage filter, and aligns stale doc paths / VRAM specs |
 
+
 ## What's fixed vs. still open
 
 Full list with status is in `07_consolidated_citations.md`'s rollup
-table (updated through Phase 28). Short version: five items fixed and
+table (updated through Phase 23). Short version: five items fixed and
 verified in the original six-phase pass (label smoothing, AdamW betas, a
 stale docstring, a pinned LoRA rank, a VRAM safety-margin capability),
 one retracted finding (the "VRAM bug" turned out to be a review error),
@@ -64,19 +65,21 @@ and JSON-leak fixes in `19`, the GameLabel-10K integration in `20`, a
 merge of two divergent working copies plus two more test bugs and a
 `setup.sh` gap in `21`, the VQGAN installer gap (the last real missing
 link between training output and a working inference run) plus three
-more claimed-but-missing script hints, a test-collection bug, both
-README files brought current in `22`, completion of the `s08_5_dpo_encoding`
-stale doc sweep in `23`, placeholder tensor shape corrections in `24`,
-cross-stage resolution reconciliation in `25`, multi-turn agentic pipeline
-synchronization and Critic loop closing in `26`, and PRD open research
-risks resolution (transformers>=5.2.0, signature introspection, and DPO
-hyperparameter sweeps) in `27`.
+more claimed-but-missing script hints, a test-collection bug, and both
+README files brought current in `22`, and — in `23` — the completion of
+a stale-documentation sweep (`s08_5_dpo_encoding` described as active
+across `data-forge/README.md` and three `docs/data-forge/*.md` files
+for at least two sessions after being disabled) that a prior session
+had started but left as "a known cleanup item."
 **Top remaining items:** (1) verifying
 the exact real usable-image count for the Sketch tier once the
 RICO-license/dedup/join interaction is exercised against a real pipeline
 run, (2) measuring every tier's actual VRAM/RAM footprint on real
 hardware — every number in `18` and earlier phases is arithmetic-derived,
 not measured, (3) `s08_5_dpo_encoding.py`'s wire-vs-delete decision — `16`
-recommends deletion but hasn't executed it, (4) executing the empirical
-DPO beta ({250, 500, 1000, 2000}) and LoRA rank ({16, 32, 64}) sweeps on
-physical GPU hardware during the first production training run.
+recommends deletion but hasn't executed it, (4) a recurring pattern
+flagged in `19` and confirmed again in `21` and `22`: fixes from this review have
+gone missing from later
+uploaded working copies at least three times over the course of this
+project — worth treating "is this fix actually still present" as a
+standing question for any copy of this repo, not an assumption.

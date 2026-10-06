@@ -75,8 +75,14 @@ def prepare(
     manifest_path = output_dir / "manifest.jsonl"
 
     written = 0
+    # UPGRADE (docs/review/33_model_review_2_data_training_connection.md):
+    # was one .npy file per image, same I/O bottleneck fixed in
+    # sync_sketch_tier.py — see token_shard_writer.py's module docstring.
+    from krisna_training.sketch.token_shard_writer import TokenShardWriter
+
+    writer = TokenShardWriter(tokens_dir, expected_token_len=grid_h * grid_w)
     with manifest_path.open("w") as manifest_file:
-        for i, image_path in enumerate(image_paths):
+        for image_path in image_paths:
             try:
                 image = Image.open(image_path).convert("RGB").resize((image_size, image_size))
                 tokens = tokenizer.encode(image)
@@ -84,18 +90,16 @@ def prepare(
                 log.warning("tokenize_failed", extra={"path": str(image_path), "error": str(e)})
                 continue
 
-            import numpy as np
-
-            token_file = f"tokens/{i:07d}.npy"
-            np.save(tokens_dir / f"{i:07d}.npy", np.array(tokens, dtype="int32"))
-
+            shard_path, index_in_shard = writer.add(tokens)
             record = {
-                "tokens_path": token_file,
+                "tokens_shard": shard_path,
+                "tokens_index": index_in_shard,
                 "caption": captions.get(image_path.name, ""),
                 "source_image": str(image_path),
             }
             manifest_file.write(json.dumps(record) + "\n")
             written += 1
+    writer.close()
 
     log.info(
         "prepare_dataset_complete",

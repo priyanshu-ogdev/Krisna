@@ -1,0 +1,973 @@
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/dpo_z_image_stage1_general.yaml Krisna/training/configs/dpo_z_image_stage1_general.yaml
+--- orig/Krisna/training/configs/dpo_z_image_stage1_general.yaml	2026-09-19 18:03:13.000000000 +0000
++++ Krisna/training/configs/dpo_z_image_stage1_general.yaml	2026-09-20 14:03:30.449523358 +0000
+@@ -12,11 +12,12 @@
+                                                    # scripts/training/sync_from_data_forge_dpo.sh
+ blob-root: "krisna_blobs"
+ pretrained-model-name-or-path: "Tongyi-MAI/Z-Image-Turbo"
+-lora-adapter-path: null                          # set to the base fine-tune's
+-                                                    # output_dir to continue DPO
+-                                                    # from an already-trained
+-                                                    # checkpoint, rather than
+-                                                    # the raw base weights
++lora-adapter-path: null                          # UPGRADE (finding #2, [Critical]): left null
++                                                    # deliberately — see polish_stage2_dpo_general.yaml's
++                                                    # comment; train_dpo.py's main() now auto-detects
++                                                    # and loudly logs the base fine-tune checkpoint it
++                                                    # continues from instead of silently training a
++                                                    # fresh adapter on raw pretrained weights.
+ output-dir: "models/dpo_checkpoints/stage1_general"
+ source: ["pickapic_v2", "hpdv2"]                  # Stage 1 = general preference
+                                                     # (real, human-labeled,
+@@ -101,3 +102,32 @@
+ checkpointing-steps: 200
+ mixed-precision: "bf16"
+ seed: 42
++
++# UPGRADE (finding #4): max-train-steps above (1000) covers only ~0.2% of
++# Pick-a-Pic v2 + HPDv2's combined ~1.8M preference pairs at effective
++# batch 4 — a smoke-test-scale budget never rescaled once real pair
++# volume was known. Setting target-passes recomputes max-train-steps at
++# train-time from the ACTUAL synced pair count instead. 1.0 pass is a
++# conservative starting point for a DPO stage (unlike a from-scratch
++# generator, DPO risks reward-hacking drift with too MANY passes over a
++# fixed, non-growing preference set — see dpo_loss.py's fm-anchor-weight
++# docstring) — remove/set to null to keep max-train-steps exactly as
++# configured above.
++target-passes: 1.0
++
++# UPGRADE (finding #3): heldout implicit-reward-margin validation, using
++# a deterministic 5% hold-out of the synced preference pairs (matching
++# the PRD's own stratified-holdout convention).
++val-fraction: 0.05
++val-every: 100
++
++# UPGRADE (finding #6): gradient clipping — this loop previously had
++# none at all, unlike sketch/train.py. See train_dpo.py's --max-grad-norm
++# help text for why this matters specifically for beta=2000-scale DPO.
++max-grad-norm: 1.0
++
++# UPGRADE (finding #5): EMA of the trainable LoRA weights for
++# diffusion/flow-matching training (this tier) — see train_dpo.py's
++# --ema-decay help text for the ablation citation. Sketch tier
++# deliberately does NOT get this (MaskGIT/token-based regime).
++ema-decay: 0.9995
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/polish_default_lora_z_image.yaml Krisna/training/configs/polish_default_lora_z_image.yaml
+--- orig/Krisna/training/configs/polish_default_lora_z_image.yaml	2026-09-19 06:30:49.000000000 +0000
++++ Krisna/training/configs/polish_default_lora_z_image.yaml	2026-09-20 14:03:11.160696038 +0000
+@@ -58,5 +58,15 @@
+ # captions from dataset_prep.py.
+ instance_prompt: "a UI design"
+ 
+-validation_prompt: null   # set to something to get periodic validation renders
++validation_prompt: "a UI design"  # UPGRADE (finding #3): re-enabled — diffusers' own
++                          # built-in periodic sample generation is a cheap
++                          # qualitative validation signal this project has
++                          # zero of otherwise for the base LoRA stage (no
++                          # heldout eval loss exists for diffusers'
++                          # train_dreambooth_lora_z_image.py path — that
++                          # script is vendored/official, not owned by this
++                          # repo, so a real heldout LOSS loop isn't wired
++                          # here the way it is for sketch/train.py and
++                          # polish/train_dpo.py; this is the cheap
++                          # substitute the PRD (§3 gap list) already names.   # set to something to get periodic validation renders
+ validation_epochs: 25
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/polish_stage1_default_lora.yaml Krisna/training/configs/polish_stage1_default_lora.yaml
+--- orig/Krisna/training/configs/polish_stage1_default_lora.yaml	2026-09-19 18:37:47.000000000 +0000
++++ Krisna/training/configs/polish_stage1_default_lora.yaml	2026-09-20 14:03:11.149280675 +0000
+@@ -25,5 +25,15 @@
+ rank: 32
+ 
+ instance_prompt: "a UI design"
+-validation_prompt: null
++validation_prompt: "a UI design"  # UPGRADE (finding #3): re-enabled — diffusers' own
++                          # built-in periodic sample generation is a cheap
++                          # qualitative validation signal this project has
++                          # zero of otherwise for the base LoRA stage (no
++                          # heldout eval loss exists for diffusers'
++                          # train_dreambooth_lora_z_image.py path — that
++                          # script is vendored/official, not owned by this
++                          # repo, so a real heldout LOSS loop isn't wired
++                          # here the way it is for sketch/train.py and
++                          # polish/train_dpo.py; this is the cheap
++                          # substitute the PRD (§3 gap list) already names.
+ validation_epochs: 25
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/polish_stage2_dpo_general.yaml Krisna/training/configs/polish_stage2_dpo_general.yaml
+--- orig/Krisna/training/configs/polish_stage2_dpo_general.yaml	2026-09-19 18:37:59.000000000 +0000
++++ Krisna/training/configs/polish_stage2_dpo_general.yaml	2026-09-20 14:03:30.449523358 +0000
+@@ -4,7 +4,17 @@
+ preference-db: "krisna_preference_pairs.db"
+ blob-root: "krisna_blobs"
+ pretrained-model-name-or-path: "Tongyi-MAI/Z-Image-Turbo"
+-lora-adapter-path: null                          # set to base LoRA output_dir to continue DPO from fine-tuned weights
++lora-adapter-path: null                          # UPGRADE (finding #2, [Critical]): left null
++                                                    # deliberately — train_dpo.py's main() now
++                                                    # auto-detects the base fine-tune's
++                                                    # conventional output_dir
++                                                    # (./checkpoints/polish_default_lora) when this
++                                                    # is unset and loudly logs which adapter it
++                                                    # continues from (or loudly warns if falling
++                                                    # back to a fresh adapter because no base
++                                                    # checkpoint exists yet). Set this explicitly
++                                                    # only to override that auto-detection with a
++                                                    # different checkpoint.
+ output-dir: "models/dpo_checkpoints/stage1_general"
+ source: ["pickapic_v2", "hpdv2"]                  # Real human-labeled general preference
+ 
+@@ -27,3 +37,32 @@
+ checkpointing-steps: 200
+ mixed-precision: "bf16"
+ seed: 42
++
++# UPGRADE (finding #4): max-train-steps above (1000) covers only ~0.2% of
++# Pick-a-Pic v2 + HPDv2's combined ~1.8M preference pairs at effective
++# batch 4 — a smoke-test-scale budget never rescaled once real pair
++# volume was known. Setting target-passes recomputes max-train-steps at
++# train-time from the ACTUAL synced pair count instead. 1.0 pass is a
++# conservative starting point for a DPO stage (unlike a from-scratch
++# generator, DPO risks reward-hacking drift with too MANY passes over a
++# fixed, non-growing preference set — see dpo_loss.py's fm-anchor-weight
++# docstring) — remove/set to null to keep max-train-steps exactly as
++# configured above.
++target-passes: 1.0
++
++# UPGRADE (finding #3): heldout implicit-reward-margin validation, using
++# a deterministic 5% hold-out of the synced preference pairs (matching
++# the PRD's own stratified-holdout convention).
++val-fraction: 0.05
++val-every: 100
++
++# UPGRADE (finding #6): gradient clipping — this loop previously had
++# none at all, unlike sketch/train.py. See train_dpo.py's --max-grad-norm
++# help text for why this matters specifically for beta=2000-scale DPO.
++max-grad-norm: 1.0
++
++# UPGRADE (finding #5): EMA of the trainable LoRA weights for
++# diffusion/flow-matching training (this tier) — see train_dpo.py's
++# --ema-decay help text for the ablation citation. Sketch tier
++# deliberately does NOT get this (MaskGIT/token-based regime).
++ema-decay: 0.9995
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/sketch_stage1_256.yaml Krisna/training/configs/sketch_stage1_256.yaml
+--- orig/Krisna/training/configs/sketch_stage1_256.yaml	2026-09-19 18:37:30.000000000 +0000
++++ Krisna/training/configs/sketch_stage1_256.yaml	2026-09-20 14:00:44.997513524 +0000
+@@ -33,3 +33,21 @@
+ 
+ resume_from: null
+ init_from: null
++
++# UPGRADE (validation loop, finding #3): point at the heldout split's
++# synced manifest (data-forge's s09_heldout carve-out, synced through
++# data_forge_bridge.sync_sketch_tier the same way the training manifest
++# is). null skips validation entirely rather than failing, since this is
++# an additive safeguard, not a hard requirement to run training at all.
++val_manifest_path: null
++val_every: 1000
++val_batches: 20
++
++# UPGRADE (corpus-scale-aware steps, finding #4): when set, total_steps
++# above is IGNORED and recomputed at train-time as
++# round(target_epochs * len(dataset) / batch_size) from the actual
++# synced manifest — self-correcting as the corpus grows toward the
++# PRD's 100K-500K image target, instead of a fixed step count picked
++# before real corpus size was known. Set to null to keep total_steps
++# exactly as configured above.
++target_epochs: 2.0
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/sketch_stage2_512.yaml Krisna/training/configs/sketch_stage2_512.yaml
+--- orig/Krisna/training/configs/sketch_stage2_512.yaml	2026-09-19 18:37:39.000000000 +0000
++++ Krisna/training/configs/sketch_stage2_512.yaml	2026-09-20 14:00:49.429513787 +0000
+@@ -34,3 +34,16 @@
+ 
+ resume_from: null
+ init_from: "./checkpoints/sketch_stage1_256/checkpoint_final.pt"
++
++# UPGRADE (validation loop, finding #3) — see stage1's config for the
++# full rationale; unchanged for stage 2.
++val_manifest_path: null
++val_every: 1000
++val_batches: 20
++
++# UPGRADE (corpus-scale-aware steps, finding #4) — see stage1's config.
++# 1.0 for stage2 (not 2.0) since it continues from stage1's already-
++# converged weights rather than training from scratch; a full pass at
++# the 512px corpus is a reasonable continuation-style budget, not a
++# from-scratch one.
++target_epochs: 1.0
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/sketch_train_stage1_256.yaml Krisna/training/configs/sketch_train_stage1_256.yaml
+--- orig/Krisna/training/configs/sketch_train_stage1_256.yaml	2026-09-19 10:58:40.000000000 +0000
++++ Krisna/training/configs/sketch_train_stage1_256.yaml	2026-09-20 14:00:45.009513524 +0000
+@@ -41,3 +41,21 @@
+ 
+ resume_from: null
+ init_from: null
++
++# UPGRADE (validation loop, finding #3): point at the heldout split's
++# synced manifest (data-forge's s09_heldout carve-out, synced through
++# data_forge_bridge.sync_sketch_tier the same way the training manifest
++# is). null skips validation entirely rather than failing, since this is
++# an additive safeguard, not a hard requirement to run training at all.
++val_manifest_path: null
++val_every: 1000
++val_batches: 20
++
++# UPGRADE (corpus-scale-aware steps, finding #4): when set, total_steps
++# above is IGNORED and recomputed at train-time as
++# round(target_epochs * len(dataset) / batch_size) from the actual
++# synced manifest — self-correcting as the corpus grows toward the
++# PRD's 100K-500K image target, instead of a fixed step count picked
++# before real corpus size was known. Set to null to keep total_steps
++# exactly as configured above.
++target_epochs: 2.0
+diff -ru '--exclude=__pycache__' orig/Krisna/training/configs/sketch_train_stage2_512.yaml Krisna/training/configs/sketch_train_stage2_512.yaml
+--- orig/Krisna/training/configs/sketch_train_stage2_512.yaml	2026-09-19 10:58:46.000000000 +0000
++++ Krisna/training/configs/sketch_train_stage2_512.yaml	2026-09-20 14:00:49.441513788 +0000
+@@ -43,3 +43,16 @@
+ 
+ resume_from: null
+ init_from: "./checkpoints/sketch_stage1_256/checkpoint_final.pt"
++
++# UPGRADE (validation loop, finding #3) — see stage1's config for the
++# full rationale; unchanged for stage 2.
++val_manifest_path: null
++val_every: 1000
++val_batches: 20
++
++# UPGRADE (corpus-scale-aware steps, finding #4) — see stage1's config.
++# 1.0 for stage2 (not 2.0) since it continues from stage1's already-
++# converged weights rather than training from scratch; a full pass at
++# the 512px corpus is a reasonable continuation-style budget, not a
++# from-scratch one.
++target_epochs: 1.0
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/data_forge_bridge/sync_dpo_pairs.py Krisna/training/src/krisna_training/data_forge_bridge/sync_dpo_pairs.py
+--- orig/Krisna/training/src/krisna_training/data_forge_bridge/sync_dpo_pairs.py	2026-09-19 06:30:49.000000000 +0000
++++ Krisna/training/src/krisna_training/data_forge_bridge/sync_dpo_pairs.py	2026-09-20 14:08:37.011674205 +0000
+@@ -95,6 +95,16 @@
+                 skipped_not_deduped += 1
+                 continue
+ 
++            pair_id = _deterministic_pair_id(mapped_source, meta)
++            if preference_store.exists(pair_id):
++                # UPGRADE: skip re-doing blob-store image I/O entirely for
++                # a pair already imported by a prior sync — the eventual
++                # `add()` would have been a no-op anyway (INSERT OR
++                # IGNORE), but only AFTER paying for two image
++                # loads/re-encodes per already-imported pair. See
++                # preference_store.py's exists()/module docstring.
++                continue
++
+             image_a_path = source_dir / meta["image_a"]
+             image_b_path = source_dir / meta["image_b"]
+             if not image_a_path.exists() or not image_b_path.exists():
+@@ -120,6 +130,12 @@
+ 
+             try:
+                 pair = PreferencePair(
++                    # UPGRADE (bug found on review): deterministic id derived
++                    # from stable source content, NOT the dataclass's default
++                    # random uuid4 — see preference_store.py's module
++                    # docstring for why this is required for `INSERT OR
++                    # IGNORE` to actually make resyncing idempotent.
++                    id=pair_id,
+                     prompt=meta.get("prompt", ""),
+                     chosen_ref=chosen_ref,
+                     rejected_ref=rejected_ref,
+@@ -138,3 +154,22 @@
+     counts["skipped_missing_images"] = skipped_missing_images
+     log.info("sync_dpo_pairs_complete", extra=counts)
+     return counts
++
++
++def _deterministic_pair_id(mapped_source: str, meta: dict) -> str:
++    """A stable id for the SAME underlying preference pair across repeated
++    syncs of the same (or a re-exported, unchanged) data-forge source —
++    see preference_store.py's module docstring. Real dataset `pair_id`
++    values (when present) are already unique per pair within a source;
++    namespacing by `mapped_source` guards against an accidental collision
++    across two different sources that happen to reuse pair_id numbering.
++    """
++    import hashlib
++    import uuid
++
++    pair_id = meta.get("pair_id")
++    if pair_id:
++        key = f"{mapped_source}:{pair_id}"
++    else:
++        key = f"{mapped_source}:{meta.get('image_a', '')}:{meta.get('image_b', '')}"
++    return str(uuid.UUID(hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]))
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/polish/dpo_dataset.py Krisna/training/src/krisna_training/polish/dpo_dataset.py
+--- orig/Krisna/training/src/krisna_training/polish/dpo_dataset.py	2026-09-20 11:43:25.000000000 +0000
++++ Krisna/training/src/krisna_training/polish/dpo_dataset.py	2026-09-20 14:01:20.304121527 +0000
+@@ -55,7 +55,11 @@
+         blob_root: str,
+         sources: list[str] | None = None,
+         resolution: int = 512,
++        split: str = "train",
++        val_fraction: float = 0.05,
+     ) -> None:
++        import hashlib
++
+         import torch
+         from torchvision import transforms
+ 
+@@ -69,20 +73,44 @@
+ 
+         self.store = PreferenceStore(db_path=db_path)
+         self.blobs = BlobStore(root=blob_root)
+-        self.pairs = self.store.list()
++        all_pairs = self.store.list()
+ 
+         if sources:
+-            self.pairs = [p for p in self.pairs if p.source in sources]
++            all_pairs = [p for p in all_pairs if p.source in sources]
++
++        # UPGRADE (validation loop, finding #3): the DPO stage had no
++        # heldout signal at all — only training loss on a preference
++        # margin, which for DPO can shrink purely by reward-hacking
++        # (drifting away from the reference distribution) rather than by
++        # genuinely improving preference alignment. Deterministic
++        # hash-of-id split (not random.random()) so the same pair always
++        # lands in the same split across process restarts and DataLoader
++        # workers, matching the PRD's own 5%-stratified-holdout
++        # convention (§9's data-forge s09_heldout) rather than inventing
++        # a different holdout fraction for this stage.
++        assert split in ("train", "val"), f"split must be 'train' or 'val', got {split!r}"
++
++        def _is_val(pair_id: str) -> bool:
++            digest = hashlib.sha256(pair_id.encode("utf-8")).hexdigest()
++            return (int(digest[:8], 16) / 0xFFFFFFFF) < val_fraction
++
++        if split == "val":
++            self.pairs = [p for p in all_pairs if _is_val(p.id)]
++        else:
++            self.pairs = [p for p in all_pairs if not _is_val(p.id)]
+ 
+         if not self.pairs:
+             raise ValueError(
+-                f"No preference pairs found in {db_path} for sources={sources}. "
++                f"No preference pairs found in {db_path} for sources={sources} split={split!r}. "
+                 "Run python scripts/data-forge/sync_to_training.py first."
+             )
+ 
+         log.info(
+             "dpo_dataset_loaded",
+-            extra={"pairs": len(self.pairs), "sources": sources or "all", "resolution": resolution},
++            extra={
++                "pairs": len(self.pairs), "sources": sources or "all", "resolution": resolution,
++                "split": split, "total_available": len(all_pairs),
++            },
+         )
+ 
+         self.transform = transforms.Compose([
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/polish/train_dpo.py Krisna/training/src/krisna_training/polish/train_dpo.py
+--- orig/Krisna/training/src/krisna_training/polish/train_dpo.py	2026-09-19 18:34:08.000000000 +0000
++++ Krisna/training/src/krisna_training/polish/train_dpo.py	2026-09-20 14:03:03.539839749 +0000
+@@ -85,17 +85,68 @@
+     p.add_argument("--checkpointing-steps", type=int, default=200)
+     p.add_argument("--mixed-precision", choices=["no", "fp16", "bf16"], default="bf16")
+     p.add_argument("--seed", type=int, default=42)
++    p.add_argument(
++        "--max-grad-norm", type=float, default=1.0,
++        help=(
++            "UPGRADE (finding #6): this loop previously had NO gradient "
++            "clipping at all, unlike sketch/train.py (grad_clip: 1.0). "
++            "DPO's loss is beta * (implicit reward margin) with "
++            "beta=2000 by default — a large multiplier on an already-"
++            "noisy quantity (a difference of two MSE differences), "
++            "exactly the setup where one outlier batch produces a "
++            "destabilizing gradient spike. Diffusion-DPO reference "
++            "implementations clip for this reason. Set to 0 to disable."
++        ),
++    )
++    p.add_argument(
++        "--ema-decay", type=float, default=0.9995,
++        help=(
++            "UPGRADE (finding #5): EMA of the trainable LoRA parameters, "
++            "checkpointed and used for the FINAL saved adapter (not for "
++            "the loss/backward path, which always uses the live weights "
++            "— standard EMA usage). A 2024 ablation comparing diffusion "
++            "vs. token-based (MaskGIT-style) generative training found "
++            "EMA 'beneficial almost universally' for diffusion models, "
++            "vs. negligible-or-harmful for token-based ones — this tier "
++            "(Z-Image-Turbo, flow-matching/diffusion family) is exactly "
++            "the regime where it helps; the Sketch tier (MaskGIT-style) "
++            "deliberately does NOT get EMA for the same reason (see "
++            "sketch/train.py — no code change there is not an oversight)."
++            " Set to 0 to disable."
++        ),
++    )
++    p.add_argument("--val-fraction", type=float, default=0.05, help="Deterministic heldout fraction of preference pairs, matching the PRD's 5%% stratified holdout convention.")
++    p.add_argument("--val-every", type=int, default=100, help="Run heldout implicit-reward-margin eval every N optimizer steps. 0 disables validation.")
++    p.add_argument(
++        "--target-passes", type=float, default=None,
++        help=(
++            "UPGRADE (finding #4): when set, --max-train-steps is IGNORED "
++            "and recomputed as round(target_passes * len(train_pairs) / "
++            "(train_batch_size * gradient_accumulation_steps)) from the "
++            "actual synced preference-pair count. max_train_steps=1000 "
++            "against Pick-a-Pic v2 + HPDv2's combined ~1.8M-pair volume "
++            "sees only ~0.2%% of available pairs at effective batch 4 — "
++            "calibrated as a smoke-test default (Oxen.ai's own reference "
++            "table calls 1000 steps 'quick test runs'), not scaled up "
++            "once real preference-pair volume was known. Leave unset to "
++            "keep --max-train-steps exactly as given."
++        ),
++    )
+     return p
+ 
+ 
+-def build_dataset(args, tokenizer_max_length: int = 77):
++def build_dataset(args, split: str = "train"):
+     """Returns a torch.utils.data.Dataset yielding
+     (chosen_pixel_values, rejected_pixel_values, prompt) triples from
+     real PreferenceStore records — resolved through the shared BlobStore.
++    split="val" returns the deterministic heldout complement (finding #3).
+     """
+     from krisna_training.polish.dpo_dataset import PreferencePairDataset
+ 
+-    return PreferencePairDataset(args.preference_db, args.blob_root, args.source, args.resolution)
++    return PreferencePairDataset(
++        args.preference_db, args.blob_root, args.source, args.resolution,
++        split=split, val_fraction=args.val_fraction,
++    )
+ 
+ 
+ def main() -> int:
+@@ -121,9 +172,94 @@
+     )
+     torch.manual_seed(args.seed)
+ 
+-    dataset = build_dataset(args)
++    # UPGRADE (finding #2, [Critical]): this is the single most severe
++    # bug this review found. The documented, canonical path (./train.sh
++    # --all) is supposed to run polish-default (base LoRA fine-tune)
++    # THEN polish-dpo continuing from it (train.sh --list's own text:
++    # "via diffusers' own dreambooth-LoRA script, THEN refined further
++    # by polish-dpo"; PRD §6's model-stack table describes one
++    # continuous "LoRA fine-tune + Diffusion-DPO" line). But both
++    # shipped DPO configs default lora-adapter-path to null, and neither
++    # train_polish_dpo.sh nor this script ever threaded the base
++    # fine-tune's output_dir through automatically — so the documented
++    # default run silently DPO-aligns the vanilla pretrained weights,
++    # never the UI-domain-adapted ones, and throws away the base
++    # fine-tune step with no error and no log line. Fixed here (not just
++    # in the shell wrapper) so this is loud and correct regardless of
++    # how train_dpo.py is invoked: if the caller didn't pass
++    # --lora-adapter-path, auto-detect the base fine-tune's conventional
++    # output_dir (training/configs/polish_stage1_default_lora.yaml's
++    # output_dir) and use it, unless it genuinely doesn't exist yet — in
++    # which case this is loud about falling back to a fresh adapter
++    # rather than silently doing so.
++    if args.lora_adapter_path is None:
++        _DEFAULT_BASE_LORA_OUTPUT_DIR = "./checkpoints/polish_default_lora"
++        base_lora_path = Path(_DEFAULT_BASE_LORA_OUTPUT_DIR)
++        if base_lora_path.exists() and any(base_lora_path.iterdir()):
++            args.lora_adapter_path = str(base_lora_path)
++            log.warning(
++                "auto_detected_base_lora_adapter",
++                extra={
++                    "path": args.lora_adapter_path,
++                    "note": "--lora-adapter-path was not set; auto-continuing DPO from the "
++                             "base fine-tune's conventional output_dir. Pass "
++                             "--lora-adapter-path explicitly to silence this, or to "
++                             "point at a different checkpoint.",
++                },
++            )
++        else:
++            log.warning(
++                "dpo_training_fresh_adapter_no_base_finetune",
++                extra={
++                    "checked_path": _DEFAULT_BASE_LORA_OUTPUT_DIR,
++                    "note": "No --lora-adapter-path given and no base fine-tune checkpoint "
++                             "found at the conventional output_dir. DPO will train a FRESH "
++                             "adapter on top of the raw pretrained weights, NOT the "
++                             "UI-domain-adapted ones — this means the base fine-tune stage "
++                             "is being skipped for this run. This is intentional only if "
++                             "that is really what you want; otherwise run polish-default "
++                             "first (./train.sh polish-default) before polish-dpo.",
++                },
++            )
++
++    dataset = build_dataset(args, split="train")
+     dataloader = DataLoader(dataset, batch_size=args.train_batch_size, shuffle=True)
+ 
++    if args.target_passes is not None:
++        effective_batch = max(1, args.train_batch_size * args.gradient_accumulation_steps)
++        scaled_steps = max(1, round(args.target_passes * len(dataset) / effective_batch))
++        log.info(
++            "max_train_steps_rescaled_to_corpus",
++            extra={
++                "configured_max_train_steps": args.max_train_steps, "available_pairs": len(dataset),
++                "effective_batch": effective_batch, "target_passes": args.target_passes,
++                "scaled_max_train_steps": scaled_steps,
++            },
++        )
++        args.max_train_steps = scaled_steps
++    else:
++        effective_batch = max(1, args.train_batch_size * args.gradient_accumulation_steps)
++        approx_passes = (args.max_train_steps * effective_batch) / max(1, len(dataset))
++        if approx_passes < 0.5:
++            log.warning(
++                "max_train_steps_may_be_undersized",
++                extra={
++                    "max_train_steps": args.max_train_steps, "available_pairs": len(dataset),
++                    "approx_passes_covered": round(approx_passes, 4),
++                    "note": "max_train_steps covers well under half a pass over the available "
++                             "preference pairs at this effective batch size — consider "
++                             "--target-passes instead of a fixed step count.",
++                },
++            )
++
++    val_dataloader = None
++    if args.val_every > 0:
++        try:
++            val_dataset = build_dataset(args, split="val")
++            val_dataloader = DataLoader(val_dataset, batch_size=args.train_batch_size, shuffle=False)
++        except ValueError as e:
++            log.warning("dpo_validation_split_empty", extra={"error": str(e)})
++
+     # Policy pipeline — trainable LoRA adapter on the transformer only
+     # (VAE and text encoder stay frozen, matching the base fine-tune's
+     # own convention — see training/README.md's polish-tier section).
+@@ -219,6 +355,97 @@
+         policy_transformer, optimizer, dataloader, lr_scheduler
+     )
+ 
++    # UPGRADE (finding #5): EMA of the trainable (LoRA) parameters.
++    # Standard usage — the live weights are always what's optimized and
++    # used for the forward passes below; the EMA shadow is only read at
++    # checkpoint/save time, giving the diffusion-family regime's
++    # documented benefit without touching the loss/backward path at all.
++    ema_params = None
++    if args.ema_decay > 0.0:
++        trainable_params = [p for p in accelerator.unwrap_model(policy_transformer).parameters() if p.requires_grad]
++        ema_params = [p.detach().clone() for p in trainable_params]
++
++    def _update_ema() -> None:
++        if ema_params is None:
++            return
++        trainable_params = [p for p in accelerator.unwrap_model(policy_transformer).parameters() if p.requires_grad]
++        with torch.no_grad():
++            for ema_p, p in zip(ema_params, trainable_params):
++                ema_p.mul_(args.ema_decay).add_(p.detach(), alpha=1.0 - args.ema_decay)
++
++    def _save_adapter(path: str, use_ema: bool) -> None:
++        unwrapped = accelerator.unwrap_model(policy_transformer)
++        if use_ema and ema_params is not None:
++            trainable_params = [p for p in unwrapped.parameters() if p.requires_grad]
++            originals = [p.detach().clone() for p in trainable_params]
++            with torch.no_grad():
++                for p, ema_p in zip(trainable_params, ema_params):
++                    p.copy_(ema_p)
++            unwrapped.save_pretrained(path)
++            with torch.no_grad():
++                for p, orig in zip(trainable_params, originals):
++                    p.copy_(orig)
++        else:
++            unwrapped.save_pretrained(path)
++
++    def _run_dpo_validation() -> dict | None:
++        """Heldout implicit-reward-margin eval (finding #3) — the metric
++        dpo_loss.py already computes per-batch but this loop previously
++        discarded entirely; no validation signal existed anywhere for
++        the DPO stage. model.eval()/no_grad, never affects optimization.
++        """
++        if val_dataloader is None:
++            return None
++        policy_transformer.eval()
++        margins, losses = [], []
++        with torch.no_grad():
++            for i, batch in enumerate(val_dataloader):
++                if i >= 20:  # cap eval cost, same discipline as sketch/train.py's val_batches
++                    break
++                chosen_latents = vae.encode(batch["chosen_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
++                rejected_latents = vae.encode(batch["rejected_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
++                chosen_latents = chosen_latents * vae.config.scaling_factor
++                rejected_latents = rejected_latents * vae.config.scaling_factor
++                bsz = chosen_latents.shape[0]
++                u = compute_density_for_timestep_sampling(
++                    weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
++                )
++                sigma_c = u.to(chosen_latents.device).view(bsz, 1, 1, 1)
++                u_r = compute_density_for_timestep_sampling(
++                    weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
++                )
++                sigma_r = u_r.to(rejected_latents.device).view(bsz, 1, 1, 1)
++                noise_c, noise_r = torch.randn_like(chosen_latents), torch.randn_like(rejected_latents)
++                noisy_c = noise_latent_at_timestep(chosen_latents, noise_c, sigma_c)
++                noisy_r = noise_latent_at_timestep(rejected_latents, noise_r, sigma_r)
++                target_c = flow_matching_velocity_target(chosen_latents, noise_c)
++                target_r = flow_matching_velocity_target(rejected_latents, noise_r)
++                prompt_embeds = policy_pipe.encode_prompt(batch["prompt"])
++                if isinstance(prompt_embeds, torch.Tensor):
++                    prompt_embeds = prompt_embeds.to(accelerator.device)
++                elif isinstance(prompt_embeds, (tuple, list)):
++                    prompt_embeds = tuple(t.to(accelerator.device) if isinstance(t, torch.Tensor) else t for t in prompt_embeds)
++                pv_c = policy_transformer(noisy_c, sigma_c.flatten(), prompt_embeds).sample
++                pv_r = policy_transformer(noisy_r, sigma_r.flatten(), prompt_embeds).sample
++                ref_transformer.to(accelerator.device)
++                rv_c = ref_transformer(noisy_c, sigma_c.flatten(), prompt_embeds).sample
++                rv_r = ref_transformer(noisy_r, sigma_r.flatten(), prompt_embeds).sample
++                ref_transformer.to("cpu")
++                out = flow_matching_dpo_loss(
++                    policy_v_chosen=pv_c, policy_v_rejected=pv_r, ref_v_chosen=rv_c, ref_v_rejected=rv_r,
++                    target_v_chosen=target_c, target_v_rejected=target_r, beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
++                )
++                margins.append(out.implicit_reward_margin.item())
++                losses.append(out.loss.item())
++        policy_transformer.train()
++        if not margins:
++            return None
++        return {
++            "val_loss": round(sum(losses) / len(losses), 4),
++            "val_implicit_reward_margin": round(sum(margins) / len(margins), 4),
++            "val_batches": len(margins),
++        }
++
+     global_step = 0
+     output_dir = Path(args.output_dir)
+     output_dir.mkdir(parents=True, exist_ok=True)
+@@ -300,12 +527,27 @@
+                 )
+ 
+                 accelerator.backward(out.loss)
++                if accelerator.sync_gradients and args.max_grad_norm > 0.0:
++                    # UPGRADE (finding #6): previously no clipping at all in
++                    # this loop. Only meaningful once grads are fully
++                    # accumulated (accelerator.sync_gradients), matching
++                    # accelerate's own documented pattern for combining
++                    # clip_grad_norm_ with gradient accumulation.
++                    accelerator.clip_grad_norm_(
++                        [p for p in policy_transformer.parameters() if p.requires_grad],
++                        args.max_grad_norm,
++                    )
+                 optimizer.step()
+                 lr_scheduler.step()
+                 optimizer.zero_grad(set_to_none=True)
+ 
+             if accelerator.sync_gradients:
++                _update_ema()
+                 global_step += 1
++                if args.val_every > 0 and global_step % args.val_every == 0:
++                    val_metrics = _run_dpo_validation()
++                    if val_metrics is not None:
++                        log.info("dpo_val_step", extra={"step": global_step, **val_metrics})
+                 if global_step % 10 == 0:
+                     log.info(
+                         "dpo_step",
+@@ -336,12 +578,17 @@
+                     # model.save_pretrained(...)") as the standard save
+                     # call once add_adapter()/get_peft_model() has
+                     # PEFT-wrapped a model.
+-                    accelerator.unwrap_model(policy_transformer).save_pretrained(str(output_dir / f"checkpoint-{global_step}"))
++                    # Saved from the EMA shadow when enabled (finding #5)
++                    # — checkpoints are a deployable artifact, not a
++                    # debugging snapshot, so they should reflect the
++                    # smoothed weights the ablation found beneficial for
++                    # this (diffusion) tier, not the noisier live weights.
++                    _save_adapter(str(output_dir / f"checkpoint-{global_step}"), use_ema=True)
+                 if global_step >= args.max_train_steps:
+                     break
+ 
+-    accelerator.unwrap_model(policy_transformer).save_pretrained(str(output_dir / "final"))
+-    log.info("dpo_training_complete", extra={"output_dir": str(output_dir)})
++    _save_adapter(str(output_dir / "final"), use_ema=True)
++    log.info("dpo_training_complete", extra={"output_dir": str(output_dir), "used_ema": ema_params is not None})
+     return 0
+ 
+ 
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/preference/preference_store.py Krisna/training/src/krisna_training/preference/preference_store.py
+--- orig/Krisna/training/src/krisna_training/preference/preference_store.py	2026-09-19 18:35:40.000000000 +0000
++++ Krisna/training/src/krisna_training/preference/preference_store.py	2026-09-20 14:08:23.452818121 +0000
+@@ -1,6 +1,22 @@
+ """SQLite store for DPO preference pairs. Same threading/locking pattern as
+ store.DesignStateStore — this is a local single-GPU service, not a
+ distributed system.
++
++UPGRADE (training-loop review, bug found in data_forge_bridge/
++sync_dpo_pairs.py): `add()` uses `INSERT OR IGNORE` rather than a plain
++`INSERT`. `PreferencePair.id` defaults to a fresh random uuid4 per
++Python-side construction, so re-running a data-forge sync against
++already-imported source data previously created a full set of brand-new
++rows for the exact same underlying image pairs every time — silently
++duplicating a source's contribution every resync, skewing dataset size
++and per-source sampling weight. `INSERT OR IGNORE` makes `add()` safe to
++call repeatedly with the SAME id (a no-op on the second+ call) — but
++this only actually fixes the bug once the id itself is deterministic,
++which is sync_dpo_pairs.py's responsibility (derived from
++source+pair_id/image filenames there, not left as the random default).
++Runtime-labeled pairs (verifier_stack/gemma_critique/uicrit_seed) are
++unaffected — those still get a fresh random id per real labeling event,
++which is correct; they aren't being "resynced" from a stable source.
+ """
+ 
+ from __future__ import annotations
+@@ -71,7 +87,7 @@
+         with self._lock:
+             self._conn.execute(
+                 """
+-                INSERT INTO preference_pairs
++                INSERT OR IGNORE INTO preference_pairs
+                     (id, session_id, prompt, chosen_ref, rejected_ref,
+                      chosen_score, rejected_score, source, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+@@ -137,6 +153,18 @@
+         with self._lock:
+             return self._conn.execute(query, params).fetchone()[0]
+ 
++    def exists(self, pair_id: str) -> bool:
++        """UPGRADE: lets a sync path skip re-doing image I/O (blob-store
++        writes, decode) for a pair it already imported, rather than only
++        deduping at the final INSERT step (see module docstring) — that
++        alone still leaked a fresh blob copy per resync even once the DB
++        row itself became a no-op."""
++        with self._lock:
++            row = self._conn.execute(
++                "SELECT 1 FROM preference_pairs WHERE id = ? LIMIT 1", (pair_id,)
++            ).fetchone()
++        return row is not None
++
+     def close(self) -> None:
+         with self._lock:
+             self._conn.close()
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/sketch/dataset.py Krisna/training/src/krisna_training/sketch/dataset.py
+--- orig/Krisna/training/src/krisna_training/sketch/dataset.py	2026-09-20 11:42:46.000000000 +0000
++++ Krisna/training/src/krisna_training/sketch/dataset.py	2026-09-20 13:58:14.581907545 +0000
+@@ -20,7 +20,7 @@
+ class SketchTokenDataset:
+     def __init__(
+         self, manifest_path: str | Path, grid_h: int, grid_w: int,
+-        caption_mix_ratio: float = 0.85,
++        caption_mix_ratio: float = 0.95,
+     ) -> None:
+         """caption_mix_ratio: probability of using the dense, VLM-
+         recaptioned `caption` on any given access; the complement uses
+@@ -28,19 +28,25 @@
+         record (silently falls back to `caption` when it doesn't, e.g.
+         records with no source-dataset label at all).
+ 
+-        Default CHANGED from 0.95 to 0.85 (semantic audit, P2a fix):
+-        Betker et al. 2023's 95/5 split was validated for photo-domain
+-        models where human captions are long and descriptive. Krisna's
+-        Sketch tier receives raw user intent messages at inference time
+-        ("make me a dark dashboard" — 5-8 words, imperative framing)
+-        while training on dense VLM captions of finished screenshots
+-        ("A dark settings screen with toggle switches" — descriptive,
+-        pixel-level). The 15% short-caption share better regularizes
+-        the model against this training/inference distribution gap
+-        without fully abandoning the density that makes VLM captions
+-        useful for structural grounding. See
+-        docs/review/09_synthetic_data_audit.md and the semantic audit
+-        docs for context.
++        KEPT at 0.95, matching the PRD (§6.2, §8.6), all four sketch
++        YAML configs, and TrainConfig's dataclass default — this
++        constructor default was the one place still disagreeing (a
++        stale P2a "fix" to 0.85 that was never applied anywhere else).
++
++        The P2a rationale's underlying worry is real (train/inference
++        caption-length mismatch: dense VLM captions vs. short imperative
++        user prompts like "make me a dark dashboard"), but its proposed
++        fix was checked against the actual source rather than trusted at
++        face value. Betker et al. 2023 (DALL-E 3) explicitly swept the
++        synthetic/short caption blend ratio and found that a very high
++        percentage of synthetic (dense) captions maximized model
++        performance — and this held even when evaluated with
++        ground-truth (short, human-style) prompts, i.e. the exact P2a
++        scenario. So more dense-caption exposure during training, not
++        less, is what the cited paper's own sweep supports. 0.95 is the
++        right ratio; cfg_dropout_prob (see make_collate_fn in train.py)
++        is the mechanism that actually protects the unconditional/
++        short-prompt path at inference.
+         """
+         self.manifest_path = Path(manifest_path)
+         self.grid_h = grid_h
+diff -ru '--exclude=__pycache__' orig/Krisna/training/src/krisna_training/sketch/train.py Krisna/training/src/krisna_training/sketch/train.py
+--- orig/Krisna/training/src/krisna_training/sketch/train.py	2026-09-19 06:30:49.000000000 +0000
++++ Krisna/training/src/krisna_training/sketch/train.py	2026-09-20 14:07:13.632210357 +0000
+@@ -61,6 +61,34 @@
+     seed: int = 42
+     use_gradient_checkpointing: bool = False   # see model.py's build_model() docstring
+ 
++    # --- UPGRADE: real validation loop (finding #3) ---
++    # data-forge's s09_heldout stage carves out a 5% stratified holdout
++    # specifically so training can measure generalization instead of only
++    # training loss (a poor proxy for a masked-token objective — a model
++    # can drive training loss down by memorizing the ~1-4% of the corpus
++    # it actually sees at max_train_steps=1000-scale step budgets without
++    # this ever showing up as a token-loss regression). Point this at the
++    # manifest.jsonl produced by syncing that heldout split through the
++    # same data_forge_bridge path as the training manifest.
++    val_manifest_path: str | None = None
++    val_every: int = 1000
++    val_batches: int = 20              # cap eval cost; heldout loss is a monitoring signal, not a full pass every time
++
++    # --- UPGRADE: corpus-scale-aware step count (finding #4) ---
++    # max_train_steps=1000-class defaults in the shipped configs were
++    # calibrated against small (hundreds-of-images) style-transfer LoRA
++    # guidance, not against this project's own PRD §8.3 target of
++    # 100K-500K images. "Total steps = (Images * Repetitions * Epochs) /
++    # Batch Size" (standard LoRA/diffusion step-count guidance) scales
++    # with dataset size, not a fixed constant. Rather than hand-tune
++    # total_steps per corpus snapshot, set target_epochs and this
++    # computes total_steps from the ACTUAL synced dataset length at
++    # train-time — self-correcting as the corpus grows, matching how
++    # sync_to_training.py already prints real corpus counts once known.
++    # None preserves the exact configured total_steps (opt-in, so this
++    # never silently changes a deliberately-set value).
++    target_epochs: float | None = None
++
+     @classmethod
+     def from_yaml(cls, path: str | Path) -> "TrainConfig":
+         import yaml
+@@ -184,6 +212,42 @@
+     model_cfg = build_model_config(cfg)
+     dataset = SketchTokenDataset(cfg.manifest_path, cfg.grid_h, cfg.grid_w, cfg.caption_mix_ratio)
+ 
++    # Corpus-scale-aware step count (finding #4). Computed from the real,
++    # just-loaded dataset length — not a guess made ahead of sync time.
++    if cfg.target_epochs is not None:
++        steps_per_epoch = max(1, len(dataset) // cfg.batch_size)
++        scaled_steps = max(1, round(cfg.target_epochs * steps_per_epoch))
++        log.info(
++            "total_steps_rescaled_to_corpus",
++            extra={
++                "configured_total_steps": cfg.total_steps, "dataset_size": len(dataset),
++                "steps_per_epoch": steps_per_epoch, "target_epochs": cfg.target_epochs,
++                "scaled_total_steps": scaled_steps,
++            },
++        )
++        cfg.total_steps = scaled_steps
++    else:
++        approx_epochs = (cfg.total_steps * cfg.batch_size) / max(1, len(dataset))
++        if approx_epochs < 1.0:
++            log.warning(
++                "max_train_steps_may_be_undersized",
++                extra={
++                    "total_steps": cfg.total_steps, "batch_size": cfg.batch_size,
++                    "dataset_size": len(dataset), "approx_epochs_covered": round(approx_epochs, 3),
++                    "note": "total_steps covers well under one full pass over the corpus at this "
++                             "batch size — consider setting target_epochs instead of a fixed step count.",
++                },
++            )
++
++    val_dataset = None
++    if cfg.val_manifest_path:
++        val_dataset = SketchTokenDataset(
++            cfg.val_manifest_path, cfg.grid_h, cfg.grid_w,
++            # Heldout eval should reflect real inference-time caption style
++            # exposure the same way training does, not silently deviate.
++            cfg.caption_mix_ratio,
++        )
++
+     text_embedder = None
+     try:
+         from krisna_inference.verifiers.common import get_clip_embedder
+@@ -203,9 +267,47 @@
+         worker_init_fn=seed_worker,
+     )
+ 
++    val_loader = None
++    if val_dataset is not None:
++        val_loader = DataLoader(
++            val_dataset,
++            batch_size=cfg.batch_size,
++            shuffle=False,
++            num_workers=0,
++            collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim, cfg_dropout_prob=0.0),
++            drop_last=False,
++        )
++
+     start_step = 0
+     if cfg.resume_from:
+-        model, model_cfg, start_step, _ = load_checkpoint_for_resume(cfg.resume_from)
++        model, resumed_model_cfg, start_step, _ = load_checkpoint_for_resume(cfg.resume_from)
++        # BUG FOUND ON REVIEW: the training/val DataLoaders above were
++        # already built (collate_fn closes over `model_cfg.mask_token_id`,
++        # captured from the config FILE's fresh SketchModelConfig) before
++        # this resume branch ever runs. If a resumed checkpoint's saved
++        # config disagrees with the current YAML (vocab_size/grid changed
++        # between runs, or the wrong checkpoint path given), masking would
++        # silently use the WRONG mask_token_id against the actually-
++        # resumed model — an out-of-vocabulary embedding lookup or a
++        # mask_token_id the resumed model never trained on, with no error,
++        # just quietly worse convergence. Fail loudly instead of resuming
++        # into a mismatched setup.
++        if (
++            resumed_model_cfg.mask_token_id != model_cfg.mask_token_id
++            or resumed_model_cfg.grid_h != model_cfg.grid_h
++            or resumed_model_cfg.grid_w != model_cfg.grid_w
++        ):
++            raise ValueError(
++                f"Resume config mismatch: checkpoint at {cfg.resume_from} was trained with "
++                f"mask_token_id={resumed_model_cfg.mask_token_id}, grid={resumed_model_cfg.grid_h}x"
++                f"{resumed_model_cfg.grid_w}, but the current YAML config produces "
++                f"mask_token_id={model_cfg.mask_token_id}, grid={model_cfg.grid_h}x{model_cfg.grid_w}. "
++                "Resuming would silently mask/collate against the wrong vocabulary/grid. "
++                "Fix the YAML to match the checkpoint's real config, or use init_from "
++                "(progressive-resolution init) instead of resume_from if you deliberately "
++                "changed grid size."
++            )
++        model_cfg = resumed_model_cfg
+         model.to(device)
+         log.info("resumed", extra={"path": cfg.resume_from, "step": start_step})
+     else:
+@@ -276,6 +378,11 @@
+             save_checkpoint(ckpt_path, model, model_cfg, step, optimizer)
+             log.info("checkpoint_saved", extra={"path": str(ckpt_path)})
+ 
++        if val_loader is not None and step > 0 and step % cfg.val_every == 0:
++            val_metrics = _run_validation(model, val_loader, device, cfg)
++            log.info("val_step", extra={"step": step, **val_metrics})
++            model.train()
++
+         step += 1
+ 
+     final_path = Path(cfg.output_dir) / "checkpoint_final.pt"
+@@ -283,6 +390,49 @@
+     log.info("training_complete", extra={"path": str(final_path), "total_steps": step})
+ 
+ 
++def _run_validation(model, val_loader, device: str, cfg: "TrainConfig") -> dict:
++    """Heldout masked-token loss (finding #3) — the metric no prior
++    version of this loop ever computed. Deliberately model.eval()'d and
++    no_grad'd: this is purely a monitoring/early-stopping signal, never
++    part of the optimization step. Capped at cfg.val_batches so a large
++    heldout split doesn't stall training every val_every steps; the
++    subset is still a real random sample since val_loader's underlying
++    dataset order is whatever the manifest wrote it in and batches are
++    consumed in order — good enough for a trend signal, not a claim of
++    a perfectly i.i.d. estimate on every call.
++    """
++    import torch
++
++    from krisna_training.sketch.losses import compute_loss
++
++    model.eval()
++    total_loss, total_token_loss, total_critic_loss, n_batches = 0.0, 0.0, 0.0, 0
++    with torch.no_grad():
++        for i, (tokens, mask, targets, prompt_embeds) in enumerate(val_loader):
++            if i >= cfg.val_batches:
++                break
++            tokens, mask, targets, prompt_embeds = (
++                tokens.to(device), mask.to(device), targets.to(device), prompt_embeds.to(device)
++            )
++            with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16):
++                logits, critic_scores = model(tokens, mask, prompt_embeds)
++                loss, token_loss, critic_loss = compute_loss(
++                    logits, critic_scores, targets, mask, critic_loss_weight=cfg.critic_loss_weight
++                )
++            total_loss += loss.item()
++            total_token_loss += token_loss.item()
++            total_critic_loss += critic_loss.item()
++            n_batches += 1
++
++    n_batches = max(1, n_batches)
++    return {
++        "val_loss": round(total_loss / n_batches, 4),
++        "val_token_loss": round(total_token_loss / n_batches, 4),
++        "val_critic_loss": round(total_critic_loss / n_batches, 4),
++        "val_batches": n_batches,
++    }
++
++
+ def _init_from_smaller_grid(model, new_cfg, checkpoint_path: str) -> None:
+     """Progressive-resolution init (§6.1: "256->512px progressive
+     training"): load a checkpoint trained at a smaller grid, transfer all

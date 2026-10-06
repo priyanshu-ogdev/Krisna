@@ -114,6 +114,7 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 | 28 | Production Docker containerization, multi-tier virtualenv isolation (`/opt/venv-inference` vs. `/opt/venv-critic`), fail-fast hardware & CUDA preflight diagnostic engine (`krisna_inference.common.hardware` and `check_hardware.py`), service fail-fast startup guard, `docker-compose.yml` GPU stack, and upgraded installers | **Fixed & Tested** — see `28_docker_isolation_and_hardware_preflight.md`; multi-venv container built, GPU fail-fast diagnostics in service and entrypoint, 16 new unit tests, full test suite passing (481 passed, 1 skipped) |
 | 29 | Comprehensive codebase & docs audit: `CriticBackend` NameError missing `os` import, `SwapOrchestrator` unhandled CUDA OOM in `_load_with_recovery`, `download_weights.py` Windows venv interpreter default, `vram_budget.py` cross-platform host RAM probe, full GameLabel-10K preference pipeline sync (S12 export, `PreferenceStore`, `sync_dpo_pairs`, DPO training configs, unit tests), `data_forge` OCR stage filter, and aligns stale doc paths / VRAM specs | **Fixed & Verified** — see `29_comprehensive_codebase_and_docs_audit.md`; all bugs resolved, full pipeline and contracts aligned |
 
+
 ## Priority ordering, if working through this list top-down
 1. **Phase 1's RICO join/count verification** — determines whether the paper's headline data-scale claim is accurate. Still the top open item; nothing fixed in this pass touches it.
 2. **Confirm the sketch-tier hyperparameter fixes actually run** — they're syntax-checked and logically sound, but genuinely unverified against `torch` in this environment. Worth a real run before trusting them fully.
@@ -121,4 +122,4 @@ No new external citations; bitsandbytes' documented `llm_int8_enable_fp32_cpu_of
 4. Everything else remaining is either a real-but-lower-severity fix (dead code paths, missing citations) or a citation/verification task that doesn't change what the system actually does.
 
 ---
-This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–28 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
+This closes the six-phase review plan from `00_REVIEW_PLAN.md`. All seven docs (`00`–`06` plus this consolidated `07`) are in `docs/review/`. Phases 12–25 are later follow-up sessions' changelogs against this same set — see those files for anything after this line.
