@@ -115,20 +115,23 @@ class DedupStage(Stage):
 
         duplicates = dedup_engine.find_duplicates(embeddings, record_ids_valid)
 
-        # Mark duplicates (keep the first in each pair)
+        # Mark duplicates (keep the matched record, which may be historical)
         marked: set[str] = set()
         semantic_dupes = 0
         for id_a, id_b, sim in duplicates:
-            if id_b not in marked:
+            # id_a is guaranteed to be a NEW image (from valid_records).
+            # id_b could be an OLD image or another NEW image.
+            # We must exclude id_a to preserve id_b's historical metadata.
+            if id_a not in marked:
                 manifest.update_record(
-                    record_id=id_b,
+                    record_id=id_a,
                     stage="dedup",
                     new_status="excluded_duplicate",
-                    reason=f"Semantic duplicate of {id_a} (sim={sim:.4f})",
-                    duplicate_of=id_a,
+                    reason=f"Semantic duplicate of {id_b} (sim={sim:.4f})",
+                    duplicate_of=id_b,
                     exclusion_reason="semantic_duplicate",
                 )
-                marked.add(id_b)
+                marked.add(id_a)
                 semantic_dupes += 1
 
         # Update surviving records
