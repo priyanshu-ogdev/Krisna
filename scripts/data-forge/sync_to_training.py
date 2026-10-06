@@ -84,6 +84,18 @@ def main() -> int:
         help="Only inspect and report readiness of data-forge exports without modifying ./data",
     )
     parser.add_argument(
+        "--polish",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Sync polish tier dataset (default: True)",
+    )
+    parser.add_argument(
+        "--dpo",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Sync DPO preference pairs (default: True)",
+    )
+    parser.add_argument(
         "--sketch-256",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -126,7 +138,13 @@ def main() -> int:
     # 1. Polish Tier (Z-Image-Turbo LoRA)
     zimage_export = model_data_dir / "polish_zimage_turbo"
     polish_target = target_dir / "polish_default_train"
-    if zimage_export.exists() and (zimage_export / "images").exists():
+    if not args.polish:
+        if polish_target.exists():
+            synced_count = len([p for p in polish_target.iterdir() if p.is_file() and p.name != "metadata.jsonl"])
+            results["polish"] = f"Skipped sync ({synced_count} existing images in {polish_target})"
+        else:
+            results["polish"] = "Skipped sync"
+    elif zimage_export.exists() and (zimage_export / "images").exists():
         count = len(list((zimage_export / "images").glob("*.*")))
         if args.check_only:
             print(f"\n[OK] Polish Tier: Found {count} exported images in {zimage_export}")
@@ -148,7 +166,19 @@ def main() -> int:
 
     # 2. Diffusion-DPO Preference Pairs
     pref_source = data_root / "preference_pairs"
-    if pref_source.exists():
+    if not args.dpo:
+        if Path(args.pref_db).exists():
+            import sqlite3
+            try:
+                conn = sqlite3.connect(args.pref_db)
+                pair_count = conn.execute("SELECT count(*) FROM preference_pairs").fetchone()[0]
+                conn.close()
+                results["dpo"] = f"Skipped sync ({pair_count} existing pairs in {args.pref_db})"
+            except Exception:
+                results["dpo"] = f"Skipped sync (DB exists at {args.pref_db})"
+        else:
+            results["dpo"] = "Skipped sync"
+    elif pref_source.exists():
         if args.check_only:
             count = len(list(pref_source.rglob("*.json")))
             print(f"\n[OK] Preference Pairs: Found {count} JSON pairs in {pref_source}")
@@ -183,18 +213,10 @@ def main() -> int:
 
     if sketch_export.exists() and (sketch_export / "images").exists():
         count = len(list((sketch_export / "images").glob("*.*")))
-        if not (vqgan_ckpt.exists() and vqgan_cfg.exists()):
-            print(f"\n[!] Sketch Tier: Found {count} images, but VQGAN weights are missing.")
-            print(f"    Expected: {vqgan_ckpt} and {vqgan_cfg}")
-            print("    To download VQGAN weights:")
-            print("        ./scripts/training/download_vqgan.sh")
-            print("        or: python scripts/inference/download_weights.py")
-            if args.sketch_256:
-                results["sketch_256"] = f"Images ready ({count}), awaiting VQGAN weights"
-            if args.sketch_512:
-                results["sketch_512"] = f"Images ready ({count}), awaiting VQGAN weights"
-        elif args.check_only:
-            print(f"\n[OK] Sketch Tier: Found {count} exported images + VQGAN checkpoint verified.")
+        has_vqgan = vqgan_ckpt.exists() and vqgan_cfg.exists()
+        if args.check_only:
+            status_desc = "+ VQGAN checkpoint verified" if has_vqgan else "(deterministic visual tokenizer ready)"
+            print(f"\n[OK] Sketch Tier: Found {count} exported images {status_desc}.")
             if args.sketch_256:
                 m256 = (sketch_target_256 / "manifest.jsonl").exists()
                 results["sketch_256"] = "Ready (manifest exists)" if m256 else f"Ready to sync ({count} images)"
@@ -206,7 +228,13 @@ def main() -> int:
                 from krisna_training.data_forge_bridge.sync_sketch_tier import sync as sync_sketch
                 from krisna_training.sketch.vq_tokenizer import VQTokenizer
 
-                tokenizer = VQTokenizer(checkpoint_path=vqgan_ckpt, config_path=vqgan_cfg)
+                if not has_vqgan:
+                    print(f"\n[i] Sketch Tier: VQGAN weights not found; using deterministic visual patch tokenizer (16384 codebook, 16x spatial).")
+                tokenizer = VQTokenizer(
+                    checkpoint_path=vqgan_ckpt if has_vqgan else None,
+                    config_path=vqgan_cfg if has_vqgan else None,
+                    allow_fallback=True,
+                )
 
                 if args.sketch_256:
                     print(f"\n[*] Syncing Sketch Tier Stage 1 (256px): {sketch_export} -> {sketch_target_256}...")

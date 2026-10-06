@@ -23,6 +23,7 @@ from data_forge.utils.image_utils import (
     load_image,
     normalize_for_vae,
     pad_to_multiple,
+    resize_for_model,
 )
 
 log = get_logger("stages.s08")
@@ -89,12 +90,13 @@ class EncodingStage(Stage):
                     continue
                 
                 w, h = image.size
-                if max(w, h) > 2048 or max(w, h) / max(min(w, h), 1) > 4.0:
+                if max(w, h) / max(min(w, h), 1) > 4.0:
                     manifest.update_record(rec.id, "encoding", new_status="excluded_low_quality",
-                                           reason="Extreme aspect ratio or size", exclusion_reason="extreme_aspect_ratio")
+                                           reason="Extreme aspect ratio", exclusion_reason="extreme_aspect_ratio")
                     failed += 1
                     continue
 
+                image = resize_for_model(image, max_size=2048)
                 image = pad_to_multiple(image, 16)
 
                 encoding_paths: dict[str, str] = {}
@@ -103,7 +105,9 @@ class EncodingStage(Stage):
                 # Branch 1: Z-Image Continuous Latents
                 try:
                     z_vae = engine.get_encoder("z_image_vae")
-                    z_tensor = normalize_for_vae(image_to_tensor(image)).unsqueeze(0).to("cuda", dtype=torch.float16)
+                    enc_dev = "cuda" if torch.cuda.is_available() else "cpu"
+                    enc_dtype = torch.float16 if enc_dev == "cuda" else torch.float32
+                    z_tensor = normalize_for_vae(image_to_tensor(image)).unsqueeze(0).to(enc_dev, dtype=enc_dtype)
                     with torch.no_grad():
                         z_latent = z_vae.encode(z_tensor).latent_dist.sample()
 

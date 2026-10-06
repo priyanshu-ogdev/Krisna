@@ -168,20 +168,28 @@ To auto-sync from `DATA_ROOT` before training:
 
 #### Tier 1: Sketch Stage 1 (256px MaskGIT from scratch)
 ```powershell
-.\scripts\training\train_all.ps1 -Tier sketch-stage1
+# Standard Baseline (55M parameters, ~4-6GB VRAM):
+.\scripts\training\train_all.ps1 -Tier sketch-stage1 -Config training/configs/sketch_stage1_256.yaml
+
+# SOTA High-Capacity (337M parameters, ~24-28GB VRAM on 48GB A6000):
+.\scripts\training\train_all.ps1 -Tier sketch-stage1 -Config training/configs/sketch_stage1_a6000_sota.yaml
 ```
-- **Canonical Config**: `training/configs/sketch_stage1_256.yaml` (legacy: `sketch_train_stage1_256.yaml`)
-- **Steps**: 40,000 steps
-- **Artifact**: `checkpoints/sketch_stage1_256/checkpoint_final.pt`
+- **Canonical Baseline**: `training/configs/sketch_stage1_256.yaml` (55M params, batch=32)
+- **SOTA High-VRAM**: `training/configs/sketch_stage1_a6000_sota.yaml` (337M params, hidden_dim=1024, layers=24, heads=16, RMSNorm, batch=64, grad_accum=2)
+- **Artifact**: `checkpoints/sketch_stage1_256_sota/checkpoint_final.pt`
 
 #### Tier 2: Sketch Stage 2 (512px progressive continuation)
 ```powershell
-.\scripts\training\train_all.ps1 -Tier sketch-stage2
+# Standard Baseline (55M parameters, ~12-16GB VRAM):
+.\scripts\training\train_all.ps1 -Tier sketch-stage2 -Config training/configs/sketch_stage2_512.yaml
+
+# SOTA High-Capacity (337M parameters, ~36-42GB VRAM on 48GB A6000):
+.\scripts\training\train_all.ps1 -Tier sketch-stage2 -Config training/configs/sketch_stage2_a6000_sota.yaml
 ```
-- **Canonical Config**: `training/configs/sketch_stage2_512.yaml` (legacy: `sketch_train_stage2_512.yaml`)
-- **Prerequisite**: Verifies `checkpoints/sketch_stage1_256/checkpoint_final.pt` exists and interpolates 16x16 positional embeddings to 32x32.
-- **Steps**: 60,000 steps
-- **Artifact**: `checkpoints/sketch_stage2_512/checkpoint_final.pt`
+- **Canonical Baseline**: `training/configs/sketch_stage2_512.yaml`
+- **SOTA High-VRAM**: `training/configs/sketch_stage2_a6000_sota.yaml` (1024 tokens, batch=32, grad_accum=2, grad_ckpt=true)
+- **Prerequisite**: Verifies `checkpoints/sketch_stage1_256_sota/checkpoint_final.pt` exists and interpolates 16x16 positional embeddings to 32x32.
+- **Artifact**: `checkpoints/sketch_stage2_512_sota/checkpoint_final.pt`
 
 #### Tier 3: Polish Default LoRA (Z-Image-Turbo Base Fine-Tuning)
 ```powershell

@@ -49,10 +49,20 @@ def resize_for_model(
 
 def image_to_tensor(image: Image.Image) -> "torch.Tensor":
     """Convert PIL image to normalized torch tensor (C, H, W), float32."""
-    import torchvision.transforms.functional as TF
+    try:
+        import torchvision.transforms.functional as TF
 
-    tensor = TF.to_tensor(image)  # (C, H, W), [0, 1]
-    return tensor
+        return TF.to_tensor(image)  # (C, H, W), [0, 1]
+    except ImportError:
+        import numpy as np
+        import torch
+
+        arr = np.array(image, dtype=np.float32) / 255.0
+        if arr.ndim == 2:
+            arr = np.stack([arr] * 3, axis=-1)
+        elif arr.shape[-1] > 3:
+            arr = arr[..., :3]
+        return torch.from_numpy(arr.transpose(2, 0, 1))
 
 
 def normalize_for_vae(
@@ -61,9 +71,16 @@ def normalize_for_vae(
     std: tuple[float, ...] = (0.5, 0.5, 0.5),
 ) -> "torch.Tensor":
     """Normalize tensor from [0, 1] to [-1, 1] for VAE input."""
-    import torchvision.transforms.functional as TF
+    try:
+        import torchvision.transforms.functional as TF
 
-    return TF.normalize(tensor, mean, std)
+        return TF.normalize(tensor, mean, std)
+    except ImportError:
+        import torch
+
+        mean_t = torch.tensor(mean, dtype=tensor.dtype, device=tensor.device).view(-1, 1, 1)
+        std_t = torch.tensor(std, dtype=tensor.dtype, device=tensor.device).view(-1, 1, 1)
+        return (tensor - mean_t) / std_t
 
 
 def pad_to_multiple(

@@ -5,10 +5,10 @@ This script is maintained for backward compatibility. It delegates directly
 to the canonical package CLI entry point: `krisna_inference.cli.main()`.
 
 Usage:
-    python inference-runtime/run_agentic_session.py
-    python inference-runtime/run_agentic_session.py --real
-    python inference-runtime/run_agentic_session.py --real --low-vram
-    python inference-runtime/run_agentic_session.py --message "a minimalist login screen" --finalize
+    python inference/runtime/run_agentic_session.py
+    python inference/runtime/run_agentic_session.py --real
+    python inference/runtime/run_agentic_session.py --real --low-vram
+    python inference/runtime/run_agentic_session.py --message "a minimalist login screen" --finalize
 """
 
 from __future__ import annotations

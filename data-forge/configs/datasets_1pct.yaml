@@ -1,0 +1,247 @@
+# =============================================================================
+# Source Dataset Registry (1% Local Test Configuration)
+# =============================================================================
+# Calibrated for local validation on 12GB RTX 3060 / 32GB RAM workstation.
+# Total disk footprint constrained strictly under ~2GB.
+# =============================================================================
+
+datasets:
+  # -------------------------------------------------------------------------
+  # PD12M — General Visual Backbone (1% Sample: 2,000 images)
+  # -------------------------------------------------------------------------
+  pd12m:
+    display_name: "PD12M (Public Domain 12M - 1% Sample)"
+    source_type: "huggingface"
+    repo_id: "Spawning/PD12M"
+    revision: "main"
+    category: "general_visual"
+    expected_record_count: 100
+    license_url: "https://cdla.dev/permissive-2-0/"
+    license_status: "verified"
+    license_notes: "CDLA-Permissive-2.0, public domain / CC0."
+    fetch_config:
+      file_patterns: ["metadata/pd12m.000.parquet"]
+      download_mode: "url_list"
+      image_url_column: "url"
+      caption_column: "caption"
+      sample_size: 100
+      download_concurrency: 16
+      download_timeout_seconds: 10
+
+  # -------------------------------------------------------------------------
+  # CC12M — Supplementary Visual Diversity (1% Sample: 100 images)
+  # -------------------------------------------------------------------------
+  cc12m:
+    display_name: "CC12M (Conceptual 12M - 1% Sample)"
+    source_type: "huggingface"
+    repo_id: "google-research-datasets/conceptual_12m"
+    revision: "refs/convert/parquet"
+    category: "general_visual"
+    expected_record_count: 100
+    license_url: "https://github.com/google-research-datasets/conceptual-12m/blob/main/README.md"
+    license_status: "verified"
+    license_notes: "Google-provided AS IS, web-scraped with attribution."
+    fetch_config:
+      file_patterns: ["default/train/0000.parquet"]
+      download_mode: "url_list"
+      image_url_column: "image_url"
+      caption_column: "caption"
+      sample_size: 100
+      download_concurrency: 16
+      download_timeout_seconds: 10
+
+  # -------------------------------------------------------------------------
+  # RICO — Mobile App UI Screenshots (1% Sample: 663 screens)
+  # -------------------------------------------------------------------------
+  rico_core:
+    display_name: "RICO (Core UI Screenshots - 1% Sample)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/Rico"
+    revision: "main"
+    category: "mobile_ui"
+    expected_record_count: 663
+    license_url: "http://www.interactionmining.org/rico.html"
+    license_status: "verified"
+    license_notes: "Third-party app screenshots; unknown explicit license."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      config_subfolder: "ui-screenshots-and-view-hierarchies"
+      file_patterns: ["ui-screenshots-and-view-hierarchies/train-00000-of-00015.parquet"]
+      image_column: "screenshot"
+      sample_size: 663
+
+  rico_semantic:
+    display_name: "RICO Semantic Annotations (1% Sample: 663 screens)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/Rico"
+    revision: "main"
+    category: "mobile_ui"
+    expected_record_count: 663
+    license_url: "http://www.interactionmining.org/rico.html"
+    license_status: "verified"
+    license_notes: "Third-party app screenshots with semantic layout annotations."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      config_subfolder: "ui-screenshots-and-hierarchies-with-semantic-annotations"
+      file_patterns: ["ui-screenshots-and-hierarchies-with-semantic-annotations/train-00000-of-00003.parquet"]
+      image_column: "screenshot"
+      sample_size: 663
+
+  # -------------------------------------------------------------------------
+  # CLAY — Mobile UI Layouts (Google Research)
+  # -------------------------------------------------------------------------
+  clay:
+    display_name: "CLAY (Mobile UI Layouts)"
+    source_type: "github"
+    repo_url: "https://github.com/google-research-datasets/clay"
+    branch: "main"
+    category: "mobile_ui"
+    expected_record_count: 59555
+    license_url: "https://creativecommons.org/licenses/by/4.0/legalcode"
+    license_status: "verified"
+    license_notes: "CC BY 4.0 per Google Research monorepo."
+    annotation_only: true
+    fetch_config:
+      file_patterns: ["*.csv", "*.json"]
+
+  # -------------------------------------------------------------------------
+  # Enrico — Curated RICO Topic Subset (1,460 screens)
+  # -------------------------------------------------------------------------
+  enrico:
+    display_name: "Enrico (Enhanced RICO)"
+    source_type: "github"
+    repo_url: "https://github.com/luileito/enrico"
+    branch: "master"
+    category: "mobile_ui"
+    expected_record_count: 1460
+    license_url: null
+    license_status: "verified"
+    license_notes: "1460-UI subset of RICO with topic labels."
+    annotation_only: true
+    fetch_config:
+      file_patterns: ["*.jpg", "*.csv"]
+
+  # -------------------------------------------------------------------------
+  # WebUI — Web Interface Metadata
+  # -------------------------------------------------------------------------
+  webui:
+    display_name: "WebUI (biglab)"
+    source_type: "huggingface"
+    repo_id: "biglab/webui-350k"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 350000
+    license_url: "https://github.com/js0nwu/webui/blob/main/COPYRIGHT.txt"
+    license_status: "verified"
+    license_notes: "COPYRIGHT.txt per webui repo."
+    annotation_only: true
+    fetch_config:
+      file_patterns: ["train_split_web350k.json"]
+
+  # -------------------------------------------------------------------------
+  # Screen2Words — Dense Caption Training Pairs (1% Sample: 100 pairs)
+  # -------------------------------------------------------------------------
+  screen2words:
+    display_name: "Screen2Words (RICO Screen Summaries - 1% Sample)"
+    source_type: "huggingface"
+    repo_id: "bevaya/RICO-Screen2Words"
+    revision: "main"
+    category: "ui_captions"
+    expected_record_count: 100
+    license_url: "https://huggingface.co/datasets/bevaya/RICO-Screen2Words"
+    license_status: "verified"
+    license_notes: "CC-BY-4.0 per HF card. RICO screens + human captions."
+    fetch_config:
+      file_patterns: ["data/train-00000-of-00008.parquet"]
+      download_mode: "caption_join"
+      join_target_dataset: "rico_core"
+      caption_column: "caption"
+      sample_size: 100
+
+  # -------------------------------------------------------------------------
+  # UICrit — UI Critique / DPO Preference Seed Data
+  # -------------------------------------------------------------------------
+  uicrit:
+    display_name: "UICrit (UI Critique Dataset)"
+    source_type: "github"
+    repo_url: "https://github.com/google-research-datasets/uicrit"
+    branch: "main"
+    category: "ui_critique"
+    expected_record_count: 1000
+    license_url: "https://arxiv.org/abs/2407.08850"
+    license_status: "verified"
+    license_notes: "CC BY-ND per paper. Seeds DPO preference pairs."
+    annotation_only: true
+    fetch_config:
+      file_patterns: ["*.json", "*.csv"]
+
+  # -------------------------------------------------------------------------
+  # DPO Preference Pairs (1% Targets)
+  # -------------------------------------------------------------------------
+  gamelabel_10k:
+    display_name: "GameLabel-10K (1% Sample: 96 pairs)"
+    source_type: "huggingface"
+    repo_id: "Jonathan-Zhou/GameLabel-10k"
+    revision: "main"
+    category: "dpo_preference_general"
+    expected_record_count: 96
+    license_url: "https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k"
+    license_status: "verified"
+    license_notes: "Apache 2.0. Mobile game crowdsourced player preference votes."
+    fetch_config:
+      download_mode: "gamelabel_csv"
+      parquet_revision: "refs/convert/parquet"
+      sample_size: 96
+
+  hpdv2:
+    display_name: "HPDv2 (Human Preference Dataset v2 - 1% Sample: 369 pairs)"
+    source_type: "huggingface"
+    repo_id: "ymhao/HPDv2"
+    revision: "main"
+    category: "dpo_preference_general"
+    expected_record_count: 369
+    license_url: "https://huggingface.co/datasets/ymhao/HPDv2"
+    license_status: "verified"
+    license_notes: "Apache 2.0. Human annotator pairwise rankings."
+    fetch_config:
+      download_mode: "hpdv2_ranked_list"
+      annotation_file: "test.json"
+      sample_size: 369
+
+  # -------------------------------------------------------------------------
+  # Evaluation-only Reference Benchmarks
+  # -------------------------------------------------------------------------
+  taste:
+    display_name: "TASTE (multi-axis design-preference benchmark)"
+    source_type: "huggingface"
+    repo_id: "purvanshi/TASTE"
+    revision: "main"
+    category: "eval_design_multiaxis"
+    expected_record_count: 1600
+    license_url: "https://github.com/purvanshi-lica/taste/blob/main/LICENSE"
+    license_status: "verified"
+    license_notes: "MIT. Held-out design evaluation benchmark."
+    eval_only: true
+    fetch_config:
+      download_mode: "eval_reference"
+      file_patterns: ["*.parquet", "*.json", "*.jsonl"]
+
+  partiprompts:
+    display_name: "PartiPrompts (P2)"
+    source_type: "huggingface"
+    repo_id: "nateraw/parti-prompts"
+    revision: "main"
+    category: "eval_prompt_diversity"
+    expected_record_count: 1632
+    license_url: "https://huggingface.co/datasets/nateraw/parti-prompts"
+    license_status: "verified"
+    license_notes: "Apache 2.0. Prompt diversity benchmark."
+    eval_only: true
+    fetch_config:
+      download_mode: "eval_reference"
+      file_patterns: ["*.tsv"]
+
+watcher_scan_targets:
+  - query: "UI design dataset"
+    platforms: ["huggingface", "github"]
+    min_records: 1000

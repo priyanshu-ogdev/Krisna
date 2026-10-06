@@ -273,6 +273,102 @@ datasets:
       caption_column: "caption"
 
   # -------------------------------------------------------------------------
+  # ScreenSpot — Cross-Platform GUI Elements (macOS, Windows, iOS)
+  # -------------------------------------------------------------------------
+  screenspot:
+    display_name: "ScreenSpot (Cross-Platform GUI)"
+    source_type: "huggingface"
+    repo_id: "bevaya/ScreenSpot"
+    revision: "main"
+    category: "cross_platform_ui"
+    expected_record_count: 1272
+    license_url: "https://huggingface.co/datasets/bevaya/ScreenSpot"
+    license_status: "unverified"
+    license_notes: >
+      CONFIRMED Apache-2.0 directly on the live dataset card. Multi-OS
+      UI screenshots (macOS, Windows, iOS) with element bounding boxes
+      and natural language instructions. Diversifies Model 1 beyond
+      Android-only screens.
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      caption_column: "instruction"
+
+  # -------------------------------------------------------------------------
+  # SeeClick — High-Resolution Web & Desktop GUI Interface Screens
+  # -------------------------------------------------------------------------
+  seeclick:
+    display_name: "SeeClick (Web & Desktop Screens)"
+    source_type: "huggingface"
+    repo_id: "moondream/seeclick"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 250000
+    license_url: "https://huggingface.co/datasets/moondream/seeclick"
+    license_status: "unverified"
+    license_notes: >
+      CONFIRMED Apache-2.0 upstream (SeeClick GUI agent foundation).
+      Pristine 1920x1080 Full HD desktop and web application screens
+      with structured element hierarchies. Ingested via streaming
+      parquet reader to prevent memory blowup.
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      sample_size: 50000
+
+  # -------------------------------------------------------------------------
+  # Android Control — Modern Material Design 3 Mobile App Screens
+  # -------------------------------------------------------------------------
+  android_control:
+    display_name: "Android Control (Google Research)"
+    source_type: "huggingface"
+    repo_id: "ckg/AndroidControlParsedWithImages-20k"
+    revision: "main"
+    category: "mobile_ui"
+    expected_record_count: 20000
+    license_url: "https://github.com/google-research/google-research/tree/master/android_control"
+    license_status: "unverified"
+    license_notes: >
+      CONFIRMED Apache-2.0 (Google Research Android Control upstream).
+      1080x2400 modern Android Material Design 3 screens across 833 apps,
+      paired with natural language multi-turn task instructions.
+      Provides modern mobile UI distributions replacing 2017 RICO styling.
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "png"
+      caption_column: "json.messages.0.content"
+      sample_size: 25000
+
+  # -------------------------------------------------------------------------
+  # Multimodal Mind2Web — Web Interaction Task Screens
+  # -------------------------------------------------------------------------
+  mind2web:
+    display_name: "Multimodal Mind2Web (Web Screens)"
+    source_type: "huggingface"
+    repo_id: "osunlp/Multimodal-Mind2Web"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 15000
+    license_url: "https://huggingface.co/datasets/osunlp/Multimodal-Mind2Web"
+    license_status: "unverified"
+    license_notes: >
+      CONFIRMED OpenRAIL license on dataset card. Web interaction screenshots
+      with confirmed task prompts across 2,000+ domains. Uses viewport cropping
+      (max_aspect_ratio: 2.0) to convert tall full-page scroll captures
+      into standard above-the-fold UI screens.
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "screenshot"
+      caption_column: "confirmed_task"
+      viewport_crop: true
+      max_aspect_ratio: 2.0
+      sample_size: 25000
+
+  # -------------------------------------------------------------------------
   # UICrit — UI Critique / DPO Preference Seed Data
   # -------------------------------------------------------------------------
   uicrit:

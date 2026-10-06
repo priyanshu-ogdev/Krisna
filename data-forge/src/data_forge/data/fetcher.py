@@ -54,6 +54,59 @@ def _decode_gamelabel_image(raw: Any) -> bytes | None:
         return None
 
 
+def _extract_caption_value(row_dict: dict[str, Any], col: str | None) -> str | None:
+    """Extract natural-language caption or instruction from row_dict.
+    Supports direct columns, dot-notation nested paths, and structured message lists.
+    """
+    if not col:
+        return None
+    val = None
+    if col in row_dict and row_dict[col] is not None:
+        val = row_dict[col]
+    elif "." in col:
+        curr: Any = row_dict
+        for part in col.split("."):
+            if isinstance(curr, dict):
+                curr = curr.get(part)
+            elif isinstance(curr, (list, tuple)) or hasattr(curr, "__getitem__"):
+                try:
+                    idx = int(part)
+                    curr = curr[idx] if 0 <= idx < len(curr) else None
+                except (ValueError, IndexError, TypeError):
+                    curr = None
+            else:
+                curr = None
+            if curr is None:
+                break
+        val = curr
+
+    if val is None:
+        return None
+    if isinstance(val, str):
+        s = val.strip()
+        return s if s else None
+    if isinstance(val, (int, float)):
+        return str(val)
+    if isinstance(val, (list, tuple)) or (hasattr(val, "__iter__") and not isinstance(val, (str, bytes, dict))):
+        for item in val:
+            if isinstance(item, dict):
+                for k in ("content", "instruction", "text", "message"):
+                    if item.get(k):
+                        s = str(item[k]).strip()
+                        if s:
+                            return s
+            elif isinstance(item, str) and item.strip():
+                return item.strip()
+    if isinstance(val, dict):
+        for k in ("content", "instruction", "task", "text", "caption"):
+            if val.get(k):
+                s = str(val[k]).strip()
+                if s:
+                    return s
+    s = str(val).strip()
+    return s if s else None
+
+
 class DatasetFetcher:
     """Multi-source dataset fetcher."""
 
@@ -72,6 +125,38 @@ class DatasetFetcher:
 
         dataset_dir = self._raw_dir / key
         dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Fast paths: if dataset is already present locally (e.g. 1% test slice),
+        # reuse directly instead of re-downloading over the network.
+        download_mode = spec.fetch_config.get("download_mode")
+
+        # 1. Preference pairs
+        if download_mode in DatasetSpec.PREFERENCE_PAIR_DOWNLOAD_MODES:
+            pairs_dir = self._config.data_root / "preference_pairs" / key
+            if pairs_dir.exists() and any(pairs_dir.iterdir()):
+                log.info("local_preference_pairs_found", dataset=key, dir=str(pairs_dir))
+                return []
+
+        # 2. Evaluation reference
+        if download_mode == "eval_reference":
+            eval_dir = self._config.data_root / "heldout" / "external_eval" / key
+            if eval_dir.exists() and any(eval_dir.iterdir()):
+                log.info("local_eval_reference_found", dataset=key, dir=str(eval_dir))
+                return []
+
+        # 3. Annotation-only / metadata repos
+        if spec.annotation_only:
+            repo_dir = dataset_dir / "repo" if (dataset_dir / "repo").exists() else dataset_dir
+            if repo_dir.exists() and any(repo_dir.iterdir()):
+                log.info("local_annotation_repo_found", dataset=key, dir=str(repo_dir))
+                return []
+
+        # 4. Image datasets (PD12M, CC12M, RICO, Screen2Words, etc.)
+        image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
+        existing_images = [f for f in dataset_dir.rglob("*") if f.is_file() and f.suffix.lower() in image_extensions]
+        if existing_images:
+            log.info("local_dataset_images_found", dataset=key, count=len(existing_images))
+            return self._scan_downloaded_files(key, dataset_dir)
 
         # BUG FIX: pd12m and cc12m are metadata-only HF repos — parquet
         # files with an image-URL column, not bundled image files (this was
@@ -260,24 +345,30 @@ class DatasetFetcher:
             )
             return []
 
-        frames = []
+        def _is_image_like(val: Any) -> bool:
+            return (
+                (isinstance(val, dict) and "bytes" in val)
+                or isinstance(val, (bytes, bytearray))
+                or hasattr(val, "save")
+            )
+
+        # Inspect first readable parquet file to resolve columns
+        sample_df = None
         for pf in parquet_files:
             try:
-                frames.append(pd.read_parquet(pf))
+                sample_df = pd.read_parquet(pf)
+                break
             except Exception as e:
-                log.warning("hf_parquet_images_read_failed", file=str(pf), error=str(e))
-        if not frames:
+                log.warning("hf_parquet_images_first_file_failed", file=str(pf), error=str(e))
+        if sample_df is None:
+            log.error("hf_parquet_images_no_readable_parquet", dataset=key)
             return []
-        df = pd.concat(frames, ignore_index=True)
-        columns = list(df.columns)
 
-        def _is_image_like(val: Any) -> bool:
-            return (isinstance(val, dict) and "bytes" in val) or isinstance(val, (bytes, bytearray))
-
+        columns = list(sample_df.columns)
         image_col = spec.fetch_config.get("image_column")
         if not image_col:
             for col in columns:
-                sample = df[col].dropna().iloc[0] if df[col].notna().any() else None
+                sample = sample_df[col].dropna().iloc[0] if sample_df[col].notna().any() else None
                 if _is_image_like(sample):
                     image_col = col
                     break
@@ -295,50 +386,108 @@ class DatasetFetcher:
             return []
 
         caption_col = spec.fetch_config.get("caption_column")
+        sample_size = spec.fetch_config.get("sample_size")
+        viewport_crop = spec.fetch_config.get("viewport_crop", False)
+        max_ar = spec.fetch_config.get("max_aspect_ratio")
+        limit_ratio = float(max_ar) if max_ar is not None else (2.0 if viewport_crop else None)
+
         log.info(
             "hf_parquet_images_columns_resolved", dataset=key,
             image_column=image_col, caption_column=caption_col,
-            total_rows=len(df),
+            parquet_files_count=len(parquet_files),
         )
-
-        sample_size = spec.fetch_config.get("sample_size")
-        if sample_size and len(df) > sample_size:
-            df = df.sample(n=sample_size, random_state=42)
 
         out_dir = dest
         out_dir.mkdir(parents=True, exist_ok=True)
         records: list[dict[str, Any]] = []
         decode_failures = 0
+        global_idx = 0
 
-        for idx, row in enumerate(df.itertuples(index=False)):
-            row_dict = dict(zip(df.columns, row))
-            raw = row_dict.get(image_col)
-            blob = raw.get("bytes") if isinstance(raw, dict) else raw
-            if not blob:
-                decode_failures += 1
-                continue
+        # Memory-safe file-by-file processing: avoid loading all files into RAM simultaneously
+        for pf_idx, pf in enumerate(parquet_files):
+            if sample_size and len(records) >= sample_size:
+                break
             try:
-                img = Image.open(io.BytesIO(blob))
-                img.load()
-            except Exception:
-                decode_failures += 1
+                df = sample_df if pf_idx == 0 else pd.read_parquet(pf)
+            except Exception as e:
+                log.warning("hf_parquet_images_read_failed", file=str(pf), error=str(e))
                 continue
 
-            file_name = f"{key}_{idx:07d}.png"
-            out_path = out_dir / file_name
-            img.convert("RGB").save(out_path, "PNG")
+            if sample_size:
+                needed = sample_size - len(records)
+                if len(parquet_files) == 1 and len(df) > sample_size:
+                    df = df.sample(n=sample_size, random_state=42)
+                elif len(df) > needed:
+                    df = df.head(needed)
 
-            record: dict[str, Any] = {
-                "source_file": file_name,
-                "image_path": str(out_path.relative_to(self._config.data_root)),
-                "content_hash_sha256": self._compute_bytes_sha256(blob),
-                "image_width": img.width,
-                "image_height": img.height,
-                "file_size_bytes": out_path.stat().st_size,
-            }
-            if caption_col and caption_col in row_dict and row_dict[caption_col]:
-                record["source_caption"] = str(row_dict[caption_col])
-            records.append(record)
+            for row in df.itertuples(index=False):
+                row_dict = dict(zip(df.columns, row))
+                raw = row_dict.get(image_col)
+                blob: bytes | None = None
+                img: Image.Image | None = None
+
+                if hasattr(raw, "save"):
+                    img = raw
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG")
+                    blob = buf.getvalue()
+                elif isinstance(raw, dict) and "bytes" in raw:
+                    blob = raw["bytes"]
+                elif isinstance(raw, (bytes, bytearray)):
+                    blob = bytes(raw)
+
+                if blob is None and img is None:
+                    decode_failures += 1
+                    continue
+
+                if img is None and blob:
+                    try:
+                        img = Image.open(io.BytesIO(blob))
+                        img.load()
+                    except Exception:
+                        decode_failures += 1
+                        continue
+
+                if img is None:
+                    decode_failures += 1
+                    continue
+
+                # Viewport crop / aspect ratio limit (e.g. for ultra-tall web captures)
+                if limit_ratio is not None and (img.height / max(img.width, 1)) > limit_ratio:
+                    target_h = int(img.width * limit_ratio)
+                    img = img.crop((0, 0, img.width, target_h))
+
+                # Handle transparency cleanly
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    bg = Image.new("RGB", img.size, (255, 255, 255))
+                    alpha = img.convert("RGBA").split()[-1]
+                    bg.paste(img.convert("RGB"), mask=alpha)
+                    img = bg
+                else:
+                    img = img.convert("RGB")
+
+                file_name = f"{key}_{global_idx:07d}.png"
+                out_path = out_dir / file_name
+                img.save(out_path, "PNG")
+
+                rec_dict: dict[str, Any] = {
+                    "source_file": file_name,
+                    "image_path": str(out_path.relative_to(self._config.data_root)),
+                    "content_hash_sha256": self._compute_bytes_sha256(blob if blob else out_path.read_bytes()),
+                    "image_width": img.width,
+                    "image_height": img.height,
+                    "file_size_bytes": out_path.stat().st_size,
+                }
+                caption_val = _extract_caption_value(row_dict, caption_col)
+                if caption_val:
+                    rec_dict["source_caption"] = caption_val
+                records.append(rec_dict)
+                global_idx += 1
+
+                if sample_size and len(records) >= sample_size:
+                    break
+
+            del df
 
         log.info(
             "hf_parquet_images_complete", dataset=key,
@@ -1357,8 +1506,18 @@ class DatasetFetcher:
         self, dataset_key: str, directory: Path
     ) -> list[dict[str, Any]]:
         """Scan downloaded directory for image files and return record metadata."""
+        import json
         image_extensions = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"}
         records: list[dict[str, Any]] = []
+
+        # Check for dataset-wide captions_index.json (e.g. screen2words)
+        captions_index: dict[str, Any] = {}
+        index_file = directory / "captions_index.json"
+        if index_file.exists():
+            try:
+                captions_index = json.loads(index_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
 
         for file_path in directory.rglob("*"):
             if not file_path.is_file():
@@ -1378,14 +1537,41 @@ class DatasetFetcher:
             except ValueError:
                 rel_path = str(file_path)
 
-            records.append({
+            source_caption = None
+            source_url = None
+
+            # Look in captions_index.json
+            if file_path.name in captions_index:
+                entry = captions_index[file_path.name]
+                if isinstance(entry, dict):
+                    source_caption = entry.get("primary_caption") or (entry.get("captions") and entry["captions"][0])
+                elif isinstance(entry, str):
+                    source_caption = entry
+
+            # Look in matching JSON file (e.g. pd12m_000000.json, cc12m_000000.json)
+            json_file = file_path.with_suffix(".json")
+            if json_file.exists():
+                try:
+                    meta = json.loads(json_file.read_text(encoding="utf-8"))
+                    source_caption = source_caption or meta.get("caption") or meta.get("title")
+                    source_url = meta.get("url") or meta.get("image_url")
+                except Exception:
+                    pass
+
+            rec: dict[str, Any] = {
                 "source_file": file_path.name,
                 "image_path": rel_path,
                 "content_hash_sha256": sha256,
                 "image_width": width,
                 "image_height": height,
                 "file_size_bytes": file_path.stat().st_size,
-            })
+            }
+            if source_caption:
+                rec["source_caption"] = source_caption
+            if source_url:
+                rec["source_url"] = source_url
+
+            records.append(rec)
 
         log.info(
             "scan_completed",

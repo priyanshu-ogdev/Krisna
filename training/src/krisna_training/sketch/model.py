@@ -50,6 +50,7 @@ class SketchModelConfig:
                                        # the default itself reflects what's
                                        # actually used, not a leftover guess.
     use_gradient_checkpointing: bool = False   # see build_model()'s docstring
+    norm_type: str = "layernorm"               # "layernorm" | "rmsnorm"
 
     @property
     def mask_token_id(self) -> int:
@@ -88,6 +89,15 @@ def build_model(config: SketchModelConfig):
     import torch.nn as nn
     import torch.utils.checkpoint
 
+    class FastRMSNorm(nn.Module):
+        def __init__(self, dim: int, eps: float = 1e-6) -> None:
+            super().__init__()
+            self.eps = eps
+            self.weight = nn.Parameter(torch.ones(dim))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps) * self.weight
+
     class SketchTransformer(nn.Module):
         def __init__(self, cfg: SketchModelConfig) -> None:
             super().__init__()
@@ -111,7 +121,13 @@ def build_model(config: SketchModelConfig):
             self.encoder = nn.TransformerEncoder(
                 encoder_layer, num_layers=cfg.n_layers, enable_nested_tensor=False
             )
-            self.final_norm = nn.LayerNorm(cfg.hidden_dim)
+            if getattr(cfg, "norm_type", "layernorm") == "rmsnorm":
+                try:
+                    self.final_norm = nn.RMSNorm(cfg.hidden_dim)
+                except AttributeError:
+                    self.final_norm = FastRMSNorm(cfg.hidden_dim)
+            else:
+                self.final_norm = nn.LayerNorm(cfg.hidden_dim)
 
             self.token_head = nn.Linear(cfg.hidden_dim, cfg.vocab_size)
             self.critic_head = nn.Linear(cfg.hidden_dim, 1)
@@ -136,6 +152,8 @@ def build_model(config: SketchModelConfig):
             assert N == self.cfg.seq_len, f"expected seq_len={self.cfg.seq_len}, got {N}"
 
             x = self.token_embed(tokens) + self.pos_embed.unsqueeze(0)
+            if prompt_embedding.dim() == 1:
+                prompt_embedding = prompt_embedding.unsqueeze(0)
             prompt_ctx = self.prompt_proj(prompt_embedding).unsqueeze(1)  # [B, 1, hidden_dim]
             x = torch.cat([prompt_ctx, x], dim=1)  # prefix-conditioning
 

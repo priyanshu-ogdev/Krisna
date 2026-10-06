@@ -11,16 +11,17 @@ from __future__ import annotations
 
 def compute_loss(
     logits, critic_scores, targets, mask, critic_loss_weight: float = 0.5,
-    label_smoothing: float = 0.1,
+    label_smoothing: float = 0.1, focal_gamma: float = 0.0,
 ):
     """logits: [B, N, vocab_size]. critic_scores: [B, N] in [0,1].
     targets: [B, N] ground-truth token ids (meaningful only where mask=1).
     mask: [B, N] {0,1} float/long — 1 at masked (loss-relevant) positions.
+    focal_gamma: float >= 0.0. When > 0, down-weights easily predicted tokens
+    (e.g. background/whitespace) while clamping weight at >= 0.2 to prevent
+    gradient starvation or divergence with label smoothing.
 
     label_smoothing defaults to 0.1, matching Chang et al. 2022's
-    (MaskGIT) reported training setup — previously this was left at
-    PyTorch's F.cross_entropy default of 0.0, an unintentional deviation
-    caught during a design-sync review, not a considered choice.
+    (MaskGIT) reported training setup.
 
     Returns (total_loss, token_loss, critic_loss) — all scalars.
     """
@@ -35,7 +36,15 @@ def compute_loss(
         logits.reshape(-1, logits.shape[-1]), targets.reshape(-1),
         reduction="none", label_smoothing=label_smoothing,
     ).reshape(targets.shape)
-    token_loss = (ce * mask_f).sum() / num_masked
+
+    if focal_gamma > 0.0:
+        with torch.no_grad():
+            probs = F.softmax(logits, dim=-1)
+            p_t = probs.gather(-1, targets.unsqueeze(-1)).squeeze(-1)
+            focal_weight = torch.clamp((1.0 - p_t) ** focal_gamma, min=0.2, max=1.0)
+        token_loss = (ce * focal_weight * mask_f).sum() / (focal_weight * mask_f).sum().clamp(min=1.0)
+    else:
+        token_loss = (ce * mask_f).sum() / num_masked
 
     # Token-Critic target: 1.0 where the generator's own top-1 prediction
     # matches ground truth, 0.0 otherwise — computed from the SAME forward

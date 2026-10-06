@@ -98,6 +98,9 @@ class MaskGITSketchModel:
     def from_checkpoint(cls, checkpoint_path: str, device: str = "cuda") -> "MaskGITSketchModel":
         import torch
 
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+
         from krisna_training.sketch.model import build_model
 
         ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
@@ -167,8 +170,12 @@ class MaskGITSketchModel:
         confidence = [0.0] * n
 
         device = next(self.module.parameters()).device
+        if prompt_embedding.dim() == 1:
+            prompt_embedding = prompt_embedding.unsqueeze(0)
         if guidance_scale > 0.0 and uncond_embedding is None:
             uncond_embedding = torch.zeros_like(prompt_embedding)
+        elif uncond_embedding is not None and uncond_embedding.dim() == 1:
+            uncond_embedding = uncond_embedding.unsqueeze(0)
 
         for step in range(1, num_rounds + 1):
             mask_fraction = cosine_mask_schedule(step, num_rounds)

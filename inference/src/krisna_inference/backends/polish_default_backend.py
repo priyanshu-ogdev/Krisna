@@ -24,6 +24,8 @@ from krisna_inference.orchestrator.model_registry import ModelBackend, OOMSimula
 log = logging.getLogger("krisna_inference.backends.polish_default")
 
 
+import os
+
 class ZImageTurboBackend(ModelBackend):
     def __init__(
         self,
@@ -32,10 +34,8 @@ class ZImageTurboBackend(ModelBackend):
         dtype: str = "bfloat16",
         num_inference_steps: int = 9,
         lora_adapter_path: str | None = None,
-        enable_cpu_offload: bool = False,   # low-VRAM mode — see model_registry.py's
-                                              # LOW_VRAM_REGISTRY comment for the
-                                              # estimated GPU/RAM split this produces
-                                              # for this tier specifically.
+        enable_cpu_offload: bool = False,   # low-VRAM mode
+        bridge_strength: float = 0.75,       # SOTA Flow-Matching bridge conditioning ratio (1.0 = pure noise, 0.0 = sketch exact)
     ) -> None:
         super().__init__(spec)
         self.model_id = model_id
@@ -43,6 +43,9 @@ class ZImageTurboBackend(ModelBackend):
         self.num_inference_steps = num_inference_steps
         self.lora_adapter_path = lora_adapter_path
         self.enable_cpu_offload = enable_cpu_offload
+        self.bridge_strength = float(
+            os.environ.get("KRISNA_POLISH_DEFAULT_BRIDGE_STRENGTH", str(bridge_strength))
+        )
         self._pipe = None
 
     async def load(self) -> None:
@@ -54,51 +57,24 @@ class ZImageTurboBackend(ModelBackend):
             pipe = ZImagePipeline.from_pretrained(
                 self.model_id, torch_dtype=resolve_dtype(self.dtype), low_cpu_mem_usage=False
             )
-            if self.lora_adapter_path:
-                # Standard diffusers LoRA loading — the output of
-                # training/polish's Z-Image LoRA wrapper (see that
-                # package's docstring: it trains against Tongyi-MAI/Z-Image,
-                # the undistilled base, not Z-Image-Turbo directly, per the
-                # community-reported finding that Turbo's distillation
-                # gradients are unreliable for LoRA/fine-tuning). Turbo and
-                # the undistilled model share the same DiT architecture, so
-                # the adapter's module names/shapes should match — but
-                # loading a De-Turbo-trained adapter onto the Turbo
-                # checkpoint here is UNVERIFIED for actual output quality,
-                # only for whether it loads without error.
-                pipe.load_lora_weights(self.lora_adapter_path)
-                log.info("z_image_lora_applied", extra={"adapter": self.lora_adapter_path})
-            # Deliberately NOT NF4-quantized, unlike Polish-Quality/Planner/
-            # Critic — confirmed by reading training/polish/train_dpo.py:
-            # the LoRA this tier loads was trained against a bf16/fp16 base
-            # (`torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16"
-            # else torch.float16`), never NF4/QLoRA. Quantizing the base
-            # here without having trained the adapter against a quantized
-            # base would be a genuine train/inference precision mismatch —
-            # the LoRA's weights are only validated relative to the
-            # full-precision activations they were trained against. bf16
-            # here is the *correct* match to training, not a missed
-            # optimization; see model_registry.py's `quantization` field
-            # for this tier, corrected to state this explicitly after an
-            # earlier revision of this file's own docstring wrongly implied
-            # NF4 was in use (`docs/review/13_ram_offload_and_precision_audit.md`).
-            if self.enable_cpu_offload:
-                # enable_model_cpu_offload() ONLY — never
-                # enable_sequential_cpu_offload(). The latter has a
-                # confirmed, documented incompatibility with bnb NF4
-                # (diffusers GH issue #10800) that doesn't apply here since
-                # this backend never quantizes — but staying consistent
-                # with polish_quality_backend.py's choice (and its
-                # docstring's reasoning) rather than introducing a second,
-                # differently-reasoned offload call for one tier only.
-                # Moves whole submodules (text encoder, VAE, DiT transformer)
-                # between GPU/CPU on demand; the DiT itself dominates this
-                # model's size (~6B params), so this mainly frees whatever
-                # the text encoder + VAE cost while they're idle — see
-                # model_registry.py's LOW_VRAM_REGISTRY comment for the
-                # actual estimated split.
+            adapter_to_load = self.lora_adapter_path
+            if not adapter_to_load:
+                # Auto-discover trained checkpoint if available
+                dpo_path = "models/dpo_checkpoints/stage1_general/final"
+                base_lora_path = "checkpoints/polish_default_lora"
+                if os.path.exists(os.path.join(dpo_path, "pytorch_lora_weights.safetensors")):
+                    adapter_to_load = dpo_path
+                elif os.path.exists(os.path.join(base_lora_path, "pytorch_lora_weights.safetensors")):
+                    adapter_to_load = base_lora_path
+
+            if adapter_to_load and os.path.exists(adapter_to_load):
+                pipe.load_lora_weights(adapter_to_load)
+                log.info("z_image_lora_applied", extra={"adapter": adapter_to_load})
+            import torch
+
+            if self.enable_cpu_offload and torch.cuda.is_available():
                 pipe.enable_model_cpu_offload()
-            else:
+            elif torch.cuda.is_available():
                 pipe.to("cuda")
             return pipe
 
@@ -133,8 +109,10 @@ class ZImageTurboBackend(ModelBackend):
         self,
         handoff_image_ref: str | None = None,
         constraints: dict | None = None,
+        locked_regions: list | None = None,
         prompt: str | None = None,
         seed: int | None = None,
+        bridge_strength: float | None = None,
         **kwargs,
     ):
         if not self._loaded:
@@ -146,16 +124,133 @@ class ZImageTurboBackend(ModelBackend):
 
         def _run_sync():
             import torch
+            import torch.nn.functional as F
+            import torchvision.transforms.functional as TF
 
-            generator = torch.Generator("cuda").manual_seed(seed) if seed is not None else None
-            image = self._pipe(
+            gen_device = "cuda" if torch.cuda.is_available() else "cpu"
+            generator = torch.Generator(gen_device).manual_seed(seed) if seed is not None else None
+            h = kwargs.get("height")
+            w = kwargs.get("width")
+            if h is None or w is None:
+                axes_lens = getattr(self._pipe.transformer.config, "axes_lens", None)
+                if axes_lens and len(axes_lens) >= 3 and axes_lens[1] <= 128:
+                    h = h or 256
+                    w = w or 256
+                else:
+                    h = h or 1024
+                    w = w or 1024
+
+            # SOTA Flow-Matching Bridge Conditioning from Model 1 (Sketch Tier layout)
+            latents = None
+            callback_fn = None
+            callback_tensor_inputs = None
+
+            eff_bridge_strength = bridge_strength if bridge_strength is not None else self.bridge_strength
+            eff_bridge_strength = max(0.0, min(1.0, float(eff_bridge_strength)))
+
+            if handoff_image_ref and eff_bridge_strength < 1.0:
+                store = get_blob_store()
+                sketch_img = (
+                    store.load_image(handoff_image_ref)
+                    if handoff_image_ref.startswith("blob://")
+                    else None
+                )
+                if sketch_img is not None:
+                    # Clean pixel-space anti-aliased resizing BEFORE VAE manifold projection
+                    from PIL import Image
+                    sketch_img = sketch_img.convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
+                    vae_device = next(iter(self._pipe.vae.parameters())).device
+                    t_sketch = (
+                        TF.to_tensor(sketch_img).unsqueeze(0).to(
+                            device=vae_device, dtype=self._pipe.vae.dtype
+                        ) * 2.0 - 1.0
+                    )
+
+                    with torch.no_grad():
+                        sf = getattr(self._pipe.vae.config, "scaling_factor", 0.3611)
+                        sf = float(sf) if isinstance(sf, (int, float)) else 0.3611
+                        shift = getattr(self._pipe.vae.config, "shift_factor", 0.0)
+                        shift = float(shift) if isinstance(shift, (int, float)) else 0.0
+                        raw_latents = self._pipe.vae.encode(t_sketch).latent_dist.sample()
+                        z_sketch = (raw_latents - shift) * sf
+
+                        expected_latents = self._pipe.prepare_latents(
+                            1,
+                            self._pipe.transformer.in_channels,
+                            h,
+                            w,
+                            self._pipe.dtype,
+                            z_sketch.device,
+                            generator,
+                        )
+                        if z_sketch.shape != expected_latents.shape:
+                            z_sketch = F.interpolate(
+                                z_sketch,
+                                size=(expected_latents.shape[2], expected_latents.shape[3]),
+                                mode="bilinear",
+                                align_corners=False,
+                            )
+
+                        eps = torch.randn(
+                            expected_latents.shape,
+                            generator=generator,
+                            device=z_sketch.device,
+                            dtype=z_sketch.dtype,
+                        )
+                        # Optimal Transport Flow-Matching bridge interpolation:
+                        latents = (1.0 - eff_bridge_strength) * z_sketch + eff_bridge_strength * eps
+
+                        # Canonical [x, y, w, h] locked regions parsing matching design_state.py & layout_iou.py
+                        active_locked = locked_regions or constraints.get("locked_regions")
+                        parsed_boxes = []
+                        if active_locked:
+                            _, _, lat_h, lat_w = z_sketch.shape
+                            for r in active_locked:
+                                bbox = r.get("bbox") if isinstance(r, dict) else getattr(r, "bbox", None)
+                                if bbox and len(bbox) == 4:
+                                    bx, by, bw, bh = bbox
+                                    x0 = max(0, int(bx * lat_w))
+                                    x1 = min(lat_w, int((bx + bw) * lat_w))
+                                    y0 = max(0, int(by * lat_h))
+                                    y1 = min(lat_h, int((by + bh) * lat_h))
+                                    if y1 > y0 and x1 > x0:
+                                        parsed_boxes.append((y0, y1, x0, x1))
+                                        latents[:, :, y0:y1, x0:x1] = z_sketch[:, :, y0:y1, x0:x1]
+
+                            # Mathematical step-end clamping across all ODE integration steps:
+                            if parsed_boxes:
+                                def _enforce_locked_regions(pipe, step_idx, timestep, callback_kwargs):
+                                    cur_latents = callback_kwargs.get("latents")
+                                    if cur_latents is not None:
+                                        sigma = (
+                                            float(timestep) / 1000.0
+                                            if float(timestep) > 1.0
+                                            else float(timestep)
+                                        )
+                                        for y0, y1, x0, x1 in parsed_boxes:
+                                            cur_latents[:, :, y0:y1, x0:x1] = (
+                                                (1.0 - sigma) * z_sketch[:, :, y0:y1, x0:x1]
+                                                + sigma * eps[:, :, y0:y1, x0:x1]
+                                            )
+                                    return callback_kwargs
+
+                                callback_fn = _enforce_locked_regions
+                                callback_tensor_inputs = ["latents"]
+
+            pipe_kwargs = dict(
                 prompt=effective_prompt,
-                height=1024,
-                width=1024,
+                height=h,
+                width=w,
                 num_inference_steps=self.num_inference_steps,
                 guidance_scale=0.0,  # required for Turbo — non-zero degrades quality
                 generator=generator,
-            ).images[0]
+                latents=latents,
+            )
+            if callback_fn is not None:
+                pipe_kwargs["callback_on_step_end"] = callback_fn
+                pipe_kwargs["callback_on_step_end_tensor_inputs"] = callback_tensor_inputs
+
+            image = self._pipe(**pipe_kwargs).images[0]
             return image
 
         image = await asyncio.to_thread(_run_sync)

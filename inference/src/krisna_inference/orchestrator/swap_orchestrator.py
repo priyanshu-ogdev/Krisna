@@ -421,14 +421,16 @@ class SwapOrchestrator:
                     return SwapResult(
                         ok=True, tier_used=candidate, degraded=degraded, attempts=total_attempts
                     )
-                except OOMSimulatedError as e:
-                    log.warning(
-                        "tier_load_oom",
-                        extra={"tier": candidate.value, "attempt": attempt, "error": str(e)},
-                    )
-                    # Real backend: torch.cuda.empty_cache() + gc.collect() here.
-                    await asyncio.sleep(0.005 * attempt)
-                    continue
+                except Exception as e:
+                    if _is_oom_error(e):
+                        log.warning(
+                            "tier_load_oom",
+                            extra={"tier": candidate.value, "attempt": attempt, "error": str(e)},
+                        )
+                        # Real backend: torch.cuda.empty_cache() + gc.collect() here.
+                        await asyncio.sleep(0.005 * attempt)
+                        continue
+                    raise
 
         # All candidates and all retries exhausted. Enter ERROR_RECOVERY,
         # restore baseline, and report failure — but the system stays healthy.

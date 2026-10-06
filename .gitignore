@@ -43,3 +43,16 @@ Thumbs.db
 # Archives
 *.zip
 *.tar.gz
+
+# Local runner harness
+powershell.cmd
+
+# Local runtime data & caches
+checkpoints/
+data/
+logs/
+krisna_blobs/
+scratch/
+third_party/
+models/
+*.egg-info/

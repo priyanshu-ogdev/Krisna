@@ -65,6 +65,8 @@ class ClipEmbedder:
             inputs = self._processor(images=image, return_tensors="pt").to(self._model.device)
             with torch.no_grad():
                 feats = self._model.get_image_features(**inputs)
+                if hasattr(feats, "pooler_output") and feats.pooler_output is not None:
+                    feats = feats.pooler_output
             return feats / feats.norm(dim=-1, keepdim=True)
 
     def embed_text(self, text: str):
@@ -76,6 +78,8 @@ class ClipEmbedder:
             )
             with torch.no_grad():
                 feats = self._model.get_text_features(**inputs)
+                if hasattr(feats, "pooler_output") and feats.pooler_output is not None:
+                    feats = feats.pooler_output
             return feats / feats.norm(dim=-1, keepdim=True)
 
     def image_text_similarity(self, image, text: str) -> float:

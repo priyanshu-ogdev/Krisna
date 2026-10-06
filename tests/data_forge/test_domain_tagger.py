@@ -32,6 +32,7 @@ class TestExplicitUIFirstSources:
         for source in (
             "rico_core", "rico_semantic", "clay", "enrico",
             "webui", "screen2words", "uicrit",
+            "screenspot", "seeclick", "android_control", "mind2web",
         ):
             rec = _record(source, structure_output=None)
             assert tag_domain(rec) == "ui_first", f"{source} should tag as ui_first"

@@ -34,6 +34,7 @@ log = logging.getLogger("krisna_training.data_forge_bridge.sync_dpo_pairs")
 _SOURCE_KEY_MAP = {
     "pickapic_v2": "pickapic_v2",
     "hpdv2": "hpdv2",
+    "gamelabel_10k": "gamelabel_10k",
     "designsense_10k": "designsense_10k",
     "designpref": "designpref",
 }

@@ -1,0 +1,21 @@
+# Diffusion-DPO training for Z-Image-Turbo — Stage 2: General Human Preference Alignment (1% test).
+preference-db: "krisna_preference_pairs.db"
+blob-root: "krisna_blobs"
+pretrained-model-name-or-path: "models/z_image_surrogate_base"
+lora-adapter-path: "checkpoints/polish_default_lora"
+output-dir: "models/dpo_checkpoints/stage1_general"
+source: ["pickapic_v2", "hpdv2", "gamelabel_10k"]
+
+resolution: 256
+beta: 2000.0
+fm-anchor-weight: 0.0
+learning-rate: 1e-4
+lr-warmup-steps: 5
+lr-scheduler: "constant_with_warmup"
+lora-rank: 16
+train-batch-size: 2
+gradient-accumulation-steps: 1
+max-train-steps: 15
+checkpointing-steps: 10
+mixed-precision: "no"
+seed: 42

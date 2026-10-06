@@ -164,7 +164,7 @@ class DedupEngine:
         clip_model: Any,
         clip_processor: Any,
         batch_size: int = 256,
-        device: str = "cuda",
+        device: str | None = None,
     ) -> np.ndarray:
         """Generate CLIP embeddings for a list of images.
 
@@ -173,6 +173,11 @@ class DedupEngine:
         """
         import torch
         from PIL import Image
+
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        elif device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
 
         all_embeddings: list[np.ndarray] = []
 

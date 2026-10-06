@@ -128,9 +128,20 @@ def test_sync_multiple_pairs_same_source(tmp_path, pref_store, blob_store):
     assert pref_store.count(source="hpdv2") == 2
 
 
-def test_sync_default_sources_covers_all_four(tmp_path, pref_store, blob_store):
+def test_sync_gamelabel_10k_pair(tmp_path, pref_store, blob_store):
+    data_root = tmp_path / "data_root"
+    _write_pair(data_root / "preference_pairs" / "gamelabel_10k", "gl1", preferred="a")
+
+    counts = sync(data_root, pref_store, blob_store, sources=["gamelabel_10k"])
+    assert counts["gamelabel_10k"] == 1
+    assert pref_store.count(source="gamelabel_10k") == 1
+    pairs = pref_store.list(source="gamelabel_10k")
+    assert pairs[0].source == "gamelabel_10k"
+
+
+def test_sync_default_sources_covers_all_five(tmp_path, pref_store, blob_store):
     data_root = tmp_path / "data_root"
     (data_root / "preference_pairs").mkdir(parents=True)
     counts = sync(data_root, pref_store, blob_store)
-    for key in ("pickapic_v2", "hpdv2", "designsense_10k", "designpref"):
+    for key in ("pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref"):
         assert key in counts

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,6 +61,9 @@ class TrainConfig:
     num_workers: int = 4
     seed: int = 42
     use_gradient_checkpointing: bool = False   # see model.py's build_model() docstring
+    norm_type: str = "layernorm"               # "layernorm" | "rmsnorm"
+    grad_accum_steps: int = 1                  # gradient accumulation steps for high-VRAM scaling
+    focal_gamma: float = 0.0                   # >0 enables safe focal loss for rare UI token boundaries
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "TrainConfig":
@@ -83,6 +87,7 @@ def build_model_config(cfg: TrainConfig):
         dropout=cfg.dropout,
         prompt_dim=cfg.prompt_dim,
         use_gradient_checkpointing=cfg.use_gradient_checkpointing,
+        norm_type=getattr(cfg, "norm_type", "layernorm"),
     )
 
 
@@ -125,6 +130,8 @@ def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int, cfg_drop
     during a design-sync review, not a considered omission — see
     docs/review/10_synthetic_data_generalization_fix.md.
     """
+    caption_cache = {}
+
     def collate(batch):
         import torch
 
@@ -147,7 +154,13 @@ def make_collate_fn(mask_token_id: int, text_embedder, prompt_dim: int, cfg_drop
             mask_tensor[i, positions] = 1.0
 
         if text_embedder is not None:
-            embeds = torch.cat([text_embedder.embed_text(c or "UI design") for c in captions], dim=0)
+            embed_list = []
+            for c in captions:
+                txt = c or "UI design"
+                if txt not in caption_cache:
+                    caption_cache[txt] = text_embedder.embed_text(txt).detach().cpu()
+                embed_list.append(caption_cache[txt])
+            embeds = torch.cat(embed_list, dim=0)
             if cfg_dropout_prob > 0:
                 drop = torch.rand(embeds.shape[0]) < cfg_dropout_prob
                 embeds[drop] = 0.0
@@ -185,13 +198,21 @@ def train(cfg: TrainConfig) -> None:
     dataset = SketchTokenDataset(cfg.manifest_path, cfg.grid_h, cfg.grid_w, cfg.caption_mix_ratio)
 
     text_embedder = None
-    try:
-        from krisna_inference.verifiers.common import get_clip_embedder
+    if not os.environ.get("KRISNA_SKIP_CLIP"):
+        try:
+            from krisna_inference.verifiers.common import get_clip_embedder
 
-        text_embedder = get_clip_embedder()
-        text_embedder.load()
-    except ImportError:
-        log.warning("no_clip_available", extra={"note": "training unconditionally — install verifier deps for real prompt conditioning"})
+            text_embedder = get_clip_embedder()
+            text_embedder.load()
+        except Exception as e:
+            log.warning(
+                "no_clip_available",
+                extra={
+                    "note": "training unconditionally — install verifier deps for real prompt conditioning",
+                    "error": str(e),
+                },
+            )
+            text_embedder = None
 
     loader = DataLoader(
         dataset,
@@ -201,6 +222,9 @@ def train(cfg: TrainConfig) -> None:
         collate_fn=make_collate_fn(model_cfg.mask_token_id, text_embedder, cfg.prompt_dim, cfg.cfg_dropout_prob),
         drop_last=True,
         worker_init_fn=seed_worker,
+        pin_memory=(device == "cuda"),
+        persistent_workers=(cfg.num_workers > 0),
+        prefetch_factor=2 if cfg.num_workers > 0 else None,
     )
 
     start_step = 0
@@ -233,6 +257,8 @@ def train(cfg: TrainConfig) -> None:
     step = start_step
     t0 = time.time()
     data_iter = iter(loader)
+    accum_steps = max(1, getattr(cfg, "grad_accum_steps", 1))
+    optimizer.zero_grad(set_to_none=True)
 
     while step < cfg.total_steps:
         try:
@@ -245,20 +271,40 @@ def train(cfg: TrainConfig) -> None:
             tokens.to(device), mask.to(device), targets.to(device), prompt_embeds.to(device)
         )
 
-        with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16):
+        if device == "cuda":
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                logits, critic_scores = model(tokens, mask, prompt_embeds)
+                loss, token_loss, critic_loss = compute_loss(
+                    logits, critic_scores, targets, mask,
+                    critic_loss_weight=cfg.critic_loss_weight,
+                    focal_gamma=getattr(cfg, "focal_gamma", 0.0),
+                )
+        else:
             logits, critic_scores = model(tokens, mask, prompt_embeds)
             loss, token_loss, critic_loss = compute_loss(
-                logits, critic_scores, targets, mask, critic_loss_weight=cfg.critic_loss_weight
+                logits, critic_scores, targets, mask,
+                critic_loss_weight=cfg.critic_loss_weight,
+                focal_gamma=getattr(cfg, "focal_gamma", 0.0),
             )
 
-        optimizer.zero_grad(set_to_none=True)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-        optimizer.step()
-        scheduler.step()
+        scaled_loss = loss / accum_steps
+        scaled_loss.backward()
+
+        if (step + 1) % accum_steps == 0 or (step + 1) == cfg.total_steps:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
+            optimizer.step()
+            optimizer.zero_grad(set_to_none=True)
+            scheduler.step()
 
         if step % cfg.log_every == 0:
             elapsed = time.time() - t0
+            sps = round(cfg.log_every / max(elapsed, 1e-6), 3) if step > start_step else 0.0
+            print(
+                f"[Step {step:4d}/{cfg.total_steps}] loss={loss.item():.4f} "
+                f"token_loss={token_loss.item():.4f} critic_loss={critic_loss.item():.4f} "
+                f"lr={scheduler.get_last_lr()[0]:.6f} ({sps} steps/s)",
+                flush=True,
+            )
             log.info(
                 "train_step",
                 extra={
@@ -266,7 +312,7 @@ def train(cfg: TrainConfig) -> None:
                     "token_loss": round(token_loss.item(), 4),
                     "critic_loss": round(critic_loss.item(), 4),
                     "lr": round(scheduler.get_last_lr()[0], 6),
-                    "steps_per_sec": round(cfg.log_every / max(elapsed, 1e-6), 3) if step > start_step else None,
+                    "steps_per_sec": sps if step > start_step else None,
                 },
             )
             t0 = time.time()
@@ -274,12 +320,14 @@ def train(cfg: TrainConfig) -> None:
         if step > 0 and step % cfg.checkpoint_every == 0:
             ckpt_path = Path(cfg.output_dir) / f"checkpoint_step{step}.pt"
             save_checkpoint(ckpt_path, model, model_cfg, step, optimizer)
+            print(f"[Checkpoint] Step {step} saved -> {ckpt_path}", flush=True)
             log.info("checkpoint_saved", extra={"path": str(ckpt_path)})
 
         step += 1
 
     final_path = Path(cfg.output_dir) / "checkpoint_final.pt"
     save_checkpoint(final_path, model, model_cfg, step, optimizer)
+    print(f"[Complete] Final checkpoint saved -> {final_path} (steps: {step})", flush=True)
     log.info("training_complete", extra={"path": str(final_path), "total_steps": step})
 
 
