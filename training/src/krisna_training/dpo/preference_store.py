@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_pref_pairs_session ON preference_pairs(session_id
 # somewhere else.
 VALID_SOURCES = frozenset({
     "verifier_stack", "gemma_critique", "uicrit_seed",
-    "pickapic_v2", "hpdv2", "designsense_10k", "designpref",
+    "pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref",
 })
 
 
@@ -112,6 +112,13 @@ class PreferenceStore:
 
     def count(self, source: str | None = None) -> int:
         return len(self.list(source=source))
+
+    def exists(self, pair_id: str) -> bool:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM preference_pairs WHERE id = ? LIMIT 1", (pair_id,)
+            ).fetchone()
+        return row is not None
 
     def close(self) -> None:
         with self._lock:

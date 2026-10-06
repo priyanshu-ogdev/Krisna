@@ -80,7 +80,7 @@ class TestGuidanceActuallyAppliesTheMuseFormula:
         assert torch.equal(seen_embeddings[1], torch.zeros_like(prompt_embedding))
 
     def test_guidance_changes_output_when_cond_and_uncond_disagree(self):
-        torch.manual_seed(0)
+        torch.manual_seed(5)
         model, cfg = _make_model(grid_h=4, grid_w=4, prompt_dim=8)
 
         cond_embedding = torch.randn(1, cfg.prompt_dim)

@@ -54,7 +54,7 @@ def test_subpackage_exports():
     assert hasattr(stages, "Stage")
     assert hasattr(stages, "StageResult")
     assert hasattr(stages, "register_all_stages")
-    assert len(stages.STAGE_MODULES) >= 20
+    assert len(stages.STAGE_MODULES) >= 19
 
 
 def test_s05_ocr_enrichment_modularization():

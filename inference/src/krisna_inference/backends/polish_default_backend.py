@@ -60,6 +60,7 @@ class ZImageTurboBackend(ModelBackend):
         enable_cpu_offload: bool = False,   # low-VRAM mode
         bridge_strength: float = 0.75,       # SOTA Flow-Matching bridge conditioning ratio (1.0 = pure noise, 0.0 = sketch exact)
         strength: float = 0.6,
+        lora_adapter_path: str | None = None,
     ) -> None:
         super().__init__(spec)
         self.model_id = model_id
@@ -170,7 +171,6 @@ class ZImageTurboBackend(ModelBackend):
             import torch.nn.functional as F
             import torchvision.transforms.functional as TF
 
-<<<<<<< HEAD
             gen_device = "cuda" if torch.cuda.is_available() else "cpu"
             generator = torch.Generator(gen_device).manual_seed(seed) if seed is not None else None
             h = kwargs.get("height")

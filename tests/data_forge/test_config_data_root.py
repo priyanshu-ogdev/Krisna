@@ -40,8 +40,10 @@ def test_default_data_root_is_platform_neutral(tmp_path, monkeypatch) -> None:
     resolved = _default_data_root()
 
     assert resolved == tmp_path / "data_krisna"
-    # Never a literal, unparsed Windows path on this filesystem.
-    assert "\\" not in str(resolved)
+    # Never a literal, unparsed Windows path on a POSIX filesystem.
+    import os
+    if os.name != "nt":
+        assert "\\" not in str(resolved)
     assert resolved.is_absolute()
 
 

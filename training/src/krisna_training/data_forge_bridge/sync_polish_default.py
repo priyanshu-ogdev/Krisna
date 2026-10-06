@@ -16,7 +16,7 @@ import json
 import logging
 from pathlib import Path
 
-from krisna_training.polish.dataset_prep import prepare
+from krisna_training.polish.prepare_dataset import prepare
 
 log = logging.getLogger("krisna_training.data_forge_bridge.sync_polish_default")
 

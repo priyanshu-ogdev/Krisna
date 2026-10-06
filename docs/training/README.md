@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Krisna Training Documentation
 
 Comprehensive reference and mathematical derivations for training the generative components of Krisna's agentic UI pipeline.
