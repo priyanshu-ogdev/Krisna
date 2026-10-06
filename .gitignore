@@ -21,6 +21,10 @@ npm-debug.log*
 .pytest_cache/
 .coverage
 htmlcov/
+*.egg-info/
+.eggs/
+dist/
+build/
 
 # Databases & local state
 *.db
