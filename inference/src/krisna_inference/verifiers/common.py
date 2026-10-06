@@ -6,11 +6,15 @@ than each verifier loading its own copy of the same weights.
 from __future__ import annotations
 
 
+import threading
+
+
 class ClipEmbedder:
     def __init__(self, model_id: str = "openai/clip-vit-large-patch14") -> None:
         self.model_id = model_id
         self._model = None
         self._processor = None
+        self._lock = threading.Lock()
 
     def load(self) -> None:
         if self._model is not None:

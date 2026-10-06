@@ -192,7 +192,8 @@ class ZImageTurboBackend(ModelBackend):
             eff_bridge_strength = bridge_strength if bridge_strength is not None else self.bridge_strength
             eff_bridge_strength = max(0.0, min(1.0, float(eff_bridge_strength)))
 
-            if handoff_image_ref and eff_bridge_strength < 1.0:
+            sketch_img = None
+            if handoff_image_ref:
                 store = get_blob_store()
                 sketch_img = (
                     store.load_image(handoff_image_ref)
@@ -203,86 +204,75 @@ class ZImageTurboBackend(ModelBackend):
                     # Clean pixel-space anti-aliased resizing BEFORE VAE manifold projection
                     from PIL import Image
                     sketch_img = sketch_img.convert("RGB").resize((w, h), Image.Resampling.LANCZOS)
-                    vae_device = next(iter(self._pipe.vae.parameters())).device
-                    t_sketch = (
-                        TF.to_tensor(sketch_img).unsqueeze(0).to(
-                            device=vae_device, dtype=self._pipe.vae.dtype
-                        ) * 2.0 - 1.0
+
+            if sketch_img is not None and eff_bridge_strength < 1.0:
+                vae_device = next(iter(self._pipe.vae.parameters())).device
+                t_sketch = (
+                    TF.to_tensor(sketch_img).unsqueeze(0).to(
+                        device=vae_device, dtype=self._pipe.vae.dtype
+                    ) * 2.0 - 1.0
+                )
+
+                with torch.no_grad():
+                    sf = getattr(self._pipe.vae.config, "scaling_factor", 0.3611)
+                    sf = float(sf) if isinstance(sf, (int, float)) else 0.3611
+                    shift = getattr(self._pipe.vae.config, "shift_factor", 0.0)
+                    shift = float(shift) if isinstance(shift, (int, float)) else 0.0
+                    raw_latents = self._pipe.vae.encode(t_sketch).latent_dist.sample()
+                    z_sketch = (raw_latents - shift) * sf
+
+                    eps = torch.randn_like(
+                        z_sketch,
+                        generator=generator,
                     )
+                    # Optimal Transport Flow-Matching bridge interpolation:
+                    latents = (1.0 - eff_bridge_strength) * z_sketch + eff_bridge_strength * eps
 
-                    with torch.no_grad():
-                        sf = getattr(self._pipe.vae.config, "scaling_factor", 0.3611)
-                        sf = float(sf) if isinstance(sf, (int, float)) else 0.3611
-                        shift = getattr(self._pipe.vae.config, "shift_factor", 0.0)
-                        shift = float(shift) if isinstance(shift, (int, float)) else 0.0
-                        raw_latents = self._pipe.vae.encode(t_sketch).latent_dist.sample()
-                        z_sketch = (raw_latents - shift) * sf
+                    # Canonical [x, y, w, h] locked regions parsing matching design_state.py & layout_iou.py
+                    active_locked = locked_regions or constraints.get("locked_regions")
+                    parsed_boxes = []
+                    if active_locked:
+                        _, _, lat_h, lat_w = z_sketch.shape
+                        for r in active_locked:
+                            bbox = r.get("bbox") if isinstance(r, dict) else getattr(r, "bbox", None)
+                            if bbox and len(bbox) == 4:
+                                bx, by, bw, bh = bbox
+                                x0 = max(0, int(bx * lat_w))
+                                x1 = min(lat_w, int((bx + bw) * lat_w))
+                                y0 = max(0, int(by * lat_h))
+                                y1 = min(lat_h, int((by + bh) * lat_h))
+                                if y1 > y0 and x1 > x0:
+                                    parsed_boxes.append((y0, y1, x0, x1))
+                                    latents[:, :, y0:y1, x0:x1] = z_sketch[:, :, y0:y1, x0:x1]
 
-                        expected_latents = self._pipe.prepare_latents(
-                            1,
-                            self._pipe.transformer.in_channels,
-                            h,
-                            w,
-                            self._pipe.dtype,
-                            z_sketch.device,
-                            generator,
-                        )
-                        if z_sketch.shape != expected_latents.shape:
-                            z_sketch = F.interpolate(
-                                z_sketch,
-                                size=(expected_latents.shape[2], expected_latents.shape[3]),
-                                mode="bilinear",
-                                align_corners=False,
-                            )
-
-                        eps = torch.randn(
-                            expected_latents.shape,
-                            generator=generator,
-                            device=z_sketch.device,
-                            dtype=z_sketch.dtype,
-                        )
-                        # Optimal Transport Flow-Matching bridge interpolation:
-                        latents = (1.0 - eff_bridge_strength) * z_sketch + eff_bridge_strength * eps
-
-                        # Canonical [x, y, w, h] locked regions parsing matching design_state.py & layout_iou.py
-                        active_locked = locked_regions or constraints.get("locked_regions")
-                        parsed_boxes = []
-                        if active_locked:
-                            _, _, lat_h, lat_w = z_sketch.shape
-                            for r in active_locked:
-                                bbox = r.get("bbox") if isinstance(r, dict) else getattr(r, "bbox", None)
-                                if bbox and len(bbox) == 4:
-                                    bx, by, bw, bh = bbox
-                                    x0 = max(0, int(bx * lat_w))
-                                    x1 = min(lat_w, int((bx + bw) * lat_w))
-                                    y0 = max(0, int(by * lat_h))
-                                    y1 = min(lat_h, int((by + bh) * lat_h))
-                                    if y1 > y0 and x1 > x0:
-                                        parsed_boxes.append((y0, y1, x0, x1))
-                                        latents[:, :, y0:y1, x0:x1] = z_sketch[:, :, y0:y1, x0:x1]
-
-                            # Mathematical step-end clamping across all ODE integration steps:
-                            if parsed_boxes:
-                                def _enforce_locked_regions(pipe, step_idx, timestep, callback_kwargs):
-                                    cur_latents = callback_kwargs.get("latents")
-                                    if cur_latents is not None:
-                                        sigma = (
-                                            float(timestep) / 1000.0
-                                            if float(timestep) > 1.0
-                                            else float(timestep)
+                        # Mathematical step-end clamping across all ODE integration steps:
+                        if parsed_boxes:
+                            def _enforce_locked_regions(pipe, step_idx, timestep, callback_kwargs):
+                                cur_latents = callback_kwargs.get("latents")
+                                if cur_latents is not None:
+                                    sigma = (
+                                        float(timestep) / 1000.0
+                                        if float(timestep) > 1.0
+                                        else float(timestep)
+                                    )
+                                    for y0, y1, x0, x1 in parsed_boxes:
+                                        cur_latents[:, :, y0:y1, x0:x1] = (
+                                            (1.0 - sigma) * z_sketch[:, :, y0:y1, x0:x1]
+                                            + sigma * eps[:, :, y0:y1, x0:x1]
                                         )
-                                        for y0, y1, x0, x1 in parsed_boxes:
-                                            cur_latents[:, :, y0:y1, x0:x1] = (
-                                                (1.0 - sigma) * z_sketch[:, :, y0:y1, x0:x1]
-                                                + sigma * eps[:, :, y0:y1, x0:x1]
-                                            )
-                                    return callback_kwargs
+                                return callback_kwargs
 
-                                callback_fn = _enforce_locked_regions
-                                callback_tensor_inputs = ["latents"]
+                            callback_fn = _enforce_locked_regions
+                            callback_tensor_inputs = ["latents"]
+
+            if sketch_img is None:
+                from PIL import Image
+                sketch_img = Image.new("RGB", (w, h), (255, 255, 255))
 
             pipe_kwargs = dict(
                 prompt=effective_prompt,
+                image=sketch_img,
+                strength=1.0,
                 height=h,
                 width=w,
                 num_inference_steps=self.num_inference_steps,
