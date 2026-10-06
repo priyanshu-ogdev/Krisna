@@ -21,13 +21,15 @@ log = get_logger("data.domain_tagger")
 # dribbble_ui are left in place as forward-declared source keys for
 # datasets not yet added to datasets.yaml — harmless if unused.
 _UI_FIRST_SOURCES = frozenset([
+    "rico_core",
+    "rico_semantic",
+    "clay",
+    "enrico",
     "webui",
+    "screen2words",
+    "uicrit",
     "figma_ui",
     "dribbble_ui",
-    "mobileviews",
-    "figma2code",
-    "wave_ui",
-    "showui_desktop",
 ])
 
 # Datasets known to be general design
@@ -49,6 +51,7 @@ _UI_FIRST_SOURCES = frozenset([
 # harmless if unused, same pattern as figma_ui/dribbble_ui above.
 _GENERAL_DESIGN_SOURCES = frozenset([
     "pd12m",
+    "cc12m",
     "design_inspiration",
     "behance_general",
     "poster_design",
