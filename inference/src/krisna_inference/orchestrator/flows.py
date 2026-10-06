@@ -270,6 +270,53 @@ async def finalize(
     return store.save(state, expected_rev)
 
 
+async def enhance_photo(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+    image_ref: str,
+    prompt: str,
+    quality: bool = True,
+) -> DesignState:
+    """Bypass Planner & Sketch to directly enhance a general-purpose image using the Polish Tier.
+    Unlocks Z-Image-Turbo and Qwen-Image-Edit's foundational img2img capabilities for non-UI tasks.
+    """
+    state = store.get(session_id)
+    expected_rev = state.revision
+
+    state.stage = SessionStage.FINALIZING
+    state.touch()
+    store.save(state, expected_rev)
+    expected_rev = state.revision
+
+    preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
+    result: SwapResult = await orchestrator.request_finalize(
+        preferred_tier=preferred,
+        session_id=session_id,
+        handoff_image_ref=image_ref,
+        prompt=prompt,
+        constraints=state.constraints.model_dump(),
+        locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
+    )
+
+    if not result.ok:
+        state.stage = SessionStage.CONVERSING
+        state.touch()
+        store.save(state, expected_rev)
+        raise FlowError(f"Enhance failed for session {session_id}: {result.error}")
+
+    renderer_used = "qwen_image_edit_2511" if result.tier_used == Tier.POLISH_QUALITY else "z_image_turbo"
+    output = result.output or {}
+
+    state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
+    state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
+    state.finalize_output.prompt_used = prompt
+
+    state.stage = SessionStage.FINALIZED
+    state.touch()
+    return store.save(state, expected_rev)
+
+
 def _check_safety_gate(
     verifier_stack: Any, image_ref: str, min_safety_score: float
 ) -> tuple[bool, float]:

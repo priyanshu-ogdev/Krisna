@@ -156,6 +156,12 @@ class FinalizeRequest(BaseModel):
     prompt: str | None = None
 
 
+class EnhanceRequest(BaseModel):
+    image_ref: str
+    prompt: str
+    quality: bool = True
+
+
 class CritiqueRequest(BaseModel):
     compare_against_image_ref: str | None = None
     compare_against_score: float | None = None
@@ -258,6 +264,18 @@ async def post_finalize(session_id: str, req: FinalizeRequest) -> dict:
             orchestrator, store, session_id,
             quality=req.quality, prompt=req.prompt, verifier_stack=_verifier_stack,
             handoff_hook=_handoff_hook,
+        )
+    except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+        raise _error_response(e)
+    return state.to_wire() | {"revision": state.revision}
+
+
+@app.post("/session/{session_id}/enhance")
+async def post_enhance(session_id: str, req: EnhanceRequest) -> dict:
+    try:
+        state = await flows.enhance_photo(
+            orchestrator, store, session_id,
+            image_ref=req.image_ref, prompt=req.prompt, quality=req.quality
         )
     except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
         raise _error_response(e)
