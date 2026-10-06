@@ -44,7 +44,7 @@ import pyarrow.parquet as pq
 from huggingface_hub import HfFileSystem, hf_hub_download
 from PIL import Image
 
-DATA_ROOT = Path("D:/data_krisna")
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", "D:/data_krisna"))
 RAW_DIR = DATA_ROOT / "raw"
 PREF_DIR = DATA_ROOT / "preference_pairs"
 EVAL_DIR = DATA_ROOT / "heldout" / "external_eval"
