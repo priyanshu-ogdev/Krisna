@@ -60,6 +60,11 @@ class DedupEngine:
             if torch.cuda.is_available() and hasattr(faiss, "StandardGpuResources") and hasattr(faiss, "index_cpu_to_gpu"):
                 if self._gpu_res is None:
                     self._gpu_res = faiss.StandardGpuResources()
+                    try:
+                        # Allocate 2GB temporary workspace in VRAM for high-throughput GPU FAISS
+                        self._gpu_res.setTempMemory(2 * 1024 * 1024 * 1024)
+                    except Exception:
+                        pass
                 self._index = faiss.index_cpu_to_gpu(self._gpu_res, 0, self._index)
                 self._is_gpu_index = True
                 log.info("faiss_index_moved_to_gpu", device="cuda:0")
@@ -180,7 +185,7 @@ class DedupEngine:
         temp_index = faiss.IndexFlatIP(d)
         temp_index.add(emb_norm)
 
-        k = min(512, n)
+        k = min(1024, n)
         scores, indices = temp_index.search(emb_norm, k)
 
         duplicates: list[tuple[str, str, float]] = []
@@ -363,6 +368,30 @@ class DedupEngine:
         log.info("dedup_engine_cleaned_up")
 
     @staticmethod
+    def _preprocess_single_image(args: tuple[int, Path]) -> tuple[int, Any, str | None]:
+        """Worker function for concurrent image decompression and alpha compositing on multi-core CPU."""
+        from PIL import Image, ImageOps
+        orig_idx, p = args
+        try:
+            with Image.open(p) as raw_img:
+                img = ImageOps.exif_transpose(raw_img)
+                img.load()
+                # Downscale massive web captures to save memory during batch processing
+                if img.width > 1024 or img.height > 1024:
+                    img.thumbnail((768, 768), Image.Resampling.BILINEAR)
+
+                # Cleanly composite transparency onto white canvas to prevent UI icons from blacking out
+                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                    rgba = img.convert("RGBA")
+                    white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+                    composite = Image.alpha_composite(white_bg, rgba)
+                    return orig_idx, composite.convert("RGB"), None
+                else:
+                    return orig_idx, img.convert("RGB"), None
+        except Exception as e:
+            return orig_idx, None, str(e)
+
+    @staticmethod
     def generate_embeddings(
         image_paths: list[Path],
         clip_model: Any,
@@ -370,49 +399,63 @@ class DedupEngine:
         batch_size: int = 256,
         device: str | None = None,
     ) -> tuple[np.ndarray, list[int], list[int]]:
-        """Generate CLIP embeddings for a list of images.
+        """Generate CLIP embeddings optimized for Intel i9 CPU and NVIDIA RTX A6000 GPU.
+
+        Architecture Optimizations:
+        1. Intel i9: ThreadPoolExecutor parallel image decompression and alpha-compositing across CPU cores.
+        2. RTX A6000 (Ampere): TF32 enabled, FP16 inference, asynchronous non-blocking DMA transfer.
+        3. Tensor Core L2 normalization: Direct on-GPU normalization before host transfer.
+        4. Memory Safety: Resilient attribute introspection, zero unmanaged GPU allocations.
 
         Returns:
             embeddings: (M, D) float32 numpy array, L2-normalized.
             valid_indices: indices in image_paths that were successfully embedded.
             failed_indices: indices in image_paths that failed to load/decode.
         """
+        import concurrent.futures
+        import os
         import torch
-        from PIL import Image, ImageOps
 
-        target_device = device or getattr(clip_model, "device", None) or next(clip_model.parameters()).device
-        model_dtype = getattr(clip_model, "dtype", torch.float32)
+        # Device and dtype detection
+        raw_dev = (
+            device
+            or getattr(clip_model, "device", None)
+            or getattr(clip_model, "_dev", None)
+            or (next(clip_model.parameters()).device if hasattr(clip_model, "parameters") else "cpu")
+        )
+        target_device = str(raw_dev)
+        is_cuda = target_device.startswith("cuda")
+        model_dtype = getattr(clip_model, "dtype", torch.float16 if is_cuda else torch.float32)
+
+        # Optimize Ampere RTX A6000 Tensor Cores (TF32 precision)
+        if is_cuda and torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
         all_embeddings: list[np.ndarray] = []
         valid_indices: list[int] = []
         failed_indices: list[int] = []
 
+        # Utilize i9 physical/logical cores for parallel I/O and PIL decoding
+        max_workers = min(32, max(4, (os.cpu_count() or 8)))
+
         for batch_start in range(0, len(image_paths), batch_size):
             batch_slice = image_paths[batch_start : batch_start + batch_size]
-            batch_images: list[Image.Image] = []
+            indexed_slice = [(batch_start + offset, p) for offset, p in enumerate(batch_slice)]
+
+            batch_images: list[Any] = []
             batch_valid_idx: list[int] = []
 
-            for offset, p in enumerate(batch_slice):
-                orig_idx = batch_start + offset
-                try:
-                    with Image.open(p) as raw_img:
-                        img = ImageOps.exif_transpose(raw_img)
-                        img.load()
-                        # Downscale massive web captures to save memory during batch processing
-                        if img.width > 1024 or img.height > 1024:
-                            img.thumbnail((768, 768), Image.Resampling.BILINEAR)
+            # Parallel image decompression across Intel i9 cores
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                results = list(executor.map(DedupEngine._preprocess_single_image, indexed_slice))
 
-                        # Cleanly composite transparency onto white to prevent UI icons from blacking out
-                        if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-                            rgba = img.convert("RGBA")
-                            white_bg = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
-                            composite = Image.alpha_composite(white_bg, rgba)
-                            batch_images.append(composite.convert("RGB"))
-                        else:
-                            batch_images.append(img.convert("RGB"))
+            for orig_idx, img, err in results:
+                if img is not None:
+                    batch_images.append(img)
                     batch_valid_idx.append(orig_idx)
-                except Exception as e:
-                    log.warning("image_load_failed", path=str(p), error=str(e))
+                else:
+                    log.warning("image_load_failed", path=str(image_paths[orig_idx]), error=err)
                     failed_indices.append(orig_idx)
 
             if not batch_images:
@@ -420,13 +463,33 @@ class DedupEngine:
 
             inputs = clip_processor(images=batch_images, return_tensors="pt", padding=True)
             inputs = {
-                k: v.to(device=target_device, dtype=model_dtype if v.is_floating_point() else v.dtype)
+                k: v.to(
+                    device=target_device,
+                    dtype=model_dtype if v.is_floating_point() else v.dtype,
+                    non_blocking=True,
+                )
                 for k, v in inputs.items()
             }
 
             with torch.inference_mode():
-                outputs = clip_model.get_image_features(**inputs)
-                embeddings = outputs.detach().cpu().numpy().astype(np.float32)
+                if is_cuda:
+                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                        outputs = clip_model.get_image_features(**inputs)
+                else:
+                    outputs = clip_model.get_image_features(**inputs)
+
+                if isinstance(outputs, torch.Tensor):
+                    feats = outputs
+                elif hasattr(outputs, "image_embeds"):
+                    feats = outputs.image_embeds
+                elif hasattr(outputs, "pooler_output"):
+                    feats = outputs.pooler_output
+                else:
+                    feats = torch.as_tensor(outputs, device=target_device)
+
+                # Normalize directly on GPU Tensor Cores before host transfer
+                feats = feats / feats.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
+                embeddings = feats.detach().cpu().numpy().astype(np.float32)
                 all_embeddings.append(embeddings)
                 valid_indices.extend(batch_valid_idx)
 
@@ -437,14 +500,12 @@ class DedupEngine:
             )
 
         if not all_embeddings:
-            empty_dim = getattr(clip_model.config, "projection_dim", 768)
+            cfg_obj = getattr(clip_model, "config", None)
+            empty_dim = getattr(cfg_obj, "projection_dim", 768) if cfg_obj else 768
             return np.empty((0, empty_dim), dtype=np.float32), [], failed_indices
 
         result = np.concatenate(all_embeddings, axis=0)
-        # L2 normalize
-        norms = np.linalg.norm(result, axis=1, keepdims=True)
-        norms = np.maximum(norms, 1e-8)
-        result = result / norms
+        result = np.ascontiguousarray(result, dtype=np.float32)
 
         log.info(
             "embeddings_generated",
