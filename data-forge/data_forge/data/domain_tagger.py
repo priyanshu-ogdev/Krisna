@@ -30,6 +30,18 @@ _UI_FIRST_SOURCES = frozenset([
     "uicrit",
     "figma_ui",
     "dribbble_ui",
+    "screenspot",
+    "seeclick",
+    "android_control",
+    "mind2web",
+    "figma2code",
+    "mobileviews",
+    "wave_ui",
+    "showui_desktop",
+    "websight",
+    "aria_ui",
+    "atomblock_webui",
+    "ui_vision",
 ])
 
 # Datasets known to be general design
