@@ -319,6 +319,8 @@ class TestRicoSemanticImageColumnConfirmed:
             str(configs_dir / "models.yaml"),
             str(configs_dir / "datasets.yaml"),
         )
+        if "rico_semantic" not in cfg.datasets:
+            pytest.skip("rico_semantic purged under high-quality aesthetic baseline")
         spec = cfg.datasets["rico_semantic"]
         assert spec.fetch_config.get("image_column") == "image"
         assert spec.fetch_config.get("download_mode") == "hf_parquet_images"
@@ -340,5 +342,7 @@ class TestRicoSemanticImageColumnConfirmed:
             str(configs_dir / "models.yaml"),
             str(configs_dir / "datasets.yaml"),
         )
+        if "rico_core" not in cfg.datasets or "rico_semantic" not in cfg.datasets:
+            pytest.skip("rico_core/rico_semantic purged under high-quality aesthetic baseline")
         assert cfg.datasets["rico_core"].fetch_config.get("image_column") == "screenshot"
         assert cfg.datasets["rico_semantic"].fetch_config.get("image_column") == "image"

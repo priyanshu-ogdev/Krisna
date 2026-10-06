@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Krisna Inference & Serving Architecture
 
 Comprehensive reference for single-GPU serving, swap orchestration, and multi-turn agentic flows.
