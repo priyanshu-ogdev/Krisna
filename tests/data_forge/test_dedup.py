@@ -474,4 +474,81 @@ class TestDedupStage:
         assert embeddings.shape == (1, 768)
         engine.unload_clip()
 
+    @pytest.mark.asyncio
+    async def test_stage2_to_stage3_pipeline_chaining(self, dedup_env, tmp_path: Path):
+        """Verify seamless pipeline handoff: Stage 2 dedup -> Stage 3 quality scoring."""
+        from data_forge.stages.s03_quality import QualityStage
+
+        manifest, config = dedup_env
+        s2 = DedupStage()
+        s3 = QualityStage()
+
+        raw_dir = tmp_path / "chain"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Image 1: Valid high-res
+        p1 = raw_dir / "valid_1.png"
+        Image.new("RGB", (512, 512), color="blue").save(p1)
+
+        # Image 2: Exact duplicate of 1
+        p2 = raw_dir / "valid_2_duplicate.png"
+        Image.new("RGB", (512, 512), color="blue").save(p2)
+
+        # Image 3: Valid low-res (will survive s2 dedup, then be filtered by s3 quality for min_resolution)
+        p3 = raw_dir / "small.png"
+        Image.new("RGB", (100, 100), color="red").save(p3)
+
+        r1 = manifest.create_record("test_ds", image_path="chain/valid_1.png", image_width=512, image_height=512)
+        r2 = manifest.create_record("test_ds", image_path="chain/valid_2_duplicate.png", image_width=512, image_height=512)
+        r3 = manifest.create_record("test_ds", image_path="chain/small.png", image_width=100, image_height=100)
+
+        # Run Stage 2 Dedup
+        res_s2 = await s2.run(manifest, config, [r1.id, r2.id, r3.id], engine=None)
+
+        assert res_s2.metadata["exact_duplicates"] == 1
+        assert manifest.get_record(r1.id).status == "deduped"
+        assert manifest.get_record(r2.id).status == "excluded_duplicate"
+        assert manifest.get_record(r3.id).status == "deduped"
+
+        # Now pass to Stage 3 Quality
+        from unittest.mock import AsyncMock, patch
+        from data_forge.config import ModelSpec
+        from data_forge.inference.tier1 import QualityOutput
+
+        config.models["tier1"] = ModelSpec(model_id="mock-tier1")
+        config.stages["s03_quality"] = StageConfig(
+            enabled=True,
+            params={
+                "min_resolution": [256, 256],
+                "max_resolution": [4096, 4096],
+                "aesthetic_score_threshold": 0.4,
+            },
+        )
+        mock_t1_engine = MagicMock()
+        mock_t1_engine.vllm_client = MagicMock()
+
+        mock_quality = QualityOutput(
+            aesthetic_score=0.88,
+            resolution_adequate=True,
+            is_complete_ui=True,
+            design_era="modern",
+            confidence=0.95,
+        )
+
+        with patch("data_forge.stages.s03_quality.Tier1Engine.score_quality", new_callable=AsyncMock, return_value=mock_quality):
+            # Execute Stage 3 on all record IDs
+            res_s3 = await s3.run(manifest, config, [r1.id, r2.id, r3.id], engine=mock_t1_engine)
+
+        # r2 was excluded_duplicate so s3 ignores it
+        # r1 survived s2 and passed s3 quality check
+        r1_after = manifest.get_record(r1.id)
+        assert r1_after.status == "quality_scored"
+        assert r1_after.aesthetic_score == 0.88
+
+        # r3 is below min_resolution so s3 marks it excluded_low_quality
+        r3_after = manifest.get_record(r3.id)
+        assert r3_after.status == "excluded_low_quality"
+        assert "below_min_resolution" in r3_after.exclusion_reason
+
+
 
