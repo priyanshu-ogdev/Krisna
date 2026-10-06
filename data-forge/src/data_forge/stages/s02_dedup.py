@@ -10,6 +10,7 @@ from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
+from data_forge.utils.hashing import sha256_file
 
 log = get_logger("stages.s02")
 
@@ -36,118 +37,235 @@ class DedupStage(Stage):
             log.info("no_records_to_dedup")
             return result
 
-        # Phase 1: Exact hash dedup
+        # ── Phase 1: High-Performance Exact Hash Dedup ──────────────────
         exact_dupes = 0
+        exact_duplicate_updates: list[dict[str, Any]] = []
+
         if stage_cfg.get("exact_hash_dedup", True):
-            seen_hashes: dict[str, str] = {}
+            # 1. Fill missing content_hash_sha256 if file exists
+            hashes_to_query: list[str] = []
             for rec in records:
+                if not rec.content_hash_sha256 and rec.image_path:
+                    img_path = config.data_root / rec.image_path
+                    if img_path.exists():
+                        try:
+                            rec.content_hash_sha256 = sha256_file(img_path)
+                            manifest.update_record(
+                                record_id=rec.id,
+                                stage="dedup",
+                                content_hash_sha256=rec.content_hash_sha256,
+                            )
+                        except Exception as e:
+                            log.warning("sha256_compute_failed", id=rec.id, error=str(e))
                 if rec.content_hash_sha256:
-                    existing = manifest.check_hash_exists(rec.content_hash_sha256)
-                    if existing and existing != rec.id:
-                        manifest.update_record(
-                            record_id=rec.id,
-                            stage="dedup",
-                            new_status="excluded_duplicate",
-                            reason=f"Exact hash match with {existing}",
-                            duplicate_of=existing,
-                            exclusion_reason="exact_hash_duplicate",
-                        )
-                        exact_dupes += 1
+                    hashes_to_query.append(rec.content_hash_sha256)
+
+            # 2. Batch query manifest for existing non-duplicate records
+            existing_hash_map = manifest.check_hashes_exist(hashes_to_query)
+
+            # 3. Detect collisions against manifest AND intra-batch
+            seen_chunk_hashes: dict[str, str] = {}
+            for rec in records:
+                if not rec.content_hash_sha256:
+                    continue
+
+                h = rec.content_hash_sha256
+                canonical_id: str | None = None
+
+                if h in existing_hash_map and existing_hash_map[h] != rec.id:
+                    canonical_id = existing_hash_map[h]
+                elif h in seen_chunk_hashes and seen_chunk_hashes[h] != rec.id:
+                    canonical_id = seen_chunk_hashes[h]
+                else:
+                    seen_chunk_hashes[h] = rec.id
+
+                if canonical_id:
+                    exact_duplicate_updates.append({
+                        "record_id": rec.id,
+                        "duplicate_of": canonical_id,
+                        "reason": f"Exact SHA-256 match with {canonical_id}",
+                        "exclusion_reason": "exact_hash_duplicate",
+                    })
+                    exact_dupes += 1
+
+            if exact_duplicate_updates:
+                manifest.bulk_mark_duplicates(exact_duplicate_updates, stage="dedup")
 
         log.info("exact_dedup_done", duplicates=exact_dupes)
 
-        # Phase 2: Semantic near-duplicate via FAISS
-        remaining = [r for r in records if r.status == "fetched"]
-        if not remaining or engine is None:
-            result.records_processed = len(records)
-            result.records_excluded = exact_dupes
-            return result
+        # Exclude exact duplicates from downstream dedup
+        exact_excluded_ids = {u["record_id"] for u in exact_duplicate_updates}
+        remaining = [r for r in records if r.id not in exact_excluded_ids]
 
-        # Generate CLIP embeddings
-        image_paths = []
+        # ── Phase 1b: Image Path Existence Validation ──────────────────
+        missing_ids: list[str] = []
         valid_records = []
-        for rec in remaining:
-            if rec.image_path:
-                img_path = config.data_root / rec.image_path
-                if img_path.exists():
-                    image_paths.append(img_path)
-                    valid_records.append(rec)
+        image_paths = []
 
-        if not valid_records:
+        for rec in remaining:
+            if not rec.image_path:
+                missing_ids.append(rec.id)
+                continue
+            img_path = config.data_root / rec.image_path
+            if not img_path.exists():
+                missing_ids.append(rec.id)
+                continue
+            image_paths.append(img_path)
+            valid_records.append(rec)
+
+        if missing_ids:
+            manifest.bulk_mark_failed(
+                missing_ids,
+                stage="dedup",
+                reason="Image file missing or path not found on disk",
+            )
+            log.warning("missing_images_excluded", count=len(missing_ids))
+
+        # Check if semantic dedup should proceed
+        semantic_enabled = stage_cfg.get("semantic_dedup", True)
+        if not semantic_enabled or engine is None or not valid_records:
+            # Advance remaining valid records to "deduped" so downstream stages proceed
+            surviving_ids = [r.id for r in valid_records]
+            if surviving_ids:
+                manifest.bulk_update_status(
+                    surviving_ids,
+                    new_status="deduped",
+                    stage="dedup",
+                    reason="Passed exact hash dedup (semantic dedup skipped/no engine)",
+                )
+
+            total_excluded = exact_dupes + len(missing_ids)
             result.records_processed = len(records)
-            result.records_excluded = exact_dupes
+            result.records_excluded = total_excluded
+            result.metadata = {
+                "exact_duplicates": exact_dupes,
+                "missing_files": len(missing_ids),
+                "semantic_duplicates": 0,
+            }
             return result
 
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # ── Phase 2: Semantic Dedup via CLIP Embeddings + FAISS ────────
         batch_size = stage_cfg.get("embedding_batch_size", 256)
-        embeddings = DedupEngine.generate_embeddings(
+        embeddings, valid_indices, failed_indices = DedupEngine.generate_embeddings(
             image_paths=image_paths,
             clip_model=engine.clip_model,
             clip_processor=engine.clip_processor,
             batch_size=batch_size,
-            device=device,
         )
 
-        # Build index and find duplicates
+        # Mark corrupt/unreadable images as failed
+        if failed_indices:
+            corrupt_ids = [valid_records[i].id for i in failed_indices]
+            manifest.bulk_mark_failed(
+                corrupt_ids,
+                stage="dedup",
+                reason="Corrupt or unreadable image file (PIL decode failure)",
+            )
+            log.warning("corrupt_images_excluded", count=len(corrupt_ids))
+
+        candidate_records = [valid_records[i] for i in valid_indices]
+        candidate_ids = [r.id for r in candidate_records]
+
+        if not candidate_ids:
+            total_excluded = exact_dupes + len(missing_ids) + len(failed_indices)
+            result.records_processed = len(records)
+            result.records_excluded = total_excluded
+            return result
+
         threshold = stage_cfg.get("similarity_threshold", 0.95)
-        # BUG FIX: faiss_index_type/faiss_nprobe were declared in
-        # pipeline.yaml but never actually passed to DedupEngine — this
-        # constructor call only ever forwarded similarity_threshold, so
-        # both settings were dead config. It happened to be invisible
-        # because the hardcoded default (nprobe=64) matched pipeline.yaml's
-        # value, and build_index() has its own internal small-n/large-n
-        # branch that ignores index_type entirely regardless of what's
-        # passed — so index_type is still not wired into index construction
-        # (that's build_index's own design, documented there), but nprobe
-        # now actually reflects config instead of coincidentally matching it.
         nprobe = stage_cfg.get("faiss_nprobe", 64)
-        dedup_engine = DedupEngine(similarity_threshold=threshold, nprobe=nprobe)
-        record_ids_valid = [r.id for r in valid_records]
-        dedup_engine.build_index(embeddings, record_ids_valid)
-        duplicates = dedup_engine.find_duplicates(embeddings, record_ids_valid)
+        index_type = stage_cfg.get("faiss_index_type", "Flat")
 
-        # Mark duplicates (keep the first in each pair)
-        marked: set[str] = set()
-        semantic_dupes = 0
-        for id_a, id_b, sim in duplicates:
-            if id_b not in marked:
-                manifest.update_record(
-                    record_id=id_b,
-                    stage="dedup",
-                    new_status="excluded_duplicate",
-                    reason=f"Semantic duplicate of {id_a} (sim={sim:.4f})",
-                    duplicate_of=id_a,
-                    exclusion_reason="semantic_duplicate",
-                )
-                marked.add(id_b)
-                semantic_dupes += 1
+        dedup_engine = DedupEngine(
+            similarity_threshold=threshold,
+            index_type=index_type,
+            nprobe=nprobe,
+        )
 
-        # Update surviving records
-        for rec in valid_records:
-            if rec.id not in marked:
-                manifest.update_record(
-                    record_id=rec.id, stage="dedup", new_status="deduped"
-                )
+        # Step 2a: Intra-batch deduplication
+        intra_dupes, intra_survivor_indices = dedup_engine.dedup_batch(
+            embeddings, candidate_ids, threshold=threshold
+        )
+        intra_survivor_embeddings = embeddings[intra_survivor_indices]
+        intra_survivor_ids = [candidate_ids[i] for i in intra_survivor_indices]
 
-        # Save index for reuse
-        index_path = config.resolved_paths["manifests"] / "faiss_index.bin"
-        dedup_engine.save_index(index_path)
+        # Step 2b: Inter-batch deduplication against persistent index
+        manifests_dir = (
+            config.resolved_paths.get("manifests")
+            or config.paths.resolve(config.data_root).get("manifests")
+            or (config.data_root / "manifests")
+        )
+        index_path = manifests_dir / "faiss_index.bin"
+        if index_path.exists():
+            dedup_engine.load_index(index_path)
 
-        total_excluded = exact_dupes + semantic_dupes
+        inter_dupes, true_survivor_indices = dedup_engine.search_existing(
+            intra_survivor_embeddings, intra_survivor_ids, threshold=threshold
+        )
+        true_survivor_embeddings = intra_survivor_embeddings[true_survivor_indices]
+        true_survivor_ids = [intra_survivor_ids[i] for i in true_survivor_indices]
+
+        # Step 2c: Add ONLY true survivors to persistent index and save
+        if len(true_survivor_ids) > 0:
+            dedup_engine.add_records(true_survivor_embeddings, true_survivor_ids)
+            dedup_engine.save_index(index_path)
+
+        # Step 2d: Record all semantic duplicates in manifest
+        semantic_duplicate_updates: list[dict[str, Any]] = []
+        for dup_id, canonical_id, sim in intra_dupes:
+            semantic_duplicate_updates.append({
+                "record_id": dup_id,
+                "duplicate_of": canonical_id,
+                "reason": f"Intra-chunk semantic duplicate of {canonical_id} (sim={sim:.4f})",
+                "exclusion_reason": "semantic_duplicate",
+            })
+
+        for dup_id, canonical_id, sim in inter_dupes:
+            semantic_duplicate_updates.append({
+                "record_id": dup_id,
+                "duplicate_of": canonical_id,
+                "reason": f"Semantic duplicate of historical {canonical_id} (sim={sim:.4f})",
+                "exclusion_reason": "semantic_duplicate",
+            })
+
+        if semantic_duplicate_updates:
+            manifest.bulk_mark_duplicates(semantic_duplicate_updates, stage="dedup")
+
+        # Step 2e: Transition true survivors to "deduped"
+        if true_survivor_ids:
+            manifest.bulk_update_status(
+                true_survivor_ids,
+                new_status="deduped",
+                stage="dedup",
+                reason="Passed exact and semantic dedup",
+            )
+
+        dedup_engine.cleanup()
+
+        total_semantic = len(semantic_duplicate_updates)
+        total_corrupt = len(failed_indices)
+        total_missing = len(missing_ids)
+        total_excluded = exact_dupes + total_semantic + total_corrupt + total_missing
+
         result.records_processed = len(records)
         result.records_excluded = total_excluded
         result.metadata = {
             "exact_duplicates": exact_dupes,
-            "semantic_duplicates": semantic_dupes,
+            "semantic_duplicates": total_semantic,
+            "intra_batch_duplicates": len(intra_dupes),
+            "historical_duplicates": len(inter_dupes),
+            "missing_files": total_missing,
+            "corrupt_files": total_corrupt,
+            "surviving_records": len(true_survivor_ids),
         }
 
         log.info(
             "dedup_complete",
             total=len(records),
             exact_dupes=exact_dupes,
-            semantic_dupes=semantic_dupes,
-            surviving=len(records) - total_excluded,
+            semantic_dupes=total_semantic,
+            missing=total_missing,
+            corrupt=total_corrupt,
+            surviving=len(true_survivor_ids),
         )
-        dedup_engine.cleanup()
         return result
