@@ -731,6 +731,62 @@ datasets:
   # HPDv2 — General T2I Human Preference Rankings (Stage 1 DPO)
   # -------------------------------------------------------------------------
 
+  # -------------------------------------------------------------------------
+  # Aria-UI — Massive Multimodal GUI Grounding Collection
+  # -------------------------------------------------------------------------
+  aria_ui:
+    display_name: "Aria-UI"
+    source_type: "huggingface"
+    repo_id: "Aria-UI/Aria-UI_Data"
+    revision: "main"
+    category: "cross_platform_ui"
+    expected_record_count: 3000000
+    license_url: "https://huggingface.co/datasets/Aria-UI/Aria-UI_Data"
+    license_status: "unverified"
+    license_notes: "Massive UI grounding dataset. Contains detailed spatial instruction following."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      sample_size: 100000
+
+  # -------------------------------------------------------------------------
+  # AtomBlock-WebUI — High-fidelity Structural Web Elements
+  # -------------------------------------------------------------------------
+  atomblock_webui:
+    display_name: "AtomBlock-WebUI"
+    source_type: "huggingface"
+    repo_id: "ZhihaoNan/AtomBlock-WebUI"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 50000
+    license_url: "https://huggingface.co/datasets/ZhihaoNan/AtomBlock-WebUI"
+    license_status: "unverified"
+    license_notes: "Synthetic, pixel-perfect structural layouts."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      sample_size: 50000
+
+  # -------------------------------------------------------------------------
+  # UI-Vision — Desktop Perception Benchmark
+  # -------------------------------------------------------------------------
+  ui_vision:
+    display_name: "UI-Vision"
+    source_type: "huggingface"
+    repo_id: "ServiceNow/ui-vision"
+    revision: "main"
+    category: "desktop_ui"
+    expected_record_count: 10000
+    license_url: "https://huggingface.co/datasets/ServiceNow/ui-vision"
+    license_status: "unverified"
+    license_notes: "Desktop GUI perception."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      sample_size: 10000
 
 # ---------------------------------------------------------------------------
 # Registry Watcher: datasets to scan for new releases
