@@ -787,6 +787,24 @@ datasets:
       file_patterns: ["*.parquet"]
       image_column: "image"
       sample_size: 10000
+  # -------------------------------------------------------------------------
+  # WebSight — Massive Synthetic HTML/CSS to UI Dataset
+  # -------------------------------------------------------------------------
+  websight:
+    display_name: "WebSight"
+    source_type: "huggingface"
+    repo_id: "HuggingFaceM4/WebSight"
+    revision: "main"
+    category: "web_ui"
+    expected_record_count: 2000000
+    license_url: "https://huggingface.co/datasets/HuggingFaceM4/WebSight"
+    license_status: "unverified"
+    license_notes: "Massive synthetic web UI dataset. Pairs HTML/CSS with rendered screenshots."
+    fetch_config:
+      download_mode: "hf_parquet_images"
+      file_patterns: ["*.parquet"]
+      image_column: "image"
+      sample_size: 150000
 
 # ---------------------------------------------------------------------------
 # Registry Watcher: datasets to scan for new releases
