@@ -174,10 +174,17 @@ class PreferencePairsStage(Stage):
                         dropped_corrupt += 1
                         continue
 
-                    pair_hash = (
-                        hashlib.sha256(img_a.tobytes()).hexdigest()
-                        + hashlib.sha256(img_b.tobytes()).hexdigest()
-                    )
+                    hash_a = hashlib.sha256(img_a.tobytes()).hexdigest()
+                    hash_b = hashlib.sha256(img_b.tobytes()).hexdigest()
+
+                    # Degenerate pair: image A is identical to image B (zero comparative signal)
+                    if hash_a == hash_b:
+                        log.warning("preference_pair_degenerate_self_pair", pair=meta.get("pair_id"))
+                        dropped_duplicate += 1
+                        continue
+
+                    # Symmetric canonical pair hash to detect inverted duplicate pairs across sources
+                    pair_hash = f"{min(hash_a, hash_b)}_{max(hash_a, hash_b)}"
                     if pair_hash in seen_pair_hashes:
                         dropped_duplicate += 1
                         continue
@@ -186,22 +193,29 @@ class PreferencePairsStage(Stage):
                     img_a, mod_a, det_a = blur_faces(img_a, face_detector, blur_kernel)
                     img_b, mod_b, det_b = blur_faces(img_b, face_detector, blur_kernel)
                     if mod_a:
-                        img_a.save(img_a_path, quality=95)
+                        if img_a_path.suffix.lower() in (".jpg", ".jpeg"):
+                            img_a.save(img_a_path, quality=95)
+                        else:
+                            img_a.save(img_a_path)
                     if mod_b:
-                        img_b.save(img_b_path, quality=95)
+                        if img_b_path.suffix.lower() in (".jpg", ".jpeg"):
+                            img_b.save(img_b_path, quality=95)
+                        else:
+                            img_b.save(img_b_path)
                     total_faces_blurred += len(det_a) + len(det_b)
 
                     # Content-safety classification — the fix for the gap
                     # noted in the module docstring. Runs on the
                     # (already face-blurred) files on disk, same as
                     # s04_safety.py does for the main manifest.
-                    safety_a, safety_b = await tier1.batch_classify_safety(
+                    safety_results = await tier1.batch_classify_safety(
                         [img_a_path, img_b_path]
                     )
-                    if safety_a is None or safety_b is None:
+                    if not safety_results or len(safety_results) < 2 or safety_results[0] is None or safety_results[1] is None:
                         log.warning("preference_pair_safety_inference_failed", pair=meta.get("pair_id"))
                         dropped_corrupt += 1
                         continue
+                    safety_a, safety_b = safety_results[0], safety_results[1]
                     if safety_a.tier == "unsafe" or safety_b.tier == "unsafe":
                         log.warning(
                             "preference_pair_dropped_unsafe",

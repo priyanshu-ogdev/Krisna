@@ -213,3 +213,37 @@ class TestPreferencePairsSafetyGate:
         assert result.records_processed == 0
         meta = json.loads((pref_root / "taste" / "t0000001.json").read_text())
         assert "dedup_status" not in meta
+
+    async def test_symmetric_inverted_pairs_and_degenerate_self_pairs(self, config, manifest):
+        """Verify:
+        1. Degenerate self-pairs (image_a == image_b) are dropped with zero preference gradient.
+        2. Inverted pairs (A, B) vs (B, A) are detected across datasets and deduplicated symmetrically.
+        """
+        pref_root = config.resolved_paths["preference_pairs"]
+        _configure_preference_source(config, "pickapic_v2")
+        config.datasets["hpdv2"] = DatasetSpec(
+            display_name="hpdv2", source_type="huggingface",
+            category="dpo_preference_general", expected_record_count=100,
+            fetch_config={"download_mode": "preference_pair"},
+        )
+
+        # 1. Base pair in pickapic: (red, blue)
+        _write_pair(pref_root, "pickapic_v2", "pair_base", color_a=(255, 0, 0), color_b=(0, 0, 255))
+        # 2. Inverted pair in hpdv2: (blue, red) -> should be caught as duplicate!
+        _write_pair(pref_root, "hpdv2", "pair_inverted", color_a=(0, 0, 255), color_b=(255, 0, 0))
+        # 3. Degenerate self-pair in pickapic: (green, green) -> should be dropped!
+        _write_pair(pref_root, "pickapic_v2", "pair_degenerate", color_a=(0, 255, 0), color_b=(0, 255, 0))
+
+        with patch("data_forge.stages.s01_6_preference_pairs.Tier1Engine") as MockTier1:
+            instance = MockTier1.return_value
+            instance.batch_classify_safety = AsyncMock(
+                return_value=[_FakeSafety("safe"), _FakeSafety("safe")]
+            )
+            stage = PreferencePairsStage()
+            result = await stage.run(manifest, config, [], engine=object())
+
+        # Only pair_base survives (1 processed)
+        assert result.records_processed == 1
+        # pair_inverted and pair_degenerate are both counted in dropped_duplicate (2 dropped)
+        assert result.metadata["dropped_duplicate"] == 2
+
