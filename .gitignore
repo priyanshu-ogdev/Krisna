@@ -55,7 +55,7 @@ powershell.cmd
 
 # Local runtime data & caches
 checkpoints/
-data/
+/data/
 logs/
 krisna_blobs/
 scratch/

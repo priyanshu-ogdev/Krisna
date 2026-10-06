@@ -48,7 +48,6 @@ VALID_STATUSES = frozenset([
 # Statuses that stop further processing
 TERMINAL_STATUSES = frozenset([
     "training_pool",
-    "audited",
     "heldout",
     "excluded_duplicate",
     "excluded_low_quality",
@@ -243,7 +242,6 @@ class Manifest:
         self._conn = sqlite3.connect(str(db_path), timeout=30.0, isolation_level="IMMEDIATE")
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
@@ -448,6 +446,140 @@ class Manifest:
         )
         return inserted
 
+    def bulk_update_status(
+        self,
+        record_ids: list[str],
+        new_status: str,
+        stage: str,
+        reason: str | None = None,
+    ) -> None:
+        """Bulk-transition status for multiple records in a single transaction."""
+        if not record_ids:
+            return
+        if new_status not in VALID_STATUSES:
+            raise ValueError(f"Invalid status: {new_status}")
+
+        now = _now_iso()
+        with self._transaction() as cur:
+            chunk_size = 500
+            for i in range(0, len(record_ids), chunk_size):
+                batch = record_ids[i : i + chunk_size]
+                placeholders = ",".join("?" for _ in batch)
+                rows = cur.execute(
+                    f"SELECT id, status FROM records WHERE id IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                old_status_map = {r["id"]: r["status"] for r in rows}
+
+                cur.execute(
+                    f"UPDATE records SET status = ?, updated_at = ? WHERE id IN ({placeholders})",
+                    [new_status, now, *batch],
+                )
+
+                history_rows = [
+                    (rec_id, stage, old_status_map.get(rec_id), new_status, reason, now)
+                    for rec_id in batch
+                ]
+                cur.executemany(
+                    """INSERT INTO stage_history
+                       (record_id, stage, old_status, new_status, reason, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    history_rows,
+                )
+        log.debug("bulk_status_updated", count=len(record_ids), new_status=new_status, stage=stage)
+
+    def bulk_mark_duplicates(
+        self,
+        duplicates: list[dict[str, Any]],
+        stage: str,
+    ) -> None:
+        """Bulk-mark records as excluded duplicates in a single transaction."""
+        if not duplicates:
+            return
+
+        now = _now_iso()
+        with self._transaction() as cur:
+            chunk_size = 500
+            for i in range(0, len(duplicates), chunk_size):
+                batch = duplicates[i : i + chunk_size]
+                batch_ids = [d["record_id"] for d in batch]
+                placeholders = ",".join("?" for _ in batch_ids)
+                rows = cur.execute(
+                    f"SELECT id, status FROM records WHERE id IN ({placeholders})",
+                    batch_ids,
+                ).fetchall()
+                old_status_map = {r["id"]: r["status"] for r in rows}
+
+                history_rows = []
+                for d in batch:
+                    r_id = d["record_id"]
+                    dup_of = d["duplicate_of"]
+                    reason = d.get("reason", f"Duplicate of {dup_of}")
+                    ex_reason = d.get("exclusion_reason", "semantic_duplicate")
+                    cur.execute(
+                        """UPDATE records
+                           SET status = 'excluded_duplicate',
+                               duplicate_of = ?,
+                               exclusion_reason = ?,
+                               updated_at = ?
+                           WHERE id = ?""",
+                        (dup_of, ex_reason, now, r_id),
+                    )
+                    history_rows.append(
+                        (r_id, stage, old_status_map.get(r_id), "excluded_duplicate", reason, now)
+                    )
+
+                cur.executemany(
+                    """INSERT INTO stage_history
+                       (record_id, stage, old_status, new_status, reason, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    history_rows,
+                )
+        log.debug("bulk_duplicates_marked", count=len(duplicates), stage=stage)
+
+    def bulk_mark_failed(
+        self,
+        record_ids: list[str],
+        stage: str,
+        reason: str,
+    ) -> None:
+        """Bulk-mark records as excluded_failed in a single transaction."""
+        if not record_ids:
+            return
+
+        now = _now_iso()
+        with self._transaction() as cur:
+            chunk_size = 500
+            for i in range(0, len(record_ids), chunk_size):
+                batch = record_ids[i : i + chunk_size]
+                placeholders = ",".join("?" for _ in batch)
+                rows = cur.execute(
+                    f"SELECT id, status FROM records WHERE id IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                old_status_map = {r["id"]: r["status"] for r in rows}
+
+                cur.execute(
+                    f"""UPDATE records
+                        SET status = 'excluded_failed',
+                            exclusion_reason = ?,
+                            updated_at = ?
+                        WHERE id IN ({placeholders})""",
+                    [reason, now, *batch],
+                )
+
+                history_rows = [
+                    (r_id, stage, old_status_map.get(r_id), "excluded_failed", reason, now)
+                    for r_id in batch
+                ]
+                cur.executemany(
+                    """INSERT INTO stage_history
+                       (record_id, stage, old_status, new_status, reason, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    history_rows,
+                )
+        log.debug("bulk_failed_marked", count=len(record_ids), stage=stage, reason=reason)
+
     # ── Queries ───────────────────────────────────────────────────────────
 
     def query_by_status(
@@ -521,7 +653,7 @@ class Manifest:
         return [_row_to_record(r) for r in rows]
 
     def get_training_pool(self) -> list[ManifestRecord]:
-        return self.query_by_statuses(["training_pool", "audited"])
+        return self.query_by_status("training_pool")
 
     def get_all_records_with_critique(self) -> list[ManifestRecord]:
         """All records with any non-null critique_output, any status.
@@ -579,6 +711,36 @@ class Manifest:
             (sha256,),
         ).fetchone()
         return row["id"] if row else None
+
+    def check_hashes_exist(self, hashes: list[str]) -> dict[str, str]:
+        """Check multiple content hashes in batch.
+
+        Returns mapping {hash: earliest_canonical_record_id} of existing non-duplicate records.
+        """
+        if not hashes:
+            return {}
+
+        unique_hashes = list(dict.fromkeys(h for h in hashes if h))
+        result: dict[str, str] = {}
+        chunk_size = 500
+
+        for i in range(0, len(unique_hashes), chunk_size):
+            batch = unique_hashes[i : i + chunk_size]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self._conn.execute(
+                f"""SELECT id, content_hash_sha256
+                    FROM records
+                    WHERE content_hash_sha256 IN ({placeholders})
+                      AND status != 'excluded_duplicate'
+                    ORDER BY rowid ASC""",
+                batch,
+            ).fetchall()
+            for r in rows:
+                h = r["content_hash_sha256"]
+                if h not in result:
+                    result[h] = r["id"]
+
+        return result
 
     def split_into_chunks(self, chunk_size: int) -> list[list[str]]:
         """Split all active (non-terminal) record IDs into chunks for processing."""
@@ -639,7 +801,7 @@ class Manifest:
             "total_raw_bytes": total_bytes,
             "total_raw_gb": round(total_bytes / 1e9, 2),
             "latest_version": latest_version,
-            "training_pool_count": status_counts.get("training_pool", 0) + status_counts.get("audited", 0),
+            "training_pool_count": status_counts.get("training_pool", 0),
             "heldout_count": status_counts.get("heldout", 0),
             "excluded_count": sum(
                 v for k, v in status_counts.items() if k.startswith("excluded_")
