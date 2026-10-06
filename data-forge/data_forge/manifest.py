@@ -306,13 +306,22 @@ class Manifest:
         """Insert a new record with status='fetched'."""
         record_id = str(uuid.uuid4())
         now = _now_iso()
+
+        cols = ["id", "source_dataset", "source_file", "status", "image_path", "created_at", "updated_at"]
+        vals = [record_id, source_dataset, source_file, "fetched", image_path, now, now]
+
+        for k, v in kwargs.items():
+            if hasattr(ManifestRecord, k) and k not in cols:
+                cols.append(k)
+                vals.append(v)
+
+        col_str = ", ".join(cols)
+        placeholder_str = ", ".join("?" for _ in cols)
+
         with self._transaction() as cur:
             cur.execute(
-                """INSERT INTO records
-                   (id, source_dataset, source_file, status, image_path,
-                    created_at, updated_at)
-                   VALUES (?, ?, ?, 'fetched', ?, ?, ?)""",
-                (record_id, source_dataset, source_file, image_path, now, now),
+                f"INSERT INTO records ({col_str}) VALUES ({placeholder_str})",
+                vals,
             )
             # Log creation in stage history
             cur.execute(
@@ -322,16 +331,10 @@ class Manifest:
                 (record_id, now),
             )
 
-        record = ManifestRecord(
-            id=record_id,
-            source_dataset=source_dataset,
-            source_file=source_file,
-            status="fetched",
-            image_path=image_path,
-            created_at=now,
-            updated_at=now,
-        )
-        return record
+        rec = self.get_record(record_id)
+        if rec is None:
+            raise RuntimeError(f"Failed to fetch record immediately after creation: {record_id}")
+        return rec
 
     def get_record(self, record_id: str) -> ManifestRecord | None:
         cur = self._conn.execute("SELECT * FROM records WHERE id = ?", (record_id,))
