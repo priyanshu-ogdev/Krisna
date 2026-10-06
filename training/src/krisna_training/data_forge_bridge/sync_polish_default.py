@@ -21,9 +21,17 @@ from krisna_training.polish.dataset_prep import prepare
 log = logging.getLogger("krisna_training.data_forge_bridge.sync_polish_default")
 
 
-def sync(data_forge_model_data_dir: str | Path, output_dir: str | Path) -> Path:
+def sync(
+    data_forge_model_data_dir: str | Path, output_dir: str | Path,
+    caption_mix_ratio: float = 0.95,
+) -> Path:
     """Returns the prepared output_dir (same return convention as
-    dataset_prep.prepare())."""
+    dataset_prep.prepare()). caption_mix_ratio: forwarded straight to
+    prepare() — see that function's docstring; kept as an explicit
+    parameter here (not just relying on prepare()'s own default) so a
+    caller of THIS function can override it without needing to know
+    prepare() exists underneath.
+    """
     zimage_dir = Path(data_forge_model_data_dir) / "polish_zimage_turbo"
     images_dir = zimage_dir / "images"
     captions_path = zimage_dir / "captions.jsonl"
@@ -44,7 +52,17 @@ def sync(data_forge_model_data_dir: str | Path, output_dir: str | Path) -> Path:
     # captions.jsonl entry — join on that instead of guessing. Falls back
     # to the old (broken) behavior with a loud warning for a pre-fix
     # data-forge export, same convention as sync_sketch_tier.py.
-    captions_by_filename: dict[str, str] = {}
+    #
+    # BUG FIX (docs/review/34_model_review_3_polish_default.md): this
+    # used to store only the plain caption string per filename,
+    # discarding `source_caption` before it ever reached prepare() —
+    # making the caption_mix_ratio feature completely inert for this,
+    # the only real production caller of prepare(), even though the
+    # feature worked correctly when tested directly against
+    # load_captions()'s JSONL-file-path calling convention. Now stores
+    # the nested {"caption":..., "source_caption":...} shape
+    # load_captions() accepts specifically for this.
+    captions_by_filename: dict[str, dict] = {}
     saw_legacy_entry = False
     if captions_path.exists():
         with captions_path.open() as f:
@@ -54,7 +72,10 @@ def sync(data_forge_model_data_dir: str | Path, output_dir: str | Path) -> Path:
                     continue
                 rec = json.loads(line)
                 if rec.get("image_filename"):
-                    captions_by_filename[rec["image_filename"]] = rec.get("caption", "")
+                    captions_by_filename[rec["image_filename"]] = {
+                        "caption": rec.get("caption", ""),
+                        "source_caption": rec.get("source_caption"),
+                    }
                 else:
                     saw_legacy_entry = True
 
@@ -83,5 +104,6 @@ def sync(data_forge_model_data_dir: str | Path, output_dir: str | Path) -> Path:
 
     log.info("sync_polish_default_start", extra={"images": len(list(images_dir.iterdir()))})
     return prepare(
-        images_dir, output_dir, captions=captions_by_filename, use_shared_instance_prompt="a UI design"
+        images_dir, output_dir, captions=captions_by_filename, use_shared_instance_prompt="a UI design",
+        caption_mix_ratio=caption_mix_ratio,
     )

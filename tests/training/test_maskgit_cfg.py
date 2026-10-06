@@ -80,11 +80,7 @@ class TestGuidanceActuallyAppliesTheMuseFormula:
         assert torch.equal(seen_embeddings[1], torch.zeros_like(prompt_embedding))
 
     def test_guidance_changes_output_when_cond_and_uncond_disagree(self):
-        # Seed 5 provides a well-conditioned random initialization where CFG
-        # guidance demonstrably shifts predicted tokens (from 18 to 4) when
-        # cond and uncond embeddings disagree, whereas seed 0 has a dominant
-        # bias margin on token 16 for an untrained 1-layer model.
-        torch.manual_seed(5)
+        torch.manual_seed(0)
         model, cfg = _make_model(grid_h=4, grid_w=4, prompt_dim=8)
 
         cond_embedding = torch.randn(1, cfg.prompt_dim)

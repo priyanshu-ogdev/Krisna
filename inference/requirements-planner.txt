@@ -1,0 +1,50 @@
+# Isolated venv for the Planner tier's OPT-IN vLLM backend
+# (/opt/venv-planner in Docker, or ./venv-planner locally).
+#
+# STATUS: opt-in upgrade, NOT the default — see planner_backend_vllm.py's
+# module docstring and docs/review/29_vllm_planner_migration_research.md
+# for the full research trail. Enable via KRISNA_PLANNER_BACKEND=vllm;
+# the default (unset) keeps using the existing transformers-based
+# planner_backend.py in the main venv, unchanged. This is deliberate:
+# nothing here has been validated against real GPU hardware in this
+# project's own environment, only verified against real, current package
+# metadata and one independently-reported measured-working combination.
+#
+# WHY A THIRD, SEPARATE VENV (not the main venv, not the critic venv):
+# vllm==0.29.0's own declared metadata (verified directly from its wheel,
+# not from docs) requires transformers>=5.10.4 (no ceiling) and an EXACT
+# torch==2.13.0 pin. Neither conflicts with the main venv's
+# transformers>=5.2.0 in isolation, but torch==2.13.0 exactly is a much
+# stricter constraint than the main venv's torch>=2.6.0 — diffusers/
+# Z-Image-Turbo/Qwen-Image-Edit-2511 have not been verified against
+# torch 2.13.0 specifically, so forcing that exact pin onto the shared
+# main venv would be trading one unverified risk for another. A separate
+# venv means vLLM's strict pin only constrains the Planner tier, exactly
+# the same isolation principle as the Critic venv.
+#
+# transformers version: pinned to 5.17.0 specifically (not just the bare
+# >=5.10.4 floor) because it's the one version independently reported as
+# actually measured working for Qwen3.5 + vLLM 0.29.0 on real hardware
+# (community report, RTX PRO 6000) — the same "pin to a specifically
+# verified version, not just whatever satisfies the floor" discipline
+# used for requirements-critic.txt's transformers==5.5.0.
+#
+# Checkpoint: does NOT reuse the main venv's NF4/bitsandbytes-quantized
+# Qwen3.5-9B checkpoint. bitsandbytes is not declared ANYWHERE in
+# vllm==0.29.0's metadata (verified directly — not even as an optional
+# extra), while compressed-tensors==0.17.0 IS a required core dependency,
+# signaling AWQ/GPTQ/compressed-tensors as vLLM's well-supported,
+# first-class quantization path and bnb as a secondary one. Recommended
+# checkpoint: RedHatAI/Qwen3.5-9B-quantized.w4a16 (GPTQ W4A16 via
+# llm-compressor, the same tooling vLLM's own quantization stack is built
+# on) — RedHatAI is llm-compressor's maintaining org, a materially
+# stronger provenance signal than an arbitrary community upload, but this
+# specific checkpoint's accuracy/quality has NOT been independently
+# re-verified by this project — matching PRD Appendix C.4's own stated
+# discipline ("verify at the point of adoption, not the point of
+# announcement"), this is a recommendation to evaluate, not a silent
+# swap. See planner_backend_vllm.py's docstring.
+
+vllm==0.29.0
+torch==2.13.0
+transformers==5.17.0

@@ -88,21 +88,7 @@ preference-pair stream is consumed directly by the training bridge above,
 not through Stage 12.
 
 `05` and `05-OCR` are two distinct, separately-registered stages
-(`s05_recaption` and `s05_ocr_enrichment`), each with its own dedicated module
-under `data_forge/stages/` (`s05_recaption.py` and `s05_ocr_enrichment.py`).
-
-### Python API Usage
-
-Core abstractions can be imported directly from the top-level package:
-```python
-from data_forge import (
-    Manifest,
-    PipelineConfig,
-    load_config,
-    Orchestrator,
-    register_all_stages,
-)
-```
+(`s05_recaption` and `s05_ocr_enrichment`).
 
 ## Requirements
 

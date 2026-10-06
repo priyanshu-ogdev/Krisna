@@ -60,6 +60,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--data-root",
+        # Matches data_forge/config.py's _default_data_root() exactly
+        # (REPO_ROOT-relative "data_krisna") so an unset DATA_ROOT
+        # resolves to the same folder for both the pipeline and this
+        # sync step. See docs/review/26_data_root_path_consistency.md —
+        # this used to silently diverge whenever the committed .env's
+        # hardcoded Windows path took effect on Linux/WSL2.
         default=os.environ.get("DATA_ROOT", str(REPO_ROOT / "data_krisna")),
         help="Root storage directory where data-forge outputs land (default: $DATA_ROOT or ./data_krisna)",
     )
@@ -109,7 +115,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    data_root = Path(args.data_root)
+    data_root = Path(args.data_root).resolve()
     target_dir = Path(args.target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     model_data_dir = data_root / "model_data"
@@ -117,6 +123,9 @@ def main() -> int:
     print("=" * 70)
     print("  Krisna Data-Forge -> Model Training Bridge")
     print("=" * 70)
+    # Printed resolved/absolute so a platform-mismatched DATA_ROOT (e.g. a
+    # literal "D:\data_krisna" string on Linux/WSL2) is visually obvious
+    # as one strange path segment rather than looking like a normal path.
     print(f"  DATA_ROOT:          {data_root}")
     print(f"  Model Data Export:  {model_data_dir}")
     print(f"  Training Data Dir:  {target_dir}")

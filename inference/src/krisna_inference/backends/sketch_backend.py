@@ -137,6 +137,33 @@ class SketchBackend(ModelBackend):
             if hints_str:
                 style_desc.append(f"layout: {hints_str}")
 
+        # BUG FOUND ON REVIEW (docs/review/32_model_review_2_sketch.md):
+        # `planner_output` was accepted as a parameter and passed on
+        # EVERY conversational turn by
+        # swap_orchestrator.run_conversational_turn, but was never
+        # actually read anywhere in this method — the same "accepted but
+        # silently ignored" pattern already found once in
+        # polish_default_backend.py (handoff_image_ref). Its
+        # design_state_delta.reasoning_note is the Planner's own <=2-
+        # sentence synthesis of design intent (e.g. "User wants a
+        # warmer, friendlier feel with rounded corners") — richer,
+        # design-vocabulary-appropriate prose that the terse
+        # style/palette/layout_hints tags alone can't capture, and a
+        # genuine Model-1-to-Model-2 connection this tier was silently
+        # discarding. Bounded to a short character cap (not just left
+        # unbounded) because CLIP's tokenizer truncates SILENTLY at 77
+        # tokens (verifiers/common.py::embed_text, truncation=True) —
+        # without a cap, a long reasoning_note appended after the user's
+        # own message could push the message itself past the truncation
+        # point on a long turn, which would be a worse outcome than not
+        # using reasoning_note at all.
+        reasoning_note = ""
+        if isinstance(planner_output, dict):
+            delta = planner_output.get("design_state_delta") or {}
+            reasoning_note = str(delta.get("reasoning_note") or "").strip()
+        if reasoning_note:
+            style_desc.append(reasoning_note[:160])
+
         constraint_str = "; ".join(style_desc)
         if message and constraint_str:
             prompt_text = f"{message} ({constraint_str})"

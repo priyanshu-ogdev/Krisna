@@ -373,11 +373,23 @@ checks this directly against `factory.py`'s source, not just behavior.
 
 ### Critic tier isolation — read this before wiring it up
 
-Gemma 4 31B (via Unsloth) needs `transformers==5.5.0` pinned **exactly**
-(`unsloth_zoo` caps `transformers<=5.5.0`, Gemma 4 itself needs `>=5.5.0`).
-The Planner tier (Qwen3.5) needs `transformers` built from git main, which
-is newer than 5.5.0 and not interchangeable with it. **These two pins
-cannot both be satisfied in one venv.**
+Gemma 4 31B (via Unsloth) needs `transformers==5.5.0` pinned **exactly** —
+UPDATED reasoning as of this review pass (closes out
+`docs/review/27_prd_open_risks_research.md`'s "not yet executed" item):
+this is NOT because the Planner needs an incompatible git-main
+`transformers` build (that was true when this section was first written,
+but Qwen3.5 has since shipped native support in `transformers>=5.2.0`, a
+tagged PyPI release — see `docs/architecture/RESEARCH_AND_CITATIONS.md`).
+The real, current reason is more specific: `transformers==5.5.0` is the
+last version before a confirmed regression in bnb-4bit dequantization for
+Unsloth's prequantized checkpoints — verified via unslothai/unsloth-zoo
+PR #1227's own measurement (352/352 modules correctly dequantized on
+5.5.0, 0/352 on 5.17.0; tracked upstream as unslothai/unsloth#9867,
+#10010, #10017, #10276). **This pin is why the split still earns its
+keep**: it decouples this tier's regression-avoidance pin from whatever
+transformers/diffusers versions the other three tiers move onto over
+time, so a version bump made for Planner/Sketch/Polish's benefit can
+never silently re-break Critic (or vice versa).
 
 Rather than silently picking one pin and quietly breaking the other tier,
 the Critic tier runs `critic_worker.py` as a **separate subprocess in its
@@ -387,6 +399,13 @@ project's `engine.py`. Note this isolation reasoning is about
 `transformers` version pins, not about training — it applies whether or
 not this tier is ever fine-tuned, which is why it's unaffected by the
 freeze.
+
+`requirements-critic.txt` also pins explicit minimum `unsloth`/
+`unsloth_zoo` versions (rather than leaving them floating) — verified via
+the same PR that the pre-fix ceiling on some earlier unsloth_zoo releases
+(`transformers<=4.57.6`, unslothai/unsloth#4022) would otherwise have
+made `transformers==5.5.0` unresolvable depending on exactly which
+unsloth_zoo release pip happened to land on at build time.
 
 ```bash
 ./scripts/training/setup_env_critic.sh   # creates ./venv-critic, isolated deps
@@ -404,6 +423,70 @@ restored, the system doesn't get stuck.
 Gemma 4's critique output uses `critique_source: "gemma4_31b_frozen"`
 (renamed from `"gemma4_31b_qlora"`, which implied a trained adapter that
 never gets applied under the final PRD) — see `critic_worker.py::CRITIQUE_SOURCE`.
+
+### Planner tier vLLM opt-in — read this before enabling it
+
+The Planner (Qwen3.5-9B) defaults to the same transformers-based backend
+it has always used (`planner_backend.py`). A second, **opt-in, not
+default** backend (`planner_backend_vllm.py`) is available for real
+inference-speed gains on the one tier that runs many times per session
+(PRD §5.3: "the loop that runs dozens of times per session"). See
+`docs/review/29_vllm_planner_migration_research.md` for the full research
+trail; summary here:
+
+- vLLM 0.17+ added native support for Qwen3.5's Gated DeltaNet hybrid
+  architecture — real fused kernels, a hybrid KV-cache manager, CUDA
+  graphs, not just a wrapper.
+- `vllm==0.29.0`'s own declared wheel metadata (verified directly, not
+  from docs) requires `transformers>=5.10.4` (no ceiling) and an EXACT
+  `torch==2.13.0` — a stricter pin than the main venv's `torch>=2.6.0`,
+  which is why this is a **third isolated venv/subprocess**, exactly
+  like the Critic tier, not a reason to force it into an existing venv.
+- `bitsandbytes` isn't declared anywhere in vLLM's metadata; the
+  well-supported path is AWQ/GPTQ/compressed-tensors. This backend
+  therefore does **not** reuse the main venv's NF4 checkpoint — it
+  defaults to `RedHatAI/Qwen3.5-9B-quantized.w4a16`, a real, documented
+  GPTQ W4A16 checkpoint from `llm-compressor`'s maintaining org. Its
+  accuracy has not been independently re-verified by this project;
+  evaluate before relying on it in production (PRD Appendix C.4's own
+  discipline: verify at adoption, not announcement).
+- **Nothing here has been run against real GPU hardware in this
+  project's own environment.** Everything above is verified at the
+  package-metadata level, plus one independently-reported measured
+  result (community report, RTX PRO 6000). That's why this is wired as
+  an explicit opt-in rather than a default-path replacement.
+
+```bash
+# Build with the third venv included (skipped by default):
+docker build --build-arg INSTALL_VLLM_PLANNER=true -f docker/Dockerfile.inference .
+
+# Or locally:
+python3.11 -m venv ./venv-planner
+./venv-planner/bin/pip install -r inference/requirements-planner.txt
+
+export KRISNA_PLANNER_BACKEND=vllm
+export KRISNA_USE_REAL_BACKENDS=1
+# KRISNA_PLANNER_VLLM_VENV_PYTHON defaults to ./venv-planner/bin/python
+./scripts/inference/run_service.sh
+```
+
+If `./venv-planner` doesn't exist, `PlannerBackendVLLM.load()` fails
+immediately with a clear message, same as the Critic tier's equivalent
+failure path — a request against this tier fails cleanly rather than a
+confusing subprocess crash.
+
+A real, load-bearing detail if you do enable this: vLLM's own
+`gpu_memory_utilization` is a fraction of the REAL, live GPU's total
+memory that it greedily reserves up front for its own KV cache — this is
+NOT the same thing as this project's own `VRAMLedger` (§7.2), and the two
+don't automatically agree. Left at vLLM's own default (0.92), this
+backend would try to grab ~92% of the whole physical card the moment it
+loads, starving or OOM-crashing the Sketch tier, which is supposed to be
+co-resident with the Planner in the idle/conversing state (PRD §5.3).
+This backend computes it dynamically from the ledger's own declared
+`vram_gb` budget instead (see `planner_backend_vllm.py`'s
+`compute_gpu_memory_utilization_fraction`) — pass an explicit value only
+to override that.
 
 ### What's genuinely still missing
 

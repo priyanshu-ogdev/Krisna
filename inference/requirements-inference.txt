@@ -2,10 +2,17 @@
 # tier, and both Polish tiers (Z-Image-Turbo, Qwen-Image-Edit-2511).
 #
 # The Critic tier (Gemma 4 31B + Unsloth) is DELIBERATELY NOT in this file —
-# it needs transformers pinned to EXACTLY 5.5.0 (Unsloth's Gemma-4 pin),
-# which conflicts with the git-main transformers build required below for
-# Qwen3.5. See requirements-critic.txt and README's "Critic tier isolation"
-# section — that tier runs in its own venv via critic_worker.py subprocess.
+# UPDATED reasoning (docs/review/28_docker_dependency_isolation_verified.md):
+# NOT because of a Qwen3.5-needs-git-main conflict (that was true when this
+# file was first written, but is stale now — line 10 below already reflects
+# the fix; this header comment previously didn't, a real self-contradiction
+# within a few lines of the same file, fixed this pass). The real, current
+# reason: Critic needs transformers pinned to EXACTLY 5.5.0 — the last
+# version before a confirmed bnb-4bit dequantization regression affecting
+# Unsloth's prequantized Gemma-4 checkpoint specifically (verified via
+# unslothai/unsloth-zoo PR #1227's own measurement). See
+# requirements-critic.txt and README's "Critic tier isolation" section —
+# that tier runs in its own venv via critic_worker.py subprocess.
 
 # Qwen3.5 (planner) is natively supported in transformers >= 5.2.0 (tagged PyPI release,
 # Feb 2026; eliminates prior git-main requirement; see docs/review/27_prd_open_risks_research.md).
@@ -16,9 +23,32 @@ pillow
 torch>=2.6.0
 peft>=0.13.0
 
-# diffusers built from git main — ZImagePipeline (Z-Image-Turbo) and
-# QwenImageEditPlusPipeline (Qwen-Image-Edit-2511) are recent additions.
-diffusers @ git+https://github.com/huggingface/diffusers.git@main
+# Planner RAG retrieval upgrade (opt-in, KRISNA_PLANNER_RAG_EMBEDDINGS=1 —
+# see docs/review/31_planner_retrieval_upgrade.md and planner_rag.py's
+# module docstring). CPU-only, ~80MB weights — the UICrit corpus this
+# indexes is far too small (~1,000 documents) to justify GPU residency
+# or a new VRAMLedger entry. Built into this image at install time like
+# every other checkpoint, not downloaded lazily at runtime.
+sentence-transformers
+
+# diffusers pinned to a specific commit, NOT a floating @main branch —
+# UPGRADE (this review pass): the floating branch pin meant every
+# container rebuild could silently resolve to a DIFFERENT upstream
+# commit over time, with no reproducibility and no warning if a future
+# commit changed or removed an API this project depends on (e.g.
+# ZImageImg2ImgPipeline's `strength` kwarg). Pinned to the commit this
+# review verified DIRECTLY against real source (not just docs) contains
+# both required pipeline classes (ZImageImg2ImgPipeline,
+# QwenImageEditPlusPipeline, both with real test coverage upstream:
+# tests/pipelines/z_image/test_z_image_img2img.py,
+# tests/pipelines/qwenimage/test_qwenimage_edit_plus.py) and confirmed
+# ZImageImg2ImgPipeline.__call__'s `strength` default is exactly 0.6,
+# matching polish_default_backend.py's own default. diffusers' own
+# declared floor is transformers>=4.41.2 (verified directly from its
+# setup.py) — no conflict with transformers>=5.2.0 above. Bump this SHA
+# deliberately when a newer commit is needed, not by re-floating to
+# @main.
+diffusers @ git+https://github.com/huggingface/diffusers.git@cc8644b447d8f11074d3df06d0ee0e3e7c91bf75
 accelerate>=1.0.0
 bitsandbytes>=0.43.0   # NF4 quantization for Qwen-Image-Edit-2511
 

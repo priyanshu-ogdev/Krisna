@@ -37,7 +37,10 @@ def test_prepare_dataset_with_json_dict(tmp_path):
     assert len(lines) == 1
     rec = json.loads(lines[0])
     assert rec["caption"] == "a blue card"
-    assert "tokens_path" in rec
+    # UPGRADE (docs/review/33_model_review_2_data_training_connection.md):
+    # consolidated shard format, not one .npy file per image.
+    assert "tokens_shard" in rec
+    assert "tokens_index" in rec
 
 
 def test_prepare_dataset_with_jsonl(tmp_path):

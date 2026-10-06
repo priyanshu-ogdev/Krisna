@@ -35,6 +35,23 @@ _LOW_VRAM = os.environ.get("KRISNA_LOW_VRAM_MODE", "0") == "1"
 
 def real_backend_factory(spec: ModelSpec) -> ModelBackend:
     if spec.tier == Tier.PLANNER:
+        # OPT-IN vLLM backend (docs/review/29_vllm_planner_migration_research.md).
+        # Default (KRISNA_PLANNER_BACKEND unset or anything other than
+        # "vllm") keeps the existing, tested transformers-based backend —
+        # this is a deliberate, explicit escape hatch, not a silent
+        # replacement, since the vLLM path has been verified at the
+        # package/metadata level only, never against real GPU hardware in
+        # this project's own environment. See planner_backend_vllm.py's
+        # module docstring for the full research trail and what
+        # "verified" does and doesn't mean here.
+        if os.environ.get("KRISNA_PLANNER_BACKEND", "transformers") == "vllm":
+            from krisna_inference.backends.planner_backend_vllm import PlannerBackendVLLM
+
+            return PlannerBackendVLLM(
+                spec,
+                rag_corpus_dir=os.environ.get("KRISNA_PLANNER_RAG_CORPUS_DIR"),
+            )
+
         from krisna_inference.backends.planner_backend import PlannerBackend
 
         # REMOVED: KRISNA_PLANNER_LORA_PATH. The Planner ships frozen —
@@ -77,6 +94,11 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
             spec,
             model_id=model_id,
             lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
+            # UPGRADE (matches polish-quality's KRISNA_POLISH_QUALITY_EDIT_STRENGTH
+            # convention, now that this tier also does real image-conditioned
+            # editing instead of the previous, buggy blank-slate txt2img —
+            # see polish_default_backend.py's module docstring).
+            strength=float(os.environ.get("KRISNA_POLISH_DEFAULT_STRENGTH", "0.6")),
             enable_cpu_offload=_LOW_VRAM,
         )
 

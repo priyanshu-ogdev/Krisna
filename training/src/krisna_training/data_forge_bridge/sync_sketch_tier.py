@@ -26,8 +26,10 @@ def sync(
     training.sketch.vq_tokenizer.VQTokenizer (already constructed, load()
     called lazily as needed). Returns the path to the written manifest.jsonl,
     in the exact shape training/sketch/prepare_dataset.py's own output uses
-    (tokens_path + caption), so SketchTokenDataset needs no changes to
-    consume it.
+    (tokens_shard + tokens_index + caption, via the shared
+    TokenShardWriter — see that module's docstring for why this replaced
+    the older one-.npy-file-per-image format), so SketchTokenDataset
+    needs no changes to consume it.
     """
     from PIL import Image
 
@@ -110,7 +112,6 @@ def sync(
 
     output_dir = Path(output_dir)
     tokens_dir = output_dir / "tokens"
-    tokens_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = output_dir / "manifest.jsonl"
 
     image_paths = sorted(images_dir.iterdir())
@@ -118,10 +119,18 @@ def sync(
         raise ValueError(f"No images found under {images_dir}")
 
     grid_h, grid_w = tokenizer.grid_shape_for(image_size)
+
+    # UPGRADE (docs/review/33_model_review_2_data_training_connection.md):
+    # was one .npy file per image — a real I/O bottleneck at PRD §8.3's
+    # target corpus scale (100K-500K images). See
+    # token_shard_writer.py's module docstring for the full reasoning.
+    from krisna_training.sketch.token_shard_writer import TokenShardWriter
+
+    writer = TokenShardWriter(tokens_dir, expected_token_len=grid_h * grid_w)
     written = 0
     matched_captions = 0
     with manifest_path.open("w") as manifest_file:
-        for i, image_path in enumerate(image_paths):
+        for image_path in image_paths:
             source_caption = None
             if image_path.name in captions_by_filename:
                 entry = captions_by_filename[image_path.name]
@@ -142,17 +151,16 @@ def sync(
                 log.warning("resync_tokenize_failed", extra={"path": str(image_path), "error": str(e)})
                 continue
 
-            import numpy as np
-
-            token_file = f"tokens/{i:07d}.npy"
-            np.save(tokens_dir / f"{i:07d}.npy", np.array(tokens, dtype="int32"))
+            shard_path, index_in_shard = writer.add(tokens)
             manifest_file.write(
                 json.dumps({
-                    "tokens_path": token_file, "caption": caption,
+                    "tokens_shard": shard_path, "tokens_index": index_in_shard,
+                    "caption": caption,
                     "source_caption": source_caption, "source_image": str(image_path),
                 }) + "\n"
             )
             written += 1
+    writer.close()  # flush any remaining partial shard — see its own docstring
 
     log.info(
         "sync_sketch_tier_complete",

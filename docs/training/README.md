@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Krisna Training Documentation
 
 Comprehensive reference and mathematical derivations for training the generative components of Krisna's agentic UI pipeline.
@@ -72,4 +73,3 @@ $$\mathcal{L}_{\text{anchor}} = \|v_\theta(x_t^w, t, c) - v_{\text{ref}}(x_t^w, 
 - **[TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)**: End-to-end execution guide on Intel Core i9 + NVIDIA RTX A6000 under Windows PowerShell.
 - **[training/README.md](../../training/README.md)**: Package setup, dataset preparation, and command-line execution walkthrough.
 - **[SYNC_DESIGN.md](../architecture/SYNC_DESIGN.md)**: Data-Forge to Training sync contract.
-

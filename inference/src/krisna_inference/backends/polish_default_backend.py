@@ -1,15 +1,39 @@
 """Polish tier, default — Z-Image-Turbo (§6: fast path, continuous flow-matching).
 
-Requires diffusers built from git main — `ZImagePipeline` isn't in a tagged
-PyPI release yet (see huggingface.co/Tongyi-MAI/Z-Image-Turbo). Turbo is
-distilled without classifier-free guidance: guidance_scale MUST be 0.0
-(non-zero degrades quality per the model card), and 9 inference steps is
-the documented sweet spot (~8 actual DiT forwards).
+Requires diffusers built from git main — `ZImageImg2ImgPipeline` isn't in a
+tagged PyPI release yet (see huggingface.co/Tongyi-MAI/Z-Image-Turbo).
+Turbo is distilled without classifier-free guidance: guidance_scale MUST
+be 0.0 (non-zero degrades quality per the model card), and 9 inference
+steps is the documented sweet spot (~8 actual DiT forwards).
 
 Loaded at bf16, never NF4-quantized — see `load()`'s comment for why
 that's the correct choice (matches the LoRA's bf16/fp16 training
 precision) and `model_registry.py`'s `quantization` field for this tier,
 which used to claim NF4 incorrectly.
+
+BUG FOUND ON REVIEW (severe — this is the single most consequential bug
+found in the inference layer): this backend previously used
+`ZImagePipeline` (diffusers' TEXT-TO-IMAGE-ONLY class for this model —
+confirmed via diffusers' own docs, which offer separate
+`ZImageImg2ImgPipeline`/`ZImageInpaintPipeline` classes specifically
+because the base `ZImagePipeline.__call__` has no `image=` parameter at
+all) and never touched `handoff_image_ref` anywhere in `run()`, even
+though it accepted it as a parameter. Concretely: every "quick" finalize
+through the Default tier (the common, cheap, fast path per PRD framing —
+Quality is the heavier alternate) silently threw away the sketch the user
+had been iterating on and generated a BRAND NEW, structurally unrelated
+image from the prompt text alone. This directly contradicts PRD §5.3's
+own Finalize sequence diagram ("Sketch's VQ tokens decoded through the
+VQGAN to real pixels ... -> handed to the Polish backend -> Polish Tier
+generates") and is a real (not cosmetic) input/output mismatch: the
+function signature promised to use `handoff_image_ref`, and silently
+didn't. `polish_quality_backend.py` never had this bug — it correctly
+requires and uses `handoff_image_ref` via `QwenImageEditPlusPipeline`'s
+`image=` kwarg; this fix brings Default in line with that same, already-
+correct pattern, using `ZImageImg2ImgPipeline` and its own `strength`
+kwarg (confirmed real and documented, unlike Quality's `strength` support
+which needed the runtime B3 introspection check because Edit-Plus's API
+surface was less certain).
 """
 
 from __future__ import annotations
@@ -33,15 +57,16 @@ class ZImageTurboBackend(ModelBackend):
         model_id: str = "Tongyi-MAI/Z-Image-Turbo",
         dtype: str = "bfloat16",
         num_inference_steps: int = 9,
-        lora_adapter_path: str | None = None,
         enable_cpu_offload: bool = False,   # low-VRAM mode
         bridge_strength: float = 0.75,       # SOTA Flow-Matching bridge conditioning ratio (1.0 = pure noise, 0.0 = sketch exact)
+        strength: float = 0.6,
     ) -> None:
         super().__init__(spec)
         self.model_id = model_id
         self.dtype = dtype
         self.num_inference_steps = num_inference_steps
         self.lora_adapter_path = lora_adapter_path
+        self.strength = strength
         self.enable_cpu_offload = enable_cpu_offload
         self.bridge_strength = float(
             os.environ.get("KRISNA_POLISH_DEFAULT_BRIDGE_STRENGTH", str(bridge_strength))
@@ -52,9 +77,9 @@ class ZImageTurboBackend(ModelBackend):
         import asyncio
 
         def _load_sync():
-            from diffusers import ZImagePipeline
+            from diffusers import ZImageImg2ImgPipeline
 
-            pipe = ZImagePipeline.from_pretrained(
+            pipe = ZImageImg2ImgPipeline.from_pretrained(
                 self.model_id, torch_dtype=resolve_dtype(self.dtype), low_cpu_mem_usage=False
             )
             adapter_to_load = self.lora_adapter_path
@@ -72,7 +97,7 @@ class ZImageTurboBackend(ModelBackend):
                 log.info("z_image_lora_applied", extra={"adapter": adapter_to_load})
             import torch
 
-            if self.enable_cpu_offload and torch.cuda.is_available():
+            if self.enable_cpu_offload:
                 pipe.enable_model_cpu_offload()
             elif torch.cuda.is_available():
                 pipe.to("cuda")
@@ -117,6 +142,24 @@ class ZImageTurboBackend(ModelBackend):
     ):
         if not self._loaded:
             raise RuntimeError("Z-Image-Turbo backend not loaded")
+        if not handoff_image_ref:
+            # BUG FOUND ON REVIEW: previously this parameter was accepted
+            # and silently ignored, which is worse than raising — a
+            # caller (or a future refactor) could reasonably assume the
+            # sketch handoff was being honored, since nothing said
+            # otherwise. Matches polish_quality_backend.py's own choice to
+            # raise loudly rather than silently degrade to a
+            # structurally-unrelated blank-slate generation. Every real
+            # call through flows.finalize() always provides a handoff
+            # image (finalize is only reachable once a sketch exists — see
+            # DesignState.is_finalize_eligible()), so this should never
+            # fire in the normal flow; it exists to catch a caller that
+            # bypasses that contract.
+            raise ValueError(
+                "ZImageTurboBackend.run() requires handoff_image_ref — this tier "
+                "refines the Stage-1 sketch handoff via image-to-image, it does not "
+                "generate from a blank slate (see this module's docstring)."
+            )
         import asyncio
 
         constraints = constraints or {}
@@ -127,6 +170,7 @@ class ZImageTurboBackend(ModelBackend):
             import torch.nn.functional as F
             import torchvision.transforms.functional as TF
 
+<<<<<<< HEAD
             gen_device = "cuda" if torch.cuda.is_available() else "cpu"
             generator = torch.Generator(gen_device).manual_seed(seed) if seed is not None else None
             h = kwargs.get("height")

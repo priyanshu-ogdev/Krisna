@@ -31,7 +31,7 @@
 #              since it's needed for the live Critic INFERENCE backend,
 #              not for training it.
 #   verifiers - CLIP/OCR/aesthetic verifier-stack deps, same .venv as base.
-#   frontend - npm install for inference/frontend/, the Node.js control
+#   frontend - npm install for inference-frontend/, the Node.js control
 #              panel (Setup/Install tab drives scripts/inference/
 #              download_weights.py; Studio tab is a session UI over the
 #              FastAPI service). Node/npm only — no Python venv touched.
@@ -75,7 +75,7 @@ for phase in "${PHASES[@]}"; do
             ;;
         backends)
             echo -e "\033[1;36m[backends] real inference backends (GPU) into the main .venv\033[0m"
-            ./scripts/inference/setup_env_inference.sh ${KRISNA_REQUIRE_GPU:+--require-gpu}
+            ./scripts/inference/setup_env_inference.sh
             ;;
         sketch)
             echo -e "\033[1;36m[sketch] Sketch-tier training deps into the main .venv\033[0m"
@@ -106,21 +106,16 @@ for phase in "${PHASES[@]}"; do
             echo -e "\033[1;36m[verifiers] CLIP/OCR/aesthetic verifier-stack deps into the main .venv\033[0m"
             ./scripts/inference/setup_env_verifiers.sh
             ;;
-        forge)
-            echo -e "\033[1;36m[forge] full data-forge pipeline dependencies into main .venv\033[0m"
-            source .venv/bin/activate
-            pip install -e "./data-forge[dev]"
-            ;;
         frontend)
-            echo -e "\033[1;36m[frontend] inference/frontend/ (Node.js control panel) — npm install\033[0m"
+            echo -e "\033[1;36m[frontend] inference-frontend/ (Node.js control panel) — npm install\033[0m"
             if ! command -v npm >/dev/null 2>&1; then
                 echo -e "\033[1;31m[frontend] npm not found — install Node.js 18+ first (https://nodejs.org), then re-run: ./setup.sh frontend\033[0m"
                 exit 1
             fi
-            (cd inference/frontend && npm install)
+            (cd inference-frontend && npm install)
             ;;
         *)
-            echo -e "\033[1;31mUnknown phase: $phase (expected one of: base forge backends sketch polish critic verifiers frontend)\033[0m"
+            echo -e "\033[1;31mUnknown phase: $phase (expected one of: base backends sketch polish critic verifiers frontend)\033[0m"
             exit 1
             ;;
     esac
@@ -133,5 +128,5 @@ echo -e "\033[1;33mNext steps:\033[0m"
 echo -e "\033[1;33m  Data pipeline:  ./run_data_forge.sh --dry-run\033[0m"
 echo -e "\033[1;33m  Training:       ./train.sh --list\033[0m"
 echo -e "\033[1;33m  Inference:      ./run_inference.sh\033[0m"
-echo -e "\033[1;33m  Control panel:  ./setup.sh frontend && cd inference/frontend && npm start   (optional — a UI over the same API)\033[0m"
+echo -e "\033[1;33m  Control panel:  ./setup.sh frontend && cd inference-frontend && npm start   (optional — a UI over the same API)\033[0m"
 echo -e "\033[1;33m  Tests:          ./scripts/inference/run_tests.sh\033[0m"

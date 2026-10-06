@@ -1,12 +1,12 @@
 # =============================================================================
-# Data-Forge Pipeline Configuration (v14 — no-RLHF revision)
+# Data-Forge Pipeline Configuration (v13)
 # =============================================================================
 # All paths are RELATIVE to DATA_ROOT (env var, default: /data_krisna or D:\data_krisna).
 # The orchestrator resolves them at runtime.
 # =============================================================================
 
 pipeline:
-  version: "0.14.0"
+  version: "0.13.0"
   dataset_version_prefix: "krisna_v"  # Auto-incremented: krisna_v001, krisna_v002, ...
 
 # ---------------------------------------------------------------------------
@@ -18,14 +18,8 @@ paths:
   processed:
     root: "processed/"
     latents_zimage: "processed/latents_zimage/"  # Stage 8 branch 1 (only fine-tuned renderer)
-    # REMOVED: vq_tokens_sketch — the maskgit_vq encoder that produced this
-    # artifact was deleted (sync audit item #1: engine.py loader always raised
-    # RuntimeError, making the entire ui_first domain fail completeness checks
-    # and produce empty sketch-tier exports). See s08_encoding.py's inline
-    # removal comment and docs/review/01_sketch_tier.md for the full history.
-    # training/data_forge_bridge/sync_sketch_tier.py re-tokenizes raw images/
-    # through the real VQTokenizer rather than reading a vq_tokens/ folder.
-    control_tokens: "processed/control_tokens/"        # Stage 8 branch 2 (was 3)
+    vq_tokens_sketch: "processed/vq_tokens_sketch/"    # Stage 8 branch 2 (ui_first only)
+    control_tokens: "processed/control_tokens/"        # Stage 8 branch 3
     dpo_latents: "processed/dpo_latents/"              # Stage 8.5 — DPO pair encodings
   training_pool: "training_pool/"                # Final training-ready records
   heldout: "heldout/"                            # Stage 9 eval set; also holds
@@ -86,7 +80,7 @@ stages:
   # silently discarded" gap found while tracing each PRD model's actual
   # training-data requirements. See stages/s01_5_uicrit_join.py.
   s01_5_uicrit_join:
-    enabled: true
+    enabled: false
 
   # UPGRADED (no-RLHF-loop revision): replaces the removed
   # s01_6_planner_synthesis.py, which fine-tuned the planner on ~2,000
@@ -282,10 +276,7 @@ storage:
     # now — s08_encoding.py no longer produces this artifact for any
     # record, so there is nothing to budget storage for here. See
     # docs/DATA_COMPLETENESS.md.
-    # REMOVED: vq_tokens_bytes — see paths.processed comment above.
-    # No stage produces vq_tokens/ artifacts anymore; budgeting storage for
-    # them was causing the pre-flight projection to over-estimate ui_first
-    # record costs with a number that never materialised on disk.
+    vq_tokens_bytes: 8_192             # Variable, ~8KB average
     control_map_bytes: 4_096           # JSON + edges ~4KB
     metadata_bytes: 2_048              # Manifest row + logs
     # New — DPO preference-pair storage. Two PNG source images (~500KB

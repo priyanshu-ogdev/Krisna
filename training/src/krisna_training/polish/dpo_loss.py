@@ -159,6 +159,74 @@ def flow_matching_velocity_target(clean_latent: torch.Tensor, noise: torch.Tenso
     return noise - clean_latent
 
 
+def apply_flow_matching_shift(u: torch.Tensor, shift: float) -> torch.Tensor:
+    """UPGRADE (quality/consistency finding, this review pass): rectified-
+    flow / flow-matching models (SD3, FLUX, and — per this project's own
+    citations doc — Z-Image's lineage) are trained and sampled with a
+    RESOLUTION-DEPENDENT timestep shift, not a raw Uniform/logit-normal
+    draw used directly as sigma. Esser et al. 2024 ("Scaling Rectified
+    Flow Transformers for High-Resolution Image Synthesis", the SD3
+    paper), Eq. 23:
+
+        t_shifted = shift * t / (1 + (shift - 1) * t)
+
+    where `shift` is tied to the token-sequence length the model was
+    actually trained at (higher resolution -> more tokens -> larger
+    shift). diffusers' own flow-matching training/inference scripts
+    apply this via the scheduler's configured `shift`
+    (`FlowMatchEulerDiscreteScheduler.config.shift`), not by re-deriving
+    it per batch — that same convention is followed here: `train_dpo.py`
+    reads `shift` off the loaded pipeline's real scheduler config and
+    passes it through to this function, defaulting to 1.0 (the identity
+    — `t_shifted == t`, i.e. exactly the previous unshifted behavior)
+    when the scheduler doesn't declare one, so this is backward-
+    compatible rather than a silent behavior change for any pipeline
+    that doesn't use shifting.
+
+    Why this matters here specifically: the base fine-tune stage
+    (`polish_stage1_default_lora.yaml`, resolution=1024, via diffusers'
+    OFFICIAL train_dreambooth_lora_z_image.py) goes through that
+    script's own scheduler-based sampling, which already applies
+    whatever shift the pretrained scheduler config declares. This DPO
+    script previously used the raw `u` from
+    `compute_density_for_timestep_sampling` directly as `sigma` with NO
+    shift applied at all — a systematic noise-level-distribution
+    mismatch between the two training stages the DPO adapter continues
+    from (finding #2's fix), undermining the very continuity that fix
+    establishes. Reading the shift from the SAME pretrained pipeline
+    both stages load closes this gap without inventing a new value.
+    """
+    if shift == 1.0:
+        return u
+    return shift * u / (1.0 + (shift - 1.0) * u)
+
+
+def ema_warmup_decay(step: int, target_decay: float) -> float:
+    """UPGRADE (finding, this review pass): a fixed EMA decay of e.g.
+    0.9995 applied from step 0 has a half-life of
+    ln(2)/(1-decay) ~= 1386 steps — for a DPO run at the project's own
+    default max-train-steps=1000 (or even a few thousand after the
+    --target-passes rescale), the EMA snapshot used for the FINAL saved
+    adapter would still be meaningfully anchored to the adapter's
+    pre-training (random-init, or "whatever the base fine-tune already
+    was") state rather than having converged toward the DPO-trained
+    weights — defeating the point of adding EMA in the first place.
+    Standard fix, used across widely-deployed diffusion training codebases
+    (e.g. the original Stable Diffusion / diffusers EMA implementations):
+    ramp decay up from a low value early in training rather than pinning
+    it at the target from step 0:
+
+        decay(step) = min(target_decay, (1 + step) / (10 + step))
+
+    At step=0 this gives decay=0.1 (EMA moves almost entirely toward the
+    live weights on the first update), rising smoothly toward
+    target_decay as training progresses — the EMA shadow tracks real
+    progress instead of lagging behind an uninformative initialization
+    for hundreds of steps on a short run.
+    """
+    return min(target_decay, (1.0 + step) / (10.0 + step))
+
+
 def noise_latent_at_timestep(clean_latent: torch.Tensor, noise: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
     """noisy = sigma * noise + (1 - sigma) * clean — the standard flow-
     matching interpolant, matching flow_matching_velocity_target's sign

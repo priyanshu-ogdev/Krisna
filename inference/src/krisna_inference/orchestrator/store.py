@@ -106,42 +106,6 @@ class DesignStateStore:
             rows = self._conn.execute(query, params).fetchall()
         return [r["session_id"] for r in rows]
 
-    def delete(self, session_id: str, purge_blobs: bool = False) -> bool:
-        """Delete a session from the store.
-
-        If purge_blobs is True, also deletes any on-disk blobs associated with
-        this session (tokens, confmap, finalize image) to prevent orphan accumulation.
-        Returns True if session was found and deleted, False otherwise.
-        """
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT payload_json FROM design_state WHERE session_id = ?", (session_id,)
-            ).fetchone()
-            if row is None:
-                return False
-
-            if purge_blobs:
-                try:
-                    from krisna_inference.backends.blob_store_singleton import get_blob_store
-                    bs = get_blob_store()
-                    st = DesignState.model_validate_json(row["payload_json"])
-                    for ref in (
-                        st.sketch_tokens.vq_tokens,
-                        st.sketch_tokens.confidence_map,
-                        getattr(st.finalize_output, "image_ref", None),
-                    ):
-                        if ref and isinstance(ref, str) and ref.startswith("blob://"):
-                            try:
-                                bs.delete(ref)
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
-
-            self._conn.execute("DELETE FROM design_state WHERE session_id = ?", (session_id,))
-            self._conn.commit()
-            return True
-
     def close(self) -> None:
         with self._lock:
             self._conn.close()

@@ -24,7 +24,19 @@ def _make_backend_with_fakes(text_embedder, prompt_dim=8):
     fake_param = torch.nn.Parameter(torch.zeros(1))
     fake_module = MagicMock()
     fake_module.cfg = MagicMock(prompt_dim=prompt_dim)
-    fake_module.parameters.return_value = iter([fake_param])
+    # BUG FOUND ON REVIEW (docs/review/32_model_review_2_sketch.md): a
+    # plain `iter([fake_param])` is a ONE-SHOT iterator — every test in
+    # this file that calls backend.run() exactly once never noticed, but
+    # a test calling run() twice on the same backend instance (needed to
+    # test planner_output handling across multiple calls) exhausted it on
+    # the second call. next() on an exhausted iterator raises
+    # StopIteration — which, raised inside a thread run via
+    # asyncio.to_thread, hits a known asyncio/PEP 479 interaction
+    # (StopIteration cannot be raised into a Future) that manifests as a
+    # HANG, not a clean test failure — very easy to misdiagnose as the
+    # code under test hanging rather than the test fixture. Fixed with
+    # side_effect so every call gets a fresh iterator.
+    fake_module.parameters.side_effect = lambda: iter([fake_param])
 
     fake_model = MagicMock()
     fake_model.module = fake_module
@@ -110,3 +122,82 @@ class TestPromptDimMismatchSafety:
         assert passed_embedding.shape[-1] == 8
         assert torch.equal(passed_embedding, torch.zeros(1, 8))
         assert call_kwargs.kwargs.get("guidance_scale") == 0.0
+
+
+class TestPlannerOutputReasoningNoteWiring:
+    """Regression tests for a bug found on review
+    (docs/review/32_model_review_2_sketch.md): `planner_output` was
+    accepted as a parameter but never actually read anywhere in run(),
+    the same "accepted but silently ignored" pattern already found once
+    in polish_default_backend.py (handoff_image_ref)."""
+
+    @pytest.mark.asyncio
+    async def test_reasoning_note_is_folded_into_the_embedded_prompt(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        planner_output = {
+            "design_state_delta": {"reasoning_note": "User wants a warmer, friendlier feel."}
+        }
+        await backend.run(planner_output=planner_output, message="make it cozier")
+
+        embedder.embed_text.assert_called_once()
+        prompt_text = embedder.embed_text.call_args[0][0]
+        assert "make it cozier" in prompt_text
+        assert "User wants a warmer, friendlier feel." in prompt_text
+
+    @pytest.mark.asyncio
+    async def test_reasoning_note_is_capped_to_avoid_clip_truncation_risk(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        long_note = "x" * 500
+        planner_output = {"design_state_delta": {"reasoning_note": long_note}}
+        await backend.run(planner_output=planner_output, message="hi")
+
+        prompt_text = embedder.embed_text.call_args[0][0]
+        # The full 500-char note must never appear verbatim — only a
+        # bounded slice, so it can't push the user's own message past
+        # CLIP's silent 77-token truncation point.
+        assert long_note not in prompt_text
+        assert "x" * 160 in prompt_text
+
+    @pytest.mark.asyncio
+    async def test_none_planner_output_does_not_crash(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        await backend.run(planner_output=None, message="a login screen")
+        embedder.embed_text.assert_called_once_with("a login screen")
+
+    @pytest.mark.asyncio
+    async def test_dict_shaped_but_unexpected_planner_output_does_not_crash(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        await backend.run(planner_output={"unexpected_shape": True}, message="a login screen")
+        embedder.embed_text.assert_called_once_with("a login screen")
+
+    @pytest.mark.asyncio
+    async def test_non_dict_planner_output_does_not_crash(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        await backend.run(planner_output="not a dict", message="a login screen")
+        embedder.embed_text.assert_called_once_with("a login screen")
+
+    @pytest.mark.asyncio
+    async def test_empty_reasoning_note_does_not_add_stray_content(self):
+        embedder = MagicMock()
+        embedder.embed_text.return_value = torch.ones(1, 8)
+        backend, _ = _make_backend_with_fakes(embedder)
+
+        planner_output = {"design_state_delta": {"reasoning_note": "   "}}
+        await backend.run(planner_output=planner_output, message="a login screen")
+
+        embedder.embed_text.assert_called_once_with("a login screen")

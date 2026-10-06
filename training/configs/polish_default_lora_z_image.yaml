@@ -43,14 +43,25 @@ seed: 0
 # stage at inference time, an unpinned/uncoordinated rank here risked a
 # capacity mismatch between the two stages. Caught during a design-sync
 # review, not a considered choice originally — see
-# docs/review/02_polish_tier.md for the full writeup. NOTE: confirm this
-# flag name (`rank`) matches whatever version of
-# train_dreambooth_lora_z_image.py is actually vendored into
-# third_party/diffusers before running — diffusers dreambooth-LoRA
-# scripts have used `--rank` consistently across recent releases, but
-# this hasn't been verified against Z-Image's specific script version in
-# this environment (no network access to fetch third_party/diffusers here).
+# docs/review/02_polish_tier.md for the full writeup.
+#
+# VERIFIED THIS REVIEW PASS (docs/review/34_model_review_3_polish_default.md):
+# the "confirm this flag name" caveat below is now resolved — cloned the
+# real huggingface/diffusers repo and read
+# examples/dreambooth/train_dreambooth_lora_z_image.py's actual argparse
+# directly: `--rank` is confirmed correct (default 4, this config's 32
+# correctly overrides it).
 rank: 32
+# BUG FOUND ON REVIEW, same pass: `lora_alpha` was never set here either,
+# silently defaulting to the script's own `--lora_alpha` default of 4 —
+# mismatched against rank=32 (LoRA's effective update magnitude scales
+# by alpha/rank, so this was 4/32 = 1/8th the conventional alpha==rank
+# scaling, for no considered reason). This project already fixed the
+# identical class of gap once before for the DPO stage's fresh-adapter
+# LoraConfig (train_dpo.py: LoraConfig(r=args.lora_rank,
+# lora_alpha=args.lora_rank) — alpha==rank is the deliberate, correct
+# convention followed everywhere else in this project). Fixed to match.
+lora_alpha: 32
 
 # --instance_prompt is required by the official script even when per-image
 # captions are used via metadata.jsonl (some script versions still want a
@@ -58,5 +69,15 @@ rank: 32
 # captions from dataset_prep.py.
 instance_prompt: "a UI design"
 
-validation_prompt: null   # set to something to get periodic validation renders
+validation_prompt: "a UI design"  # UPGRADE (finding #3): re-enabled — diffusers' own
+                          # built-in periodic sample generation is a cheap
+                          # qualitative validation signal this project has
+                          # zero of otherwise for the base LoRA stage (no
+                          # heldout eval loss exists for diffusers'
+                          # train_dreambooth_lora_z_image.py path — that
+                          # script is vendored/official, not owned by this
+                          # repo, so a real heldout LOSS loop isn't wired
+                          # here the way it is for sketch/train.py and
+                          # polish/train_dpo.py; this is the cheap
+                          # substitute the PRD (§3 gap list) already names.   # set to something to get periodic validation renders
 validation_epochs: 25

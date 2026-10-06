@@ -96,8 +96,39 @@ def sync(
                 skipped_not_deduped += 1
                 continue
 
-            image_a_path = source_dir / meta["image_a"]
-            image_b_path = source_dir / meta["image_b"]
+            pair_id = _deterministic_pair_id(mapped_source, meta)
+            if preference_store.exists(pair_id):
+                # UPGRADE: skip re-doing blob-store image I/O entirely for
+                # a pair already imported by a prior sync — the eventual
+                # `add()` would have been a no-op anyway (INSERT OR
+                # IGNORE), but only AFTER paying for two image
+                # loads/re-encodes per already-imported pair. See
+                # preference_store.py's exists()/module docstring.
+                continue
+
+            image_a_name = meta.get("image_a")
+            image_b_name = meta.get("image_b")
+            if not image_a_name or not image_b_name:
+                # BUG FOUND THIS REVIEW PASS (pre-existing, unrelated to
+                # the deterministic-id fix above): this used bracket
+                # access (meta["image_a"]) unconditionally, so a
+                # metadata record that parsed as valid JSON but was
+                # missing either key would raise an uncaught KeyError
+                # here and crash the entire sync() call — losing every
+                # not-yet-processed source in the same run, not just
+                # this one malformed record. Every other malformed-input
+                # case in this same loop (bad JSON, not deduped, missing
+                # image files, missing preferred label) is already
+                # handled by skip-and-count-and-continue; this is the
+                # one path that wasn't. Fixed to match.
+                skipped_missing_images += 1
+                log.warning(
+                    "sync_dpo_missing_image_field",
+                    extra={"path": str(meta_path), "has_image_a": bool(image_a_name), "has_image_b": bool(image_b_name)},
+                )
+                continue
+            image_a_path = source_dir / image_a_name
+            image_b_path = source_dir / image_b_name
             if not image_a_path.exists() or not image_b_path.exists():
                 skipped_missing_images += 1
                 continue
@@ -121,6 +152,12 @@ def sync(
 
             try:
                 pair = PreferencePair(
+                    # UPGRADE (bug found on review): deterministic id derived
+                    # from stable source content, NOT the dataclass's default
+                    # random uuid4 — see preference_store.py's module
+                    # docstring for why this is required for `INSERT OR
+                    # IGNORE` to actually make resyncing idempotent.
+                    id=pair_id,
                     prompt=meta.get("prompt", ""),
                     chosen_ref=chosen_ref,
                     rejected_ref=rejected_ref,
@@ -139,3 +176,22 @@ def sync(
     counts["skipped_missing_images"] = skipped_missing_images
     log.info("sync_dpo_pairs_complete", extra=counts)
     return counts
+
+
+def _deterministic_pair_id(mapped_source: str, meta: dict) -> str:
+    """A stable id for the SAME underlying preference pair across repeated
+    syncs of the same (or a re-exported, unchanged) data-forge source —
+    see preference_store.py's module docstring. Real dataset `pair_id`
+    values (when present) are already unique per pair within a source;
+    namespacing by `mapped_source` guards against an accidental collision
+    across two different sources that happen to reuse pair_id numbering.
+    """
+    import hashlib
+    import uuid
+
+    pair_id = meta.get("pair_id")
+    if pair_id:
+        key = f"{mapped_source}:{pair_id}"
+    else:
+        key = f"{mapped_source}:{meta.get('image_a', '')}:{meta.get('image_b', '')}"
+    return str(uuid.UUID(hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]))

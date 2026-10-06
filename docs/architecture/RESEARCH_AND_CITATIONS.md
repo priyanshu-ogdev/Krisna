@@ -470,7 +470,8 @@ Every citation below is a confirmed primary source directly grounding decisions 
 
 ---
 
-## 7. Sources Verified in this Document
+## 7. Sources verified in this document
+
 
 | Source | What it verified |
 |---|---|
@@ -484,11 +485,16 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | `huggingface.co/datasets/nateraw/parti-prompts` (dataset card) | Apache 2.0, `.tsv` format |
 | arXiv:2602.23438 (Gopal et al.) — DesignSense-10k paper, its arXiv license badge | CC BY-NC-ND 4.0, no public data release |
 | arXiv:2605.20731's related-work section | DesignPref confirmed not yet released |
-| arXiv:2409.19830 — GameLabel-10K paper; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, base64+bytes schema adapter |
-| QwenLM GitHub changelog, HF community thread (Feb–Apr 2026) | Qwen-Image-2.0 weights never released; procedural rule adopted |
+| arXiv:2409.19830 — GameLabel-10K paper; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, unconfirmed schema |
+| QwenLM GitHub changelog, HF community thread (Feb–Apr 2026) | Qwen-Image-2.0 weights never released |
 | Unsloth documentation, Google Gemma 4 announcement, HF LICENSE file | Gemma 4 31B Dense vs. 26B-A4B MoE incompatibility, Apache 2.0 |
 | `diffusers` GitHub issue #10800 | `enable_sequential_cpu_offload()` incompatible with bnb NF4; `enable_model_cpu_offload()` confirmed working |
 | `transformers`/`bitsandbytes` documentation (`BitsAndBytesConfig`) | `llm_int8_enable_fp32_cpu_offload` requirement and FP32 CPU-storage behavior |
 | Unsloth issue tracker | No documented CPU-offload support |
+| Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization" (CVPR 2024) | Original Diffusion-DPO formulation (DDPM/noise-prediction), `beta` range |
+| Bin et al., MotionFlux (arXiv:2508.19527) | Velocity-prediction DPO substitution for flow-matching models, flow-matching anchor regularization |
+| Linear-DPO (arXiv:2605.21123, §E.3); DeRaDiff (arXiv:2601.20198) | Real β-sweep results on models closer to Z-Image-Turbo's flow-matching architecture (SD3-M best at β=500); β=250 reward-hacking risk on SDXL |
+| Chang et al., "Muse: Text-to-Image Generation via Masked Generative Transformers" (ICML 2023, arXiv:2301.00704), §2.7 | Classifier-free guidance formula, 10% training-time conditioning dropout, and linear guidance ramp for masked-generative (non-diffusion) image models — re-verified directly against the paper text, not just cited from memory |
+| Qwen Team, Alibaba — Qwen3.5 Small Model Series (0.8B/2B/4B/9B) release notes, dated 2026-03-02 | Confirms Qwen3.5-9B's real release, hybrid Gated DeltaNet + Gated Attention architecture, native multimodal training |
+| Tongyi-MAI, Alibaba — Z-Image technical report (`github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`), 2025 | Primary source for Z-Image-Turbo's Decoupled-DMD/DMDR distillation and S3-DiT architecture — the Polish-Default tier's actual base model | 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
-

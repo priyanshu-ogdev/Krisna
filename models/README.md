@@ -1,9 +1,10 @@
 # models/ — Trained Checkpoint Artifacts
 
 Not code — this is where trained checkpoints land, consumed by both
-`inference/runtime/` (for manual testing) and by setting the corresponding
+`inference-runtime/` (for manual testing) and by setting the corresponding
 `KRISNA_*` environment variable when running the real service
 (`scripts/inference/run_service.sh` / `.ps1`), per [docs/PRD.md](../docs/PRD.md) §6–§7.
+
 
 ```
 models/
@@ -46,5 +47,5 @@ is whatever `diffusers`' official training script writes via
 artifacts, not source) — populate it by actually running the training
 scripts in `training/README.md`, or point the `KRISNA_*` env vars at
 wherever your checkpoints really live instead of moving them here. The
-directory structure above is a convention `inference/runtime/` defaults
+directory structure above is a convention `inference-runtime/` defaults
 to, not a hard requirement.

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Krisna Inference & Serving Architecture
 
 Comprehensive reference for single-GPU serving, swap orchestration, and multi-turn agentic flows.
@@ -148,7 +149,6 @@ FastAPI service exposed on default port `8420`:
 ## 8. Related Documentation
 
 - **[inference/README.md](../../inference/README.md)**: Serving setup, mock vs real backends, Docker flags, and requirements.
-- **[inference/frontend/README.md](../../inference/frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
-- **[inference/runtime/README.md](../../inference/runtime/README.md)**: CLI harness for multi-turn manual testing.
+- **[inference-frontend/README.md](../../inference-frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
+- **[inference-runtime/README.md](../../inference-runtime/README.md)**: CLI harness for multi-turn manual testing.
 - **[docs/review/28_docker_isolation_and_hardware_preflight.md](../review/28_docker_isolation_and_hardware_preflight.md)**: Phase 28 research and verification report.
-

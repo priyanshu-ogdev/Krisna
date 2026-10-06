@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Krisna — Inference Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="wordmark">
+      <span class="wordmark-main">krisna</span>
+      <span class="wordmark-sub">inference control</span>
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="setup">Setup</button>
+      <button class="tab-btn" data-tab="studio">Studio</button>
+    </nav>
+    <div id="health-pill" class="pill unknown"><i class="dot"></i>checking</div>
+  </header>
+
+  <main>
+    <!-- ============================= SETUP TAB ============================= -->
+    <section id="tab-setup" class="tab active">
+      <div class="setup-grid">
+
+        <div class="panel tracker-panel">
+          <div class="panel-head">
+            <h2>Install sequence</h2>
+            <p>Each step runs once, in order. Re-running only redoes what failed —
+              finished HF downloads resume, local-artifact checks are idempotent.</p>
+          </div>
+          <ol id="tracker" class="tracker"><!-- populated by app.js --></ol>
+        </div>
+
+        <div class="setup-right">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Options</h2>
+            </div>
+            <form id="install-form">
+              <div class="option-grid">
+                <label class="opt"><input type="checkbox" name="lowVram" /><span>Low-VRAM mode <em>12–16GB target</em></span></label>
+                <label class="opt"><input type="checkbox" name="fastPlanner" /><span>Fast planner <em>Qwen3.5-4B</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipQuality" /><span>Skip Polish-Quality <em>Qwen-Image-Edit-2511</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipCritic" /><span>Skip Critic <em>needs venv-critic</em></span></label>
+              </div>
+              <div class="field-grid">
+                <label class="field">Sketch checkpoint path
+                  <input type="text" name="sketchCheckpoint" placeholder="auto-discovered if blank" />
+                </label>
+                <label class="field">Polish LoRA path
+                  <input type="text" name="polishLora" placeholder="auto-discovered if blank" />
+                </label>
+              </div>
+              <div class="btn-row">
+                <button type="submit" class="btn btn-primary" id="btn-install">Start install</button>
+                <button type="button" class="btn btn-ghost" id="btn-dry-run">Dry run</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Live log</h2>
+              <span id="log-status" class="tag">idle</span>
+            </div>
+            <pre id="install-log" class="terminal"></pre>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Resolved configuration</h2>
+              <button class="btn btn-ghost btn-sm" id="btn-refresh-env">Refresh</button>
+            </div>
+            <p class="hint">Written to <code id="env-file-path">.env.inference</code> — sourced by <code>run_service.sh</code>.</p>
+            <table id="env-table"><tbody></tbody></table>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Backend</h2>
+              <span id="backend-pill" class="pill unknown"><i class="dot"></i>checking</span>
+            </div>
+            <p class="hint">
+              The real inference service (no mock) — started automatically once
+              install completes, and again every time this control panel starts
+              if <code>.env.inference</code> already exists.
+            </p>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" id="btn-backend-start">Start</button>
+              <button class="btn btn-ghost btn-sm" id="btn-backend-stop">Stop</button>
+            </div>
+            <pre id="backend-log" class="terminal"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= STUDIO TAB ============================= -->
+    <section id="tab-studio" class="tab">
+      <div class="panel pipeline-panel">
+        <div class="panel-head">
+          <h2>Generation pipeline</h2>
+          <span id="pipeline-phase-label" class="tag">idle</span>
+        </div>
+        <div class="pipeline-grid">
+          <div id="phase-pipeline" class="phase-pipeline"><!-- populated by app.js --></div>
+          <div class="pixel-forming">
+            <div id="pixel-canvas-wrap" class="pixel-canvas-wrap">
+              <canvas id="pixel-canvas" width="256" height="256"></canvas>
+              <div id="pixel-step-overlay" class="pixel-step-overlay hidden">
+                <div class="pixel-step-track"><div id="pixel-step-fill" class="pixel-step-fill"></div></div>
+                <div id="pixel-step-label" class="pixel-step-text">step 0/9</div>
+              </div>
+              <div id="pixel-canvas-label" class="pixel-canvas-label">no render yet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="studio-grid">
+
+        <div class="studio-left">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>GPU memory</h2>
+              <button class="btn btn-ghost btn-sm" id="btn-refresh-status">Refresh</button>
+            </div>
+            <div id="rack-envelope-label" class="rack-envelope-label"></div>
+            <div id="rack" class="rack"><!-- populated by app.js --></div>
+            <ul id="rack-legend" class="rack-legend"><!-- populated by app.js --></ul>
+
+            <div id="hw-vram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Live hardware (VRAM)</span><span id="hw-vram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-vram-fill" class="hw-bar-fill"></div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>RAM offload</h2></div>
+            <p class="hint">System RAM used by CPU-offloaded tier weights (Critic, and Polish
+              in low-VRAM mode) — see <code>model_registry.py</code>'s <code>LOW_VRAM_REGISTRY</code>.</p>
+            <div id="ram-rack-label" class="rack-envelope-label"></div>
+            <div id="ram-rack" class="rack ram-rack"><!-- populated by app.js --></div>
+            <div id="hw-ram-block" class="hw-block">
+              <div class="hw-block-label">
+                <span>Live hardware (system RAM)</span><span id="hw-ram-reading"></span>
+              </div>
+              <div class="hw-bar-track"><div id="hw-ram-fill" class="hw-bar-fill ram"></div></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head"><h2>Residency state</h2></div>
+            <div id="state-diagram" class="state-diagram"><!-- populated by app.js --></div>
+          </div>
+        </div>
+
+        <div class="studio-right">
+          <div class="panel" id="no-session">
+            <div class="panel-head"><h2>Session</h2></div>
+            <p class="hint">Start a session to converse with the Planner and watch the Sketch tier respond.</p>
+            <button class="btn btn-primary" id="btn-new-session">New session</button>
+          </div>
+
+          <div id="has-session" class="hidden">
+            <div class="panel">
+              <div class="panel-head">
+                <h2>Session <code id="session-id"></code></h2>
+                <span class="tag" id="session-rev-tag"></span>
+              </div>
+
+              <div id="chat-log" class="chat-log"></div>
+              <div id="chat-error" class="chat-error hidden"></div>
+              <form id="message-form" class="message-form">
+                <input type="text" id="message-input" placeholder="Describe the UI you want…" autocomplete="off" />
+                <button type="submit" class="btn btn-primary" id="btn-send">Send</button>
+              </form>
+
+              <div class="btn-row">
+                <label class="opt inline"><input type="checkbox" id="finalize-quality" /><span>Quality polish</span></label>
+                <button class="btn btn-secondary" id="btn-finalize">Finalize</button>
+                <button class="btn btn-secondary" id="btn-critique">Critique</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><h2>Render &amp; scores</h2></div>
+              <div id="finalize-panel" class="finalize-panel">
+                <p class="hint">No render yet — finalize to produce one.</p>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><h2>Critique</h2></div>
+              <div id="critique-panel" class="critique-panel">
+                <p class="hint">No critique yet — finalize first, then critique.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

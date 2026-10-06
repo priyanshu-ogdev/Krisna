@@ -33,3 +33,31 @@ seed: 42
 
 resume_from: null
 init_from: null
+
+# UPGRADE (validation loop, finding #3): point at the heldout split's
+# synced manifest (data-forge's s09_heldout carve-out, synced through
+# data_forge_bridge.sync_sketch_tier the same way the training manifest
+# is). null skips validation entirely rather than failing, since this is
+# an additive safeguard, not a hard requirement to run training at all.
+val_manifest_path: null
+val_every: 1000
+val_batches: 20
+
+# UPGRADE (corpus-scale-aware steps, finding #4): when set, total_steps
+# above is IGNORED and recomputed at train-time as
+# round(target_epochs * len(dataset) / batch_size) from the actual
+# synced manifest — self-correcting as the corpus grows toward the
+# PRD's 100K-500K image target, instead of a fixed step count picked
+# before real corpus size was known. Set to null to keep total_steps
+# exactly as configured above.
+target_epochs: 2.0
+
+# UPGRADE (generalization, this review pass): free (VRAM-wise) lever to
+# raise the effective batch size — accumulation trades wall-clock time,
+# not memory, for a less noisy gradient estimate. 1 = no accumulation
+# (prior behavior, exact). Stage 1's real batch_size=32 at 256px/16x16
+# tokens is already a reasonable size for this tiny (44M-param)
+# transformer on the project's real A6000 48GB target, so left at 1 by
+# default here; raise if a gradient-noise issue shows up in the new
+# heldout validation loss curve (finding #3).
+gradient_accumulation_steps: 1
