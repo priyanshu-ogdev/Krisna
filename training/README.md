@@ -79,7 +79,7 @@ python scripts/data-forge/sync_to_training.py --data-root <DATA_ROOT>
 **4. Point the inference layer at what you trained** — see
 `../inference/README.md`'s "Enabling real backends" section for the
 `KRISNA_*` env vars that wire `models/` checkpoints into the actual
-serving orchestrator, and `../inference-runtime/README.md` for a CLI to
+serving orchestrator, and `../inference/runtime/README.md` for a CLI to
 smoke-test the result without standing up the full service.
 
 ## Per-tier detail

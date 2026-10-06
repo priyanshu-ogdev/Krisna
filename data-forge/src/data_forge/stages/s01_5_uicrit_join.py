@@ -85,6 +85,9 @@ class UICritJoinStage(Stage):
                     continue
                 stem = rec.source_file.rsplit(".", 1)[0]
                 stem_to_record[stem] = rec.id
+                num_stem = stem.split("_")[-1]
+                stem_to_record[num_stem] = rec.id
+                stem_to_record[num_stem.lstrip("0") or "0"] = rec.id
 
         log.info(
             "uicrit_join_starting",

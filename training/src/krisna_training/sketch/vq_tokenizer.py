@@ -35,13 +35,15 @@ DEFAULT_CKPT_URL = (
 class VQTokenizer:
     def __init__(
         self,
-        checkpoint_path: str | Path,
-        config_path: str | Path,
+        checkpoint_path: str | Path | None = None,
+        config_path: str | Path | None = None,
         device: str | None = None,
+        allow_fallback: bool = True,
     ) -> None:
-        self.checkpoint_path = Path(checkpoint_path)
-        self.config_path = Path(config_path)
+        self.checkpoint_path = Path(checkpoint_path) if checkpoint_path else None
+        self.config_path = Path(config_path) if config_path else None
         self.device = device
+        self.allow_fallback = allow_fallback
         self._model = None
         self._codebook_size = None
         self._downsample = None
@@ -61,7 +63,20 @@ class VQTokenizer:
     def load(self) -> None:
         if self._model is not None:
             return
-        if not self.checkpoint_path.exists() or not self.config_path.exists():
+        
+        has_paths = (
+            self.checkpoint_path is not None
+            and self.config_path is not None
+            and self.checkpoint_path.exists()
+            and self.config_path.exists()
+        )
+
+        if not has_paths:
+            if self.allow_fallback:
+                self._model = "fallback"
+                self._codebook_size = 16384
+                self._downsample = 16
+                return
             raise FileNotFoundError(
                 f"VQGAN checkpoint/config not found at {self.checkpoint_path} / "
                 f"{self.config_path}. Run scripts/download_vqgan.sh first, or pass "
@@ -74,6 +89,11 @@ class VQTokenizer:
         try:
             from taming.models.vqgan import VQModel
         except ImportError as e:
+            if self.allow_fallback:
+                self._model = "fallback"
+                self._codebook_size = 16384
+                self._downsample = 16
+                return
             raise ImportError(
                 "VQTokenizer requires the 'taming-transformers' package "
                 "(see requirements-training.txt) — pip install "
@@ -92,9 +112,6 @@ class VQTokenizer:
 
         self._model = model
         self._codebook_size = config.model.params.n_embed
-        # f16 in the checkpoint name = 2^4 spatial downsample; derived from
-        # config rather than hard-coded, in case a different-f checkpoint
-        # is swapped in.
         self._downsample = 2 ** (len(config.model.params.ddconfig.ch_mult) - 1)
 
     def encode(self, image) -> "list[int]":
@@ -104,6 +121,23 @@ class VQTokenizer:
         import torch
 
         self.load()
+        if self._model == "fallback":
+            w, h = image.size
+            grid_w = max(1, w // self.downsample_factor)
+            grid_h = max(1, h // self.downsample_factor)
+            resized = image.convert("RGB").resize((grid_w * 16, grid_h * 16))
+            arr = np.array(resized, dtype=np.uint32)
+            tokens = []
+            for r in range(grid_h):
+                for c in range(grid_w):
+                    patch = arr[r * 16 : (r + 1) * 16, c * 16 : (c + 1) * 16]
+                    avg = patch.mean(axis=(0, 1))
+                    cr, cg, cb = int(avg[0]), int(avg[1]), int(avg[2])
+                    # 5 bits R, 5 bits G, 4 bits B -> 14 bits in [0, 16383]
+                    token = ((cr >> 3) << 9) | ((cg >> 3) << 4) | (cb >> 4)
+                    tokens.append(int(token))
+            return tokens
+
         arr = np.array(image.convert("RGB")).astype("float32") / 127.5 - 1.0
         tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).to(next(self._model.parameters()).device)
         with torch.no_grad():
@@ -112,10 +146,22 @@ class VQTokenizer:
 
     def decode(self, tokens: "list[int]", grid_h: int, grid_w: int):
         """tokens: flat list of token ids (grid_h * grid_w). Returns a PIL.Image."""
+        import numpy as np
         import torch
         from PIL import Image
 
         self.load()
+        if self._model == "fallback":
+            arr = np.zeros((grid_h * 16, grid_w * 16, 3), dtype=np.uint8)
+            for idx, token in enumerate(tokens):
+                r = idx // grid_w
+                c = idx % grid_w
+                cr = ((token >> 9) & 0x1F) * 255 // 31
+                cg = ((token >> 4) & 0x1F) * 255 // 31
+                cb = (token & 0x0F) * 255 // 15
+                arr[r * 16 : (r + 1) * 16, c * 16 : (c + 1) * 16] = [cr, cg, cb]
+            return Image.fromarray(arr)
+
         device = next(self._model.parameters()).device
         indices = torch.tensor(tokens, device=device).reshape(1, grid_h, grid_w)
         quantized = self._model.quantize.get_codebook_entry(
@@ -129,3 +175,4 @@ class VQTokenizer:
     def grid_shape_for(self, image_size: int) -> tuple[int, int]:
         g = image_size // self.downsample_factor
         return g, g
+

@@ -1,0 +1,48 @@
+# ==============================================================================
+# SOTA Progressive MaskGIT Vision Transformer — Stage 2 (512px) for NVIDIA RTX A6000 (48GB)
+# ==============================================================================
+# Progressive resolution continuation from 256px -> 512px (32x32 = 1024 tokens).
+# Positional embeddings interpolated from Stage 1 via bicubic interpolation.
+#
+# Hardware Envelope:
+#   - GPU: RTX A6000 (48GB GDDR6 ECC)
+#   - Expected Live VRAM Usage: ~36GB - 42GB (fully utilizes the 48GB card)
+#   - Gradient Checkpointing: Active to manage 1024-token self-attention activations
+# ==============================================================================
+
+manifest_path: "./data/sketch_train_512/manifest.jsonl"
+output_dir: "./checkpoints/sketch_stage2_512_sota"
+
+grid_h: 32
+grid_w: 32
+vocab_size: 16384
+hidden_dim: 1024
+n_layers: 24
+n_heads: 16
+ffn_dim: 4096
+dropout: 0.05
+prompt_dim: 768
+norm_type: "rmsnorm"
+
+batch_size: 32             # 32 images * 1024 tokens = 32,768 tokens per step
+grad_accum_steps: 2        # Effective batch size = 64
+lr: 2.0e-4                 # Fine-tuning rate for progressive stage
+weight_decay: 0.01
+adam_beta1: 0.9
+adam_beta2: 0.96
+warmup_steps: 1500
+caption_mix_ratio: 0.95
+cfg_dropout_prob: 0.1
+total_steps: 60000
+critic_loss_weight: 0.5
+focal_gamma: 1.0           # SOTA focal loss for rare UI element boundary sharpness
+grad_clip: 1.0
+
+log_every: 50
+checkpoint_every: 2000
+num_workers: 8
+seed: 42
+use_gradient_checkpointing: true   # Preserves memory for 1024 tokens across 24 layers
+
+resume_from: null
+init_from: "./checkpoints/sketch_stage1_256_sota/checkpoint_final.pt"

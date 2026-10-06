@@ -114,8 +114,10 @@ class DPOEncodingStage(Stage):
                     img_a = pad_to_multiple(load_image(meta_path.parent / meta["image_a"]), 16)
                     img_b = pad_to_multiple(load_image(meta_path.parent / meta["image_b"]), 16)
 
-                    t_a = normalize_for_vae(image_to_tensor(img_a)).unsqueeze(0).to("cuda", dtype=torch.float16)
-                    t_b = normalize_for_vae(image_to_tensor(img_b)).unsqueeze(0).to("cuda", dtype=torch.float16)
+                    enc_dev = "cuda" if torch.cuda.is_available() else "cpu"
+                    enc_dtype = torch.float16 if enc_dev == "cuda" else torch.float32
+                    t_a = normalize_for_vae(image_to_tensor(img_a)).unsqueeze(0).to(enc_dev, dtype=enc_dtype)
+                    t_b = normalize_for_vae(image_to_tensor(img_b)).unsqueeze(0).to(enc_dev, dtype=enc_dtype)
                     with torch.no_grad():
                         lat_a = z_vae.encode(t_a).latent_dist.sample()
                         lat_b = z_vae.encode(t_b).latent_dist.sample()

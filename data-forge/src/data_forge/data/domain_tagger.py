@@ -28,6 +28,10 @@ _UI_FIRST_SOURCES = frozenset([
     "webui",
     "screen2words",
     "uicrit",
+    "screenspot",
+    "seeclick",
+    "android_control",
+    "mind2web",
     "figma_ui",
     "dribbble_ui",
 ])

@@ -157,22 +157,20 @@ def probe_real_vram() -> dict | None:
 
 def probe_real_ram() -> dict | None:
     """Best-effort live system-RAM query, for diagnostics/logging only —
-    the RAMLedger counterpart to probe_real_vram(). Reads /proc/meminfo
-    directly (no new hard dependency); returns None on non-Linux rather
-    than adding a psutil dependency just for a diagnostics-only
-    nice-to-have.
+    the RAMLedger counterpart to probe_real_vram(). Delegates to
+    common.hardware._probe_system_ram() which cleanly supports Linux
+    (/proc/meminfo), Windows (ctypes GlobalMemoryStatusEx), and psutil
+    without adding hard external dependencies.
     """
     try:
-        with open("/proc/meminfo") as f:
-            meminfo = {}
-            for line in f:
-                key, _, rest = line.partition(":")
-                meminfo[key] = rest.strip()
-        total_kb = int(meminfo["MemTotal"].split()[0])
-        avail_kb = int(meminfo.get("MemAvailable", meminfo["MemFree"]).split()[0])
-        return {
-            "free_gb": round(avail_kb / (1024**2), 2),
-            "total_gb": round(total_kb / (1024**2), 2),
-        }
+        from krisna_inference.common.hardware import _probe_system_ram
+
+        total_gb, avail_gb = _probe_system_ram()
+        if total_gb > 0:
+            return {
+                "free_gb": round(avail_gb, 2),
+                "total_gb": round(total_gb, 2),
+            }
     except Exception:
-        return None
+        pass
+    return None

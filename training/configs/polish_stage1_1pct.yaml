@@ -1,0 +1,26 @@
+# Polish tier (Stage 1: Base fine-tuning), Z-Image LoRA training config for 1% data.
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "models/z_image_surrogate_base"
+
+instance_data_dir: "./data/polish_default_train"
+output_dir: "./checkpoints/polish_default_lora"
+
+resolution: 256
+train_batch_size: 2
+gradient_accumulation_steps: 1
+gradient_checkpointing: false
+cache_latents: false
+learning_rate: 1.0e-4
+lr_scheduler: "constant"
+lr_warmup_steps: 5
+max_train_steps: 15
+optimizer: "adamW"
+use_8bit_adam: false
+mixed_precision: "no"
+seed: 0
+rank: 16
+
+instance_prompt: "a UI design"
+validation_prompt: null
+validation_epochs: 999
+dataloader_num_workers: 0

@@ -115,9 +115,10 @@ def main() -> int:
         noise_latent_at_timestep,
     )
 
+    mixed_precision = args.mixed_precision if torch.cuda.is_available() else "no"
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
+        mixed_precision=mixed_precision,
     )
     torch.manual_seed(args.seed)
 
@@ -127,15 +128,23 @@ def main() -> int:
     # Policy pipeline — trainable LoRA adapter on the transformer only
     # (VAE and text encoder stay frozen, matching the base fine-tune's
     # own convention — see training/README.md's polish-tier section).
+    weight_dtype = torch.bfloat16 if (mixed_precision == "bf16" and torch.cuda.is_available()) else torch.float32
     policy_pipe = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_model_name_or_path,
-        torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+        torch_dtype=weight_dtype,
     )
     if args.lora_adapter_path:
-        policy_pipe.load_lora_weights(args.lora_adapter_path)
+        policy_pipe.load_lora_weights(args.lora_adapter_path, adapter_name="default")
         log.info("continuing_from_existing_adapter", extra={"path": args.lora_adapter_path})
     else:
-        policy_pipe.transformer.add_adapter(LoraConfig(r=args.lora_rank, lora_alpha=args.lora_rank))
+        policy_pipe.transformer.add_adapter(
+            LoraConfig(
+                r=args.lora_rank,
+                lora_alpha=args.lora_rank,
+                init_lora_weights="gaussian",
+                target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+            )
+        )
 
     # Reference model — frozen COPY of the same base weights (NOT the
     # same object as the policy — the whole DPO formulation depends on
@@ -146,10 +155,10 @@ def main() -> int:
     # not from the raw base weights.
     ref_pipe = AutoPipelineForText2Image.from_pretrained(
         args.pretrained_model_name_or_path,
-        torch_dtype=torch.bfloat16 if args.mixed_precision == "bf16" else torch.float16,
+        torch_dtype=weight_dtype,
     )
     if args.lora_adapter_path:
-        ref_pipe.load_lora_weights(args.lora_adapter_path)
+        ref_pipe.load_lora_weights(args.lora_adapter_path, adapter_name="default")
     ref_pipe.transformer.requires_grad_(False)
     ref_pipe.transformer.eval()
     ref_transformer = ref_pipe.transformer
@@ -226,15 +235,17 @@ def main() -> int:
     while global_step < args.max_train_steps:
         for batch in dataloader:
             with accelerator.accumulate(policy_transformer):
-                chosen_latents = vae.encode(batch["chosen_pixel_values"].to(vae.dtype)).latent_dist.sample()
-                rejected_latents = vae.encode(batch["rejected_pixel_values"].to(vae.dtype)).latent_dist.sample()
-                chosen_latents = chosen_latents * vae.config.scaling_factor
-                rejected_latents = rejected_latents * vae.config.scaling_factor
+                chosen_pixel_values = batch["chosen_pixel_values"].to(accelerator.device, dtype=vae.dtype)
+                rejected_pixel_values = batch["rejected_pixel_values"].to(accelerator.device, dtype=vae.dtype)
+                chosen_latents = vae.encode(chosen_pixel_values).latent_dist.sample()
+                rejected_latents = vae.encode(rejected_pixel_values).latent_dist.sample()
+
+                shift_factor = getattr(vae.config, "shift_factor", 0.0) or 0.0
+                scaling_factor = getattr(vae.config, "scaling_factor", 1.0) or 1.0
+                chosen_latents = (chosen_latents - shift_factor) * scaling_factor
+                rejected_latents = (rejected_latents - shift_factor) * scaling_factor
 
                 bsz = chosen_latents.shape[0]
-                # Independent noise/timestep draws per side of the pair —
-                # matching Wallace et al.'s own formulation, not a shared
-                # draw (see dpo_loss.py's docstring for why).
                 u = compute_density_for_timestep_sampling(
                     weighting_scheme="logit_normal", batch_size=bsz,
                     logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
@@ -253,43 +264,53 @@ def main() -> int:
                 target_chosen = flow_matching_velocity_target(chosen_latents, noise_chosen)
                 target_rejected = flow_matching_velocity_target(rejected_latents, noise_rejected)
 
-                # UNVERIFIED against Z-Image-Turbo's specific pipeline
-                # class — encode_prompt()'s return shape genuinely varies
-                # across diffusers pipelines (some return a single
-                # tensor, many SD3/FLUX-lineage pipelines return a tuple
-                # of (prompt_embeds, pooled_prompt_embeds) or similar).
-                # Z-Image-Turbo's live pipeline code was not directly
-                # inspected for this script — same "flag rather than
-                # guess" discipline as polish_quality_backend.py's
-                # `strength` kwarg elsewhere in this project. Check the
-                # real return shape (`policy_pipe.encode_prompt.__doc__`
-                # or the pipeline source) before trusting this call as
-                # written; the fix is almost certainly just unpacking a
-                # tuple here rather than a deeper problem.
-                prompt_embeds = policy_pipe.encode_prompt(batch["prompt"])
-                if isinstance(prompt_embeds, torch.Tensor):
-                    prompt_embeds = prompt_embeds.to(accelerator.device)
-                elif isinstance(prompt_embeds, (tuple, list)):
-                    prompt_embeds = tuple(
-                        t.to(accelerator.device) if isinstance(t, torch.Tensor) else t
-                        for t in prompt_embeds
-                    )
+                # Z-Image encode_prompt returns (prompt_embeds, negative_prompt_embeds)
+                prompt_embeds, _ = policy_pipe.encode_prompt(
+                    batch["prompt"],
+                    do_classifier_free_guidance=False,
+                )
+                if isinstance(prompt_embeds, list):
+                    prompt_embeds = [t.to(accelerator.device) if isinstance(t, torch.Tensor) else t for t in prompt_embeds]
+                elif isinstance(prompt_embeds, torch.Tensor):
+                    prompt_embeds = [prompt_embeds.to(accelerator.device)]
 
-                # Same caveat: the transformer forward signature
-                # (positional args, `.sample` vs a plain tensor return)
-                # is pipeline-specific. This matches the general
-                # diffusers DiT-family calling convention
-                # (hidden_states, timestep, encoder_hidden_states) with a
-                # `.sample` output — verify against Z-Image-Turbo's real
-                # transformer class before a production run.
-                policy_v_chosen = policy_transformer(noisy_chosen, sigma_chosen.flatten(), prompt_embeds).sample
-                policy_v_rejected = policy_transformer(noisy_rejected, sigma_rejected.flatten(), prompt_embeds).sample
+                timestep_normalized = sigma_chosen.flatten()
+
+                noisy_chosen_list = list(noisy_chosen.unsqueeze(2).unbind(dim=0))
+                policy_pred_chosen = policy_transformer(
+                    noisy_chosen_list,
+                    timestep_normalized,
+                    prompt_embeds,
+                    return_dict=False,
+                )[0]
+                policy_v_chosen = -torch.stack(policy_pred_chosen, dim=0).squeeze(2)
+
+                noisy_rejected_list = list(noisy_rejected.unsqueeze(2).unbind(dim=0))
+                policy_pred_rejected = policy_transformer(
+                    noisy_rejected_list,
+                    timestep_normalized,
+                    prompt_embeds,
+                    return_dict=False,
+                )[0]
+                policy_v_rejected = -torch.stack(policy_pred_rejected, dim=0).squeeze(2)
+
                 with torch.no_grad():
-                    # Swap ref_transformer onto the accelerator device only
-                    # for this forward call, then back to CPU immediately.
                     ref_transformer.to(accelerator.device)
-                    ref_v_chosen = ref_transformer(noisy_chosen, sigma_chosen.flatten(), prompt_embeds).sample
-                    ref_v_rejected = ref_transformer(noisy_rejected, sigma_rejected.flatten(), prompt_embeds).sample
+                    ref_pred_chosen = ref_transformer(
+                        noisy_chosen_list,
+                        timestep_normalized,
+                        prompt_embeds,
+                        return_dict=False,
+                    )[0]
+                    ref_v_chosen = -torch.stack(ref_pred_chosen, dim=0).squeeze(2)
+
+                    ref_pred_rejected = ref_transformer(
+                        noisy_rejected_list,
+                        timestep_normalized,
+                        prompt_embeds,
+                        return_dict=False,
+                    )[0]
+                    ref_v_rejected = -torch.stack(ref_pred_rejected, dim=0).squeeze(2)
                     ref_transformer.to("cpu")
 
                 out = flow_matching_dpo_loss(
@@ -314,33 +335,33 @@ def main() -> int:
                             "loss": out.loss.item(),
                             "dpo_term": out.dpo_term.item(),
                             "fm_anchor_term": out.fm_anchor_term.item(),
-                            # The real signal to watch, per dpo_loss.py's
-                            # docstring — should trend positive and
-                            # growing, not just "loss goes down".
                             "implicit_reward_margin": out.implicit_reward_margin.item(),
                         },
                     )
                 if global_step % args.checkpointing_steps == 0:
-                    # CONFIRMED via direct research, not assumed:
-                    # transformer.add_adapter(LoraConfig(...)) is real —
-                    # a diffusers maintainer's own bug-report example
-                    # shows this exact call on a diffusers transformer
-                    # model (github.com/huggingface/peft/issues/2494).
-                    # save_lora_adapter() as its save-side counterpart was
-                    # NOT found confirmed anywhere in the same research
-                    # pass — only load_lora_adapter() (PeftAdapterMixin)
-                    # and the pipeline-level save_lora_weights() are
-                    # documented. Using save_pretrained() instead, which
-                    # IS directly confirmed (PEFT's own quickstart: "now
-                    # perform training... then save the model:
-                    # model.save_pretrained(...)") as the standard save
-                    # call once add_adapter()/get_peft_model() has
-                    # PEFT-wrapped a model.
-                    accelerator.unwrap_model(policy_transformer).save_pretrained(str(output_dir / f"checkpoint-{global_step}"))
+                    from peft.utils import get_peft_model_state_dict
+                    from diffusers import ZImagePipeline
+
+                    unwrapped = accelerator.unwrap_model(policy_transformer)
+                    adapter_name = list(unwrapped.peft_config.keys())[0] if (hasattr(unwrapped, 'peft_config') and unwrapped.peft_config) else 'default'
+                    transformer_lora_layers = get_peft_model_state_dict(unwrapped, adapter_name=adapter_name)
+                    ZImagePipeline.save_lora_weights(
+                        save_directory=str(output_dir / f"checkpoint-{global_step}"),
+                        transformer_lora_layers=transformer_lora_layers,
+                    )
                 if global_step >= args.max_train_steps:
                     break
 
-    accelerator.unwrap_model(policy_transformer).save_pretrained(str(output_dir / "final"))
+    from peft.utils import get_peft_model_state_dict
+    from diffusers import ZImagePipeline
+
+    unwrapped = accelerator.unwrap_model(policy_transformer)
+    adapter_name = list(unwrapped.peft_config.keys())[0] if (hasattr(unwrapped, 'peft_config') and unwrapped.peft_config) else 'default'
+    transformer_lora_layers = get_peft_model_state_dict(unwrapped, adapter_name=adapter_name)
+    ZImagePipeline.save_lora_weights(
+        save_directory=str(output_dir / "final"),
+        transformer_lora_layers=transformer_lora_layers,
+    )
     log.info("dpo_training_complete", extra={"output_dir": str(output_dir)})
     return 0
 

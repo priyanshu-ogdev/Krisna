@@ -105,6 +105,9 @@ $Python = "python"
 if (Test-Path "$RepoRoot\.venv\Scripts\python.exe") {
     $Python = "$RepoRoot\.venv\Scripts\python.exe"
 }
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+$ErrorActionPreference = "Continue"
 
 # GPU & System Check
 function Check-Hardware {
@@ -291,7 +294,7 @@ diffusers_dir = Path(cfg.pop('diffusers_dir'))
 script = diffusers_dir / 'examples' / 'dreambooth' / 'train_dreambooth_lora_z_image.py'
 if not script.exists():
     raise SystemExit(f'Script not found: {script}')
-args = ['accelerate', 'launch', str(script)]
+args = [sys.executable, '-m', 'accelerate.commands.launch', str(script)]
 for k, v in cfg.items():
     if v is None: continue
     if isinstance(v, bool):
@@ -315,7 +318,7 @@ import subprocess, sys, yaml
 from pathlib import Path
 config_path = sys.argv[1]
 cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
-args = ['accelerate', 'launch', '-m', 'krisna_training.polish.train_dpo']
+args = [sys.executable, '-m', 'accelerate.commands.launch', '-m', 'krisna_training.polish.train_dpo']
 for k, v in cfg.items():
     if v is None: continue
     if isinstance(v, bool):

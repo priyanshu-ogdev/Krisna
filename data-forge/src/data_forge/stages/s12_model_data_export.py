@@ -68,7 +68,7 @@ log = get_logger("stages.s12")
 # category strings at runtime) so a new dataset added to datasets.yaml
 # doesn't silently change which DPO stage it feeds without a deliberate
 # edit to this file too.
-_GENERAL_DPO_SOURCES = ("pickapic_v2", "hpdv2")
+_GENERAL_DPO_SOURCES = ("pickapic_v2", "hpdv2", "gamelabel_10k")
 _DOMAIN_DPO_SOURCES = ("designsense_10k", "designpref")
 _EVAL_ONLY_SOURCES = ("taste", "partiprompts")
 
@@ -286,7 +286,7 @@ class ModelDataExportStage(Stage):
 
         self._write_summary(model_dir, {
             **counts,
-            "note": "general/ = Stage-1 DPO (Pick-a-Pic v2, HPDv2 — broad aesthetic, "
+            "note": "general/ = Stage-1 DPO (Pick-a-Pic v2, HPDv2, GameLabel-10K — broad aesthetic, "
                     "not UI-specific). domain/ = Stage-2 DPO (DesignSense-10k, "
                     "DesignPref — real human-designer UI/layout preference; may be "
                     "empty until those two datasets' repo_id is confirmed, see "

@@ -18,7 +18,7 @@ lora-adapter-path: null                          # set to the base fine-tune's
                                                     # checkpoint, rather than
                                                     # the raw base weights
 output-dir: "models/dpo_checkpoints/stage1_general"
-source: ["pickapic_v2", "hpdv2"]                  # Stage 1 = general preference
+source: ["pickapic_v2", "hpdv2", "gamelabel_10k"]   # Stage 1 = general preference
                                                     # (real, human-labeled,
                                                     # not UI-domain — see
                                                     # RESEARCH_AND_CITATIONS.md §1).

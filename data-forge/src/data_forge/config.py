@@ -122,7 +122,7 @@ class DatasetSpec:
     # there is exactly one list of "these are preference-pair modes" to
     # keep in sync, not two.
     PREFERENCE_PAIR_DOWNLOAD_MODES: ClassVar[frozenset[str]] = frozenset(
-        {"preference_pair", "hpdv2_ranked_list"}
+        {"preference_pair", "hpdv2_ranked_list", "gamelabel_csv"}
     )
 
     _ZERO_IMAGE_STORAGE_MODES: ClassVar[frozenset[str]] = frozenset(

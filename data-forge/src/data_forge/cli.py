@@ -69,11 +69,12 @@ def _validate_environment() -> None:
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
         console.print(
-            "[bold red]ERROR:[/] HF_TOKEN environment variable not set.\n"
-            "Set it in .env or via: export HF_TOKEN=hf_...",
+            "[bold yellow]WARNING:[/] HF_TOKEN environment variable not set.\n"
+            "Public open-source datasets (PD12M, CC12M, Rico, HPDv2, GameLabel-10K, TASTE, etc.)\n"
+            "will download without authentication. Gated datasets will be skipped.",
             highlight=False,
         )
-        sys.exit(1)
+        return
 
     # Validate HF token has read access via whoami-v2
     try:
@@ -105,10 +106,11 @@ def _load_pipeline_config() -> "PipelineConfig":
     from data_forge.config import PipelineConfig, load_config
 
     configs_dir = _find_configs_dir()
+    datasets_yaml_path = os.environ.get("KRISNA_DATASETS_YAML") or (configs_dir / "datasets.yaml")
     config = load_config(
         pipeline_yaml=configs_dir / "pipeline.yaml",
         models_yaml=configs_dir / "models.yaml",
-        datasets_yaml=configs_dir / "datasets.yaml",
+        datasets_yaml=datasets_yaml_path,
     )
     return config
 

@@ -21,7 +21,7 @@ Frozen upstream weights ────────(Gemma 4 31B Dense)────�
 |---|---|---|---|---|
 | **Planner** | Qwen3.5-9B (Fast: 4B) | **Frozen** (RAG-only) | No fine-tuning (Gated DeltaNet / Attention sensitivity under QLoRA). Grounded via retrieval over data-forge UICrit human critique corpus. | `PlannerBackend`: NF4 quantized (6.5GB VRAM), always-resident. |
 | **Sketch** | MaskGIT Transformer | **Trained from scratch** | Multi-round bidirectional transformer over VQ-VAE tokens. Vocab size: `16,384`, Stage 1: `16x16` (256px), Stage 2: `32x32` (512px). Conditioning: CLIP ViT-L/14 text embeddings (`prompt_dim=768`). | `SketchBackend` & `MaskGITSketchModel`: checkpoint-pluggable, always-resident (3.0GB VRAM). |
-| **Polish Default** | Z-Image-Turbo | **Trained (LoRA + DPO)** | Base model: `Tongyi-MAI/Z-Image` (undistilled base, BF16). Trained via `train_dpo.py` with logit-normal diffusion timestep sampling. | `ZImageTurboBackend`: Loads LoRA adapter directly on Z-Image-Turbo base (8.0GB VRAM). |
+| **Polish Default** | Z-Image-Turbo | **Trained (LoRA + DPO)** | Base model: `Tongyi-MAI/Z-Image` (undistilled base, BF16). Trained via `train_dpo.py` with logit-normal diffusion timestep sampling. | `ZImageTurboBackend`: Loads LoRA adapter directly on Z-Image-Turbo base (14.0GB VRAM / 12.0GB low-VRAM). |
 | **Polish Quality** | Qwen-Image-Edit-2511 | **Frozen** | SDEdit / instruction-guided latent image transformation. | `QwenImageEditBackend`: NF4 quantization (16.0GB VRAM / 10.0GB low-VRAM CPU offload). |
 | **Critic** | Gemma 4 31B Dense | **Frozen** | Zero-shot multi-dimensional design evaluator. Outputs structured JSON critique schema. | `CriticWorker` & `CritiqueBackend`: Subprocess IPC, NF4 (18.0GB VRAM / 11.5GB VRAM + 45GB RAM offload). |
 

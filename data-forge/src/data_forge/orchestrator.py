@@ -273,8 +273,16 @@ class Orchestrator:
             log.info("record_limit_applied", limit=limit, resulting_chunks=len(chunks))
 
         if not chunks:
-            log.warning("no_records_to_process")
-            return []
+            post_chunk_stages = {
+                "s08_5_dpo_encoding",
+                "s09_heldout",
+                "s10_audit",
+                "s11_registry_watcher",
+                "s12_model_data_export",
+            }
+            if not any(self._should_run(s, stages_filter) for s in post_chunk_stages):
+                log.warning("no_records_to_process")
+                return []
 
         log.info("chunks_planned", count=len(chunks), chunk_size=self.config.chunk_size)
 
@@ -416,9 +424,13 @@ class Orchestrator:
                         stage_results.append(result)
 
             # ── Phase 5: OCR Specialist ──────────────────────────────
-            if self._should_run("s05_recaption", stages_filter):
+            if (
+                self._should_run("s05_ocr_enrichment", stages_filter)
+                or self._should_run("s05_5_pii_text_redact", stages_filter)
+                or self._should_run("s05_recaption", stages_filter)
+            ):
                 ocr_config = self.config.get_stage("s05_recaption")
-                if ocr_config.get("ocr_enrichment", True):
+                if ocr_config.get("ocr_enrichment", True) and self._should_run("s05_ocr_enrichment", stages_filter):
                     from data_forge.inference.engine import ModelEngine
                     record_ids = self._filter_active(record_ids)
                     if record_ids:
@@ -479,6 +491,9 @@ class Orchestrator:
 
         # ── Post-chunk global stages ────────────────────────────────
         all_record_ids = [rid for chunk in chunks for rid in chunk]
+        if not all_record_ids:
+            rows = self.manifest._conn.execute("SELECT id FROM records").fetchall()
+            all_record_ids = [r["id"] for r in rows]
 
         # DPO Latent Encoding — encodes the deduped/PII-scrubbed
         # preference pairs from s01_6 into Z-Image-Turbo's latent space

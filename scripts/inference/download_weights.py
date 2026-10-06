@@ -297,9 +297,10 @@ def main() -> int:
                           "hasn't run yet). Auto-discovered under models/dpo_checkpoints/**/final/ "
                           "and checkpoints/polish_default_lora*/ if not given, most-recent wins. "
                           "Optional — Polish Default runs on the frozen base without it.")
-    ap.add_argument("--critic-worker-python", default="./venv-critic/bin/python",
-                     help="Path to the Critic tier's isolated venv interpreter (see "
-                          "scripts/training/setup_env_critic.sh). Only recorded, not created.")
+    ap.add_argument("--critic-worker-python",
+                    default="./venv-critic/Scripts/python.exe" if sys.platform == "win32" else "./venv-critic/bin/python",
+                    help="Path to the Critic tier's isolated venv interpreter (see "
+                         "scripts/training/setup_env_critic.sh). Only recorded, not created.")
     ap.add_argument("--vqgan-checkpoint", default=None,
                      help="Path to boris/vqgan_f16_16384's last.ckpt (the VQGAN decoder the "
                           "Sketch tier's tokens are decoded through at Finalize — see "

@@ -179,6 +179,117 @@ class TestFetchHfParquetImages:
         records = await fetcher._fetch_hf_parquet_images("test", spec, config.data_root / "raw" / "test")
         assert records == []
 
+    async def test_nested_caption_column_captured(self, fetcher, config, tmp_path):
+        """Android Control and similar datasets store instructions inside nested json objects."""
+        parquet_dir = tmp_path / "fake_snapshot"
+        parquet_dir.mkdir()
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), color=(10, 20, 30)).save(buf, format="PNG")
+        rows = [
+            {
+                "png": {"bytes": buf.getvalue(), "path": None},
+                "json": {
+                    "messages": [
+                        {"role": "instruction", "content": "Launch the music player and search for jazz"},
+                        {"role": "assistant", "content": "Done"}
+                    ]
+                }
+            }
+        ]
+        pd.DataFrame(rows).to_parquet(parquet_dir / "train-00000.parquet")
+
+        spec = DatasetSpec(
+            display_name="android_control", source_type="huggingface", repo_id="fake/android_control",
+            category="mobile_ui", expected_record_count=1,
+            fetch_config={
+                "download_mode": "hf_parquet_images",
+                "image_column": "png",
+                "caption_column": "json.messages.0.content"
+            },
+        )
+        dest = config.data_root / "raw" / "android_control"
+        with patch("huggingface_hub.snapshot_download", return_value=str(parquet_dir)):
+            records = await fetcher._fetch_hf_parquet_images("android_control", spec, dest)
+
+        assert len(records) == 1
+        assert records[0]["source_caption"] == "Launch the music player and search for jazz"
+
+    async def test_viewport_crop_on_extreme_aspect_ratio(self, fetcher, config, tmp_path):
+        """Multimodal Mind2Web and full-page web captures have extreme heights (>4:1) that
+        would otherwise trigger s08_encoding exclusions. Viewport cropping slices the top fold."""
+        parquet_dir = tmp_path / "fake_snapshot"
+        parquet_dir.mkdir()
+        buf = io.BytesIO()
+        # 100 wide by 500 tall (5:1 aspect ratio)
+        Image.new("RGB", (100, 500), color=(50, 60, 70)).save(buf, format="PNG")
+        rows = [{"screenshot": {"bytes": buf.getvalue(), "path": None}, "task": "Book a flight"}]
+        pd.DataFrame(rows).to_parquet(parquet_dir / "train-00000.parquet")
+
+        spec = DatasetSpec(
+            display_name="mind2web", source_type="huggingface", repo_id="fake/mind2web",
+            category="web_ui", expected_record_count=1,
+            fetch_config={
+                "download_mode": "hf_parquet_images",
+                "image_column": "screenshot",
+                "caption_column": "task",
+                "viewport_crop": True,
+                "max_aspect_ratio": 2.0
+            },
+        )
+        dest = config.data_root / "raw" / "mind2web"
+        with patch("huggingface_hub.snapshot_download", return_value=str(parquet_dir)):
+            records = await fetcher._fetch_hf_parquet_images("mind2web", spec, dest)
+
+        assert len(records) == 1
+        assert records[0]["image_width"] == 100
+        assert records[0]["image_height"] == 200  # 100 * 2.0 = 200
+        saved_img = Image.open(config.data_root / records[0]["image_path"])
+        assert saved_img.size == (100, 200)
+
+    async def test_alpha_composite_onto_white(self, fetcher, config, tmp_path):
+        """Transparent UI icons/elements should be composited onto clean white rather than black."""
+        parquet_dir = tmp_path / "fake_snapshot"
+        parquet_dir.mkdir()
+        buf = io.BytesIO()
+        # Completely transparent RGBA image
+        Image.new("RGBA", (32, 32), color=(0, 0, 0, 0)).save(buf, format="PNG")
+        rows = [{"image": {"bytes": buf.getvalue(), "path": None}}]
+        pd.DataFrame(rows).to_parquet(parquet_dir / "train-00000.parquet")
+
+        spec = DatasetSpec(
+            display_name="screenspot", source_type="huggingface", repo_id="fake/screenspot",
+            category="cross_platform_ui", expected_record_count=1,
+            fetch_config={"download_mode": "hf_parquet_images", "image_column": "image"},
+        )
+        dest = config.data_root / "raw" / "screenspot"
+        with patch("huggingface_hub.snapshot_download", return_value=str(parquet_dir)):
+            records = await fetcher._fetch_hf_parquet_images("screenspot", spec, dest)
+
+        assert len(records) == 1
+        saved_img = Image.open(config.data_root / records[0]["image_path"])
+        assert saved_img.mode == "RGB"
+        # Transparent pixel should be white (255, 255, 255)
+        assert saved_img.getpixel((0, 0)) == (255, 255, 255)
+
+    async def test_streaming_multi_file_parquet_stops_at_sample_size(self, fetcher, config, tmp_path):
+        """Multi-parquet datasets (e.g. SeeClick 255 files, AndroidControl 85 files) must be
+        streamed file-by-file and stop immediately once sample_size is satisfied."""
+        parquet_dir = tmp_path / "fake_snapshot"
+        parquet_dir.mkdir()
+        for f_idx in range(3):
+            _make_embedded_image_parquet(parquet_dir / f"train-{f_idx:05d}.parquet", n=5, image_col="image")
+
+        spec = DatasetSpec(
+            display_name="seeclick", source_type="huggingface", repo_id="fake/seeclick",
+            category="web_ui", expected_record_count=15,
+            fetch_config={"download_mode": "hf_parquet_images", "image_column": "image", "sample_size": 7},
+        )
+        dest = config.data_root / "raw" / "seeclick"
+        with patch("huggingface_hub.snapshot_download", return_value=str(parquet_dir)):
+            records = await fetcher._fetch_hf_parquet_images("seeclick", spec, dest)
+
+        assert len(records) == 7
+
 
 class TestRicoSemanticImageColumnConfirmed:
     """Regression guard for the specific open item closed this revision:

@@ -72,8 +72,10 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         # target, so this now wires the same enable_cpu_offload mechanism
         # Polish Quality uses. See model_registry.py's LOW_VRAM_REGISTRY
         # entry for this tier and docs/review/13_ram_offload_and_precision_audit.md.
+        model_id = os.environ.get("KRISNA_POLISH_DEFAULT_MODEL_ID", "Tongyi-MAI/Z-Image-Turbo")
         return ZImageTurboBackend(
             spec,
+            model_id=model_id,
             lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
             enable_cpu_offload=_LOW_VRAM,
         )

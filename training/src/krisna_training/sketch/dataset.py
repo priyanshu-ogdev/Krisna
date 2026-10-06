@@ -61,10 +61,12 @@ class SketchTokenDataset:
         if "tokens" in record:
             tokens = record["tokens"]
         else:
-            import numpy as np
+            if "_cached_tokens" not in record:
+                import numpy as np
 
-            tokens_path = self.manifest_path.parent / record["tokens_path"]
-            tokens = np.load(tokens_path).reshape(-1).tolist()
+                tokens_path = self.manifest_path.parent / record["tokens_path"]
+                record["_cached_tokens"] = np.load(tokens_path).reshape(-1).tolist()
+            tokens = record["_cached_tokens"]
 
         expected_len = self.grid_h * self.grid_w
         if len(tokens) != expected_len:

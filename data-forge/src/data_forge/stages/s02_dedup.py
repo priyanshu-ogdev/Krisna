@@ -78,12 +78,15 @@ class DedupStage(Stage):
             result.records_excluded = exact_dupes
             return result
 
+        import torch
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         batch_size = stage_cfg.get("embedding_batch_size", 256)
         embeddings = DedupEngine.generate_embeddings(
             image_paths=image_paths,
             clip_model=engine.clip_model,
             clip_processor=engine.clip_processor,
             batch_size=batch_size,
+            device=device,
         )
 
         # Build index and find duplicates

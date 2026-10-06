@@ -6,7 +6,7 @@ blob-root: "krisna_blobs"
 pretrained-model-name-or-path: "Tongyi-MAI/Z-Image-Turbo"
 lora-adapter-path: null                          # set to base LoRA output_dir to continue DPO from fine-tuned weights
 output-dir: "models/dpo_checkpoints/stage1_general"
-source: ["pickapic_v2", "hpdv2"]                  # Real human-labeled general preference
+source: ["pickapic_v2", "hpdv2", "gamelabel_10k"]   # Real human-labeled general preference
 
 # Recipe for Stage 2 (UI-Domain DPO):
 # To train on UI-domain preference pairs (DesignSense-10k / DesignPref) once available:
