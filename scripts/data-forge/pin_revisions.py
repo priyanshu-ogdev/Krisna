@@ -64,12 +64,12 @@ def _load(path: Path):
         return representer.represent_scalar("tag:yaml.org,2002:null", "null")
     yaml.representer.add_representer(type(None), _represent_none)
 
-    with path.open() as f:
+    with path.open(encoding="utf-8") as f:
         return yaml, yaml.load(f)
 
 
 def _save(yaml: YAML, data, path: Path) -> None:
-    with path.open("w") as f:
+    with path.open("w", encoding="utf-8") as f:
         yaml.dump(data, f)
 
 

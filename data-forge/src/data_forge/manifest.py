@@ -48,6 +48,7 @@ VALID_STATUSES = frozenset([
 # Statuses that stop further processing
 TERMINAL_STATUSES = frozenset([
     "training_pool",
+    "audited",
     "heldout",
     "excluded_duplicate",
     "excluded_low_quality",
@@ -668,7 +669,10 @@ class Manifest:
         return [_row_to_record(r) for r in rows]
 
     def get_training_pool(self) -> list[ManifestRecord]:
-        return self.query_by_status("training_pool")
+        rows = self._conn.execute(
+            "SELECT * FROM records WHERE status IN ('training_pool', 'audited')"
+        ).fetchall()
+        return [_row_to_record(r) for r in rows]
 
     def get_all_records_with_critique(self) -> list[ManifestRecord]:
         """All records with any non-null critique_output, any status.
@@ -818,7 +822,7 @@ class Manifest:
             "total_raw_bytes": total_bytes,
             "total_raw_gb": round(total_bytes / 1e9, 2),
             "latest_version": latest_version,
-            "training_pool_count": status_counts.get("training_pool", 0),
+            "training_pool_count": status_counts.get("training_pool", 0) + status_counts.get("audited", 0),
             "heldout_count": status_counts.get("heldout", 0),
             "excluded_count": sum(
                 v for k, v in status_counts.items() if k.startswith("excluded_")

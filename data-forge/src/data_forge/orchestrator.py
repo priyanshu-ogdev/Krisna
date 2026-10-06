@@ -424,33 +424,35 @@ class Orchestrator:
                         stage_results.append(result)
 
             # ── Phase 5: OCR Specialist ──────────────────────────────
-            if (
+            run_ocr = (
                 self._should_run("s05_ocr_enrichment", stages_filter)
-                or self._should_run("s05_5_pii_text_redact", stages_filter)
-                or self._should_run("s05_recaption", stages_filter)
-            ):
-                ocr_config = self.config.get_stage("s05_recaption")
-                if ocr_config.get("ocr_enrichment", True) and self._should_run("s05_ocr_enrichment", stages_filter):
-                    from data_forge.inference.engine import ModelEngine
-                    record_ids = self._filter_active(record_ids)
-                    if record_ids:
-                        async with ModelEngine.vllm_session(self.config, "ocr") as engine:
-                            result = await self._run_stage(
-                                "s05_ocr_enrichment", record_ids, chunk_id, engine
-                            )
-                            stage_results.append(result)
+                or (
+                    stages_filter is not None
+                    and "s05_recaption" in stages_filter
+                    and self.config.get_stage("s05_recaption").get("ocr_enrichment", True)
+                )
+            )
+            if run_ocr and self.config.get_stage("s05_ocr_enrichment").enabled:
+                from data_forge.inference.engine import ModelEngine
+                record_ids = self._filter_active(record_ids)
+                if record_ids:
+                    async with ModelEngine.vllm_session(self.config, "ocr") as engine:
+                        result = await self._run_stage(
+                            "s05_ocr_enrichment", record_ids, chunk_id, engine
+                        )
+                        stage_results.append(result)
 
-                        # Text-PII redaction needs OCR output, so it runs
-                        # right after OCR — not back in Stage 3.5, where
-                        # rec.ocr_output was always empty. Deterministic
-                        # (regex + PIL), no GPU model needed.
-                        if self._should_run("s05_5_pii_text_redact", stages_filter):
-                            record_ids = self._filter_active(record_ids)
-                            if record_ids:
-                                result = await self._run_stage(
-                                    "s05_5_pii_text_redact", record_ids, chunk_id
-                                )
-                                stage_results.append(result)
+            # Text-PII redaction needs OCR output, so it runs
+            # right after OCR — not back in Stage 3.5, where
+            # rec.ocr_output was always empty. Deterministic
+            # (regex + PIL), no GPU model needed.
+            if self._should_run("s05_5_pii_text_redact", stages_filter):
+                record_ids = self._filter_active(record_ids)
+                if record_ids:
+                    result = await self._run_stage(
+                        "s05_5_pii_text_redact", record_ids, chunk_id
+                    )
+                    stage_results.append(result)
 
             # ── Deterministic stages (no GPU model needed) ──────────
             for stage_name in ["s07_routing"]:

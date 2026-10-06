@@ -29,6 +29,7 @@ STAGE_MODULES: tuple[str, ...] = (
     "s06_structure",
     "s07_routing",
     "s08_encoding",
+    "s08_5_dpo_encoding",
     "s09_heldout",
     "s10_audit",
     "s11_registry_watcher",

@@ -26,12 +26,9 @@ class OCREnrichmentStage(Stage):
     ) -> StageResult:
         result = StageResult(stage_name=self.name)
         records = manifest.get_records_by_ids(record_ids)
-        # By the time this phase runs, Stage 6 (Structure) has already
-        # advanced records to "structured" — s05_recaption -> s06_structure
-        # both run inside the same Tier-1 vLLM session before this OCR
-        # phase starts. Filtering on "recaptioned" here meant this loop
-        # never matched anything and OCR silently never ran.
-        records = [r for r in records if r.status == "structured"]
+        # By the time this phase runs, Stage 6 (Structure) has normally advanced records
+        # to "structured" — or "recaptioned" if structure extraction was skipped/disabled.
+        records = [r for r in records if r.status in ("structured", "recaptioned")]
         if not records or engine is None:
             return result
 

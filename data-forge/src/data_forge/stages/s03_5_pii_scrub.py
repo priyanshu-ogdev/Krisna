@@ -85,7 +85,10 @@ class PIIScrubStage(Stage):
                 # Save scrubbed image (or copy original if no modifications)
                 scrubbed_path.parent.mkdir(parents=True, exist_ok=True)
                 if modified:
-                    img.save(scrubbed_path, quality=95)
+                    if scrubbed_path.suffix.lower() in (".jpg", ".jpeg"):
+                        img.save(scrubbed_path, quality=95)
+                    else:
+                        img.save(scrubbed_path)
                 else:
                     shutil.copy2(img_path, scrubbed_path)
 

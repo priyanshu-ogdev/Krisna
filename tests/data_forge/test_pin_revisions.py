@@ -50,36 +50,36 @@ class TestRoundTripFidelity:
         yaml, data = pin_revisions._load(REAL_MODELS_YAML)
         buf = io.StringIO()
         yaml.dump(data, buf)
-        assert buf.getvalue() == REAL_MODELS_YAML.read_text()
+        assert buf.getvalue() == REAL_MODELS_YAML.read_text(encoding="utf-8")
 
     def test_datasets_yaml_round_trips_byte_for_byte(self):
         yaml, data = pin_revisions._load(REAL_DATASETS_YAML)
         buf = io.StringIO()
         yaml.dump(data, buf)
-        assert buf.getvalue() == REAL_DATASETS_YAML.read_text()
+        assert buf.getvalue() == REAL_DATASETS_YAML.read_text(encoding="utf-8")
 
 
 class TestResolveDatasetRevisions:
     def test_dry_run_does_not_modify_the_file(self, tmp_path):
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text())
-        original = target.read_text()
+        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8"), encoding="utf-8")
+        original = target.read_text(encoding="utf-8")
 
         with patch("huggingface_hub.HfApi", return_value=_fake_api()):
             pin_revisions.resolve_dataset_revisions(target, only={"pd12m"}, apply=False)
 
-        assert target.read_text() == original
+        assert target.read_text(encoding="utf-8") == original
 
     def test_apply_writes_real_sha_with_minimal_diff(self, tmp_path):
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text())
-        original_lines = target.read_text().splitlines()
+        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8"), encoding="utf-8")
+        original_lines = target.read_text(encoding="utf-8").splitlines()
 
         with patch("huggingface_hub.HfApi", return_value=_fake_api("resolvedTestSha999")):
             results = pin_revisions.resolve_dataset_revisions(target, only={"pd12m"}, apply=True)
 
         assert results == [{"key": "pd12m", "repo_id": "Spawning/PD12M", "status": "resolved", "sha": "resolvedTestSha999"}]
-        new_lines = target.read_text().splitlines()
+        new_lines = target.read_text(encoding="utf-8").splitlines()
         diff_lines = [i for i, (a, b) in enumerate(zip(original_lines, new_lines)) if a != b]
         assert len(diff_lines) == 1, "exactly one line should differ — pd12m's revision value"
         assert "resolvedTestSha999" in new_lines[diff_lines[0]]
@@ -91,7 +91,7 @@ class TestResolveDatasetRevisions:
         """designsense_10k / designpref — repo_id: null. Must be silently
         skipped, not treated as a resolution failure."""
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text())
+        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8"), encoding="utf-8")
 
         with patch("huggingface_hub.HfApi", return_value=_fake_api()):
             results = pin_revisions.resolve_dataset_revisions(target, only={"designsense_10k", "designpref"}, apply=False)
@@ -100,10 +100,10 @@ class TestResolveDatasetRevisions:
 
     def test_already_pinned_entries_are_reported_not_reresolved(self, tmp_path):
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text().replace(
+        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8").replace(
             'pd12m:\n    display_name: "PD12M (Public Domain 12M)"\n    source_type: "huggingface"\n    repo_id: "Spawning/PD12M"\n    revision: "main"',
             'pd12m:\n    display_name: "PD12M (Public Domain 12M)"\n    source_type: "huggingface"\n    repo_id: "Spawning/PD12M"\n    revision: "abc123alreadypinned"',
-        ))
+        ), encoding="utf-8")
         fake = _fake_api()
         with patch("huggingface_hub.HfApi", return_value=fake):
             results = pin_revisions.resolve_dataset_revisions(target, only={"pd12m"}, apply=False)
@@ -113,7 +113,7 @@ class TestResolveDatasetRevisions:
 
     def test_api_error_reported_not_raised(self, tmp_path):
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text())
+        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8"), encoding="utf-8")
         fake = MagicMock()
         fake.dataset_info.side_effect = Exception("network unreachable")
 
