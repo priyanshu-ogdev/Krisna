@@ -40,8 +40,19 @@ class FetchStage(Stage):
         for ds_key, ds_spec in config.datasets.items():
             log.info("fetching_dataset", dataset=ds_key, source=ds_spec.source_type)
 
+            # Skip if this image dataset has already been ingested into the manifest
+            if manifest.query_by_dataset(ds_key, limit=1):
+                log.info("dataset_already_in_manifest", dataset=ds_key)
+                continue
+
             # Fetch the dataset files
-            records = await fetcher.fetch_dataset(ds_key, ds_spec)
+            try:
+                records = await fetcher.fetch_dataset(ds_key, ds_spec)
+            except Exception as e:
+                log.error("dataset_fetch_error", dataset=ds_key, error=str(e))
+                result.metadata.setdefault("errors", []).append(f"{ds_key}: {e}")
+                continue
+
             if not records:
                 log.warning("no_records_fetched", dataset=ds_key)
                 continue
