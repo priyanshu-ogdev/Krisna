@@ -27,7 +27,7 @@ class OCREngine:
         self._client = InferenceClient(
             http_client=engine.vllm_client,
             model_id=config.models["ocr"].model_id,
-            max_concurrent=16,
+            max_concurrent=config.vllm_server.max_num_seqs,
         )
 
     async def extract_text(self, image_path: Path) -> OCROutput | None:

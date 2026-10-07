@@ -55,12 +55,17 @@ which never writes here), this stage's `eval_only` guard drops them
 rather than silently processing eval data as if it were training data.
 """
 
-from __future__ import annotations
-
+import asyncio
+import concurrent.futures
 import hashlib
 import json
+import multiprocessing
+import os
 from pathlib import Path
+import threading
 from typing import Any, ClassVar
+
+from PIL import Image, UnidentifiedImageError
 
 from data_forge.config import DatasetSpec, PipelineConfig
 from data_forge.inference.tier1 import Tier1Engine
@@ -71,6 +76,12 @@ from data_forge.stages.base import Stage, StageResult
 from data_forge.utils.pii_faces import blur_faces, load_face_detector
 
 log = get_logger("stages.s01_6")
+
+
+def _write_json_file(path: Path, data: dict[str, Any]) -> None:
+    temp_path = path.with_name(f".{path.name}.tmp")
+    temp_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    temp_path.replace(path)
 
 
 @register_stage("s01_6_preference_pairs")
@@ -145,105 +156,184 @@ class PreferencePairsStage(Stage):
         flagged_borderline = 0
         total_faces_blurred = 0
 
-        for source_key, spec in preference_sources.items():
-            if spec.eval_only:
-                # Should never happen (eval_reference sources never write
-                # here) — guarded explicitly anyway, see module docstring.
-                log.warning("eval_only_source_in_preference_pairs_skipped", dataset=source_key)
-                continue
+        semaphore = asyncio.Semaphore(128)
+        max_workers = min(32, max(4, multiprocessing.cpu_count()))
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+        thread_local = threading.local()
+        worker_detectors: list[Any] = []
+        detector_lock = threading.Lock()
 
-            src_dir = pref_root / source_key
-            if not src_dir.exists():
-                log.warning("preference_pair_source_dir_missing", dataset=source_key, path=str(src_dir))
-                continue
+        has_detector = face_detector is not None
+        hash_lock = threading.Lock()
 
-            pair_meta_files = sorted(src_dir.glob("*.json"))
-            log.info("preference_pairs_processing_source", dataset=source_key, pairs=len(pair_meta_files))
+        def _get_detector():
+            if not has_detector:
+                return None
+            if not hasattr(thread_local, "detector"):
+                thread_local.detector = load_face_detector(min_confidence=face_conf)
+                if thread_local.detector is not None:
+                    with detector_lock:
+                        worker_detectors.append(thread_local.detector)
+            return thread_local.detector
 
-            for meta_path in pair_meta_files:
+        def _cpu_tasks(meta_path):
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                image_names = (meta.get("image_a"), meta.get("image_b"))
+                if any(
+                    not isinstance(name, str)
+                    or not name
+                    or name in {".", ".."}
+                    or Path(name).is_absolute()
+                    or Path(name).name != name
+                    or "\\" in name
+                    for name in image_names
+                ):
+                    return None, "corrupt", meta_path, "Unsafe preference-pair image path", None, None, None, None
+                pair_dir = meta_path.parent.resolve()
+                image_paths = [(meta_path.parent / name).resolve(strict=True) for name in image_names]
+                if any(path.parent != pair_dir or not path.is_file() for path in image_paths):
+                    return None, "corrupt", meta_path, "Preference-pair image escaped its source directory", None, None, None, None
+                img_a_path, img_b_path = image_paths
+
                 try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                    img_a_path = meta_path.parent / meta["image_a"]
-                    img_b_path = meta_path.parent / meta["image_b"]
+                    with Image.open(img_a_path) as source_a:
+                        format_a = source_a.format
+                        img_a = source_a.convert("RGB")
+                    with Image.open(img_b_path) as source_b:
+                        format_b = source_b.format
+                        img_b = source_b.convert("RGB")
+                except (UnidentifiedImageError, FileNotFoundError, OSError):
+                    return None, "corrupt", meta_path, None, None, None, None, None
 
-                    from PIL import Image, UnidentifiedImageError
-                    try:
-                        img_a = Image.open(img_a_path).convert("RGB")
-                        img_b = Image.open(img_b_path).convert("RGB")
-                    except (UnidentifiedImageError, FileNotFoundError, OSError):
-                        dropped_corrupt += 1
-                        continue
+                hash_a = hashlib.sha256(img_a.tobytes()).hexdigest()
+                hash_b = hashlib.sha256(img_b.tobytes()).hexdigest()
+                
+                if hash_a == hash_b:
+                    return None, "self_duplicate", meta_path, meta, None, None, None, None
+                
+                pair_hash = f"{min(hash_a, hash_b)}_{max(hash_a, hash_b)}"
 
-                    hash_a = hashlib.sha256(img_a.tobytes()).hexdigest()
-                    hash_b = hashlib.sha256(img_b.tobytes()).hexdigest()
-
-                    # Degenerate pair: image A is identical to image B (zero comparative signal)
-                    if hash_a == hash_b:
-                        log.warning("preference_pair_degenerate_self_pair", pair=meta.get("pair_id"))
-                        dropped_duplicate += 1
-                        continue
-
-                    # Symmetric canonical pair hash to detect inverted duplicate pairs across sources
-                    pair_hash = f"{min(hash_a, hash_b)}_{max(hash_a, hash_b)}"
+                with hash_lock:
                     if pair_hash in seen_pair_hashes:
-                        dropped_duplicate += 1
-                        continue
+                        return pair_hash, "cross_duplicate", meta_path, meta, False, 0, None, None
                     seen_pair_hashes.add(pair_hash)
 
-                    img_a, mod_a, det_a = blur_faces(img_a, face_detector, blur_kernel)
-                    img_b, mod_b, det_b = blur_faces(img_b, face_detector, blur_kernel)
-                    if mod_a:
-                        if img_a_path.suffix.lower() in (".jpg", ".jpeg"):
-                            img_a.save(img_a_path, quality=95)
-                        else:
-                            img_a.save(img_a_path)
-                    if mod_b:
-                        if img_b_path.suffix.lower() in (".jpg", ".jpeg"):
-                            img_b.save(img_b_path, quality=95)
-                        else:
-                            img_b.save(img_b_path)
-                    total_faces_blurred += len(det_a) + len(det_b)
-
-                    # Content-safety classification — the fix for the gap
-                    # noted in the module docstring. Runs on the
-                    # (already face-blurred) files on disk, same as
-                    # s04_safety.py does for the main manifest.
-                    safety_results = await tier1.batch_classify_safety(
-                        [img_a_path, img_b_path]
+                detector = _get_detector()
+                if has_detector and detector is None:
+                    return None, "corrupt", meta_path, "Face detector failed to initialize", None, None, None, None
+                img_a, mod_a, det_a = blur_faces(img_a, detector, blur_kernel)
+                img_b, mod_b, det_b = blur_faces(img_b, detector, blur_kernel)
+                
+                if mod_a:
+                    if format_a not in {"JPEG", "PNG", "WEBP", "BMP", "TIFF"}:
+                        return None, "corrupt", meta_path, f"Unsupported image format for redaction: {format_a}", None, None, None, None
+                    temp_path = img_a_path.with_name(f".{img_a_path.name}.redacting")
+                    img_a.save(
+                        temp_path,
+                        format=format_a,
+                        **({"quality": 95} if format_a == "JPEG" else {}),
                     )
-                    if not safety_results or len(safety_results) < 2 or safety_results[0] is None or safety_results[1] is None:
-                        log.warning("preference_pair_safety_inference_failed", pair=meta.get("pair_id"))
-                        dropped_corrupt += 1
-                        continue
-                    safety_a, safety_b = safety_results[0], safety_results[1]
-                    if safety_a.tier == "unsafe" or safety_b.tier == "unsafe":
-                        log.warning(
-                            "preference_pair_dropped_unsafe",
-                            pair=meta.get("pair_id"),
-                            tier_a=safety_a.tier, tier_b=safety_b.tier,
-                        )
-                        dropped_unsafe += 1
-                        continue
-                    is_borderline = (
-                        safety_a.tier == "borderline" or safety_b.tier == "borderline"
-                        or safety_a.confidence < safety_conf_threshold
-                        or safety_b.confidence < safety_conf_threshold
+                    os.replace(temp_path, img_a_path)
+                if mod_b:
+                    if format_b not in {"JPEG", "PNG", "WEBP", "BMP", "TIFF"}:
+                        return None, "corrupt", meta_path, f"Unsupported image format for redaction: {format_b}", None, None, None, None
+                    temp_path = img_b_path.with_name(f".{img_b_path.name}.redacting")
+                    img_b.save(
+                        temp_path,
+                        format=format_b,
+                        **({"quality": 95} if format_b == "JPEG" else {}),
                     )
-                    if is_borderline:
-                        flagged_borderline += 1
+                    os.replace(temp_path, img_b_path)
+                
+                faces_blurred = len(det_a) + len(det_b)
+                return pair_hash, "ok", meta_path, meta, mod_a or mod_b, faces_blurred, img_a_path, img_b_path
+            except Exception as e:
+                return None, "error", meta_path, str(e), None, None, None, None
 
-                    meta["dedup_status"] = "unique"
-                    meta["pii_scrubbed"] = bool(mod_a or mod_b)
-                    meta["safety_tier"] = "borderline" if is_borderline else "safe"
-                    meta_path.write_text(json.dumps(meta), encoding="utf-8")
-                    kept += 1
+        async def _process_pair(meta_path):
+            nonlocal kept, dropped_duplicate, dropped_corrupt, dropped_unsafe, flagged_borderline, total_faces_blurred
+            loop = asyncio.get_event_loop()
+            res = await loop.run_in_executor(executor, _cpu_tasks, meta_path)
+            pair_hash, status, m_path, m_data, pii_mod, f_blurred, a_path, b_path = res
 
+            if status == "corrupt":
+                dropped_corrupt += 1
+                return
+            if status == "error":
+                log.error("preference_pair_processing_failed", pair=str(m_path), error=m_data)
+                dropped_corrupt += 1
+                return
+            if status == "self_duplicate":
+                log.warning("preference_pair_degenerate_self_pair", pair=m_data.get("pair_id"))
+                dropped_duplicate += 1
+                return
+            if status == "cross_duplicate":
+                dropped_duplicate += 1
+                return
+
+            async with semaphore:
+                try:
+                    safety_results = await tier1.batch_classify_safety([a_path, b_path])
                 except Exception as e:
-                    log.error("preference_pair_processing_failed", pair=str(meta_path), error=str(e))
-                    dropped_corrupt += 1
+                    safety_results = None
+            
+            if not safety_results or len(safety_results) < 2 or safety_results[0] is None or safety_results[1] is None:
+                log.warning("preference_pair_safety_inference_failed", pair=m_data.get("pair_id"))
+                dropped_corrupt += 1
+                return
+            
+            safety_a, safety_b = safety_results[0], safety_results[1]
+            if safety_a.tier == "unsafe" or safety_b.tier == "unsafe":
+                log.warning("preference_pair_dropped_unsafe", pair=m_data.get("pair_id"), tier_a=safety_a.tier, tier_b=safety_b.tier)
+                dropped_unsafe += 1
+                return
 
-        if face_detector is not None:
-            face_detector.close()
+            is_borderline = (
+                safety_a.tier == "borderline" or safety_b.tier == "borderline"
+                or safety_a.confidence < safety_conf_threshold
+                or safety_b.confidence < safety_conf_threshold
+            )
+            if is_borderline:
+                flagged_borderline += 1
+            
+            total_faces_blurred += f_blurred
+
+            m_data["dedup_status"] = "unique"
+            m_data["pii_scrubbed"] = has_detector
+            m_data["safety_tier"] = "borderline" if is_borderline else "safe"
+            
+            await asyncio.to_thread(_write_json_file, m_path, m_data)
+            kept += 1
+
+        try:
+            for source_key, spec in preference_sources.items():
+                if spec.eval_only:
+                    log.warning("eval_only_source_in_preference_pairs_skipped", dataset=source_key)
+                    continue
+
+                src_dir = pref_root / source_key
+                if not src_dir.exists():
+                    log.warning("preference_pair_source_dir_missing", dataset=source_key, path=str(src_dir))
+                    continue
+
+                pair_meta_files = sorted(src_dir.glob("*.json"))
+                log.info("preference_pairs_processing_source", dataset=source_key, pairs=len(pair_meta_files))
+
+                # Batch run pairs in bounded chunks to prevent unbounded memory backlog
+                chunk_size = 256
+                for c_start in range(0, len(pair_meta_files), chunk_size):
+                    chunk = pair_meta_files[c_start : c_start + chunk_size]
+                    tasks = [_process_pair(p) for p in chunk]
+                    if tasks:
+                        await asyncio.gather(*tasks)
+
+        finally:
+            executor.shutdown(wait=True)
+            for detector in worker_detectors:
+                detector.close()
+            if face_detector is not None:
+                face_detector.close()
 
         result.records_processed = kept
         result.records_failed = dropped_corrupt

@@ -24,13 +24,19 @@ class RegistryWatcherStage(Stage):
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
         result = StageResult(stage_name=self.name)
 
-        report_path = config.resolved_paths["registry_reports"] / "latest.json"
+        reg_dir = config.resolved_paths.get("registry_reports") if config.resolved_paths else None
+        report_path = (reg_dir or (config.data_root / "registry_reports")) / "latest.json"
         if not report_path.exists():
             log.info("no_registry_report", note="Run `data-forge registry check`")
             return result
 
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        recommendations = report.get("recommendations", [])
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            recommendations = report.get("recommendations", [])
+        except Exception as e:
+            log.error("registry_report_parse_error", error=str(e))
+            result.records_failed = 1
+            return result
 
         for rec in recommendations:
             action = rec.get("action", "hold")

@@ -44,6 +44,7 @@ class VLLMServerConfig:
     startup_timeout_seconds: int = 120
     health_check_interval_seconds: int = 5
     graceful_shutdown_timeout_seconds: int = 30
+    max_num_seqs: int = 16
 
 
 @dataclass
@@ -471,6 +472,7 @@ def load_config(
                 graceful_shutdown_timeout_seconds=vllm_data.get(
                     "graceful_shutdown_timeout_seconds", 30
                 ),
+                max_num_seqs=vllm_data.get("max_num_seqs", 16),
             )
 
     # --- datasets.yaml ---

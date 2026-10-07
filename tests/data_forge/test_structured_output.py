@@ -103,3 +103,20 @@ class TestQualityOutput:
             is_complete_ui=True, design_era="modern", confidence=0.88
         )
         assert 0.0 <= out.aesthetic_score <= 1.0
+
+
+class TestRobustJSONParsing:
+    def test_parse_json_with_markdown_fences(self):
+        from data_forge.inference.client import _parse_json_robustly
+        raw = "```json\n{\"aesthetic_score\": 0.85, \"resolution_adequate\": true, \"is_complete_ui\": true, \"design_era\": \"modern\", \"confidence\": 0.95}\n```"
+        parsed = _parse_json_robustly(raw)
+        out = QualityOutput.model_validate(parsed)
+        assert out.aesthetic_score == 0.85
+
+    def test_parse_json_with_surrounding_commentary(self):
+        from data_forge.inference.client import _parse_json_robustly
+        raw = "Here is the result:\n{\"tier\": \"safe\", \"confidence\": 0.99, \"rationale\": \"Clean UI screen.\", \"flags\": []}\nHope this helps!"
+        parsed = _parse_json_robustly(raw)
+        out = SafetyOutput.model_validate(parsed)
+        assert out.tier == "safe"
+

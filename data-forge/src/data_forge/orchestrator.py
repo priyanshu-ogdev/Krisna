@@ -1,8 +1,9 @@
 """Pipeline orchestrator with chunk-based model swapping.
 
-Processes the dataset in chunks (default 10,000 images). For each chunk, it loads
-a model ONCE, runs all applicable stages for the whole chunk, unloads, and loads
-the next model. This minimizes PCIe model-swapping overhead on 48GB VRAM.
+Processes the dataset in configured chunks (50,000 records in production; 10,000
+in the local override). For each chunk, it loads a model once, runs bounded
+inference windows through applicable stages, and then swaps models. This
+amortizes model startup overhead while keeping request and image batches bounded.
 
 Execution phases per chunk:
   Phase 1: CLIP embeddings (dedup)
@@ -30,6 +31,7 @@ memory fragmentation.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from dataclasses import dataclass
@@ -50,6 +52,7 @@ from data_forge.manifest import Manifest
 # here vs. `field(default_factory=dict)` in base.py). Import the one
 # canonical definition instead of shadowing it.
 from data_forge.stages.base import StageResult
+from data_forge.utils.audit_gate import pipeline_config_fingerprint
 
 log = get_logger("orchestrator")
 
@@ -80,20 +83,82 @@ class Orchestrator:
         self._stages: dict[str, Any] = {}  # Lazy-loaded stage instances
         self._checkpoint_dir = config.data_root / config.paths.checkpoints
         self._resume = True
+        self._cached_pipeline_fingerprint: str | None = None
 
     def _checkpoint_path(self, stage_name: str, chunk_id: str) -> Path:
         return self._checkpoint_dir / f"{stage_name}_{chunk_id}.done"
 
-    def _is_stage_complete(self, stage_name: str, chunk_id: str) -> bool:
-        return self._checkpoint_path(stage_name, chunk_id).exists()
+    def _pipeline_fingerprint(self) -> str:
+        if self._cached_pipeline_fingerprint is None:
+            self._cached_pipeline_fingerprint = pipeline_config_fingerprint(self.config)
+        return self._cached_pipeline_fingerprint
 
-    def _mark_stage_complete(self, stage_name: str, chunk_id: str) -> None:
+    def _input_fingerprint(self, record_ids: list[str], stage_name: str) -> str:
+        digest = hashlib.sha256()
+        if not record_ids:
+            state = self.manifest._conn.execute(
+                "SELECT COUNT(*) AS record_count, MAX(updated_at) AS latest_update FROM records"
+            ).fetchone()
+            digest.update(
+                f"{state['record_count']}\0{state['latest_update']}\n".encode("utf-8")
+            )
+            if stage_name in {
+                "s01_6_preference_pairs",
+                "s01_7_preference_pair_pii",
+                "s08_5_dpo_encoding",
+            }:
+                roots = [self.config.resolved_paths.get("preference_pairs")]
+                if stage_name == "s08_5_dpo_encoding":
+                    roots.append(self.config.resolved_paths.get("dpo_latents"))
+                for root in roots:
+                    if root and root.exists():
+                        for path in sorted(item for item in root.rglob("*") if item.is_file()):
+                            stat = path.stat()
+                            digest.update(
+                                f"{path.relative_to(root)}\0{stat.st_size}\0"
+                                f"{stat.st_mtime_ns}\n".encode("utf-8")
+                            )
+        else:
+            for start in range(0, len(record_ids), 800):
+                batch = record_ids[start : start + 800]
+                placeholders = ",".join("?" for _ in batch)
+                rows = self.manifest._conn.execute(
+                    f"SELECT id, status, updated_at FROM records WHERE id IN ({placeholders})",
+                    batch,
+                ).fetchall()
+                for row in sorted(rows, key=lambda item: item["id"]):
+                    digest.update(f"{row['id']}\0{row['status']}\0{row['updated_at']}\n".encode("utf-8"))
+        return digest.hexdigest()
+
+    def _is_stage_complete(
+        self, stage_name: str, chunk_id: str, record_ids: list[str]
+    ) -> bool:
+        path = self._checkpoint_path(stage_name, chunk_id)
+        if stage_name in {"s00_manifest_planning", "s12_model_data_export"} or not path.is_file():
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        return (
+            data.get("pipeline_fingerprint") == self._pipeline_fingerprint()
+            and data.get("input_fingerprint") == self._input_fingerprint(record_ids, stage_name)
+        )
+
+    def _mark_stage_complete(
+        self, stage_name: str, chunk_id: str, record_ids: list[str]
+    ) -> None:
         path = self._checkpoint_path(stage_name, chunk_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps({"stage": stage_name, "chunk": chunk_id, "time": time.time()}),
-            encoding="utf-8",
-        )
+        temp_path = path.with_suffix(f"{path.suffix}.tmp")
+        temp_path.write_text(json.dumps({
+            "stage": stage_name,
+            "chunk": chunk_id,
+            "time": time.time(),
+            "pipeline_fingerprint": self._pipeline_fingerprint(),
+            "input_fingerprint": self._input_fingerprint(record_ids, stage_name),
+        }), encoding="utf-8")
+        temp_path.replace(path)
 
     def _get_stage(self, stage_name: str) -> Any:
         """Lazy-load a stage class instance."""
@@ -121,7 +186,11 @@ class Orchestrator:
             log.info("stage_skipped", stage=stage_name, reason="disabled")
             return StageResult(stage_name=stage_name)
 
-        if self._resume and self.config.checkpoint_enabled and self._is_stage_complete(stage_name, chunk_id):
+        if (
+            self._resume
+            and self.config.checkpoint_enabled
+            and self._is_stage_complete(stage_name, chunk_id, record_ids)
+        ):
             log.info("stage_skipped", stage=stage_name, chunk=chunk_id, reason="checkpoint_exists")
             return StageResult(stage_name=stage_name)
 
@@ -143,8 +212,27 @@ class Orchestrator:
 
         result.duration_seconds = time.monotonic() - start
 
-        if self.config.checkpoint_enabled:
-            self._mark_stage_complete(stage_name, chunk_id)
+        if self.config.fail_fast and not result.success:
+            log.error(
+                "stage_failed_fail_fast",
+                stage=stage_name,
+                chunk=chunk_id,
+                failed=result.records_failed,
+            )
+            raise RuntimeError(
+                f"Stage {stage_name} ({chunk_id}) failed with {result.records_failed} "
+                f"failed records (fail_fast=True)"
+            )
+
+        if (
+            self.config.checkpoint_enabled
+            and result.success
+            and not (
+                stage_name == "s10_audit"
+                and result.metadata.get("pipeline_passes") is False
+            )
+        ):
+            self._mark_stage_complete(stage_name, chunk_id, record_ids)
 
         log.info(
             "stage_completed",
@@ -186,6 +274,7 @@ class Orchestrator:
             resume=resume,
         )
         self._resume = resume
+        self.config.dry_run = dry_run
         pipeline_start = time.monotonic()
 
         # ── Stage 0: Manifest Planning (runs once, not per-chunk) ────────
@@ -250,10 +339,32 @@ class Orchestrator:
             if dry_run:
                 log.info("stage_dry_run", stage="s01_6_preference_pairs")
             else:
+                pref_root = (
+                    self.config.resolved_paths.get("preference_pairs")
+                    if self.config.resolved_paths
+                    else (self.config.data_root / "preference_pairs")
+                )
+                has_pairs = pref_root and pref_root.exists() and any(pref_root.glob("*/*.json"))
+                if has_pairs:
+                    from data_forge.inference.engine import ModelEngine
+                    async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                        await self._run_stage(
+                            "s01_6_preference_pairs",
+                            record_ids=[],
+                            chunk_id="global",
+                            engine=engine,
+                        )
+                else:
+                    log.info("s01_6_skipped_no_pairs", note="No preference pairs found on disk to process")
+
+        if self._should_run("s01_7_preference_pair_pii", stages_filter):
+            pref_root = self.config.resolved_paths.get("preference_pairs")
+            has_pairs = pref_root and pref_root.exists() and any(pref_root.glob("*/*.json"))
+            if has_pairs:
                 from data_forge.inference.engine import ModelEngine
-                async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                async with ModelEngine.vllm_session(self.config, "ocr") as engine:
                     await self._run_stage(
-                        "s01_6_preference_pairs",
+                        "s01_7_preference_pair_pii",
                         record_ids=[],
                         chunk_id="global",
                         engine=engine,
@@ -351,6 +462,10 @@ class Orchestrator:
             ]
             runnable_tier1 = [s for s in tier1_stages if self._should_run(s, stages_filter)]
 
+            recaption_structure_stages = [
+                s for s in ["s05_recaption", "s06_structure"] if self._should_run(s, stages_filter)
+            ]
+
             if runnable_tier1:
                 from data_forge.inference.engine import ModelEngine
 
@@ -376,25 +491,44 @@ class Orchestrator:
                 ]
                 if one_vlm_stage_order:
                     async with ModelEngine.vllm_session(self.config, "tier1") as engine:
-                        for stage_name in one_vlm_stage_order:
-                            record_ids = self._filter_active(record_ids)
-                            if not record_ids:
-                                break
-                            stage_engine = None if stage_name == "s03_5_pii_scrub" else engine
-                            result = await self._run_stage(
-                                stage_name, record_ids, chunk_id, stage_engine
-                            )
-                            stage_results.append(result)
+                        active_ids = self._filter_active(record_ids)
+                        for idx in range(0, len(active_ids), 512):
+                            subchunk_ids = active_ids[idx : idx + 512]
+                            for stage_name in one_vlm_stage_order:
+                                subchunk_ids = self._filter_active(subchunk_ids)
+                                if not subchunk_ids:
+                                    break
+                                stage_engine = None if stage_name == "s03_5_pii_scrub" else engine
+                                result = await self._run_stage(
+                                    stage_name, subchunk_ids, f"{chunk_id}_{idx}", stage_engine
+                                )
+                                stage_results.append(result)
+
+                        # Fast-path: if NO records need Tier-2 escalation, avoid unloading and
+                        # immediately reloading Tier-1 — run recaption & structure right now
+                        # in the same open vLLM session to save 30-60s model-swap overhead!
+                        borderline_ids = (
+                            self._get_borderline_ids(record_ids)
+                            if self._should_run("s04_5_escalation", stages_filter)
+                            else []
+                        )
+                        if "s04_safety" in one_vlm_stage_order and not borderline_ids and recaption_structure_stages:
+                            active_ids = self._filter_active(record_ids)
+                            for idx in range(0, len(active_ids), 512):
+                                subchunk_ids = active_ids[idx : idx + 512]
+                                for stage_name in recaption_structure_stages:
+                                    subchunk_ids = self._filter_active(subchunk_ids)
+                                    if not subchunk_ids:
+                                        break
+                                    result = await self._run_stage(
+                                        stage_name, subchunk_ids, f"{chunk_id}_{idx}", engine
+                                    )
+                                    stage_results.append(result)
+                            recaption_structure_stages = []
 
             # ── Phase 3: Tier-2 Escalation ───────────────────────────
-            # Moved ahead of recaption/structure/OCR (was "Phase 4",
-            # running after them) — see the Phase 2 comment above for why:
-            # escalation must resolve borderline->safe BEFORE the
-            # safety_tier=="safe" filters in recaption/structure run, or
-            # rescued records are silently never recaptioned/structured/
-            # OCR'd/routed/encoded at all.
+            # Runs if any records were flagged as borderline by s04_safety.
             if self._should_run("s04_5_escalation", stages_filter):
-                # Only escalated records need Tier-2
                 borderline_ids = self._get_borderline_ids(record_ids)
                 if borderline_ids:
                     from data_forge.inference.engine import ModelEngine
@@ -405,25 +539,21 @@ class Orchestrator:
                         stage_results.append(result)
 
             # ── Phase 4: Recaption + Structure ───────────────────────
-            # Split out of the old combined Phase 2 (see that phase's
-            # comment) specifically so it runs AFTER Phase 3 above —
-            # `record_ids` re-filtered fresh here picks up both
-            # originally-safe records and any Tier-2-rescued ones, since
-            # both now correctly read safety_tier=="safe" at this point.
-            recaption_structure_stages = [
-                s for s in ["s05_recaption", "s06_structure"] if self._should_run(s, stages_filter)
-            ]
+            # Runs for any stages remaining if escalation had to run in Phase 3.
             if recaption_structure_stages:
                 from data_forge.inference.engine import ModelEngine
                 async with ModelEngine.vllm_session(self.config, "tier1") as engine:
-                    for stage_name in recaption_structure_stages:
-                        record_ids = self._filter_active(record_ids)
-                        if not record_ids:
-                            break
-                        result = await self._run_stage(
-                            stage_name, record_ids, chunk_id, engine
-                        )
-                        stage_results.append(result)
+                    active_ids = self._filter_active(record_ids)
+                    for idx in range(0, len(active_ids), 512):
+                        subchunk_ids = active_ids[idx : idx + 512]
+                        for stage_name in recaption_structure_stages:
+                            subchunk_ids = self._filter_active(subchunk_ids)
+                            if not subchunk_ids:
+                                break
+                            result = await self._run_stage(
+                                stage_name, subchunk_ids, f"{chunk_id}_{idx}", engine
+                            )
+                            stage_results.append(result)
 
             # ── Phase 5: OCR Specialist ──────────────────────────────
             run_ocr = (
@@ -457,25 +587,11 @@ class Orchestrator:
                     stage_results.append(result)
 
             # ── Deterministic stages (no GPU model needed) ──────────
-            for stage_name in ["s07_routing"]:
-                if self._should_run(stage_name, stages_filter):
-                    record_ids = self._filter_active(record_ids)
-                    if record_ids:
-                        result = await self._run_stage(
-                            stage_name, record_ids, chunk_id
-                        )
-                        stage_results.append(result)
+            # s07 routing is a corpus-wide stage after all chunks are tagged.
 
             # ── Phase 6: Tri-Path Encoding (VAEs/VQ) ────────────────
-            if self._should_run("s08_encoding", stages_filter):
-                record_ids = self._filter_active(record_ids)
-                if record_ids:
-                    from data_forge.inference.engine import ModelEngine
-                    async with ModelEngine.encoder_session(self.config) as engine:
-                        result = await self._run_stage(
-                            "s08_encoding", record_ids, chunk_id, engine
-                        )
-                        stage_results.append(result)
+            # s08 encoding runs corpus-wide after routing, with the encoder
+            # session kept open across all chunks.
 
             chunk_duration = time.monotonic() - chunk_start
             chunk_results.append(
@@ -499,6 +615,35 @@ class Orchestrator:
             rows = self.manifest._conn.execute("SELECT id FROM records").fetchall()
             all_record_ids = [r["id"] for r in rows]
 
+        # Route only after all source-ordered fetch chunks have been tagged.
+        if self._should_run("s07_routing", stages_filter):
+            await self._run_stage("s07_routing", all_record_ids, "global")
+
+        # Keep the VAE resident over the entire corpus, rather than
+        # reloading it for every processing chunk.
+        if self._should_run("s08_encoding", stages_filter):
+            routed_ids: list[str] = []
+            for i in range(0, len(all_record_ids), 5000):
+                routed_ids.extend(
+                    rec.id
+                    for rec in self.manifest.get_records_by_ids(all_record_ids[i : i + 5000])
+                    if rec.status == "routed"
+                )
+            encoding_chunks = [
+                routed_ids[i : i + self.config.chunk_size]
+                for i in range(0, len(routed_ids), self.config.chunk_size)
+            ]
+            if encoding_chunks:
+                from data_forge.inference.engine import ModelEngine
+                async with ModelEngine.encoder_session(self.config) as engine:
+                    for i, encoding_ids in enumerate(encoding_chunks):
+                        await self._run_stage(
+                            "s08_encoding",
+                            encoding_ids,
+                            f"encode_chunk_{i:04d}",
+                            engine,
+                        )
+
         # DPO Latent Encoding — encodes the deduped/PII-scrubbed
         # preference pairs from s01_6 into Z-Image-Turbo's latent space
         # (the only fine-tuned renderer; Qwen-Image-Edit-2511 stays
@@ -507,11 +652,20 @@ class Orchestrator:
         # are independent (preference pairs never entered the manifest)
         # but share the same encoder_session pattern.
         if self._should_run("s08_5_dpo_encoding", stages_filter):
-            from data_forge.inference.engine import ModelEngine
-            async with ModelEngine.encoder_session(self.config) as engine:
-                await self._run_stage(
-                    "s08_5_dpo_encoding", record_ids=[], chunk_id="global", engine=engine
-                )
+            pref_root = (
+                self.config.resolved_paths.get("preference_pairs")
+                if self.config.resolved_paths
+                else (self.config.data_root / "preference_pairs")
+            )
+            has_pairs = pref_root and pref_root.exists() and any(pref_root.glob("*/*.json"))
+            if has_pairs:
+                from data_forge.inference.engine import ModelEngine
+                async with ModelEngine.encoder_session(self.config) as engine:
+                    await self._run_stage(
+                        "s08_5_dpo_encoding", record_ids=[], chunk_id="global", engine=engine
+                    )
+            else:
+                log.info("s08_5_skipped_no_pairs", note="No preference pairs found on disk to process")
 
         if self._should_run("s09_heldout", stages_filter):
             await self._run_stage(
@@ -527,6 +681,10 @@ class Orchestrator:
                     await self._run_stage(
                         "s10_audit", training_ids, "global", engine
                     )
+            else:
+                await self._run_stage(
+                    "s10_audit", [], "global", engine=None
+                )
 
         # REMOVED: the Gemma 4 31B "Critic Tier" data-generation pass that
         # used to run here. It produced AI-judge-labeled preference data
@@ -570,12 +728,18 @@ class Orchestrator:
         """Return only record IDs that are not in a terminal/excluded status."""
         if not record_ids:
             return []
+        if hasattr(self.manifest, "filter_active_ids"):
+            return self.manifest.filter_active_ids(record_ids)
         records = self.manifest.get_records_by_ids(record_ids)
         from data_forge.manifest import TERMINAL_STATUSES
         return [r.id for r in records if r.status not in TERMINAL_STATUSES]
 
     def _get_borderline_ids(self, record_ids: list[str]) -> list[str]:
         """Get records that need Tier-2 escalation (borderline safety or pending review)."""
+        if not record_ids:
+            return []
+        if hasattr(self.manifest, "get_borderline_ids"):
+            return self.manifest.get_borderline_ids(record_ids)
         records = self.manifest.get_records_by_ids(record_ids)
         return [
             r.id for r in records
@@ -624,6 +788,7 @@ EXECUTION_ORDER: tuple[str, ...] = (
     "s01_fetch",
     "s01_5_uicrit_join",
     "s01_6_preference_pairs",
+    "s01_7_preference_pair_pii",
     "s02_dedup",
     "s03_quality",
     "s03_5_pii_scrub",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
@@ -33,37 +35,65 @@ class SafetyStage(Stage):
         tier1 = Tier1Engine(engine, config)
         processed = excluded = failed = 0
 
-        for rec in records:
-            img_path = config.data_root / (rec.scrubbed_image_path or rec.image_path or "")
-            if not img_path.exists():
-                manifest.update_record(rec.id, "safety", new_status="excluded_failed",
-                                       reason="Image missing", exclusion_reason="image_missing")
-                failed += 1
-                continue
+        async def _process(rec):
+            raw_path = rec.scrubbed_image_path or rec.image_path
+            if not raw_path:
+                return {"id": rec.id, "status": "excluded_failed", "reason": "No image path specified", "exclusion_reason": "image_missing"}
+            p = Path(raw_path)
+            img_path = p if p.is_absolute() else (config.data_root / p)
+            if not img_path.is_file():
+                return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
 
-            safety_out = await tier1.classify_safety(img_path)
+            try:
+                safety_out = await tier1.classify_safety(img_path)
+            except Exception as e:
+                return {"id": rec.id, "status": "excluded_failed", "reason": f"Safety inference exception: {e}", "exclusion_reason": "inference_failed"}
             if safety_out is None:
-                manifest.update_record(rec.id, "safety", new_status="excluded_failed",
-                                       reason="Safety inference failed", exclusion_reason="inference_failed")
-                failed += 1
-                continue
+                return {"id": rec.id, "status": "excluded_failed", "reason": "Safety inference failed", "exclusion_reason": "inference_failed"}
 
             out_dict = safety_out.model_dump()
 
             if safety_out.tier == "unsafe":
-                manifest.update_record(rec.id, "safety", new_status="excluded_unsafe",
-                                       reason=safety_out.rationale, safety_tier="unsafe",
-                                       safety_output=out_dict, exclusion_reason="unsafe_content")
-                excluded += 1
+                return {"id": rec.id, "status": "excluded_unsafe", "reason": safety_out.rationale, "tier": "unsafe", "out": out_dict, "exclusion_reason": "unsafe_content"}
             elif safety_out.tier == "borderline" or safety_out.confidence < conf_threshold:
-                # Mark for Tier-2 escalation — stays in pipeline but flagged
-                manifest.update_record(rec.id, "safety", new_status="safety_classified",
-                                       safety_tier="borderline", safety_output=out_dict)
-                processed += 1
+                return {"id": rec.id, "status": "safety_classified", "tier": "borderline", "out": out_dict}
             else:
-                manifest.update_record(rec.id, "safety", new_status="safety_classified",
-                                       safety_tier="safe", safety_output=out_dict)
-                processed += 1
+                return {"id": rec.id, "status": "safety_classified", "tier": "safe", "out": out_dict}
+
+        batch_concurrency = stage_cfg.get("batch_size", 128)
+        sem = asyncio.Semaphore(batch_concurrency)
+        async def _bounded_process(rec):
+            async with sem:
+                return await _process(rec)
+
+        chunk_window = max(batch_concurrency * 2, 256)
+        for c_start in range(0, len(records), chunk_window):
+            chunk = records[c_start : c_start + chunk_window]
+            tasks = [asyncio.create_task(_bounded_process(rec)) for rec in chunk]
+            results = await asyncio.gather(*tasks)
+
+            updates: list[dict[str, Any]] = []
+            for res in results:
+                status = res["status"]
+                update_item: dict[str, Any] = {
+                    "id": res["id"],
+                    "new_status": status,
+                    "safety_tier": res.get("tier"),
+                    "safety_output": res.get("out"),
+                }
+                if status == "safety_classified":
+                    processed += 1
+                else:
+                    update_item["reason"] = res.get("reason")
+                    update_item["exclusion_reason"] = res.get("exclusion_reason")
+                    if status == "excluded_failed":
+                        failed += 1
+                    else:
+                        excluded += 1
+                updates.append(update_item)
+
+            if updates:
+                manifest.bulk_update_records(updates, stage="safety")
 
         result.records_processed = processed
         result.records_excluded = excluded

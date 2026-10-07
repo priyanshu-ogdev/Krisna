@@ -7,12 +7,12 @@ name = "data-forge"
 version = "0.14.0"
 description = "Zero-touch automated data pipeline for the Krisna project (v14 spec — no-RLHF-loop revision)"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 license = { text = "Proprietary" }
 
 dependencies = [
     # --- Inference ---
-    "vllm>=0.18.0",
+    # "vllm" moved to optional [gpu] group to support Python 3.13 / Windows installs
     "openai>=1.40",
     "torch>=2.6.0",
     "torchvision>=0.21.0",
@@ -74,6 +74,9 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "aiosqlite>=0.20",
+]
+gpu = [
+    "vllm>=0.18.0",
 ]
 
 [project.scripts]

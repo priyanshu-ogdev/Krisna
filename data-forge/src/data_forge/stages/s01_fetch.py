@@ -43,6 +43,35 @@ class FetchStage(Stage):
             # Skip if this image dataset has already been ingested into the manifest
             if manifest.query_by_dataset(ds_key, limit=1):
                 log.info("dataset_already_in_manifest", dataset=ds_key)
+                if ds_spec.license_status == "unverified" and engine is not None:
+                    unverified_records = manifest.query_by_status_and_dataset("fetched", ds_key)
+                    if unverified_records and any(r.license_verified is None for r in unverified_records):
+                        tier1 = Tier1Engine(engine, config)
+                        verification = await license_agent.verify_dataset_license(
+                            dataset_key=ds_key,
+                            license_url=ds_spec.license_url,
+                            tier1_engine=tier1,
+                        )
+                        license_updates = []
+                        for rec in unverified_records:
+                            if verification["verified"]:
+                                license_updates.append({
+                                    "id": rec.id,
+                                    "license_verified": True,
+                                    "license_output": verification["output"],
+                                })
+                            else:
+                                license_updates.append({
+                                    "id": rec.id,
+                                    "new_status": "excluded_pending_review",
+                                    "reason": verification["reason"],
+                                    "license_verified": False,
+                                    "license_output": verification["output"],
+                                    "exclusion_reason": verification["reason"],
+                                })
+                                total_excluded += 1
+                        if license_updates:
+                            manifest.bulk_update_records(license_updates, stage="fetch")
                 continue
 
             # Fetch the dataset files
@@ -51,6 +80,7 @@ class FetchStage(Stage):
             except Exception as e:
                 log.error("dataset_fetch_error", dataset=ds_key, error=str(e))
                 result.metadata.setdefault("errors", []).append(f"{ds_key}: {e}")
+                result.records_failed += 1
                 continue
 
             if not records:
@@ -89,7 +119,11 @@ class FetchStage(Stage):
             records = real_records
 
             # Bulk insert into manifest
-            inserted = manifest.bulk_create_records(records, source_dataset=ds_key)
+            inserted = manifest.bulk_create_records(
+                records,
+                source_dataset=ds_key,
+                license_verified=ds_spec.license_status == "verified",
+            )
             total_fetched += inserted
 
             # Inline license verification. Runs whenever a dataset is still
@@ -118,25 +152,26 @@ class FetchStage(Stage):
                     # target corpus scale).
                     ds_records = manifest.query_by_status_and_dataset("fetched", ds_key)
 
+                    license_updates: list[dict[str, Any]] = []
                     for rec in ds_records:
                         if verification["verified"]:
-                            manifest.update_record(
-                                record_id=rec.id,
-                                stage="fetch",
-                                license_verified=True,
-                                license_output=verification["output"],
-                            )
+                            license_updates.append({
+                                "id": rec.id,
+                                "license_verified": True,
+                                "license_output": verification["output"],
+                            })
                         else:
-                            manifest.update_record(
-                                record_id=rec.id,
-                                stage="fetch",
-                                new_status="excluded_pending_review",
-                                reason=verification["reason"],
-                                license_verified=False,
-                                license_output=verification["output"],
-                                exclusion_reason=verification["reason"],
-                            )
+                            license_updates.append({
+                                "id": rec.id,
+                                "new_status": "excluded_pending_review",
+                                "reason": verification["reason"],
+                                "license_verified": False,
+                                "license_output": verification["output"],
+                                "exclusion_reason": verification["reason"],
+                            })
                             total_excluded += 1
+                    if license_updates:
+                        manifest.bulk_update_records(license_updates, stage="fetch")
                 else:
                     log.warning(
                         "license_check_skipped",
@@ -168,12 +203,17 @@ class FetchStage(Stage):
 
         join_target = join_pairs[0]["_join_target_dataset"]
         stem_to_record: dict[str, str] = {}
-        for rec in manifest.query_by_dataset(join_target):
-            if rec.source_file:
-                stem_to_record[rec.source_file.rsplit(".", 1)[0]] = rec.id
+        for rec_id, source_file in manifest.query_stems_by_dataset(join_target):
+            if source_file:
+                stem = source_file.rsplit(".", 1)[0]
+                stem_to_record[stem] = rec_id
+                num_stem = stem.split("_")[-1]
+                stem_to_record[num_stem] = rec_id
+                stem_to_record[num_stem.lstrip("0") or "0"] = rec_id
 
         matched = 0
         unmatched = 0
+        join_updates: list[dict[str, Any]] = []
         for pair in join_pairs:
             join_key = pair["_join_key"]
             candidates = [join_key, join_key.lstrip("0") or "0", join_key.zfill(5)]
@@ -181,8 +221,14 @@ class FetchStage(Stage):
             if record_id is None:
                 unmatched += 1
                 continue
-            manifest.update_record(record_id, "fetch_caption_join", source_caption=pair["_source_caption"])
+            join_updates.append({
+                "id": record_id,
+                "source_caption": pair["_source_caption"],
+            })
             matched += 1
+
+        if join_updates:
+            manifest.bulk_update_records(join_updates, stage="fetch_caption_join")
 
         if matched == 0 and join_pairs:
             log.error(

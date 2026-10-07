@@ -27,6 +27,54 @@ _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 2.0
 
 
+# Cache Pydantic model JSON schemas across requests
+_SCHEMA_CACHE: dict[type[BaseModel], dict[str, Any]] = {}
+
+
+def _get_cached_schema(schema: type[T]) -> dict[str, Any]:
+    s = _SCHEMA_CACHE.get(schema)
+    if s is None:
+        s = schema.model_json_schema()
+        _SCHEMA_CACHE[schema] = s
+    return s
+
+
+def _clean_json_str(content: str) -> str:
+    content = content.strip()
+    if content.startswith("```"):
+        lines = content.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        content = "\n".join(lines).strip()
+    return content
+
+
+def _parse_json_robustly(content: str) -> Any:
+    cleaned = _clean_json_str(content)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        start_obj = cleaned.find("{")
+        end_obj = cleaned.rfind("}")
+        start_arr = cleaned.find("[")
+        end_arr = cleaned.rfind("]")
+
+        candidates = []
+        if start_obj != -1 and end_obj != -1 and end_obj > start_obj:
+            candidates.append(cleaned[start_obj : end_obj + 1])
+        if start_arr != -1 and end_arr != -1 and end_arr > start_arr:
+            candidates.append(cleaned[start_arr : end_arr + 1])
+
+        for cand in candidates:
+            try:
+                return json.loads(cand)
+            except json.JSONDecodeError:
+                continue
+        raise
+
+
 class InferenceClient:
     """Async client for vLLM's OpenAI-compatible API.
 
@@ -43,6 +91,8 @@ class InferenceClient:
         model_id: str,
         max_concurrent: int = _DEFAULT_CONCURRENCY,
     ) -> None:
+        if max_concurrent < 1:
+            raise ValueError("max_concurrent must be at least 1")
         self._client = http_client
         self._model_id = model_id
         self._semaphore = asyncio.Semaphore(max_concurrent)
@@ -67,32 +117,34 @@ class InferenceClient:
         Returns:
             Parsed Pydantic model if schema provided, else raw dict.
         """
-        messages = self._build_messages(prompt, image_path)
-        body: dict[str, Any] = {
-            "model": self._model_id,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-
-        if schema is not None:
-            body["extra_body"] = {
-                "structured_outputs": {
-                    "json": schema.model_json_schema(),
-                }
+        async with self._semaphore:
+            # Image loading/base64 encoding is memory-heavy; keep it within
+            # the same bound as in-flight GPU requests instead of preparing
+            # every queued image before acquiring the semaphore.
+            messages = await self._build_messages(prompt, image_path)
+            body: dict[str, Any] = {
+                "model": self._model_id,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
             }
 
-        async with self._semaphore:
+            if schema is not None:
+                body["extra_body"] = {
+                    "structured_outputs": {
+                        "json": _get_cached_schema(schema),
+                    }
+                }
             response_data = await self._request_with_retry(body)
 
         content = response_data["choices"][0]["message"]["content"]
 
         if schema is not None:
-            parsed = json.loads(content)
+            parsed = _parse_json_robustly(content)
             return schema.model_validate(parsed)
 
         try:
-            return json.loads(content)
+            return _parse_json_robustly(content)
         except json.JSONDecodeError:
             return {"raw_text": content}
 
@@ -165,18 +217,18 @@ class InferenceClient:
             )
             return None
 
-    def _build_messages(
+    async def _build_messages(
         self, prompt: str, image_path: Path | None
     ) -> list[dict[str, Any]]:
         """Build OpenAI-format messages with optional image."""
         content: list[dict[str, Any]] = []
 
         if image_path is not None:
-            image_data = self._encode_image(image_path)
+            mime, image_data = await asyncio.to_thread(self._encode_image, image_path)
             content.append({
                 "type": "image_url",
                 "image_url": {
-                    "url": f"data:image/png;base64,{image_data}",
+                    "url": f"data:{mime};base64,{image_data}",
                 },
             })
 
@@ -188,10 +240,12 @@ class InferenceClient:
         return [{"role": "user", "content": content}]
 
     @staticmethod
-    def _encode_image(image_path: Path) -> str:
+    def _encode_image(image_path: Path) -> tuple[str, str]:
         """Read and base64-encode an image file."""
+        suffix = image_path.suffix.lower()
+        mime = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/webp" if suffix == ".webp" else "image/png"
         with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("ascii")
+            return mime, base64.b64encode(f.read()).decode("ascii")
 
     async def _request_with_retry(self, body: dict[str, Any]) -> dict[str, Any]:
         """Send request with exponential backoff retry on transient errors."""

@@ -171,3 +171,6 @@ vllm_server:
   startup_timeout_seconds: 120
   health_check_interval_seconds: 5
   graceful_shutdown_timeout_seconds: 30
+  # Conservative starting point for one 48 GB GPU and 32K max context.
+  # Increase only after measuring peak VRAM and sustained throughput.
+  max_num_seqs: 16

@@ -436,68 +436,71 @@ class DedupEngine:
         valid_indices: list[int] = []
         failed_indices: list[int] = []
 
+        max_workers = min(32, max(4, os.cpu_count() or 4))
+
         # Utilize i9 physical/logical cores for parallel I/O and PIL decoding
-        max_workers = min(32, max(4, (os.cpu_count() or 8)))
+        # Adapt batch size on CPU to prevent L3 cache thrashing and memory paging
+        actual_batch_size = min(32, batch_size) if not is_cuda else batch_size
 
-        for batch_start in range(0, len(image_paths), batch_size):
-            batch_slice = image_paths[batch_start : batch_start + batch_size]
-            indexed_slice = [(batch_start + offset, p) for offset, p in enumerate(batch_slice)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for batch_start in range(0, len(image_paths), actual_batch_size):
+                batch_slice = image_paths[batch_start : batch_start + actual_batch_size]
+                indexed_slice = [(batch_start + offset, p) for offset, p in enumerate(batch_slice)]
 
-            batch_images: list[Any] = []
-            batch_valid_idx: list[int] = []
+                batch_images: list[Any] = []
+                batch_valid_idx: list[int] = []
 
-            # Parallel image decompression across Intel i9 cores
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Parallel image decompression across CPU cores
                 results = list(executor.map(DedupEngine._preprocess_single_image, indexed_slice))
 
-            for orig_idx, img, err in results:
-                if img is not None:
-                    batch_images.append(img)
-                    batch_valid_idx.append(orig_idx)
-                else:
-                    log.warning("image_load_failed", path=str(image_paths[orig_idx]), error=err)
-                    failed_indices.append(orig_idx)
+                for orig_idx, img, err in results:
+                    if img is not None:
+                        batch_images.append(img)
+                        batch_valid_idx.append(orig_idx)
+                    else:
+                        log.warning("image_load_failed", path=str(image_paths[orig_idx]), error=err)
+                        failed_indices.append(orig_idx)
 
-            if not batch_images:
-                continue
+                if not batch_images:
+                    continue
 
-            inputs = clip_processor(images=batch_images, return_tensors="pt", padding=True)
-            inputs = {
-                k: v.to(
-                    device=target_device,
-                    dtype=model_dtype if v.is_floating_point() else v.dtype,
-                    non_blocking=True,
-                )
-                for k, v in inputs.items()
-            }
+                inputs = clip_processor(images=batch_images, return_tensors="pt", padding=True)
+                inputs = {
+                    k: v.to(
+                        device=target_device,
+                        dtype=model_dtype if v.is_floating_point() else v.dtype,
+                        non_blocking=True,
+                    )
+                    for k, v in inputs.items()
+                }
 
-            with torch.inference_mode():
-                if is_cuda:
-                    with torch.autocast(device_type="cuda", dtype=torch.float16):
+                with torch.inference_mode():
+                    if is_cuda:
+                        with torch.autocast(device_type="cuda", dtype=torch.float16):
+                            outputs = clip_model.get_image_features(**inputs)
+                    else:
                         outputs = clip_model.get_image_features(**inputs)
-                else:
-                    outputs = clip_model.get_image_features(**inputs)
 
-                if isinstance(outputs, torch.Tensor):
-                    feats = outputs
-                elif hasattr(outputs, "image_embeds"):
-                    feats = outputs.image_embeds
-                elif hasattr(outputs, "pooler_output"):
-                    feats = outputs.pooler_output
-                else:
-                    feats = torch.as_tensor(outputs, device=target_device)
+                    if isinstance(outputs, torch.Tensor):
+                        feats = outputs
+                    elif hasattr(outputs, "image_embeds"):
+                        feats = outputs.image_embeds
+                    elif hasattr(outputs, "pooler_output"):
+                        feats = outputs.pooler_output
+                    else:
+                        feats = torch.as_tensor(outputs, device=target_device)
 
-                # Normalize directly on GPU Tensor Cores before host transfer
-                feats = feats / feats.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
-                embeddings = feats.detach().cpu().numpy().astype(np.float32)
-                all_embeddings.append(embeddings)
-                valid_indices.extend(batch_valid_idx)
+                    # Normalize directly on GPU Tensor Cores before host transfer
+                    feats = feats / feats.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
+                    embeddings = feats.detach().cpu().numpy().astype(np.float32)
+                    all_embeddings.append(embeddings)
+                    valid_indices.extend(batch_valid_idx)
 
-            log.debug(
-                "embeddings_batch",
-                batch=batch_start // batch_size,
-                valid_count=len(batch_images),
-            )
+                log.info(
+                    "embeddings_batch_progress",
+                    processed=min(batch_start + len(batch_images), len(image_paths)),
+                    total=len(image_paths),
+                )
 
         if not all_embeddings:
             cfg_obj = getattr(clip_model, "config", None)

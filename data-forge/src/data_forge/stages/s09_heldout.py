@@ -26,10 +26,13 @@ class HeldoutStage(Stage):
         result = StageResult(stage_name=self.name)
         stage_cfg = config.get_stage("s09_heldout")
         fraction = stage_cfg.get("heldout_fraction", 0.05)
-        stratify_by = stage_cfg.get("stratify_by", ["domain", "source_dataset"])
+        stratify_by = [
+            "source_dataset" if field == "source" else field
+            for field in stage_cfg.get("stratify_by", ["domain", "source_dataset"])
+        ]
 
         records = manifest.get_records_by_ids(record_ids)
-        candidates = [r for r in records if r.status == "encoded"]
+        candidates = [r for r in records if r.status in ("encoded", "training_pool", "heldout")]
         if not candidates:
             return result
 
@@ -48,16 +51,20 @@ class HeldoutStage(Stage):
         # to exclude anyone for lacking.
         encoded = []
         incomplete_count = 0
+        incomplete_updates: list[dict[str, Any]] = []
         for rec in candidates:
             if is_encoding_complete(rec):
                 encoded.append(rec)
             else:
                 incomplete_count += 1
-                manifest.update_record(
-                    rec.id, "heldout", new_status="excluded_failed",
-                    reason=f"Incomplete encoding artifacts: missing {sorted(missing_artifacts(rec))}",
-                    exclusion_reason="encoding_incomplete",
-                )
+                incomplete_updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_failed",
+                    "reason": f"Incomplete encoding artifacts: missing {sorted(missing_artifacts(rec))}",
+                    "exclusion_reason": "encoding_incomplete",
+                })
+        if incomplete_updates:
+            manifest.bulk_update_records(incomplete_updates, stage="heldout")
         if incomplete_count:
             log.warning("heldout_excluded_incomplete", count=incomplete_count)
         if not encoded:
@@ -75,22 +82,28 @@ class HeldoutStage(Stage):
             key = "|".join(key_parts)
             strata[key].append(rec)
 
+        seed = stage_cfg.get("random_seed", 42)
+        rng = random.Random(seed)
         heldout_ids: set[str] = set()
         for _key, stratum in strata.items():
             n_heldout = max(1, int(len(stratum) * fraction))
-            selected = random.sample(stratum, min(n_heldout, len(stratum)))
+            selected = rng.sample(stratum, min(n_heldout, len(stratum)))
             for rec in selected:
                 heldout_ids.add(rec.id)
 
-        # Update manifest
+        # Update manifest via single atomic batch
         training = heldout = 0
+        split_updates: list[dict[str, Any]] = []
         for rec in encoded:
             if rec.id in heldout_ids:
-                manifest.update_record(rec.id, "heldout", new_status="heldout")
+                split_updates.append({"id": rec.id, "new_status": "heldout"})
                 heldout += 1
             else:
-                manifest.update_record(rec.id, "heldout", new_status="training_pool")
+                split_updates.append({"id": rec.id, "new_status": "training_pool"})
                 training += 1
+
+        if split_updates:
+            manifest.bulk_update_records(split_updates, stage="heldout")
 
         result.records_processed = training + heldout
         result.metadata = {"training_pool": training, "heldout": heldout,

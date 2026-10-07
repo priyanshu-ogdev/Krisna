@@ -10,12 +10,12 @@ via torch/transformers.
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import sys
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-import os
 from typing import Any
 
 import httpx
@@ -41,6 +41,8 @@ class ModelEngine:
 
     def __init__(self) -> None:
         self._vllm_process: subprocess.Popen | None = None  # type: ignore[type-arg]
+        self._vllm_log_handle: Any = None
+        self._vllm_log_path: str | None = None
         self._current_model: str | None = None
         self._client: httpx.AsyncClient | None = None
         self._is_mock: bool = False
@@ -218,14 +220,10 @@ class ModelEngine:
 
         server_cfg = config.vllm_server
 
-        # Check if vllm is installed or mock fallback requested
+        # Mocks are available only when explicitly requested for tests.
         import importlib.util
-        import os
 
-        use_mock = (
-            os.environ.get("KRISNA_MOCK_VLLM") == "1"
-            or importlib.util.find_spec("vllm") is None
-        )
+        use_mock = os.environ.get("KRISNA_MOCK_VLLM") == "1"
 
         if use_mock:
             log.warning(
@@ -244,6 +242,13 @@ class ModelEngine:
             log.info("vllm_ready", model=model_key, mock=True)
             return
 
+        if importlib.util.find_spec("vllm") is None:
+            raise VLLMServerError(
+                "vLLM is not installed. Production inference will not use a mock "
+                "transport; install the GPU extra or explicitly set "
+                "KRISNA_MOCK_VLLM=1 for isolated tests."
+            )
+
         self._is_mock = False
 
         cmd = [
@@ -255,6 +260,10 @@ class ModelEngine:
             "--max-model-len", str(model_spec.max_model_len),
             "--gpu-memory-utilization", str(model_spec.gpu_memory_utilization),
             "--dtype", model_spec.dtype,
+            "--enable-chunked-prefill",  # SOTA: prevents OOM during long multimodal vision prefill
+            "--enable-prefix-caching",   # SOTA: caches system prompts across pipeline stages
+            "--max-num-seqs", str(server_cfg.max_num_seqs),
+            "--disable-log-requests",    # SOTA: removes stdout IO bottleneck
         ]
 
         if model_spec.quantization:
@@ -272,20 +281,35 @@ class ModelEngine:
             max_model_len=model_spec.max_model_len,
         )
 
-        self._vllm_process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
+        log_dir = config.resolved_paths.get("logs", config.data_root / config.paths.logs)
+        log_path = log_dir / f"vllm_{model_key}.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._vllm_log_handle = log_path.open("ab")
+        self._vllm_log_path = str(log_path)
+        try:
+            self._vllm_process = subprocess.Popen(
+                cmd,
+                stdout=self._vllm_log_handle,
+                stderr=subprocess.STDOUT,
+            )
+        except Exception:
+            self._vllm_log_handle.close()
+            self._vllm_log_handle = None
+            self._vllm_log_path = None
+            raise
         self._current_model = model_key
 
         # Wait for health check
         base_url = f"http://{server_cfg.host}:{server_cfg.port}"
-        await self._wait_for_health(
-            base_url,
-            timeout=server_cfg.startup_timeout_seconds,
-            interval=server_cfg.health_check_interval_seconds,
-        )
+        try:
+            await self._wait_for_health(
+                base_url,
+                timeout=server_cfg.startup_timeout_seconds,
+                interval=server_cfg.health_check_interval_seconds,
+            )
+        except Exception:
+            await self.stop_vllm()
+            raise
 
         self._client = httpx.AsyncClient(
             base_url=f"{base_url}/v1",
@@ -308,6 +332,9 @@ class ModelEngine:
             return
 
         if self._vllm_process is None:
+            if self._vllm_log_handle is not None:
+                self._vllm_log_handle.close()
+                self._vllm_log_handle = None
             return
 
         log.info("vllm_stopping", model=self._current_model)
@@ -332,6 +359,9 @@ class ModelEngine:
 
         self._vllm_process = None
         self._current_model = None
+        if self._vllm_log_handle is not None:
+            self._vllm_log_handle.close()
+            self._vllm_log_handle = None
 
         # Give CUDA time to release memory
         import gc
@@ -352,12 +382,17 @@ class ModelEngine:
             while time.monotonic() < deadline:
                 # Check if process died
                 if self._vllm_process and self._vllm_process.poll() is not None:
-                    stderr = ""
-                    if self._vllm_process.stderr:
-                        stderr = self._vllm_process.stderr.read().decode(errors="replace")
+                    if self._vllm_log_handle is not None:
+                        self._vllm_log_handle.flush()
+                    log_tail = ""
+                    if self._vllm_log_path:
+                        with open(self._vllm_log_path, "rb") as process_log:
+                            process_log.seek(0, os.SEEK_END)
+                            process_log.seek(max(0, process_log.tell() - 4000))
+                            log_tail = process_log.read().decode(errors="replace")
                     raise VLLMServerError(
                         f"vLLM process exited with code {self._vllm_process.returncode}. "
-                        f"stderr: {stderr[:2000]}"
+                        f"last process log bytes: {log_tail}"
                     )
                 try:
                     resp = await client.get(f"{base_url}/health", timeout=5)
@@ -397,11 +432,12 @@ class ModelEngine:
 
         device = embed_spec.device if hasattr(embed_spec, "device") else "cuda"
         if device == "cuda" and not torch.cuda.is_available():
+            if os.environ.get("KRISNA_MOCK_CLIP") != "1":
+                raise RuntimeError("CUDA is required for production CLIP inference")
             device = "cpu"
 
         use_mock = (
             os.environ.get("KRISNA_MOCK_CLIP") == "1"
-            or os.environ.get("KRISNA_MOCK_VLLM") == "1"
         )
 
         if not use_mock:
@@ -477,10 +513,12 @@ class ModelEngine:
 
             def get_image_features(self, pixel_values: torch.Tensor, **kwargs: Any) -> torch.Tensor:
                 pixel_values = pixel_values.to(self._dev)
-                mean_colors = pixel_values.mean(dim=[-2, -1])  # (b, 3)
+                b = pixel_values.shape[0]
+                grid = torch.nn.functional.adaptive_avg_pool2d(pixel_values, (4, 4)).reshape(b, -1)
+                grid = grid - grid.mean(dim=-1, keepdim=True)
                 torch.manual_seed(42)
-                weight = torch.randn(3, self.dim, device=self._dev)
-                return torch.matmul(mean_colors, weight)
+                weight = torch.randn(grid.shape[1], self.dim, device=self._dev)
+                return torch.matmul(grid, weight)
 
         self._clip_processor = MockCLIPProcessor()
         self._clip_model = MockCLIPModel(device)
@@ -555,24 +593,10 @@ class ModelEngine:
 
             log.info("encoder_loading", key=key, model_id=spec.model_id)
 
-            # BUG FIX: this loop previously let any single encoder's
-            # from_pretrained() exception propagate straight out of
-            # load_encoders() -> encoder_session() -> the orchestrator,
-            # crashing the ENTIRE pipeline run on the first chunk that
-            # reached Stage 8, even though s08_encoding.py's four branches
-            # each already have their own try/except and are explicitly
-            # designed to degrade gracefully (skip that one representation,
-            # keep the other three) when an encoder isn't available. The
-            # fix wraps each encoder's load in its own try/except: a failed
-            # encoder is logged and simply left out of self._encoders, so
-            # get_encoder() raises its normal "not loaded" RuntimeError only
-            # for the branch that actually needed it — exactly what
-            # s08_encoding.py's per-branch handlers already expect. This is
-            # what would have contained the Qwen-Image-2.0-VAE 404 (see
-            # models.yaml) to "Qwen-latent branch skipped" instead of
-            # "pipeline dead" even before that root cause was fixed.
             try:
-                target_device = spec.device if (spec.device != "cuda" or torch.cuda.is_available()) else "cpu"
+                if spec.device == "cuda" and not torch.cuda.is_available() and os.environ.get("KRISNA_MOCK_VAE") != "1":
+                    raise RuntimeError("CUDA is required for production VAE encoding")
+                target_device = spec.device
                 dtype = getattr(torch, spec.dtype.replace("float", "float"))
                 if target_device == "cpu" and dtype == torch.float16:
                     dtype = torch.float32
@@ -594,11 +618,9 @@ class ModelEngine:
                             revision=spec.revision,
                         ).to(target_device).eval()
                     except Exception as e:
-                        if os.environ.get("KRISNA_MOCK_VAE") == "1" or not torch.cuda.is_available():
-                            log.warning("vae_load_failed_falling_back_to_mock", error=str(e))
-                            model = ModelEngine.MockAutoencoderKL(latent_channels=spec.expected_channels or 16)
-                        else:
-                            raise
+                        raise RuntimeError(
+                            f"Failed to load real VAE {spec.model_id}@{spec.revision}: {e}"
+                        ) from e
 
                 # REMOVED: `elif key == "maskgit_vq"`. This loader always
                 # raised RuntimeError by design (Open-MAGVIT2 isn't a
@@ -637,12 +659,11 @@ class ModelEngine:
                     key=key,
                     model_id=spec.model_id,
                     error=str(e),
-                    note="This encoder will be unavailable this session — the matching "
-                         "s08_encoding.py branch will skip it and log a warning per record "
-                         "rather than crash. Fix the underlying model_id/config before a "
-                         "production run; check `docs/DATA_SOURCES.md`.",
                 )
-                continue
+                raise RuntimeError(
+                    f"Required encoder '{key}' failed to load; refusing to continue "
+                    "with missing or mock artifacts."
+                ) from e
 
     def unload_encoders(self) -> None:
         """Unload all encoder models."""

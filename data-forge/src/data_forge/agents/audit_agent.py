@@ -12,13 +12,13 @@ from __future__ import annotations
 
 import json
 import random
-from pathlib import Path
 from typing import Any
 
 from data_forge.config import PipelineConfig
 from data_forge.inference.structured_output import AuditOutput
 from data_forge.logging_setup import get_logger
 from data_forge.manifest import ManifestRecord
+from data_forge.utils.path_safety import resolve_data_path
 
 log = get_logger("agents.audit")
 
@@ -32,11 +32,13 @@ class AuditAgent:
         sample_rate: float = 0.03,
         min_samples: int = 200,
         pass_rate_threshold: float = 0.95,
+        random_seed: int = 42,
     ) -> None:
         self._config = config
         self._sample_rate = sample_rate
         self._min_samples = min_samples
         self._pass_threshold = pass_rate_threshold
+        self._random_seed = random_seed
 
     def select_audit_sample(
         self, records: list[ManifestRecord]
@@ -48,7 +50,7 @@ class AuditAgent:
         )
         if target >= len(records):
             return list(records)
-        return random.sample(records, target)
+        return random.Random(self._random_seed).sample(records, target)
 
     async def audit_record(
         self,
@@ -56,10 +58,14 @@ class AuditAgent:
         tier1_engine: Any,
         data_root: Path,
     ) -> AuditOutput | None:
-        """Audit a single record using Tier-1 model."""
-        image_path = data_root / (record.scrubbed_image_path or record.image_path or "")
-        if not image_path.exists():
-            log.warning("audit_image_missing", record_id=record.id, path=str(image_path))
+        raw_path = record.scrubbed_image_path or record.image_path
+        if not raw_path:
+            log.warning("audit_image_missing", record_id=record.id)
+            return None
+        try:
+            image_path = resolve_data_path(data_root, raw_path)
+        except (OSError, ValueError):
+            log.warning("audit_image_missing", record_id=record.id, path=str(raw_path))
             return None
 
         caption = record.caption or ""

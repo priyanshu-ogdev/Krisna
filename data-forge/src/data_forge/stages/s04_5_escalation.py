@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import Any, ClassVar
 
 from data_forge.config import PipelineConfig
@@ -22,52 +24,98 @@ class EscalationStage(Stage):
     async def run(self, manifest: Manifest, config: PipelineConfig,
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
         result = StageResult(stage_name=self.name)
-        records = manifest.get_records_by_ids(record_ids)
-        borderline = [r for r in records if r.safety_tier == "borderline"]
+        borderline_ids = manifest.get_borderline_ids(record_ids)
+        if not borderline_ids or engine is None:
+            return result
 
-        if not borderline or engine is None:
+        records = manifest.get_records_by_ids(borderline_ids)
+        borderline = [r for r in records if r.safety_tier == "borderline"]
+        if not borderline:
             return result
 
         tier2 = Tier2Engine(engine, config)
         resolved = escalated = 0
+        updates: list[dict[str, Any]] = []
+        sem = asyncio.Semaphore(16)
 
-        for rec in borderline:
-            img_path = config.data_root / (rec.scrubbed_image_path or rec.image_path or "")
-            if not img_path.exists():
-                continue
-
+        async def _eval_rec(rec):
+            raw_path = rec.scrubbed_image_path or rec.image_path
+            if not raw_path:
+                return None
+            p = Path(raw_path)
+            img_path = p if p.is_absolute() else (config.data_root / p)
+            if not img_path.is_file():
+                return None
             tier1_output = rec.safety_output or {}
-            t2_result = await tier2.reclassify_safety(img_path, tier1_output)
-            if t2_result is None:
-                # Can't get second opinion — leave as pending review
-                manifest.update_record(rec.id, "escalation", new_status="excluded_pending_review",
-                                       reason="Tier-2 inference failed", exclusion_reason="escalation_failed")
+            async with sem:
+                t2_result = await tier2.reclassify_safety(img_path, tier1_output)
+            return rec, tier1_output, t2_result
+
+        eval_tasks = [_eval_rec(r) for r in borderline]
+        eval_results = await asyncio.gather(*eval_tasks, return_exceptions=True)
+
+        for rec, res in zip(borderline, eval_results):
+            if isinstance(res, Exception):
+                log.error("tier2_escalation_exception", record_id=rec.id, error=str(res))
+                updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_pending_review",
+                    "reason": f"Tier-2 inference exception: {res}",
+                    "exclusion_reason": "escalation_exception",
+                })
+                escalated += 1
+                continue
+            if not res:
+                updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_pending_review",
+                    "reason": "Tier-2 image missing or unreadable",
+                    "exclusion_reason": "image_missing",
+                })
                 escalated += 1
                 continue
 
-            # Two-model agreement logic
-            t1_tier = tier1_output.get("tier", "borderline")
-            t2_tier = t2_result.tier
+            _, tier1_output, t2_result = res
+            if t2_result is None:
+                updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_pending_review",
+                    "reason": "Tier-2 inference failed",
+                    "exclusion_reason": "escalation_failed",
+                })
+                escalated += 1
+                continue
 
+            t2_tier = t2_result.tier
             if t2_tier == "safe":
-                # Tier-2 says safe → override Tier-1's borderline → proceed
-                manifest.update_record(rec.id, "escalation", safety_tier="safe",
-                                       safety_output=t2_result.model_dump())
+                updates.append({
+                    "id": rec.id,
+                    "safety_tier": "safe",
+                    "safety_output": t2_result.model_dump(),
+                })
                 resolved += 1
             elif t2_tier == "unsafe":
-                # Both agree on unsafe direction → exclude
-                manifest.update_record(rec.id, "escalation", new_status="excluded_unsafe",
-                                       reason=f"Tier-2 confirmed unsafe: {t2_result.rationale}",
-                                       safety_tier="unsafe", safety_output=t2_result.model_dump(),
-                                       exclusion_reason="tier2_confirmed_unsafe")
+                updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_unsafe",
+                    "reason": f"Tier-2 confirmed unsafe: {t2_result.rationale}",
+                    "safety_tier": "unsafe",
+                    "safety_output": t2_result.model_dump(),
+                    "exclusion_reason": "tier2_confirmed_unsafe",
+                })
                 escalated += 1
             else:
-                # Persistent disagreement (both say borderline) → pending review
-                manifest.update_record(rec.id, "escalation", new_status="excluded_pending_review",
-                                       reason="Persistent borderline after Tier-2 review",
-                                       safety_output=t2_result.model_dump(),
-                                       exclusion_reason="persistent_borderline")
+                updates.append({
+                    "id": rec.id,
+                    "new_status": "excluded_pending_review",
+                    "reason": "Persistent borderline after Tier-2 review",
+                    "safety_output": t2_result.model_dump(),
+                    "exclusion_reason": "persistent_borderline",
+                })
                 escalated += 1
+
+        if updates:
+            manifest.bulk_update_records(updates, stage="escalation")
 
         result.records_processed = resolved
         result.records_excluded = escalated

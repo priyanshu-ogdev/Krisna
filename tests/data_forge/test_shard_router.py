@@ -22,7 +22,7 @@ class TestShardRouter:
         assert len(routed) == 100
         assert len(overflow) == 0
 
-    def test_overflow_excluded(self):
+    def test_domain_imbalance_retains_all_records(self):
         # 90 UI, 10 general, but ratio is 70/30
         records = [_make_record(f"ui_{i}", "ui_first") for i in range(90)]
         records += [_make_record(f"gen_{i}", "general_design") for i in range(10)]
@@ -31,10 +31,8 @@ class TestShardRouter:
         assignments = router.route(records)
 
         routed = [a for a in assignments if a["status"] == "routed"]
-        overflow = [a for a in assignments if a["status"] == "overflow_excluded"]
-
-        # 70 UI + 10 general should be selected (30 target gen, only 10 available)
-        assert len(overflow) == 20  # 20 excess UI records
+        assert len(routed) == len(records)
+        assert not any(a["status"] == "overflow_excluded" for a in assignments)
 
     def test_shard_assignment(self):
         records = [_make_record(f"r_{i}", "ui_first") for i in range(15)]

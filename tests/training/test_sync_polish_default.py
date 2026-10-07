@@ -63,16 +63,13 @@ def test_sync_missing_images_dir_raises_clear_error(tmp_path):
         sync(model_data, tmp_path / "prepared")
 
 
-def test_sync_falls_back_to_shared_prompt_when_caption_missing(tmp_path):
+def test_sync_refuses_missing_caption_allowlist(tmp_path):
     zimage_dir = tmp_path / "model_data" / "polish_zimage_turbo"
     images_dir = zimage_dir / "images"
     images_dir.mkdir(parents=True)
     Image.new("RGB", (4, 4)).save(images_dir / "webui_0000007.png")
-    # No captions.jsonl at all.
-
-    out = sync(tmp_path / "model_data", tmp_path / "prepared")
-    metadata_lines = [json.loads(l) for l in (out / "metadata.jsonl").read_text().strip().split("\n")]
-    assert metadata_lines[0]["text"] == "a UI design"
+    with pytest.raises(FileNotFoundError, match="caption allowlist"):
+        sync(tmp_path / "model_data", tmp_path / "prepared")
 
 
 class TestRecordIdVsFilenameBugFix:
@@ -90,7 +87,7 @@ class TestRecordIdVsFilenameBugFix:
         by_name = {r["file_name"]: r["text"] for r in metadata_lines}
         assert by_name["rico_semantic_0009981.png"] == "a settings panel"
 
-    def test_legacy_captions_format_without_image_filename_warns_and_degrades(self, tmp_path, caplog):
+    def test_legacy_captions_format_without_image_filename_is_rejected(self, tmp_path):
         zimage_dir = tmp_path / "model_data" / "polish_zimage_turbo"
         images_dir = zimage_dir / "images"
         images_dir.mkdir(parents=True)
@@ -99,15 +96,24 @@ class TestRecordIdVsFilenameBugFix:
             json.dumps({"record_id": "uuid-abc", "caption": "will not match"})
         )
 
-        import logging
+        with pytest.raises(ValueError, match="current export format"):
+            sync(tmp_path / "model_data", tmp_path / "prepared")
 
-        with caplog.at_level(logging.WARNING, logger="krisna_training.data_forge_bridge.sync_polish_default"):
-            out = sync(tmp_path / "model_data", tmp_path / "prepared")
+    def test_orphaned_export_images_are_not_added_to_training(self, tmp_path):
+        model_data = _make_data_forge_export(
+            tmp_path / "model_data",
+            [("uuid-1", "current.png", "an allowed image")],
+        )
+        Image.new("RGB", (4, 4), color="red").save(
+            model_data / "polish_zimage_turbo" / "images" / "orphan.png"
+        )
 
-        assert any("legacy" in r.message.lower() for r in caplog.records)
-        metadata_lines = [json.loads(l) for l in (out / "metadata.jsonl").read_text().strip().split("\n")]
-        # Degrades to the shared-instance-prompt fallback, not a crash.
-        assert metadata_lines[0]["text"] == "a UI design"
+        out = sync(model_data, tmp_path / "prepared")
+        metadata_lines = [
+            json.loads(line)
+            for line in (out / "metadata.jsonl").read_text(encoding="utf-8").splitlines()
+        ]
+        assert [row["file_name"] for row in metadata_lines] == ["current.png"]
 
 
 class TestSourceCaptionSurvivesEndToEnd:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from itertools import islice
 import json
 import os
 from pathlib import Path
@@ -268,6 +269,15 @@ class DatasetFetcher:
             return await self._fetch_github(key, spec, dataset_dir)
         elif spec.source_type == "url":
             return await self._fetch_url(key, spec, dataset_dir)
+        elif spec.source_type in ("local", "filesystem") or spec.fetch_config.get("download_mode") == "local_scan":
+            scan_path = Path(spec.fetch_config.get("local_path", dataset_dir))
+            if not scan_path.is_absolute():
+                scan_path = self._config.data_root / scan_path
+            records = self._scan_downloaded_files(key, scan_path)
+            sample_size = spec.fetch_config.get("sample_size")
+            if sample_size and len(records) > sample_size:
+                records = records[:sample_size]
+            return records
         else:
             log.error("unknown_source_type", dataset=key, source_type=spec.source_type)
             return []
@@ -327,49 +337,12 @@ class DatasetFetcher:
             else spec.fetch_config.get("file_patterns", ["*.parquet"])
         )
 
-        import fnmatch
-        from huggingface_hub import HfApi, hf_hub_download
-
-        api = HfApi(token=self._hf_token)
         target_dir = dest / "_parquet"
         target_dir.mkdir(parents=True, exist_ok=True)
+        downloaded_dir = target_dir
 
-        oversized = False
         try:
-            from huggingface_hub import RepoFile
-            repo_tree = list(api.list_repo_tree(repo_id=spec.repo_id, recursive=True, repo_type="dataset", revision=spec.revision or "main"))
-            matching_parquet = []
-            for pat in allow_patterns:
-                for rf in repo_tree:
-                    if isinstance(rf, RepoFile) and fnmatch.fnmatch(rf.path, pat) and rf.path.endswith(".parquet"):
-                        if rf.size and rf.size > 500 * 1024 * 1024:
-                            log.warning("oversized_shard_skipped", dataset=key, file=rf.path, size_gb=round(rf.size / 1e9, 2))
-                            oversized = True
-                            continue
-                        if rf.path not in matching_parquet:
-                            matching_parquet.append(rf.path)
-            matching_parquet.sort()
-        except Exception:
-            try:
-                repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
-                matching_parquet = [rf for pat in allow_patterns for rf in repo_files if fnmatch.fnmatch(rf, pat) and rf.endswith(".parquet")]
-                matching_parquet.sort()
-            except Exception:
-                matching_parquet = []
-
-        if matching_parquet:
-            # Download only the first shard required for the small sample size
-            for rf in matching_parquet[:1]:
-                hf_hub_download(
-                    repo_id=spec.repo_id,
-                    repo_type="dataset",
-                    filename=rf,
-                    revision=spec.revision or "main",
-                    local_dir=str(target_dir),
-                    token=self._hf_token,
-                )
-        elif not oversized:
-            snapshot_download(
+            dl_res = snapshot_download(
                 repo_id=spec.repo_id,
                 repo_type="dataset",
                 revision=spec.revision or "main",
@@ -377,8 +350,14 @@ class DatasetFetcher:
                 allow_patterns=allow_patterns,
                 token=self._hf_token,
             )
+            if dl_res and Path(dl_res).exists():
+                downloaded_dir = Path(dl_res)
+        except Exception as e:
+            log.warning("hf_parquet_snapshot_download_failed", error=str(e))
 
-        parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
+        parquet_files = sorted(Path(downloaded_dir).rglob("*.parquet"))
+        if not parquet_files and downloaded_dir != target_dir:
+            parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
         if not parquet_files:
             log.error(
                 "hf_parquet_images_no_parquet", dataset=key, dir=str(target_dir),
@@ -463,72 +442,90 @@ class DatasetFetcher:
                 elif len(df) > needed:
                     df = df.head(needed)
 
+            row_items = []
             for row in df.itertuples(index=False):
-                row_dict = dict(zip(df.columns, row))
-                raw = row_dict.get(image_col)
-                blob: bytes | None = None
-                img: Image.Image | None = None
-
-                if hasattr(raw, "save"):
-                    img = raw
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG")
-                    blob = buf.getvalue()
-                elif isinstance(raw, dict) and "bytes" in raw:
-                    blob = raw["bytes"]
-                elif isinstance(raw, (bytes, bytearray)):
-                    blob = bytes(raw)
-
-                if blob is None and img is None:
-                    decode_failures += 1
-                    continue
-
-                if img is None and blob:
-                    try:
-                        img = Image.open(io.BytesIO(blob))
-                        img.load()
-                    except Exception:
-                        decode_failures += 1
-                        continue
-
-                if img is None:
-                    decode_failures += 1
-                    continue
-
-                # Viewport crop / aspect ratio limit (e.g. for ultra-tall web captures)
-                if limit_ratio is not None and (img.height / max(img.width, 1)) > limit_ratio:
-                    target_h = int(img.width * limit_ratio)
-                    img = img.crop((0, 0, img.width, target_h))
-
-                # Handle transparency cleanly
-                if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
-                    bg = Image.new("RGB", img.size, (255, 255, 255))
-                    alpha = img.convert("RGBA").split()[-1]
-                    bg.paste(img.convert("RGB"), mask=alpha)
-                    img = bg
-                else:
-                    img = img.convert("RGB")
-
-                file_name = f"{key}_{global_idx:07d}.png"
-                out_path = out_dir / file_name
-                img.save(out_path, "PNG")
-
-                rec_dict: dict[str, Any] = {
-                    "source_file": file_name,
-                    "image_path": str(out_path.relative_to(self._config.data_root)),
-                    "content_hash_sha256": self._compute_bytes_sha256(blob if blob else out_path.read_bytes()),
-                    "image_width": img.width,
-                    "image_height": img.height,
-                    "file_size_bytes": out_path.stat().st_size,
-                }
-                caption_val = _extract_caption_value(row_dict, caption_col)
-                if caption_val:
-                    rec_dict["source_caption"] = caption_val
-                records.append(rec_dict)
+                row_items.append((global_idx, dict(zip(df.columns, row))))
                 global_idx += 1
-
-                if sample_size and len(records) >= sample_size:
+                if sample_size and (len(records) + len(row_items)) >= sample_size:
                     break
+
+            def _decode_and_save(item: tuple[int, dict[str, Any]]) -> tuple[dict[str, Any] | None, bool]:
+                curr_idx, row_dict = item
+                try:
+                    raw = row_dict.get(image_col)
+                    blob: bytes | None = None
+                    img: Image.Image | None = None
+
+                    if hasattr(raw, "save"):
+                        img = raw
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG")
+                        blob = buf.getvalue()
+                    elif isinstance(raw, dict) and "bytes" in raw:
+                        blob = raw["bytes"]
+                    elif isinstance(raw, (bytes, bytearray)):
+                        blob = bytes(raw)
+
+                    if blob is None and img is None:
+                        return None, True
+
+                    if img is None and blob:
+                        try:
+                            img = Image.open(io.BytesIO(blob))
+                            img.load()
+                        except Exception:
+                            return None, True
+
+                    if img is None:
+                        return None, True
+
+                    # Viewport crop / aspect ratio limit (e.g. for ultra-tall web captures)
+                    if limit_ratio is not None and (img.height / max(img.width, 1)) > limit_ratio:
+                        target_h = int(img.width * limit_ratio)
+                        img = img.crop((0, 0, img.width, target_h))
+
+                    # Handle transparency cleanly
+                    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+                        bg = Image.new("RGB", img.size, (255, 255, 255))
+                        alpha = img.convert("RGBA").split()[-1]
+                        bg.paste(img.convert("RGB"), mask=alpha)
+                        img = bg
+                    else:
+                        img = img.convert("RGB")
+
+                    file_name = f"{key}_{curr_idx:07d}.png"
+                    out_path = out_dir / file_name
+                    img.save(out_path, "PNG")
+
+                    file_size = out_path.stat().st_size
+                    try:
+                        rel_path = str(out_path.relative_to(self._config.data_root))
+                    except ValueError:
+                        rel_path = str(out_path)
+
+                    rec_dict: dict[str, Any] = {
+                        "source_file": file_name,
+                        "image_path": rel_path,
+                        "content_hash_sha256": self._compute_bytes_sha256(blob if blob else out_path.read_bytes()),
+                        "image_width": img.width,
+                        "image_height": img.height,
+                        "file_size_bytes": file_size,
+                    }
+                    caption_val = _extract_caption_value(row_dict, caption_col)
+                    if caption_val:
+                        rec_dict["source_caption"] = caption_val
+                    return rec_dict, False
+                except Exception:
+                    return None, True
+
+            import concurrent.futures
+            max_workers = min(32, max(4, os.cpu_count() or 4))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for rec_res, failed in executor.map(_decode_and_save, row_items):
+                    if failed or rec_res is None:
+                        decode_failures += 1
+                    else:
+                        records.append(rec_res)
 
             del df
 
@@ -679,50 +676,59 @@ class DatasetFetcher:
         written = 0
         seen_hashes: set[str] = set()
 
+        valid_items = []
         for idx, row in enumerate(df.itertuples(index=False)):
             row_dict = dict(zip(df.columns, row))
-            try:
-                a_raw = row_dict.get(image_a_col)
-                b_raw = row_dict.get(image_b_col)
-                a_blob = a_raw.get("bytes") if isinstance(a_raw, dict) else a_raw
-                b_blob = b_raw.get("bytes") if isinstance(b_raw, dict) else b_raw
-                if not a_blob or not b_blob:
-                    continue
-                a_img = Image.open(io.BytesIO(a_blob)); a_img.load()
-                b_img = Image.open(io.BytesIO(b_blob)); b_img.load()
-            except Exception:
+            raw_label = row_dict.get(label_col)
+            label = self._normalize_preference_label(raw_label, image_a_col, image_b_col)
+            if label is None:
                 continue
 
-            # Cheap exact-duplicate guard within this source, before the
-            # real dedup pass in s01_6_preference_pairs.py — two rows
-            # hashing to the same source-image pair almost always means
-            # the same comparison was exported twice.
+            a_raw = row_dict.get(image_a_col)
+            b_raw = row_dict.get(image_b_col)
+            a_blob = a_raw.get("bytes") if isinstance(a_raw, dict) else a_raw
+            b_blob = b_raw.get("bytes") if isinstance(b_raw, dict) else b_raw
+            if not a_blob or not b_blob:
+                continue
+
+            # Cheap exact-duplicate guard within this source
             pair_hash = self._compute_bytes_sha256(a_blob) + self._compute_bytes_sha256(b_blob)
             if pair_hash in seen_hashes:
                 continue
             seen_hashes.add(pair_hash)
 
-            raw_label = row_dict.get(label_col)
-            label = self._normalize_preference_label(raw_label, image_a_col, image_b_col)
-            if label is None:
-                continue  # tie / unparseable — not usable for DPO's strict win/lose pairing
+            valid_items.append((idx, row_dict, a_blob, b_blob, label))
 
-            pair_id = f"{key}_{idx:07d}"
-            a_img.save(out_dir / f"{pair_id}_a.png", "PNG")
-            b_img.save(out_dir / f"{pair_id}_b.png", "PNG")
-            (out_dir / f"{pair_id}.json").write_text(
-                json.dumps({
-                    "pair_id": pair_id,
-                    "prompt": str(row_dict.get(prompt_col, "")),
-                    "image_a": f"{pair_id}_a.png",
-                    "image_b": f"{pair_id}_b.png",
-                    "preferred": label,  # "a" or "b"
-                    "origin": key,
-                    "label_source": "human",
-                }),
-                encoding="utf-8",
-            )
-            written += 1
+        def _save_pref_pair(item: tuple[int, dict[str, Any], Any, Any, str]) -> bool:
+            idx, row_dict, a_blob, b_blob, label = item
+            try:
+                a_img = Image.open(io.BytesIO(a_blob))
+                b_img = Image.open(io.BytesIO(b_blob))
+                pair_id = f"{key}_{idx:07d}"
+                a_img.save(out_dir / f"{pair_id}_a.png", "PNG")
+                b_img.save(out_dir / f"{pair_id}_b.png", "PNG")
+                (out_dir / f"{pair_id}.json").write_text(
+                    json.dumps({
+                        "pair_id": pair_id,
+                        "prompt": str(row_dict.get(prompt_col, "")),
+                        "image_a": f"{pair_id}_a.png",
+                        "image_b": f"{pair_id}_b.png",
+                        "preferred": label,  # "a" or "b"
+                        "origin": key,
+                        "label_source": "human",
+                    }),
+                    encoding="utf-8",
+                )
+                return True
+            except Exception:
+                return False
+
+        import concurrent.futures
+        max_workers = min(32, max(4, os.cpu_count() or 4))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for ok in executor.map(_save_pref_pair, valid_items):
+                if ok:
+                    written += 1
 
         log.info("preference_pairs_written", dataset=key, count=written)
         return []  # Not manifest records — written directly to preference_pairs/
@@ -766,79 +772,65 @@ class DatasetFetcher:
             return []
 
         df = None
-        # Fast path: Fetch first 10MB of data.csv via HTTP Range request to avoid hanging on 2.25GB git-xet parquet shard
-        import httpx
-        url = f"https://huggingface.co/datasets/{spec.repo_id}/resolve/main/data.csv"
+        parquet_revision = spec.fetch_config.get("parquet_revision", "refs/convert/parquet")
+        target_dir = dest / "_metadata"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        downloaded_dir = target_dir
+
         try:
-            with httpx.Client(follow_redirects=True) as client:
-                resp = client.get(url, headers={"Range": "bytes=0-10000000"}, timeout=20)
-                if resp.status_code in (200, 206) and len(resp.content) > 1000:
-                    last_nl = resp.content.rfind(b"\n")
-                    csv_bytes = resp.content[:last_nl]
-                    df = pd.read_csv(io.BytesIO(csv_bytes), on_bad_lines="skip")
-                    log.info("gamelabel_range_download_success", rows=len(df))
+            dl_res = snapshot_download(
+                repo_id=spec.repo_id,
+                repo_type="dataset",
+                revision=parquet_revision,
+                local_dir=str(target_dir),
+                allow_patterns=["*.parquet"],
+                token=self._hf_token,
+            )
+            if dl_res and Path(dl_res).exists():
+                downloaded_dir = Path(dl_res)
         except Exception as e:
-            log.warning("gamelabel_range_download_failed", error=str(e))
+            log.warning("gamelabel_snapshot_download_failed", error=str(e))
 
-        if df is None:
-            parquet_revision = spec.fetch_config.get("parquet_revision", "refs/convert/parquet")
-            target_dir = dest / "_metadata"
-            target_dir.mkdir(parents=True, exist_ok=True)
-
-            from huggingface_hub import HfApi, hf_hub_download
-
-            api = HfApi(token=self._hf_token)
-            try:
-                repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=parquet_revision)
-                matching_files = [rf for rf in repo_files if rf.endswith(".parquet")]
-                matching_files.sort()
-            except Exception:
-                matching_files = []
-
-            if matching_files:
-                for rf in matching_files[:1]:
-                    hf_hub_download(
-                        repo_id=spec.repo_id,
-                        repo_type="dataset",
-                        filename=rf,
-                        revision=parquet_revision,
-                        local_dir=str(target_dir),
-                        token=self._hf_token,
-                    )
-            else:
-                snapshot_download(
-                    repo_id=spec.repo_id,
-                    repo_type="dataset",
-                    revision=parquet_revision,
-                    local_dir=str(target_dir),
-                    allow_patterns=["*.parquet"],
-                    token=self._hf_token,
-                )
-
+        parquet_files = sorted(Path(downloaded_dir).rglob("*.parquet"))
+        if not parquet_files and downloaded_dir != target_dir:
             parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
-            if not parquet_files:
-                log.error(
-                    "gamelabel_parquet_not_found", dataset=key, dir=str(target_dir),
-                    note=(
-                        f"Expected an auto-converted parquet mirror at revision "
-                        f"{parquet_revision!r} — if HF's auto-conversion for this "
-                        f"repo has changed or lagged, fall back to reading "
-                        f"data.csv directly at revision 'main' instead (same "
-                        f"decode logic below applies either way, since the "
-                        f"columns are unchanged by the CSV->parquet conversion)."
-                    ),
-                )
-                return []
 
+        if parquet_files:
             frames = []
             for pf in parquet_files:
                 try:
                     frames.append(pd.read_parquet(pf))
                 except Exception as e:
                     log.warning("gamelabel_parquet_read_failed", file=str(pf), error=str(e))
-            if not frames:
-                return []
-            df = pd.concat(frames, ignore_index=True)
+            if frames:
+                df = pd.concat(frames, ignore_index=True)
+
+        if df is None:
+            # Fallback: Fetch first 10MB of data.csv via HTTP Range request
+            import httpx
+            url = f"https://huggingface.co/datasets/{spec.repo_id}/resolve/main/data.csv"
+            try:
+                with httpx.Client(follow_redirects=True) as client:
+                    resp = client.get(url, headers={"Range": "bytes=0-10000000"}, timeout=20)
+                    if resp.status_code in (200, 206) and len(resp.content) > 1000:
+                        last_nl = resp.content.rfind(b"\n")
+                        csv_bytes = resp.content[:last_nl]
+                        df = pd.read_csv(io.BytesIO(csv_bytes), on_bad_lines="skip")
+                        log.info("gamelabel_range_download_success", rows=len(df))
+            except Exception as e:
+                log.warning("gamelabel_range_download_failed", error=str(e))
+
+        if df is None:
+            log.error(
+                "gamelabel_parquet_not_found", dataset=key, dir=str(target_dir),
+                note=(
+                    f"Expected an auto-converted parquet mirror at revision "
+                    f"{parquet_revision!r} — if HF's auto-conversion for this "
+                    f"repo has changed or lagged, fall back to reading "
+                    f"data.csv directly at revision 'main' instead."
+                ),
+            )
+            return []
 
         required = {"prompt", "img0_votes", "img1_votes", "img0_encoding", "img1_encoding"}
         missing = required - set(df.columns)
@@ -993,12 +985,27 @@ class DatasetFetcher:
         usable = []
         skipped_ambiguous = 0
         for entry in entries:
-            file_paths = entry.get("file_path") or []
-            prefs = entry.get("human_preference") or []
-            if len(file_paths) != 2 or len(prefs) != 2 or sum(prefs) != 1:
+            file_paths = entry.get("image_path") or entry.get("file_path") or []
+            prefs = entry.get("human_preference")
+            rank = entry.get("rank")
+
+            if prefs is not None and len(file_paths) == 2 and len(prefs) == 2 and sum(prefs) == 1:
+                usable.append({
+                    "prompt": entry.get("prompt", ""),
+                    "file_path": file_paths,
+                    "human_preference": prefs,
+                })
+            elif rank is not None and len(file_paths) >= 2 and len(rank) == len(file_paths):
+                best_idx = rank.index(min(rank))
+                worst_idx = rank.index(max(rank))
+                usable.append({
+                    "prompt": entry.get("prompt", ""),
+                    "file_path": [file_paths[best_idx], file_paths[worst_idx]],
+                    "human_preference": [1, 0],
+                })
+            else:
                 skipped_ambiguous += 1
                 continue
-            usable.append(entry)
 
         log.info(
             "hpdv2_annotations_parsed",
@@ -1015,7 +1022,8 @@ class DatasetFetcher:
         out_dir.mkdir(parents=True, exist_ok=True)
         written = 0
 
-        for idx, entry in enumerate(usable):
+        def _download_and_save_entry(item: tuple[int, dict[str, Any]]) -> bool:
+            idx, entry = item
             file_paths = entry["file_path"]
             prefs = entry["human_preference"]
             preferred_idx = prefs.index(1)
@@ -1033,18 +1041,12 @@ class DatasetFetcher:
                     revision=spec.revision or "main", token=self._hf_token,
                 )
             except Exception as e:
-                # HPDv2's `file_path` values are used as-is against the
-                # repo's real file tree — if the prefix HPDv2 ships
-                # (e.g. "train/xxxx.jpg") doesn't match what
-                # hf_hub_download expects, every entry will fail this
-                # way. Log loudly on the first few failures rather than
-                # silently producing zero pairs with no diagnostic.
                 if idx < 3:
                     log.error(
                         "hpdv2_image_download_failed", dataset=key,
                         file_path_attempted=file_paths[preferred_idx], error=str(e),
                     )
-                continue
+                return False
 
             from PIL import Image
             pair_id = f"{key}_{idx:07d}"
@@ -1053,7 +1055,7 @@ class DatasetFetcher:
                 Image.open(rejected_local).convert("RGB").save(out_dir / f"{pair_id}_b.png", "PNG")
             except Exception as e:
                 log.warning("hpdv2_pair_image_decode_failed", pair=pair_id, error=str(e))
-                continue
+                return False
 
             (out_dir / f"{pair_id}.json").write_text(
                 json.dumps({
@@ -1067,7 +1069,14 @@ class DatasetFetcher:
                 }),
                 encoding="utf-8",
             )
-            written += 1
+            return True
+
+        import concurrent.futures
+        max_workers = min(32, max(4, (os.cpu_count() or 4) * 2))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for success in executor.map(_download_and_save_entry, enumerate(usable)):
+                if success:
+                    written += 1
 
         log.info("hpdv2_ranked_pairs_written", dataset=key, count=written)
         return []  # Not manifest records — written directly to preference_pairs/
@@ -1382,7 +1391,7 @@ class DatasetFetcher:
 
         caption_col = spec.fetch_config.get("caption_column")
         sample_size = spec.fetch_config.get("sample_size", 200_000)
-        concurrency = spec.fetch_config.get("download_concurrency", 32)
+        concurrency = spec.fetch_config.get("download_concurrency") or self._config.get_stage("s01_fetch").get("max_concurrent_downloads", 128)
         timeout_s = spec.fetch_config.get("download_timeout_seconds", 15)
 
         # 1. Download parquet metadata shard(s)
@@ -1436,12 +1445,23 @@ class DatasetFetcher:
             return []
 
         # 2. Read metadata, sample down to a manageable size
+        needed_cols = [url_col]
+        if caption_col:
+            needed_cols.append(caption_col)
+
         frames = []
         for pf in parquet_files:
             try:
-                frames.append(pd.read_parquet(pf, columns=None))
+                # Memory optimization: project only required columns
+                import pyarrow.parquet as pq
+                file_schema = pq.read_schema(pf)
+                read_cols = [c for c in needed_cols if c in file_schema.names]
+                frames.append(pd.read_parquet(pf, columns=read_cols if read_cols else None))
             except Exception as e:
-                log.warning("parquet_read_failed", file=str(pf), error=str(e))
+                try:
+                    frames.append(pd.read_parquet(pf, columns=None))
+                except Exception as inner_e:
+                    log.warning("parquet_read_failed", file=str(pf), error=str(inner_e))
 
         # CC12M's canonical raw distribution is a headerless TSV
         # (caption<TAB>url), not parquet — fetch_config.file_patterns
@@ -1480,39 +1500,59 @@ class DatasetFetcher:
         # 3. Concurrently download images
         images_dir = dest / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
+        concurrency = max(1, min(int(concurrency), 128))
+        max_image_bytes = int(spec.fetch_config.get("max_image_bytes", 25_000_000))
+        max_image_pixels = int(spec.fetch_config.get("max_image_pixels", 100_000_000))
         semaphore = asyncio.Semaphore(concurrency)
         records: list[dict[str, Any]] = []
-        records_lock = asyncio.Lock()
 
-        async def _download_one(row_idx: int, url: str, source_caption: str | None) -> None:
-            async with semaphore:
+        import io
+        from PIL import Image
+
+        limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency * 2)
+        timeout = httpx.Timeout(connect=min(5.0, timeout_s), read=timeout_s, write=timeout_s, pool=10.0)
+
+        async with httpx.AsyncClient(limits=limits, timeout=timeout, follow_redirects=True) as client:
+            def _validate_and_save(
+                row_idx: int,
+                content: bytes,
+                source_caption: str | None,
+            ) -> dict[str, Any] | None:
                 try:
-                    async with httpx.AsyncClient(follow_redirects=True) as client:
-                        resp = await client.get(url, timeout=timeout_s)
-                        resp.raise_for_status()
-                        content = resp.content
-                except Exception as e:
-                    log.debug("url_download_failed", url=url[:200], error=str(e))
-                    return
+                    with Image.open(io.BytesIO(content)) as probe:
+                        width, height = probe.size
+                        image_format = probe.format
+                        if width < 1 or height < 1 or width * height > max_image_pixels:
+                            return None
+                        probe.verify()
+                    with Image.open(io.BytesIO(content)) as image:
+                        image.load()
+                        if image.format != image_format:
+                            return None
+                except Exception:
+                    return None
 
-                # Derive a filename from the row index (URLs often lack a
-                # usable extension or collide in basename across rows).
-                ext = self._guess_extension(url, resp.headers.get("content-type", ""))
+                format_extensions = {
+                    "JPEG": ".jpg",
+                    "PNG": ".png",
+                    "WEBP": ".webp",
+                    "BMP": ".bmp",
+                    "TIFF": ".tiff",
+                }
+                ext = format_extensions.get(image_format)
                 if ext is None:
-                    return  # not an image / undecodable content-type
+                    return None
+
                 file_path = images_dir / f"{key}_{row_idx:08d}{ext}"
-
+                temp_path = file_path.with_name(f".{file_path.name}.part")
                 try:
-                    file_path.write_bytes(content)
-                    from PIL import Image
-                    with Image.open(file_path) as img:
-                        width, height = img.size
-                except Exception as e:
-                    log.debug("image_decode_failed", url=url[:200], error=str(e))
-                    file_path.unlink(missing_ok=True)
-                    return
+                    temp_path.write_bytes(content)
+                    os.replace(temp_path, file_path)
+                except OSError:
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    return None
 
-                sha256 = self._compute_sha256(file_path)
                 try:
                     rel_path = str(file_path.relative_to(self._config.data_root))
                 except ValueError:
@@ -1521,43 +1561,78 @@ class DatasetFetcher:
                 record: dict[str, Any] = {
                     "source_file": file_path.name,
                     "image_path": rel_path,
-                    "content_hash_sha256": sha256,
+                    "content_hash_sha256": hashlib.sha256(content).hexdigest(),
                     "image_width": width,
                     "image_height": height,
-                    "file_size_bytes": file_path.stat().st_size,
+                    "file_size_bytes": len(content),
                 }
-                if source_caption:
+                if isinstance(source_caption, str) and source_caption:
                     record["source_caption"] = source_caption
+                return record
 
-                async with records_lock:
+            async def _download_one(row_idx: int, url: str, source_caption: str | None) -> bool:
+                async with semaphore:
+                    try:
+                        async with client.stream("GET", url) as resp:
+                            resp.raise_for_status()
+                            content_length = resp.headers.get("content-length")
+                            if content_length and int(content_length) > max_image_bytes:
+                                return False
+                            chunks: list[bytes] = []
+                            content_size = 0
+                            async for chunk in resp.aiter_bytes():
+                                content_size += len(chunk)
+                                if content_size > max_image_bytes:
+                                    return False
+                                chunks.append(chunk)
+                            content = b"".join(chunks)
+                    except Exception as e:
+                        log.debug("url_download_failed", url=url[:200], error=str(e))
+                        return False
+
+                    record = await asyncio.to_thread(
+                        _validate_and_save,
+                        row_idx,
+                        content,
+                        source_caption,
+                    )
+                    if record is None:
+                        log.debug("image_validation_or_write_failed", dataset=key, row=row_idx)
+                        return False
                     records.append(record)
+                    return True
 
-        tasks = []
-        for row_idx, row in enumerate(df.itertuples(index=False)):
-            row_dict = row._asdict() if hasattr(row, "_asdict") else dict(zip(df.columns, row))
-            url = row_dict.get(url_col)
-            if not url:
-                continue
-            caption = row_dict.get(caption_col) if caption_col else None
-            tasks.append(_download_one(row_idx, url, caption))
-
-        for i in range(0, len(tasks), 5000):
-            batch = tasks[i : i + 5000]
-            await asyncio.gather(*batch)
-            log.info(
-                "url_list_progress",
-                dataset=key,
-                attempted=min(i + 5000, len(tasks)),
-                total=len(tasks),
-                downloaded_so_far=len(records),
-            )
+            attempted = downloaded = 0
+            row_iter = enumerate(df.itertuples(index=False, name=None))
+            task_batch_size = max(concurrency, min(concurrency * 8, 2048))
+            while True:
+                rows = list(islice(row_iter, task_batch_size))
+                if not rows:
+                    break
+                tasks = []
+                for row_idx, row in rows:
+                    row_dict = dict(zip(df.columns, row))
+                    url = row_dict.get(url_col)
+                    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                        continue
+                    caption = row_dict.get(caption_col) if caption_col else None
+                    tasks.append(_download_one(row_idx, url, caption))
+                downloaded += sum(await asyncio.gather(*tasks))
+                attempted += len(tasks)
+                log.info(
+                    "url_list_progress",
+                    dataset=key,
+                    attempted=attempted,
+                    total=len(df),
+                    downloaded_so_far=len(records),
+                )
 
         log.info(
             "url_list_fetch_complete",
             dataset=key,
-            attempted=len(tasks),
-            downloaded=len(records),
-            success_rate=round(len(records) / len(tasks), 3) if tasks else 0.0,
+            attempted=attempted,
+            downloaded=downloaded,
+            success_rate=round(downloaded / attempted, 3) if attempted else 0.0,
         )
         return records
 
@@ -1807,59 +1882,56 @@ class DatasetFetcher:
             except Exception:
                 pass
 
-        for file_path in directory.rglob("*"):
-            if not file_path.is_file():
-                continue
-            if file_path.suffix.lower() not in image_extensions:
-                continue
+        img_files = [f for f in directory.rglob("*") if f.is_file() and f.suffix.lower() in image_extensions]
 
-            # Compute SHA-256
-            sha256 = self._compute_sha256(file_path)
-
-            # Get image dimensions
-            width, height = self._get_image_dimensions(file_path)
-
-            # Relative path from DATA_ROOT
+        def _process_image_file(file_path: Path) -> dict[str, Any] | None:
             try:
-                rel_path = str(file_path.relative_to(self._config.data_root))
-            except ValueError:
-                rel_path = str(file_path)
+                sha256 = self._compute_sha256(file_path)
+                width, height = self._get_image_dimensions(file_path)
 
-            source_caption = None
-            source_url = None
-
-            # Look in captions_index.json
-            if file_path.name in captions_index:
-                entry = captions_index[file_path.name]
-                if isinstance(entry, dict):
-                    source_caption = entry.get("primary_caption") or (entry.get("captions") and entry["captions"][0])
-                elif isinstance(entry, str):
-                    source_caption = entry
-
-            # Look in matching JSON file (e.g. pd12m_000000.json, cc12m_000000.json)
-            json_file = file_path.with_suffix(".json")
-            if json_file.exists():
                 try:
-                    meta = json.loads(json_file.read_text(encoding="utf-8"))
-                    source_caption = source_caption or meta.get("caption") or meta.get("title")
-                    source_url = meta.get("url") or meta.get("image_url")
-                except Exception:
-                    pass
+                    rel_path = str(file_path.relative_to(self._config.data_root))
+                except ValueError:
+                    rel_path = str(file_path)
 
-            rec: dict[str, Any] = {
-                "source_file": file_path.name,
-                "image_path": rel_path,
-                "content_hash_sha256": sha256,
-                "image_width": width,
-                "image_height": height,
-                "file_size_bytes": file_path.stat().st_size,
-            }
-            if source_caption:
-                rec["source_caption"] = source_caption
-            if source_url:
-                rec["source_url"] = source_url
+                source_caption = None
+                source_url = None
 
-            records.append(rec)
+                if file_path.name in captions_index:
+                    entry = captions_index[file_path.name]
+                    if isinstance(entry, dict):
+                        source_caption = entry.get("primary_caption") or (entry.get("captions") and entry["captions"][0])
+                    elif isinstance(entry, str):
+                        source_caption = entry
+
+                json_file = file_path.with_suffix(".json")
+                if json_file.exists():
+                    try:
+                        meta = json.loads(json_file.read_text(encoding="utf-8"))
+                        source_caption = source_caption or meta.get("caption") or meta.get("title")
+                        source_url = meta.get("url") or meta.get("image_url")
+                    except Exception:
+                        pass
+
+                return {
+                    "source_file": file_path.name,
+                    "image_path": rel_path,
+                    "content_hash_sha256": sha256,
+                    "image_width": width,
+                    "image_height": height,
+                    "file_size_bytes": file_path.stat().st_size,
+                    "source_caption": source_caption,
+                    "source_url": source_url,
+                }
+            except Exception:
+                return None
+
+        import concurrent.futures
+        max_workers = min(32, max(4, os.cpu_count() or 4))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            for rec in executor.map(_process_image_file, img_files):
+                if rec:
+                    records.append(rec)
 
         log.info(
             "scan_completed",

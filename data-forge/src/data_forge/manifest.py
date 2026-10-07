@@ -243,6 +243,10 @@ class Manifest:
         self._conn = sqlite3.connect(str(db_path), timeout=30.0, isolation_level="IMMEDIATE")
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-64000")
+        self._conn.execute("PRAGMA temp_store=MEMORY")
+        self._conn.execute("PRAGMA mmap_size=268435456")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.executescript(_SCHEMA_SQL)
@@ -413,36 +417,148 @@ class Manifest:
                     (record_id, stage, old_status, new_status, reason, now),
                 )
 
+    def bulk_update_records(
+        self,
+        updates: list[dict[str, Any]],
+        stage: str,
+    ) -> None:
+        """High-performance atomic bulk-update for multiple records in a single SQLite transaction.
+
+        Each update dict must contain 'id' (or 'record_id'), optional 'new_status',
+        optional 'reason', and any additional fields (quality_output, aesthetic_score,
+        safety_output, etc.).
+        """
+        if not updates:
+            return
+
+        now = _now_iso()
+        json_fields = {
+            "license_output": "license_output_json",
+            "quality_output": "quality_output_json",
+            "pii_detections": "pii_detections_json",
+            "safety_output": "safety_output_json",
+            "caption_output": "caption_output_json",
+            "ocr_output": "ocr_output_json",
+            "structure_output": "structure_output_json",
+            "encoding_paths": "encoding_paths_json",
+            "audit_output": "audit_output_json",
+            "critique_output": "critique_output_json",
+        }
+        bool_fields = {"license_verified", "pii_scrubbed"}
+
+        with self._transaction() as cur:
+            # Batch pre-fetch old statuses for records with new_status to avoid N individual SELECTs
+            status_update_ids = [
+                item.get("id") or item.get("record_id")
+                for item in updates
+                if item.get("new_status") and (item.get("id") or item.get("record_id"))
+            ]
+            old_statuses: dict[str, str | None] = {}
+            if status_update_ids:
+                for i in range(0, len(status_update_ids), 500):
+                    chunk = status_update_ids[i : i + 500]
+                    placeholders = ",".join("?" for _ in chunk)
+                    for row in cur.execute(
+                        f"SELECT id, status FROM records WHERE id IN ({placeholders})", chunk
+                    ).fetchall():
+                        old_statuses[row["id"]] = row["status"]
+
+            history_rows: list[tuple[str, str, str | None, str, str | None, str]] = []
+            grouped_updates: dict[str, list[list[Any]]] = {}
+
+            for item in updates:
+                rec_id = item.get("id") or item.get("record_id")
+                if not rec_id:
+                    continue
+                new_status = item.get("new_status")
+                if new_status and new_status not in VALID_STATUSES:
+                    raise ValueError(f"Invalid status: {new_status}")
+
+                reason = item.get("reason")
+                old_status = old_statuses.get(rec_id) if new_status else None
+
+                # Determine sorted field keys excluding control keys
+                extra_keys = tuple(sorted(
+                    k for k in item.keys()
+                    if k not in ("id", "record_id", "new_status", "reason", "stage")
+                ))
+
+                # Build SQL statement for this signature
+                set_clauses = ["updated_at = ?"]
+                if new_status:
+                    set_clauses.append("status = ?")
+                for k in extra_keys:
+                    col = json_fields.get(k, k)
+                    set_clauses.append(f"{col} = ?")
+                sql = f"UPDATE records SET {', '.join(set_clauses)} WHERE id = ?"
+
+                # Build parameter row
+                params: list[Any] = [now]
+                if new_status:
+                    params.append(new_status)
+                for k in extra_keys:
+                    v = item[k]
+                    if k in json_fields:
+                        params.append(_json_dumps(v))
+                    elif k in bool_fields:
+                        params.append(1 if v else 0)
+                    else:
+                        params.append(v)
+                params.append(rec_id)
+
+                grouped_updates.setdefault(sql, []).append(params)
+
+                if new_status:
+                    history_rows.append((rec_id, stage, old_status, new_status, reason, now))
+
+            for sql, param_batches in grouped_updates.items():
+                cur.executemany(sql, param_batches)
+
+            if history_rows:
+                cur.executemany(
+                    """INSERT INTO stage_history
+                       (record_id, stage, old_status, new_status, reason, timestamp)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    history_rows,
+                )
+
     def bulk_create_records(
-        self, records: list[dict[str, Any]], source_dataset: str
+        self,
+        records: list[dict[str, Any]],
+        source_dataset: str,
+        license_verified: bool | None = None,
     ) -> int:
         """Bulk-insert records for a dataset fetch. Returns count inserted."""
+        if not records:
+            return 0
         now = _now_iso()
-        inserted = 0
+        batch_data = [
+            (
+                str(uuid.uuid4()),
+                source_dataset,
+                rec.get("source_file"),
+                rec.get("image_path"),
+                rec.get("content_hash_sha256"),
+                rec.get("image_width"),
+                rec.get("image_height"),
+                None if license_verified is None else int(license_verified),
+                rec.get("file_size_bytes"),
+                rec.get("source_caption"),
+                now,
+                now,
+            )
+            for rec in records
+        ]
         with self._transaction() as cur:
-            for rec in records:
-                record_id = str(uuid.uuid4())
-                cur.execute(
-                    """INSERT INTO records
-                       (id, source_dataset, source_file, status, image_path,
-                        content_hash_sha256, image_width, image_height,
-                        file_size_bytes, source_caption, created_at, updated_at)
-                       VALUES (?, ?, ?, 'fetched', ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        record_id,
-                        source_dataset,
-                        rec.get("source_file"),
-                        rec.get("image_path"),
-                        rec.get("content_hash_sha256"),
-                        rec.get("image_width"),
-                        rec.get("image_height"),
-                        rec.get("file_size_bytes"),
-                        rec.get("source_caption"),
-                        now,
-                        now,
-                    ),
-                )
-                inserted += 1
+            cur.executemany(
+                """INSERT INTO records
+                   (id, source_dataset, source_file, status, image_path,
+                    content_hash_sha256, image_width, image_height, license_verified,
+                    file_size_bytes, source_caption, created_at, updated_at)
+                   VALUES (?, ?, ?, 'fetched', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                batch_data,
+            )
+        inserted = len(batch_data)
         log.info(
             "bulk_created",
             source_dataset=source_dataset,
@@ -514,25 +630,35 @@ class Manifest:
                 ).fetchall()
                 old_status_map = {r["id"]: r["status"] for r in rows}
 
-                history_rows = []
-                for d in batch:
-                    r_id = d["record_id"]
-                    dup_of = d["duplicate_of"]
-                    reason = d.get("reason", f"Duplicate of {dup_of}")
-                    ex_reason = d.get("exclusion_reason", "semantic_duplicate")
-                    cur.execute(
-                        """UPDATE records
-                           SET status = 'excluded_duplicate',
-                               duplicate_of = ?,
-                               exclusion_reason = ?,
-                               updated_at = ?
-                           WHERE id = ?""",
-                        (dup_of, ex_reason, now, r_id),
+                update_rows = [
+                    (
+                        d["duplicate_of"],
+                        d.get("exclusion_reason", "semantic_duplicate"),
+                        now,
+                        d["record_id"],
                     )
-                    history_rows.append(
-                        (r_id, stage, old_status_map.get(r_id), "excluded_duplicate", reason, now)
+                    for d in batch
+                ]
+                cur.executemany(
+                    """UPDATE records
+                       SET status = 'excluded_duplicate',
+                           duplicate_of = ?,
+                           exclusion_reason = ?,
+                           updated_at = ?
+                       WHERE id = ?""",
+                    update_rows,
+                )
+                history_rows = [
+                    (
+                        d["record_id"],
+                        stage,
+                        old_status_map.get(d["record_id"]),
+                        "excluded_duplicate",
+                        d.get("reason", f"Duplicate of {d['duplicate_of']}"),
+                        now,
                     )
-
+                    for d in batch
+                ]
                 cur.executemany(
                     """INSERT INTO stage_history
                        (record_id, stage, old_status, new_status, reason, timestamp)
@@ -596,6 +722,18 @@ class Manifest:
             )
         log.debug("bulk_content_hashes_updated", count=len(hash_pairs))
 
+    def bulk_update_hashes(self, hash_triples: list[tuple[str, str, str | None]]) -> None:
+        """Bulk-update content_hash_sha256 and perceptual_hash for records in a single transaction."""
+        if not hash_triples:
+            return
+        now = _now_iso()
+        with self._transaction() as cur:
+            cur.executemany(
+                "UPDATE records SET content_hash_sha256 = ?, perceptual_hash = ?, updated_at = ? WHERE id = ?",
+                [(sha, phash, now, r_id) for r_id, sha, phash in hash_triples],
+            )
+        log.debug("bulk_hashes_updated", count=len(hash_triples))
+
     # ── Queries ───────────────────────────────────────────────────────────
 
     def query_by_status(
@@ -654,6 +792,14 @@ class Manifest:
             params.append(limit)
         rows = self._conn.execute(sql, params).fetchall()
         return [_row_to_record(r) for r in rows]
+
+    def query_stems_by_dataset(
+        self, source_dataset: str
+    ) -> list[tuple[str, str]]:
+        """Fast projection returning only (id, source_file) without JSON deserialization."""
+        sql = "SELECT id, source_file FROM records WHERE source_dataset = ?"
+        rows = self._conn.execute(sql, (source_dataset,)).fetchall()
+        return [(r["id"], r["source_file"]) for r in rows if r["source_file"]]
 
     def query_by_statuses(self, statuses: list[str]) -> list[ManifestRecord]:
         placeholders = ",".join("?" for _ in statuses)
@@ -775,11 +921,50 @@ class Manifest:
     def get_records_by_ids(self, record_ids: list[str]) -> list[ManifestRecord]:
         if not record_ids:
             return []
-        placeholders = ",".join("?" for _ in record_ids)
-        rows = self._conn.execute(
-            f"SELECT * FROM records WHERE id IN ({placeholders})", record_ids
-        ).fetchall()
-        return [_row_to_record(r) for r in rows]
+        records: list[ManifestRecord] = []
+        chunk_size = 900
+        for i in range(0, len(record_ids), chunk_size):
+            batch = record_ids[i : i + chunk_size]
+            placeholders = ",".join("?" for _ in batch)
+            rows = self._conn.execute(
+                f"SELECT * FROM records WHERE id IN ({placeholders})", batch
+            ).fetchall()
+            records.extend(_row_to_record(r) for r in rows)
+        return records
+
+    def filter_active_ids(self, record_ids: list[str]) -> list[str]:
+        """Ultra-fast ID filter that checks status directly in SQLite without instantiating records."""
+        if not record_ids:
+            return []
+        active_ids: list[str] = []
+        term_placeholders = ",".join("?" for _ in TERMINAL_STATUSES)
+        term_list = list(TERMINAL_STATUSES)
+        chunk_size = 800
+        for i in range(0, len(record_ids), chunk_size):
+            batch = record_ids[i : i + chunk_size]
+            id_placeholders = ",".join("?" for _ in batch)
+            rows = self._conn.execute(
+                f"SELECT id FROM records WHERE id IN ({id_placeholders}) AND status NOT IN ({term_placeholders})",
+                batch + term_list,
+            ).fetchall()
+            active_ids.extend(r["id"] for r in rows)
+        return active_ids
+
+    def get_borderline_ids(self, record_ids: list[str]) -> list[str]:
+        """Fast SQL ID filter for records needing Tier-2 escalation without full record instantiation."""
+        if not record_ids:
+            return []
+        borderline_ids: list[str] = []
+        chunk_size = 800
+        for i in range(0, len(record_ids), chunk_size):
+            batch = record_ids[i : i + chunk_size]
+            id_placeholders = ",".join("?" for _ in batch)
+            rows = self._conn.execute(
+                f"SELECT id FROM records WHERE id IN ({id_placeholders}) AND (safety_tier = 'borderline' OR status = 'excluded_pending_review')",
+                batch,
+            ).fetchall()
+            borderline_ids.extend(r["id"] for r in rows)
+        return borderline_ids
 
     # ── Dataset Versions ──────────────────────────────────────────────────
 

@@ -18,6 +18,7 @@ STAGE_MODULES: tuple[str, ...] = (
     "s01_fetch",
     "s01_5_uicrit_join",
     "s01_6_preference_pairs",
+    "s01_7_preference_pair_pii",
     "s02_dedup",
     "s03_quality",
     "s03_5_pii_scrub",

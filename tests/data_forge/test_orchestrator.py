@@ -19,13 +19,34 @@ def test_orchestrator_checkpointing(config, tmp_path):
     orch = Orchestrator(config, manifest)
     
     # Assert missing checkpoint
-    assert orch._is_stage_complete("s05_recaption", "chunk_0001") is False
+    assert orch._is_stage_complete("s05_recaption", "chunk_0001", []) is False
     
     # Mark stage as complete
-    orch._mark_stage_complete("s05_recaption", "chunk_0001")
+    orch._mark_stage_complete("s05_recaption", "chunk_0001", [])
     
     # Verify checkpoint detection
-    assert orch._is_stage_complete("s05_recaption", "chunk_0001") is True
+    assert orch._is_stage_complete("s05_recaption", "chunk_0001", []) is True
+
+
+def test_checkpoint_invalidates_when_record_changes(config, tmp_path):
+    manifest = Manifest(tmp_path / "manifest.db")
+    record = manifest.create_record(source_dataset="test", image_path="x.png")
+    orch = Orchestrator(config, manifest)
+
+    orch._mark_stage_complete("s05_recaption", "chunk_0001", [record.id])
+    assert orch._is_stage_complete("s05_recaption", "chunk_0001", [record.id]) is True
+
+    manifest.update_record(record.id, "test_mutation", caption="changed")
+    assert orch._is_stage_complete("s05_recaption", "chunk_0001", [record.id]) is False
+
+
+def test_pipeline_fingerprint_covers_dict_and_dataclass_config(config):
+    from data_forge.utils.audit_gate import pipeline_config_fingerprint
+
+    original = pipeline_config_fingerprint(config)
+    config.stages["s05_recaption"].params["max_caption_tokens"] = 512
+    changed = pipeline_config_fingerprint(config)
+    assert changed != original
 
 
 class TestEscalationRunsBeforeRecaptionAndStructure:
@@ -116,4 +137,3 @@ class TestEscalationRunsBeforeRecaptionAndStructure:
         # s04_safety must still precede escalation (escalation reads the
         # safety_tier s04_safety sets).
         assert call_order.index("s04_safety") < escalation_idx
-

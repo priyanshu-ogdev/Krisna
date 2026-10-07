@@ -57,64 +57,45 @@ def sync(
             "If you're on an older data-forge export, re-run stage s12."
         )
 
-    # BUG FIX: this used to build captions_by_record keyed by record_id
-    # and then look records up by `image_path.stem`, assuming a linked
-    # image's filename stem equals its record_id. That's false for every
-    # real data-forge export — record_id is a random uuid4 (see
-    # data-forge's manifest.py::create_record), completely unrelated to
-    # the scrubbed image's on-disk filename (named after the original
-    # fetch-time file, e.g. "rico_core_0000042.png"). The lookup silently
-    # missed on every record and produced empty captions for the entire
-    # synced dataset with no error anywhere. data-forge's
-    # s12_model_data_export.py now emits `image_filename` directly in
-    # each captions.jsonl entry — this is the real join key, not a
-    # filename guess. Older data-forge exports (pre-fix, no
-    # `image_filename` field) fall back to the old stem-based behavior
-    # with a loud warning, rather than silently producing empty captions
-    # again on a stale export.
-    captions_by_filename: dict[str, dict] = {}
-    legacy_captions_by_record: dict[str, str] = {}
-    saw_legacy_entry = False
-    if captions_path.exists():
-        with captions_path.open() as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                if "image_filename" in rec and rec["image_filename"]:
-                    captions_by_filename[rec["image_filename"]] = {
-                        "caption": rec.get("caption", ""),
-                        # Added alongside the caption-mixing fix (see
-                        # dataset.py) — the original, short, human/
-                        # source-dataset caption, carried through so it
-                        # can be mixed in during training rather than
-                        # discarded after only being used as a prompt
-                        # hint inside data-forge's s05_recaption.py.
-                        "source_caption": rec.get("source_caption"),
-                    }
-                else:
-                    saw_legacy_entry = True
-                    legacy_captions_by_record[rec["record_id"]] = rec.get("caption", "")
+    if not captions_path.is_file():
+        raise FileNotFoundError(f"Refusing to train from an export without its caption allowlist: {captions_path}")
 
-    if saw_legacy_entry and not captions_by_filename:
-        log.warning(
-            "sync_sketch_tier_legacy_captions_format",
-            extra={
-                "note": "captions.jsonl has no image_filename field — this is a "
-                         "pre-fix data-forge export. Falling back to the old "
-                         "(broken-for-real-exports) stem==record_id matching, which "
-                         "will most likely produce empty captions for every record. "
-                         "Re-run data-forge's s12_model_data_export stage on an "
-                         "up-to-date data-forge checkout to get real captions.",
-            },
-        )
+    captions_by_filename: dict[str, dict] = {}
+    with captions_path.open(encoding="utf-8") as captions_file:
+        for line_number, line in enumerate(captions_file, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            filename = rec.get("image_filename")
+            if (
+                not isinstance(filename, str)
+                or not filename
+                or Path(filename).name != filename
+                or filename in {".", ".."}
+                or "\\" in filename
+            ):
+                raise ValueError(
+                    f"Invalid image_filename in {captions_path}:{line_number}; "
+                    "the current export format is required"
+                )
+            if filename in captions_by_filename:
+                raise ValueError(f"Duplicate training image in caption allowlist: {filename}")
+            captions_by_filename[filename] = {
+                "caption": rec.get("caption", ""),
+                "source_caption": rec.get("source_caption"),
+            }
+    if not captions_by_filename:
+        raise ValueError(f"Refusing to train: caption allowlist is empty in {captions_path}")
 
     output_dir = Path(output_dir)
     tokens_dir = output_dir / "tokens"
     manifest_path = output_dir / "manifest.jsonl"
 
-    image_paths = sorted(images_dir.iterdir())
+    image_paths = sorted(images_dir / name for name in captions_by_filename)
+    missing_images = [path.name for path in image_paths if not path.is_file()]
+    if missing_images:
+        raise FileNotFoundError(f"Caption allowlist references missing images: {missing_images[:5]}")
     if not image_paths:
         raise ValueError(f"No images found under {images_dir}")
 
@@ -138,11 +119,7 @@ def sync(
                 source_caption = entry.get("source_caption")
                 matched_captions += 1
             else:
-                # Legacy fallback only — see the warning above. Kept so a
-                # pre-fix export doesn't hard-crash, just silently (now
-                # loudly, via the warning above) loses captions the same
-                # way it always did.
-                caption = legacy_captions_by_record.get(image_path.stem, "")
+                raise RuntimeError(f"Image escaped the caption allowlist: {image_path.name}")
 
             try:
                 image = Image.open(image_path).convert("RGB").resize((image_size, image_size))

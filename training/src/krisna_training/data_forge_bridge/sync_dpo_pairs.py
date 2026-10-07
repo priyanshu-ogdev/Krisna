@@ -67,6 +67,7 @@ def sync(
     counts: dict[str, int] = {}
     skipped_not_deduped = 0
     skipped_missing_images = 0
+    skipped_unsafe_or_unredacted = 0
 
     for source_dir_name in sources:
         if source_dir_name not in _SOURCE_KEY_MAP:
@@ -95,6 +96,13 @@ def sync(
                 # safe to treat as a clean pair.
                 skipped_not_deduped += 1
                 continue
+            if (
+                meta.get("safety_tier") != "safe"
+                or meta.get("pii_scrubbed") is not True
+                or meta.get("text_pii_scrubbed") is not True
+            ):
+                skipped_unsafe_or_unredacted += 1
+                continue
 
             pair_id = _deterministic_pair_id(mapped_source, meta)
             if preference_store.exists(pair_id):
@@ -108,7 +116,20 @@ def sync(
 
             image_a_name = meta.get("image_a")
             image_b_name = meta.get("image_b")
-            if not image_a_name or not image_b_name:
+            if (
+                not isinstance(image_a_name, str)
+                or not isinstance(image_b_name, str)
+                or not image_a_name
+                or not image_b_name
+                or image_a_name in {".", ".."}
+                or image_b_name in {".", ".."}
+                or Path(image_a_name).is_absolute()
+                or Path(image_b_name).is_absolute()
+                or Path(image_a_name).name != image_a_name
+                or Path(image_b_name).name != image_b_name
+                or "\\" in image_a_name
+                or "\\" in image_b_name
+            ):
                 # BUG FOUND THIS REVIEW PASS (pre-existing, unrelated to
                 # the deterministic-id fix above): this used bracket
                 # access (meta["image_a"]) unconditionally, so a
@@ -127,28 +148,53 @@ def sync(
                     extra={"path": str(meta_path), "has_image_a": bool(image_a_name), "has_image_b": bool(image_b_name)},
                 )
                 continue
-            image_a_path = source_dir / image_a_name
-            image_b_path = source_dir / image_b_name
-            if not image_a_path.exists() or not image_b_path.exists():
+            try:
+                source_root = source_dir.resolve()
+                image_a_path = (source_dir / image_a_name).resolve(strict=True)
+                image_b_path = (source_dir / image_b_name).resolve(strict=True)
+            except OSError:
+                skipped_missing_images += 1
+                continue
+            if (
+                image_a_path.parent != source_root
+                or image_b_path.parent != source_root
+                or not image_a_path.is_file()
+                or not image_b_path.is_file()
+            ):
                 skipped_missing_images += 1
                 continue
 
-            from PIL import Image
-
-            ref_a = blob_store.save_image(Image.open(image_a_path), prefix=f"{mapped_source}_a")
-            ref_b = blob_store.save_image(Image.open(image_b_path), prefix=f"{mapped_source}_b")
-
             preferred = meta.get("preferred")
-            if preferred == "a":
-                chosen_ref, rejected_ref = ref_a, ref_b
-            elif preferred == "b":
-                chosen_ref, rejected_ref = ref_b, ref_a
-            else:
+            if preferred not in {"a", "b"}:
                 log.warning(
                     "sync_dpo_missing_preferred_label",
                     extra={"pair_id": meta.get("pair_id"), "preferred": preferred},
                 )
                 continue
+
+            from PIL import Image
+
+            try:
+                with Image.open(image_a_path) as image_a:
+                    image_a.load()
+                    copy_a = image_a.copy()
+                with Image.open(image_b_path) as image_b:
+                    image_b.load()
+                    copy_b = image_b.copy()
+            except OSError as error:
+                skipped_missing_images += 1
+                log.warning(
+                    "sync_dpo_corrupt_image",
+                    extra={"path": str(meta_path), "error": str(error)},
+                )
+                continue
+            ref_a = blob_store.save_image(copy_a, prefix=f"{mapped_source}_a")
+            ref_b = blob_store.save_image(copy_b, prefix=f"{mapped_source}_b")
+
+            if preferred == "a":
+                chosen_ref, rejected_ref = ref_a, ref_b
+            else:
+                chosen_ref, rejected_ref = ref_b, ref_a
 
             try:
                 pair = PreferencePair(
@@ -174,6 +220,7 @@ def sync(
 
     counts["skipped_not_deduped"] = skipped_not_deduped
     counts["skipped_missing_images"] = skipped_missing_images
+    counts["skipped_unsafe_or_unredacted"] = skipped_unsafe_or_unredacted
     log.info("sync_dpo_pairs_complete", extra=counts)
     return counts
 

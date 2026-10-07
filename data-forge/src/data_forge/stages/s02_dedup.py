@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import concurrent.futures
+import os
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -11,7 +13,7 @@ from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
-from data_forge.utils.hashing import sha256_file
+from data_forge.utils.hashing import perceptual_hash, sha256_file
 
 log = get_logger("stages.s02")
 
@@ -43,24 +45,42 @@ class DedupStage(Stage):
         exact_duplicate_updates: list[dict[str, Any]] = []
 
         if stage_cfg.get("exact_hash_dedup", True):
-            # 1. Fill missing content_hash_sha256 if file exists
+            # 1. Fill missing content_hash_sha256 and perceptual_hash if file exists
             hashes_to_query: list[str] = []
-            computed_hashes: list[tuple[str, str]] = []
-            for rec in records:
-                if not rec.content_hash_sha256 and rec.image_path:
+            computed_hashes: list[tuple[str, str, str | None]] = []
+            
+            def _compute_hash(rec):
+                sha = rec.content_hash_sha256
+                phash = rec.perceptual_hash
+                err = None
+                if (not sha or not phash) and rec.image_path:
                     p = Path(rec.image_path)
                     img_path = p if p.is_absolute() else (config.data_root / rec.image_path)
-                    if img_path.exists():
+                    if img_path.is_file():
                         try:
-                            rec.content_hash_sha256 = sha256_file(img_path)
-                            computed_hashes.append((rec.id, rec.content_hash_sha256))
+                            if not sha:
+                                sha = sha256_file(img_path)
+                            if not phash:
+                                phash = perceptual_hash(img_path)
                         except Exception as e:
-                            log.warning("sha256_compute_failed", id=rec.id, error=str(e))
-                if rec.content_hash_sha256:
-                    hashes_to_query.append(rec.content_hash_sha256)
+                            err = e
+                return rec, sha, phash, err
+
+            max_workers = min(64, max(4, (os.cpu_count() or 4) * 2))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for rec, computed_sha, computed_phash, err in executor.map(_compute_hash, records):
+                    if computed_sha:
+                        rec.content_hash_sha256 = computed_sha
+                        rec.perceptual_hash = computed_phash
+                        computed_hashes.append((rec.id, computed_sha, computed_phash))
+                    elif err:
+                        log.warning("hash_compute_failed", id=rec.id, error=str(err))
+                    
+                    if rec.content_hash_sha256:
+                        hashes_to_query.append(rec.content_hash_sha256)
 
             if computed_hashes:
-                manifest.bulk_update_content_hashes(computed_hashes)
+                manifest.bulk_update_hashes(computed_hashes)
 
             # 2. Batch query manifest for existing non-duplicate records
             existing_hash_map = manifest.check_hashes_exist(hashes_to_query)
@@ -110,7 +130,7 @@ class DedupStage(Stage):
                 continue
             p = Path(rec.image_path)
             img_path = p if p.is_absolute() else (config.data_root / rec.image_path)
-            if not img_path.exists():
+            if not img_path.is_file():
                 missing_ids.append(rec.id)
                 continue
             image_paths.append(img_path)
