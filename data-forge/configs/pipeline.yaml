@@ -1,292 +1,131 @@
-# =============================================================================
-# Data-Forge Pipeline Configuration (v13)
-# =============================================================================
-# All paths are RELATIVE to DATA_ROOT (env var, default: /data_krisna or D:\data_krisna).
-# The orchestrator resolves them at runtime.
-# =============================================================================
-
 pipeline:
-  version: "0.14.0"
-  dataset_version_prefix: "krisna_v"  # Auto-incremented: krisna_v001, krisna_v002, ...
-
-# ---------------------------------------------------------------------------
-# Directory layout (all relative to DATA_ROOT)
-# ---------------------------------------------------------------------------
+  version: 0.14.0
+  dataset_version_prefix: krisna_v
 paths:
-  raw: "raw/"                                    # Stage 1 downloads land here
-  scrubbed: "scrubbed/"                          # Stage 3.5 PII-scrubbed images
+  raw: raw/
+  scrubbed: scrubbed/
   processed:
-    root: "processed/"
-    latents_zimage: "processed/latents_zimage/"  # Stage 8 branch 1 (only fine-tuned renderer)
-    vq_tokens_sketch: "processed/vq_tokens_sketch/"    # Stage 8 branch 2 (ui_first only)
-    control_tokens: "processed/control_tokens/"        # Stage 8 branch 3
-    dpo_latents: "processed/dpo_latents/"              # Stage 8.5 — DPO pair encodings
-  training_pool: "training_pool/"                # Final training-ready records
-  heldout: "heldout/"                            # Stage 9 eval set; also holds
-                                                  # heldout/external_eval/ (TASTE,
-                                                  # PartiPrompts — eval-only, never trained on)
-  manifests: "manifests/"                        # SQLite DB + version snapshots
-  checkpoints: ".checkpoints/"                   # Stage completion markers
-  logs: "logs/"                                  # Structured JSON-lines logs
-  registry_reports: "registry_reports/"          # Stage 11 watcher output
-  audit_reports: "audit_reports/"                # Stage 10 audit summaries
-  compliance_briefs: "compliance_briefs/"         # License agent output for review
-  ui_critique: "ui_critique/"                     # UICrit human critique join (RAG corpus source)
-  preference_pairs: "preference_pairs/"           # Stage 1.6 — real human DPO pairs, per source
-
-# ---------------------------------------------------------------------------
-# Orchestrator settings
-# ---------------------------------------------------------------------------
+    root: processed/
+    latents_zimage: processed/latents_zimage/
+    vq_tokens_sketch: processed/vq_tokens_sketch/
+    control_tokens: processed/control_tokens/
+    dpo_latents: processed/dpo_latents/
+  training_pool: training_pool/
+  heldout: heldout/
+  manifests: manifests/
+  checkpoints: .checkpoints/
+  logs: logs/
+  registry_reports: registry_reports/
+  audit_reports: audit_reports/
+  compliance_briefs: compliance_briefs/
+  ui_critique: ui_critique/
+  preference_pairs: preference_pairs/
 orchestrator:
-  chunk_size: 10000          # Records per processing chunk
-  max_retries_per_record: 2  # Per-record retry before marking failed
-  fail_fast: false           # If true, halt pipeline on first stage error
-  checkpoint_enabled: true   # Write stage completion markers for resume
-
-# ---------------------------------------------------------------------------
-# Stage-specific thresholds
-# ---------------------------------------------------------------------------
+  chunk_size: 10000
+  max_retries_per_record: 2
+  fail_fast: false
+  checkpoint_enabled: true
 stages:
   s00_manifest_planning:
     enabled: true
-    # BUG FIX: this block used to carry qwen_vae_expected_channels: 64 /
-    # qwen_vae_expected_downsample: 16, commented as "Qwen-Image-2.0's VAE
-    # numbers specifically — verified against its own config." That's a
-    # leftover naming confusion from before the Qwen-Image-2.0 ->
-    # Qwen-Image-Edit-2511 swap (§17 of the PRD): Qwen-Image-2.0's weights
-    # were never released, so nothing about it could have been
-    # "verified" — those numbers, if real, would have come from the
-    # original Qwen-Image (20B MMDiT, Aug 2025, which did ship), not the
-    # never-released 2.0. They were also dead config: nothing in the
-    # codebase ever read `qwen_vae_expected_channels`/
-    # `qwen_vae_expected_downsample` from here — engine.py's actual
-    # channel-count assertion (see load_encoders() in inference/engine.py)
-    # reads `expected_channels`/`expected_downsample` from
-    # configs/models.yaml's `encoders.qwen_image_vae` entry, which is
-    # correctly left `null` until Qwen-Image-Edit-2511's real VAE config
-    # is pulled and confirmed. This block is removed rather than
-    # "corrected" to avoid re-introducing a second, driftable copy of a
-    # value that already has exactly one source of truth (models.yaml).
-    # Set `encoders.qwen_image_vae.expected_channels`/`expected_downsample`
-    # in models.yaml once confirmed — do not add a duplicate here.
-
   s01_fetch:
     enabled: true
-    max_concurrent_downloads: 4
+    max_concurrent_downloads: 128
     download_timeout_seconds: 3600
-    license_confidence_threshold: 0.85  # Below this → excluded_pending_review
-
-  # New in this revision — closes the "UICrit's real human ratings are
-  # silently discarded" gap found while tracing each PRD model's actual
-  # training-data requirements. See stages/s01_5_uicrit_join.py.
+    license_confidence_threshold: 0.85
   s01_5_uicrit_join:
     enabled: true
-
-  # UPGRADED (no-RLHF-loop revision): replaces the removed
-  # s01_6_planner_synthesis.py, which fine-tuned the planner on ~2,000
-  # self-distilled synthetic conversations. The planner now ships frozen
-  # and uses RAG over UICrit's real critique text instead (product-side,
-  # not a data-forge training job) — nothing here generates synthetic
-  # conversations anymore. This stage instead post-processes the real,
-  # human-labeled preference-pair datasets (Pick-a-Pic v2, HPDv2,
-  # DesignSense-10k, DesignPref): cross-source dedup + face-blur. See
-  # stages/s01_6_preference_pairs.py.
   s01_6_preference_pairs:
     enabled: true
     face_detection_confidence: 0.5
     blur_kernel_size: 99
-    # BUG FIX: this stage previously ran with no engine and never
-    # classified preference-pair images for NSFW/harmful content — see
-    # s01_6_preference_pairs.py's module docstring. Same threshold
-    # convention as s04_safety.confidence_threshold below.
     safety_confidence_threshold: 0.8
-
   s02_dedup:
     enabled: true
-    embedding_model: "openai/clip-vit-large-patch14-336"
+    embedding_model: openai/clip-vit-large-patch14-336
     embedding_batch_size: 256
-    faiss_index_type: "IVF4096,Flat"   # NOTE: DedupEngine.build_index() currently
-      # chooses Flat vs IVF automatically based on record count (< 10k -> Flat,
-      # else IVF) and does not read this string — it's descriptive of the
-      # IVF branch's shape, not a live switch. faiss_nprobe below IS wired
-      # through and does take effect on the IVF branch.
+    faiss_index_type: IVF4096,Flat
     faiss_nprobe: 64
-    similarity_threshold: 0.95         # Cosine sim above this = duplicate
-    exact_hash_dedup: true             # Also do SHA-256 exact match first
-
+    similarity_threshold: 0.95
+    exact_hash_dedup: true
   s03_quality:
     enabled: true
-    aesthetic_score_threshold: 0.4     # 0.0–1.0; below this = excluded_low_quality
-    min_resolution: [256, 256]         # Width, Height minimum
-    max_resolution: [8192, 8192]       # Reject absurdly large images
-    batch_size: 64
-
+    aesthetic_score_threshold: 0.4
+    min_resolution:
+    - 256
+    - 256
+    max_resolution:
+    - 8192
+    - 8192
+    batch_size: 128
   s03_5_pii_scrub:
     enabled: true
-    face_detection_confidence: 0.5     # MediaPipe face detection threshold
-    blur_kernel_size: 99               # Gaussian blur kernel for faces
-
+    face_detection_confidence: 0.5
+    blur_kernel_size: 99
   s04_safety:
     enabled: true
-    confidence_threshold: 0.8          # Below this = borderline → escalation
-    batch_size: 64
-
+    confidence_threshold: 0.8
+    batch_size: 128
   s04_5_escalation:
     enabled: true
-    # No extra config — Tier-2 model defined in models.yaml
-
   s05_recaption:
     enabled: true
-    batch_size: 32                     # Lower than quality/safety (longer outputs)
+    batch_size: 64
     max_caption_tokens: 512
-    ocr_enrichment: true               # Run DeepSeek-OCR pass to enrich captions
-
-  # BUG FIX: this block was missing entirely. The orchestrator invokes
-  # `_run_stage("s05_ocr_enrichment", ...)` as a real, separately-registered
-  # stage (see stages/s05_recaption.py's OCREnrichmentStage), and `_run_stage`
-  # looks it up via `config.get_stage(stage_name)`. With no entry here,
-  # `get_stage()` silently returned `StageConfig(enabled=False)` — its
-  # documented default for anything unconfigured — so OCR extraction was
-  # skipped on every run with only a debug-level "stage_skipped" log line.
-  # That silently broke two things downstream: rec.ocr_output was never
-  # populated, and s05_5_pii_text_redact's entire filter condition
-  # (`status == "structured" and r.ocr_output`) never matched anything —
-  # so the pipeline's one CRITICAL text-PII redaction pass never ran either,
-  # for any record, ever. Both are now wired to actually execute.
+    ocr_enrichment: true
   s05_ocr_enrichment:
     enabled: true
-    batch_size: 32
+    batch_size: 64
     max_ocr_tokens: 1024
-
   s06_structure:
     enabled: true
-    batch_size: 32
-    max_retries_on_schema_fail: 1      # Retry with error feedback in prompt
+    batch_size: 64
+    max_retries_on_schema_fail: 1
     max_structure_tokens: 2048
-
   s05_5_pii_text_redact:
     enabled: true
-    # Runs after s05_ocr_enrichment, once rec.ocr_output actually has data.
     regex_patterns:
       email: '[\w.+-]+@[\w-]+\.[\w.]+'
-      phone: '\+?[\d\s\-\(\)]{7,15}'
-      ssn: '\b\d{3}-\d{2}-\d{4}\b'
-      credit_card: '\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b'
-    redaction_token: "[REDACTED]"
-
+      phone: \+?[\d\s\-\(\)]{7,15}
+      ssn: \b\d{3}-\d{2}-\d{4}\b
+      credit_card: \b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b
+    redaction_token: '[REDACTED]'
   s07_routing:
     enabled: true
-    # The ui_first_ratio is a HUMAN DECISION — set explicitly, not auto-determined.
-    # v12 Stage 6: "state this as a decision to make explicitly, not a default."
-    ui_first_ratio: 0.70               # 70% UI-first, 30% general design
-    overflow_action: "exclude"         # "exclude" or "keep_unrouted"
-
-  # REMOVED (no-RLHF-loop / no-synthetic-data revision): s07_5_edit_pairs
-  # used to build Qwen-Image-Edit-2511's fine-tuning pairs by blurring and
-  # downsampling real UI screens as a stand-in for real Stage-1
-  # sketch-tier output — an admittedly weak proxy (see that file's own
-  # docstring caveats before removal). Qwen-Image-Edit-2511 now ships
-  # frozen: zero-shot in-context-learning edit conditioning + SDEdit-style
-  # partial denoising at inference time, needing no paired training data
-  # at all. If the sketch tier ships and produces real output later, a
-  # fine-tune could be revisited using *real* Stage-1 output as pairs —
-  # not this blur proxy — but that is out of scope for this pipeline.
-
+    ui_first_ratio: 0.7
+    overflow_action: exclude
   s08_encoding:
     enabled: true
-    # Tri-Path encoder model IDs/dtypes are NOT duplicated here — they live
-    # in configs/models.yaml's `encoders:` block, which is the only source
-    # engine.py actually reads (via config.encoders / engine.get_encoder()).
-    # A second copy here was previously unused dead config that could drift
-    # out of sync with models.yaml during a future model swap.
-    # Control maps
     canny_low_threshold: 50
     canny_high_threshold: 150
-
-  # Confirmed (docs/review/02_polish_tier.md, re-confirmed this pass):
-  # this stage's .safetensors output has ZERO real consumers anywhere in
-  # training/ or inference/ — train_dpo.py resolves chosen_ref/
-  # rejected_ref through the shared BlobStore and re-encodes from raw
-  # images itself (see that file's own vae.encode(batch["chosen_pixel_
-  # values"]...) call, and sync_dpo_pairs.py's docstring, which states
-  # this outright: "s08_5_dpo_encoding.py's output remains unconsumed
-  # anywhere in this project"). Same orphaned-producer shape as the
-  # maskgit_vq stage removed from s08_encoding.py — the difference is
-  # this one isn't confirmed BROKEN, just confirmed WASTED: every run
-  # spends real GPU-encode time and disk space producing latents nothing
-  # reads. Disabled by default rather than deleted outright, since unlike
-  # maskgit_vq there's a real, live option worth deciding on first: wire
-  # this into train_dpo.py as a fast-path (skip live VAE-encoding when
-  # precomputed latents already exist) rather than only ever removing it.
-  # Set enabled: true only if that wiring is added, or if you specifically
-  # want the latents for some other analysis — not for a normal run.
-  # See docs/review/15_data_forge_finalization.md.
   s08_5_dpo_encoding:
     enabled: false
-
   s09_heldout:
     enabled: true
-    heldout_fraction: 0.05             # 5% carve-out
-    stratify_by: ["domain", "source", "quality_score_bucket"]
-
+    heldout_fraction: 0.05
+    stratify_by:
+    - domain
+    - source
+    - quality_score_bucket
   s10_audit:
     enabled: true
-    sample_rate: 0.03                  # 3% of training pool
-    min_samples: 200                   # Floor: at least 200 even for small sets
-    pass_rate_threshold: 0.95          # Pipeline fails if audit pass rate < 95%
-    ensemble_escalation: true          # Disagreements → Tier-2
-
-  # REMOVED (no-RLHF-loop revision): s10_5_critic_preference ran Gemma 4
-  # 31B over the training pool to generate its own preference labels —
-  # AI-judge self-distillation, the exact RLHF-loop pattern this project
-  # explicitly rules out. Gemma 4 now ships as a frozen, on-demand
-  # product-side critique feature only; data-forge neither trains it nor
-  # consumes its output as training data. Real DPO preference signal comes
-  # from s01_6_preference_pairs / s08_5_dpo_encoding instead (Pick-a-Pic
-  # v2, HPDv2, DesignSense-10k, DesignPref — all real, human-labeled,
-  # already-published).
-
+    sample_rate: 0.03
+    min_samples: 200
+    pass_rate_threshold: 0.95
+    ensemble_escalation: true
   s11_registry_watcher:
     enabled: true
-    # This stage reads from {DATA_ROOT}/registry_reports/latest.json
-    # The JSON is written by `data-forge registry check` (external cron)
-
-  # New — segments the fully-processed manifest into model_data/, one
-  # clean folder per PRD-trainable component. No GPU model needed.
   s12_model_data_export:
     enabled: true
-
-# ---------------------------------------------------------------------------
-# Storage quota enforcement
-# ---------------------------------------------------------------------------
 storage:
-  safety_margin: 0.10                  # Keep 10% disk free
-  # Estimated per-record byte budgets (used for pre-flight projection)
+  safety_margin: 0.1
   per_record_estimates:
-    raw_image_bytes: 500_000           # ~500KB average raw image
-    scrubbed_image_bytes: 500_000
-    # VERIFIED against Tongyi-MAI/Z-Image-Turbo's live vae/config.json
-    # (flux-dev-lineage AutoencoderKL: latent_channels=16, 4 down blocks
-    # => 8x spatial downsample): 16ch x 32x32 x fp16(2B) = 32,768 bytes
-    # for a 256x256 input, the corpus's min_resolution floor. Replaces the
-    # previous 131_072 placeholder, which was mislabeled Qwen-Image-2.0-
-    # era guesswork never actually confirmed against this model.
-    z_image_latent_bytes: 32_768
-    # REMOVED: qwen_image_latent_bytes. Qwen-Image-Edit-2511 ships frozen
-    # now — s08_encoding.py no longer produces this artifact for any
-    # record, so there is nothing to budget storage for here. See
-    # docs/DATA_COMPLETENESS.md.
-    vq_tokens_bytes: 8_192             # Variable, ~8KB average
-    control_map_bytes: 4_096           # JSON + edges ~4KB
-    metadata_bytes: 2_048              # Manifest row + logs
-    # New — DPO preference-pair storage. Two PNG source images (~500KB
-    # each, same as raw_image_bytes) plus two encoded Z-Image latents
-    # (32_768B each) plus small JSON metadata per pair. Tracked
-    # separately from per-image estimates above since preference pairs
-    # never enter training_pool/ and are budgeted against
-    # preference_pairs/ + processed/dpo_latents/ instead — see
-    # DatasetSpec._ZERO_IMAGE_STORAGE_MODES in config.py for why they're
-    # zeroed out of the main per-record projection.
-    preference_pair_source_bytes: 1_000_000   # 2 x ~500KB source images
-    preference_pair_latent_bytes: 65_536      # 2 x 32_768B Z-Image latents
-    preference_pair_metadata_bytes: 1_024
+    raw_image_bytes: 500000
+    scrubbed_image_bytes: 500000
+    z_image_latent_bytes: 32768
+    vq_tokens_bytes: 8192
+    control_map_bytes: 4096
+    metadata_bytes: 2048
+    preference_pair_source_bytes: 1000000
+    preference_pair_latent_bytes: 65536
+    preference_pair_metadata_bytes: 1024

@@ -79,6 +79,7 @@ class Orchestrator:
         self.manifest = manifest
         self._stages: dict[str, Any] = {}  # Lazy-loaded stage instances
         self._checkpoint_dir = config.data_root / config.paths.checkpoints
+        self._resume = True
 
     def _checkpoint_path(self, stage_name: str, chunk_id: str) -> Path:
         return self._checkpoint_dir / f"{stage_name}_{chunk_id}.done"
@@ -120,7 +121,7 @@ class Orchestrator:
             log.info("stage_skipped", stage=stage_name, reason="disabled")
             return StageResult(stage_name=stage_name)
 
-        if self.config.checkpoint_enabled and self._is_stage_complete(stage_name, chunk_id):
+        if self._resume and self.config.checkpoint_enabled and self._is_stage_complete(stage_name, chunk_id):
             log.info("stage_skipped", stage=stage_name, chunk=chunk_id, reason="checkpoint_exists")
             return StageResult(stage_name=stage_name)
 
@@ -184,6 +185,7 @@ class Orchestrator:
             dry_run=dry_run,
             resume=resume,
         )
+        self._resume = resume
         pipeline_start = time.monotonic()
 
         # ── Stage 0: Manifest Planning (runs once, not per-chunk) ────────

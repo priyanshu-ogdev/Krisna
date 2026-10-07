@@ -327,18 +327,61 @@ class DatasetFetcher:
             else spec.fetch_config.get("file_patterns", ["*.parquet"])
         )
 
-        meta_dir = snapshot_download(
-            repo_id=spec.repo_id,
-            repo_type="dataset",
-            revision=spec.revision or "main",
-            local_dir=str(dest / "_parquet"),
-            allow_patterns=allow_patterns,
-            token=self._hf_token,
-        )
-        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
+        import fnmatch
+        from huggingface_hub import HfApi, hf_hub_download
+
+        api = HfApi(token=self._hf_token)
+        target_dir = dest / "_parquet"
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        oversized = False
+        try:
+            from huggingface_hub import RepoFile
+            repo_tree = list(api.list_repo_tree(repo_id=spec.repo_id, recursive=True, repo_type="dataset", revision=spec.revision or "main"))
+            matching_parquet = []
+            for pat in allow_patterns:
+                for rf in repo_tree:
+                    if isinstance(rf, RepoFile) and fnmatch.fnmatch(rf.path, pat) and rf.path.endswith(".parquet"):
+                        if rf.size and rf.size > 500 * 1024 * 1024:
+                            log.warning("oversized_shard_skipped", dataset=key, file=rf.path, size_gb=round(rf.size / 1e9, 2))
+                            oversized = True
+                            continue
+                        if rf.path not in matching_parquet:
+                            matching_parquet.append(rf.path)
+            matching_parquet.sort()
+        except Exception:
+            try:
+                repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
+                matching_parquet = [rf for pat in allow_patterns for rf in repo_files if fnmatch.fnmatch(rf, pat) and rf.endswith(".parquet")]
+                matching_parquet.sort()
+            except Exception:
+                matching_parquet = []
+
+        if matching_parquet:
+            # Download only the first shard required for the small sample size
+            for rf in matching_parquet[:1]:
+                hf_hub_download(
+                    repo_id=spec.repo_id,
+                    repo_type="dataset",
+                    filename=rf,
+                    revision=spec.revision or "main",
+                    local_dir=str(target_dir),
+                    token=self._hf_token,
+                )
+        elif not oversized:
+            snapshot_download(
+                repo_id=spec.repo_id,
+                repo_type="dataset",
+                revision=spec.revision or "main",
+                local_dir=str(target_dir),
+                allow_patterns=allow_patterns,
+                token=self._hf_token,
+            )
+
+        parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
         if not parquet_files:
             log.error(
-                "hf_parquet_images_no_parquet", dataset=key, dir=str(meta_dir),
+                "hf_parquet_images_no_parquet", dataset=key, dir=str(target_dir),
                 config_subfolder=config_subfolder,
                 note="No *.parquet files matched — check config_subfolder/file_patterns "
                      "against the live repo tree before assuming the repo is empty.",
@@ -531,17 +574,48 @@ class DatasetFetcher:
             log.error("missing_repo_id", dataset=key)
             return []
 
-        meta_dir = snapshot_download(
-            repo_id=spec.repo_id,
-            repo_type="dataset",
-            revision=spec.revision or "main",
-            local_dir=str(dest / "_metadata"),
-            allow_patterns=spec.fetch_config.get("file_patterns", ["*.parquet"]),
-            token=self._hf_token,
-        )
-        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
+        import fnmatch
+        from huggingface_hub import HfApi, hf_hub_download
+
+        api = HfApi(token=self._hf_token)
+        target_dir = dest / "_metadata"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        allow_patterns = spec.fetch_config.get("file_patterns", ["*.parquet"])
+
+        try:
+            repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
+            matching_parquet = []
+            for pat in allow_patterns:
+                for rf in repo_files:
+                    if fnmatch.fnmatch(rf, pat) and rf.endswith(".parquet") and rf not in matching_parquet:
+                        matching_parquet.append(rf)
+            matching_parquet.sort()
+            if matching_parquet:
+                for rf in matching_parquet[:1]:
+                    hf_hub_download(
+                        repo_id=spec.repo_id,
+                        repo_type="dataset",
+                        filename=rf,
+                        revision=spec.revision or "main",
+                        local_dir=str(target_dir),
+                        token=self._hf_token,
+                    )
+            else:
+                snapshot_download(
+                    repo_id=spec.repo_id,
+                    repo_type="dataset",
+                    revision=spec.revision or "main",
+                    local_dir=str(target_dir),
+                    allow_patterns=allow_patterns,
+                    token=self._hf_token,
+                )
+        except Exception as e:
+            log.error("preference_pair_download_failed", dataset=key, error=str(e))
+            return []
+
+        parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
         if not parquet_files:
-            log.error("preference_pair_no_parquet", dataset=key, dir=str(meta_dir))
+            log.error("preference_pair_no_parquet", dataset=key, dir=str(target_dir))
             return []
 
         frames = []
@@ -691,39 +765,80 @@ class DatasetFetcher:
             log.error("missing_repo_id", dataset=key)
             return []
 
-        parquet_revision = spec.fetch_config.get("parquet_revision", "refs/convert/parquet")
-        meta_dir = snapshot_download(
-            repo_id=spec.repo_id,
-            repo_type="dataset",
-            revision=parquet_revision,
-            local_dir=str(dest / "_metadata"),
-            allow_patterns=["*.parquet"],
-            token=self._hf_token,
-        )
-        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
-        if not parquet_files:
-            log.error(
-                "gamelabel_parquet_not_found", dataset=key, dir=str(meta_dir),
-                note=(
-                    f"Expected an auto-converted parquet mirror at revision "
-                    f"{parquet_revision!r} — if HF's auto-conversion for this "
-                    f"repo has changed or lagged, fall back to reading "
-                    f"data.csv directly at revision 'main' instead (same "
-                    f"decode logic below applies either way, since the "
-                    f"columns are unchanged by the CSV->parquet conversion)."
-                ),
-            )
-            return []
+        df = None
+        # Fast path: Fetch first 10MB of data.csv via HTTP Range request to avoid hanging on 2.25GB git-xet parquet shard
+        import httpx
+        url = f"https://huggingface.co/datasets/{spec.repo_id}/resolve/main/data.csv"
+        try:
+            with httpx.Client(follow_redirects=True) as client:
+                resp = client.get(url, headers={"Range": "bytes=0-10000000"}, timeout=20)
+                if resp.status_code in (200, 206) and len(resp.content) > 1000:
+                    last_nl = resp.content.rfind(b"\n")
+                    csv_bytes = resp.content[:last_nl]
+                    df = pd.read_csv(io.BytesIO(csv_bytes), on_bad_lines="skip")
+                    log.info("gamelabel_range_download_success", rows=len(df))
+        except Exception as e:
+            log.warning("gamelabel_range_download_failed", error=str(e))
 
-        frames = []
-        for pf in parquet_files:
+        if df is None:
+            parquet_revision = spec.fetch_config.get("parquet_revision", "refs/convert/parquet")
+            target_dir = dest / "_metadata"
+            target_dir.mkdir(parents=True, exist_ok=True)
+
+            from huggingface_hub import HfApi, hf_hub_download
+
+            api = HfApi(token=self._hf_token)
             try:
-                frames.append(pd.read_parquet(pf))
-            except Exception as e:
-                log.warning("gamelabel_parquet_read_failed", file=str(pf), error=str(e))
-        if not frames:
-            return []
-        df = pd.concat(frames, ignore_index=True)
+                repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=parquet_revision)
+                matching_files = [rf for rf in repo_files if rf.endswith(".parquet")]
+                matching_files.sort()
+            except Exception:
+                matching_files = []
+
+            if matching_files:
+                for rf in matching_files[:1]:
+                    hf_hub_download(
+                        repo_id=spec.repo_id,
+                        repo_type="dataset",
+                        filename=rf,
+                        revision=parquet_revision,
+                        local_dir=str(target_dir),
+                        token=self._hf_token,
+                    )
+            else:
+                snapshot_download(
+                    repo_id=spec.repo_id,
+                    repo_type="dataset",
+                    revision=parquet_revision,
+                    local_dir=str(target_dir),
+                    allow_patterns=["*.parquet"],
+                    token=self._hf_token,
+                )
+
+            parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
+            if not parquet_files:
+                log.error(
+                    "gamelabel_parquet_not_found", dataset=key, dir=str(target_dir),
+                    note=(
+                        f"Expected an auto-converted parquet mirror at revision "
+                        f"{parquet_revision!r} — if HF's auto-conversion for this "
+                        f"repo has changed or lagged, fall back to reading "
+                        f"data.csv directly at revision 'main' instead (same "
+                        f"decode logic below applies either way, since the "
+                        f"columns are unchanged by the CSV->parquet conversion)."
+                    ),
+                )
+                return []
+
+            frames = []
+            for pf in parquet_files:
+                try:
+                    frames.append(pd.read_parquet(pf))
+                except Exception as e:
+                    log.warning("gamelabel_parquet_read_failed", file=str(pf), error=str(e))
+            if not frames:
+                return []
+            df = pd.concat(frames, ignore_index=True)
 
         required = {"prompt", "img0_votes", "img1_votes", "img0_encoding", "img1_encoding"}
         missing = required - set(df.columns)
@@ -1035,17 +1150,48 @@ class DatasetFetcher:
             log.error("missing_repo_id", dataset=key)
             return []
 
-        meta_dir = snapshot_download(
-            repo_id=spec.repo_id,
-            repo_type="dataset",
-            revision=spec.revision or "main",
-            local_dir=str(dest / "_metadata"),
-            allow_patterns=spec.fetch_config.get("file_patterns", ["*.parquet"]),
-            token=self._hf_token,
-        )
-        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
+        target_dir = dest / "_metadata"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        allow_patterns = spec.fetch_config.get("file_patterns", ["*.parquet"])
+
+        import fnmatch
+        from huggingface_hub import HfApi, hf_hub_download
+
+        api = HfApi(token=self._hf_token)
+        try:
+            repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
+            matching_files = []
+            for pat in allow_patterns:
+                for rf in repo_files:
+                    if fnmatch.fnmatch(rf, pat) and rf.endswith(".parquet") and rf not in matching_files:
+                        matching_files.append(rf)
+            matching_files.sort()
+        except Exception:
+            matching_files = []
+
+        if matching_files:
+            for rf in matching_files[:1]:
+                hf_hub_download(
+                    repo_id=spec.repo_id,
+                    repo_type="dataset",
+                    filename=rf,
+                    revision=spec.revision or "main",
+                    local_dir=str(target_dir),
+                    token=self._hf_token,
+                )
+        else:
+            snapshot_download(
+                repo_id=spec.repo_id,
+                repo_type="dataset",
+                revision=spec.revision or "main",
+                local_dir=str(target_dir),
+                allow_patterns=allow_patterns,
+                token=self._hf_token,
+            )
+
+        parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
         if not parquet_files:
-            log.error("caption_join_no_parquet_found", dataset=key, dir=str(meta_dir))
+            log.error("caption_join_no_parquet_found", dataset=key, dir=str(target_dir))
             return []
 
         frames = []
@@ -1077,9 +1223,10 @@ class DatasetFetcher:
             None,
         )
 
+        sample_size = spec.fetch_config.get("sample_size")
         if image_col is not None:
             log.info("caption_join_path_a_embedded_images", dataset=key, image_col=image_col, caption_col=caption_col)
-            return self._decode_embedded_images(key, dest, df, image_col, caption_col)
+            return self._decode_embedded_images(key, dest, df, image_col, caption_col, sample_size=sample_size)
 
         # Path (b): no embedded images — look for an ID column to join
         # against an already-ingested dataset.
@@ -1109,12 +1256,15 @@ class DatasetFetcher:
         return self._join_captions_to_existing(key, df, id_col, caption_col, join_target)
 
     def _decode_embedded_images(
-        self, key: str, dest: Path, df: Any, image_col: str, caption_col: str | None
+        self, key: str, dest: Path, df: Any, image_col: str, caption_col: str | None, sample_size: int | None = None
     ) -> list[dict[str, Any]]:
         """Decode a parquet column of embedded image bytes to files on disk."""
         import io
 
         from PIL import Image
+
+        if sample_size and len(df) > sample_size:
+            df = df.sample(n=sample_size, random_state=42)
 
         images_dir = dest / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
@@ -1238,19 +1388,51 @@ class DatasetFetcher:
         # 1. Download parquet metadata shard(s)
         allow_patterns = spec.fetch_config.get("file_patterns", ["*.parquet"])
         log.info("hf_metadata_downloading", repo=spec.repo_id, dest=str(dest))
-        meta_dir = snapshot_download(
-            repo_id=spec.repo_id,
-            repo_type="dataset",
-            revision=spec.revision or "main",
-            local_dir=str(dest / "_metadata"),
-            allow_patterns=allow_patterns,
-            token=self._hf_token,
-        )
 
-        parquet_files = sorted(Path(meta_dir).rglob("*.parquet"))
-        tsv_files_present = any(Path(meta_dir).rglob("*.tsv"))
+        target_dir = dest / "_metadata"
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        import fnmatch
+        from huggingface_hub import HfApi, hf_hub_download
+
+        api = HfApi(token=self._hf_token)
+        try:
+            repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
+            matching_files = []
+            for pat in allow_patterns:
+                for rf in repo_files:
+                    if fnmatch.fnmatch(rf, pat) and (rf.endswith(".parquet") or rf.endswith(".tsv")) and rf not in matching_files:
+                        matching_files.append(rf)
+            matching_files.sort()
+        except Exception:
+            matching_files = []
+
+        if matching_files:
+            # For small/capped sample_size, download only the first shard to avoid downloading multi-gigabyte shard sets
+            shards_to_download = matching_files[:1] if sample_size <= 50_000 else matching_files
+            for rf in shards_to_download:
+                hf_hub_download(
+                    repo_id=spec.repo_id,
+                    repo_type="dataset",
+                    filename=rf,
+                    revision=spec.revision or "main",
+                    local_dir=str(target_dir),
+                    token=self._hf_token,
+                )
+        else:
+            snapshot_download(
+                repo_id=spec.repo_id,
+                repo_type="dataset",
+                revision=spec.revision or "main",
+                local_dir=str(target_dir),
+                allow_patterns=allow_patterns,
+                token=self._hf_token,
+            )
+
+        parquet_files = sorted(Path(target_dir).rglob("*.parquet"))
+        tsv_files_present = any(Path(target_dir).rglob("*.tsv"))
         if not parquet_files and not tsv_files_present:
-            log.error("no_metadata_files_found", dataset=key, dir=str(meta_dir))
+            log.error("no_metadata_files_found", dataset=key, dir=str(target_dir))
             return []
 
         # 2. Read metadata, sample down to a manageable size
@@ -1265,7 +1447,7 @@ class DatasetFetcher:
         # (caption<TAB>url), not parquet — fetch_config.file_patterns
         # already lists "*.tsv" for it. Handle both so a dataset spec isn't
         # silently empty just because it ships the older format.
-        tsv_files = sorted(Path(meta_dir).rglob("*.tsv"))
+        tsv_files = sorted(Path(target_dir).rglob("*.tsv"))
         for tf in tsv_files:
             try:
                 tsv_df = pd.read_csv(
@@ -1397,6 +1579,106 @@ class DatasetFetcher:
         }
         return content_type_map.get(content_type.split(";")[0].strip().lower())
 
+    def _unpack_archives(self, directory: Path):
+        import zipfile
+        import tarfile
+        import shutil
+
+        # Handle split zips first (e.g. file.zip.001, file.zip.002 or file.z01, file.z02, file.zip)
+        split_bases = set()
+        for f in directory.rglob("*.zip.001"):
+            split_bases.add(str(f)[:-4])  # base without .001
+        for f in directory.rglob("*.z01"):
+            split_bases.add(str(f)[:-4] + ".zip")
+        
+        for base in split_bases:
+            combined_zip = Path(base if not base.endswith(".zip") else base[:-4] + "_combined.zip")
+            if combined_zip.exists():
+                continue
+            
+            # Find all parts
+            parts = []
+            # Style 1: .zip.001, .zip.002
+            i = 1
+            while True:
+                p = Path(f"{base}.{i:03d}")
+                if p.exists():
+                    parts.append(p)
+                    i += 1
+                else:
+                    break
+            
+            # Style 2: .z01, .z02 ... .zip
+            if not parts:
+                i = 1
+                while True:
+                    p = Path(f"{base[:-4]}.z{i:02d}")
+                    if p.exists():
+                        parts.append(p)
+                        i += 1
+                    else:
+                        break
+                p_final = Path(base)
+                if p_final.exists():
+                    parts.append(p_final)
+            
+            if parts:
+                log.info("concatenating_split_zip", base=str(combined_zip), parts=len(parts))
+                try:
+                    with open(combined_zip, 'wb') as outfile:
+                        for p in parts:
+                            with open(p, 'rb') as infile:
+                                shutil.copyfileobj(infile, outfile)
+                except Exception as e:
+                    log.error("split_zip_concat_failed", base=str(combined_zip), error=str(e))
+                    continue
+
+        for f in list(directory.rglob("*.zip")):
+            if not f.exists():
+                continue
+            # If this is the last chunk of an uncombined .z01 split zip, skip extracting it directly
+            if list(directory.rglob(f.name.replace(".zip", ".z01"))):
+                continue
+            
+            log.info("extracting_zip", file=str(f))
+            try:
+                with zipfile.ZipFile(f, 'r') as z:
+                    z.extractall(f.parent)
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+            except Exception as e:
+                log.warning("zip_extract_failed", file=str(f), error=str(e))
+
+        for f in list(directory.rglob("*.tar.gz")):
+            if not f.exists():
+                continue
+            log.info("extracting_tar", file=str(f))
+            try:
+                with tarfile.open(f, 'r:gz') as t:
+                    t.extractall(f.parent)
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+            except Exception as e:
+                log.warning("tar_extract_failed", file=str(f), error=str(e))
+
+        for f in list(directory.rglob("*.tgz")):
+            if not f.exists():
+                continue
+            log.info("extracting_tgz", file=str(f))
+            try:
+                with tarfile.open(f, 'r:gz') as t:
+                    t.extractall(f.parent)
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+            except Exception as e:
+                log.warning("tgz_extract_failed", file=str(f), error=str(e))
+
     async def _fetch_huggingface(
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
@@ -1421,17 +1703,38 @@ class DatasetFetcher:
             token=self._hf_token,
         )
 
-        return self._scan_downloaded_files(key, Path(snapshot_dir))
+        self._unpack_archives(Path(snapshot_dir))
+
+        if spec.annotation_only:
+            log.info(
+                "annotation_only_hf_source_downloaded",
+                dataset=key,
+                dir=str(snapshot_dir),
+                note="Dataset metadata/structure preserved without scanning for image records.",
+            )
+            return []
+
+        records = self._scan_downloaded_files(key, Path(snapshot_dir))
+        sample_size = spec.fetch_config.get("sample_size")
+        if sample_size and len(records) > sample_size:
+            records = records[:sample_size]
+        return records
 
     async def _fetch_github(
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
         """Clone or download a GitHub repository."""
         import subprocess
+        import os
 
         if not spec.repo_url:
             log.error("missing_repo_url", dataset=key)
             return []
+
+        repo_url = spec.repo_url
+        token = os.environ.get("GITHUB_TOKEN")
+        if token and repo_url.startswith("https://"):
+            repo_url = repo_url.replace("https://", f"https://{token}@")
 
         clone_dir = dest / "repo"
         if clone_dir.exists():
@@ -1443,28 +1746,13 @@ class DatasetFetcher:
                     "git", "clone",
                     "--depth", "1",
                     "--branch", spec.branch or "main",
-                    spec.repo_url,
+                    repo_url,
                     str(clone_dir),
                 ],
                 check=True,
                 capture_output=True,
             )
 
-        # BUG FIX / COMPLETENESS GAP: this used to unconditionally call
-        # _scan_downloaded_files() here regardless of what the source
-        # actually contains — which hardcodes an image-extension allowlist
-        # and has no awareness of fetch_config.file_patterns at all. For a
-        # source like UICrit, whose entire value IS its .json/.csv
-        # annotation files (not images — its screenshots are RICO's, not
-        # its own), this silently cloned the repo, found zero files
-        # matching the image allowlist, and returned zero records — with
-        # no signal that the annotation data (983 human critiques/ratings,
-        # the exact thing the PRD calls out as seeding DPO/critic
-        # calibration) was ever even looked at, let alone ingested.
-        # annotation_only sources skip generic image scanning entirely —
-        # a dedicated stage (uicrit_ingest.py / s01_5_uicrit_join.py) reads
-        # the clone directly and joins it against already-ingested image
-        # records instead of pretending it's a standalone image dataset.
         if spec.annotation_only:
             log.info(
                 "annotation_only_source_cloned_not_scanned",
