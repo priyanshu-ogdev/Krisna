@@ -21,7 +21,7 @@ paths:
   ui_critique: ui_critique/
   preference_pairs: preference_pairs/
 orchestrator:
-  chunk_size: 50000
+  chunk_size: 10000
   max_retries_per_record: 2
   fail_fast: false
   checkpoint_enabled: true
@@ -30,7 +30,7 @@ stages:
     enabled: true
   s01_fetch:
     enabled: true
-    max_concurrent_downloads: 128
+    max_concurrent_downloads: 32
     download_timeout_seconds: 3600
     license_confidence_threshold: 0.85
   s01_5_uicrit_join:
@@ -40,14 +40,10 @@ stages:
     face_detection_confidence: 0.5
     blur_kernel_size: 99
     safety_confidence_threshold: 0.8
-  s01_7_preference_pair_pii:
-    enabled: true
-    max_concurrent_pairs: 8
-    batch_size: 64
   s02_dedup:
     enabled: true
     embedding_model: openai/clip-vit-large-patch14-336
-    embedding_batch_size: 512
+    embedding_batch_size: 64
     faiss_index_type: IVF4096,Flat
     faiss_nprobe: 64
     similarity_threshold: 0.95
@@ -61,7 +57,7 @@ stages:
     max_resolution:
     - 8192
     - 8192
-    batch_size: 256
+    batch_size: 32
   s03_5_pii_scrub:
     enabled: true
     face_detection_confidence: 0.5
@@ -69,23 +65,23 @@ stages:
   s04_safety:
     enabled: true
     confidence_threshold: 0.8
-    batch_size: 256
+    batch_size: 32
   s04_5_escalation:
     enabled: true
   s05_recaption:
     enabled: true
-    batch_size: 128
+    batch_size: 16
     max_caption_tokens: 512
     ocr_enrichment: true
   s05_ocr_enrichment:
     enabled: true
-    batch_size: 64
+    batch_size: 16
     max_ocr_tokens: 1024
   s06_structure:
     enabled: true
-    batch_size: 128
+    batch_size: 16
     max_retries_on_schema_fail: 1
-    max_structure_tokens: 1024
+    max_structure_tokens: 2048
   s05_5_pii_text_redact:
     enabled: true
     regex_patterns:
@@ -97,12 +93,11 @@ stages:
   s07_routing:
     enabled: true
     ui_first_ratio: 0.7
-    overflow_action: keep_unrouted
+    overflow_action: exclude
   s08_encoding:
     enabled: true
     canny_low_threshold: 50
     canny_high_threshold: 150
-    vae_batch_size: 16
   s08_5_dpo_encoding:
     enabled: false
   s09_heldout:
@@ -127,7 +122,7 @@ storage:
   per_record_estimates:
     raw_image_bytes: 500000
     scrubbed_image_bytes: 500000
-    z_image_latent_bytes: 524288
+    z_image_latent_bytes: 32768
     vq_tokens_bytes: 8192
     control_map_bytes: 4096
     metadata_bytes: 2048

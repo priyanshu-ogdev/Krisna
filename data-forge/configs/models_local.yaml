@@ -1,0 +1,72 @@
+models:
+  tier1:
+    model_id: Qwen/Qwen2-VL-7B-Instruct-AWQ
+    revision: main
+    quantization: awq
+    dtype: auto
+    max_model_len: 8192
+    gpu_memory_utilization: 0.9
+    trust_remote_code: true
+    role: bulk_pipeline_engine
+    capabilities:
+    - text
+    - vision
+    vram_estimate_gb: 7
+  tier2:
+    model_id: Qwen/Qwen2-VL-7B-Instruct-AWQ
+    revision: main
+    quantization: awq
+    dtype: auto
+    max_model_len: 8192
+    gpu_memory_utilization: 0.9
+    trust_remote_code: true
+    role: escalation_engine
+    load_on_demand: true
+    capabilities:
+    - text
+    - vision
+    vram_estimate_gb: 7
+  ocr:
+    model_id: deepseek-ai/DeepSeek-OCR-2
+    revision: main
+    quantization: null
+    dtype: float16
+    max_model_len: 8192
+    gpu_memory_utilization: 0.85
+    trust_remote_code: true
+    role: dedicated_ocr
+    load_on_demand: true
+    capabilities:
+    - text
+    - vision
+    vram_estimate_gb: 6
+  embeddings:
+    model_id: openai/clip-vit-large-patch14-336
+    revision: main
+    dtype: float16
+    device: cuda
+    role: image_embeddings
+    vram_estimate_gb: 2
+  product_planner:
+    model_id: Qwen/Qwen3.5-9B
+    role: product_planner
+    note: Frozen — RAG + constrained decoding, not fine-tuned. NOT used by data-forge
+      for training.
+    managed_by: product inference stack, not data-forge
+encoders:
+  z_image_vae:
+    model_id: Tongyi-MAI/Z-Image-Turbo
+    revision: main
+    dtype: float16
+    device: cuda
+    role: z_image_continuous_latents
+    expected_channels: 16
+    expected_downsample: 8
+    vram_estimate_gb: 2
+vllm_server:
+  host: 127.0.0.1
+  port: 8000
+  api_key: data-forge-internal
+  startup_timeout_seconds: 120
+  health_check_interval_seconds: 5
+  graceful_shutdown_timeout_seconds: 30

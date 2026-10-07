@@ -33,6 +33,7 @@ class Tier1Engine:
         self._client = InferenceClient(
             http_client=engine.vllm_client,
             model_id=config.models["tier1"].model_id,
+            max_concurrent=config.vllm_server.max_num_seqs,
         )
 
     async def score_quality(

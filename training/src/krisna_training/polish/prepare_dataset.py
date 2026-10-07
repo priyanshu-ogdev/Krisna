@@ -141,6 +141,7 @@ def prepare(
     # difference (resolved once per image here, not per-epoch).
     caption_mix_ratio: float = 0.95,
     seed: int | None = None,
+    image_allowlist: set[str] | None = None,
 ) -> Path:
     """image_dir: source images. output_dir: where the prepared dataset is
     written (a flat copy of the images + metadata.jsonl). captions: either
@@ -157,6 +158,22 @@ def prepare(
     rng = random.Random(seed)  # seedable for reproducible dataset builds, unseeded (system entropy) by default
 
     image_paths = sorted(p for p in image_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS)
+    if image_allowlist is not None:
+        if any(Path(name).name != name or name in {".", ".."} for name in image_allowlist):
+            raise ValueError("Image allowlist entries must be plain filenames")
+        by_name: dict[str, list[Path]] = {}
+        for path in image_paths:
+            by_name.setdefault(path.name, []).append(path)
+        duplicate_names = [
+            name for name, matches in by_name.items()
+            if len(matches) > 1 and name in image_allowlist
+        ]
+        if duplicate_names:
+            raise ValueError(f"Ambiguous image filenames in allowlisted export: {duplicate_names[:5]}")
+        missing = image_allowlist - by_name.keys()
+        if missing:
+            raise ValueError(f"Allowlisted training images are missing: {sorted(missing)[:5]}")
+        image_paths = sorted(by_name[name][0] for name in image_allowlist)
     if not image_paths:
         raise ValueError(f"No images found under {image_dir}")
 

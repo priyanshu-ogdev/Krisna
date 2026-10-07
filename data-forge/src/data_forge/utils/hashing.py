@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from PIL import Image
+
 from data_forge.logging_setup import get_logger
 
 log = get_logger("utils.hashing")
@@ -14,7 +16,7 @@ def sha256_file(file_path: Path) -> str:
     """Compute SHA-256 hash of a file."""
     h = hashlib.sha256()
     with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
+        for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
 
@@ -24,12 +26,11 @@ def perceptual_hash(image_path: Path, hash_size: int = 16) -> str:
 
     Returns a hex string. Images that look similar will have similar hashes.
     """
-    from PIL import Image
-
     with Image.open(image_path) as img:
         # Resize to hash_size x hash_size, grayscale
         img = img.convert("L").resize((hash_size, hash_size), Image.LANCZOS)
-        pixels = list(img.getdata())
+        getter = getattr(img, "get_flattened_data", img.getdata)
+        pixels = list(getter())
 
     avg = sum(pixels) / len(pixels)
     bits = "".join("1" if p > avg else "0" for p in pixels)

@@ -29,6 +29,7 @@ def _write_pair(source_dir, pair_id, preferred="a", dedup_status="unique", promp
     meta = {
         "pair_id": pair_id, "image_a": f"{pair_id}_a.png", "image_b": f"{pair_id}_b.png",
         "preferred": preferred, "dedup_status": dedup_status, "prompt": prompt,
+        "safety_tier": "safe", "pii_scrubbed": True, "text_pii_scrubbed": True,
     }
     (source_dir / f"{pair_id}.json").write_text(json.dumps(meta))
 
@@ -76,6 +77,7 @@ def test_sync_skips_pairs_missing_preferred_label(tmp_path, pref_store, blob_sto
     (source_dir / "p1.json").write_text(json.dumps({
         "pair_id": "p1", "image_a": "p1_a.png", "image_b": "p1_b.png",
         "dedup_status": "unique",
+        "safety_tier": "safe", "pii_scrubbed": True, "text_pii_scrubbed": True,
         # no "preferred" key
     }))
 
@@ -91,6 +93,22 @@ def test_sync_skips_missing_image_files(tmp_path, pref_store, blob_store):
     (source_dir / "p1.json").write_text(json.dumps({
         "pair_id": "p1", "image_a": "missing_a.png", "image_b": "missing_b.png",
         "dedup_status": "unique", "preferred": "a",
+        "safety_tier": "safe", "pii_scrubbed": True, "text_pii_scrubbed": True,
+    }))
+
+    counts = sync(data_root, pref_store, blob_store, sources=["pickapic_v2"])
+    assert counts["skipped_missing_images"] == 1
+    assert pref_store.count() == 0
+
+
+def test_sync_rejects_path_traversal(tmp_path, pref_store, blob_store):
+    data_root = tmp_path / "data_root"
+    source_dir = data_root / "preference_pairs" / "pickapic_v2"
+    source_dir.mkdir(parents=True)
+    (source_dir / "p1.json").write_text(json.dumps({
+        "pair_id": "p1", "image_a": "..", "image_b": "p1_b.png",
+        "preferred": "a", "dedup_status": "unique",
+        "safety_tier": "safe", "pii_scrubbed": True, "text_pii_scrubbed": True,
     }))
 
     counts = sync(data_root, pref_store, blob_store, sources=["pickapic_v2"])

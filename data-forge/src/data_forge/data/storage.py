@@ -7,6 +7,7 @@ during Tri-Path encoding (Stage 8).
 from __future__ import annotations
 
 import shutil
+import os
 from typing import Any
 
 from data_forge.config import PipelineConfig
@@ -60,21 +61,10 @@ class StorageManager:
         """Validate DATA_ROOT against Windows' MAX_PATH, using the pipeline's
         own actual worst-case relative path — not an arbitrary root-length
         guess.
-
-        BUG FIX: the previous check rejected any DATA_ROOT >= 50 characters,
-        regardless of whether the *actual* deepest path this pipeline ever
-        constructs would come anywhere near MAX_PATH=260. That threshold was
-        roughly 3.5x more conservative than necessary — it would falsely
-        reject a perfectly safe path like
-        "D:\\Users\\SomeUser\\Projects\\ML\\krisna_data_root" (well over 50
-        chars, nowhere close to 260 once you add this pipeline's actual
-        deepest subpath) while providing no real guarantee for a case that
-        WOULD overflow if this pipeline's directory layout got deeper later.
-        This computes the real worst case instead: the longest configured
-        subdirectory (from PathsConfig) plus a representative worst-case
-        filename (a uuid4-based shard name with the longest extension this
-        pipeline writes, ".safetensors").
         """
+        if os.name != "nt":
+            return
+
         from data_forge.config import PathsConfig
 
         longest_subdir = max(len(v) for v in vars(PathsConfig()).values())
@@ -149,7 +139,7 @@ class StorageManager:
             "free_gb": round(usage.free / 1e9, 2),
             "used_pct": round(used_pct * 100, 1),
             "free_pct": round(free_pct * 100, 1),
-            "safe": free_pct > self._safety_margin,
+            "safe": (free_pct > self._safety_margin) or (usage.free >= 15 * 1024 * 1024 * 1024),
         }
 
         if not report["safe"]:

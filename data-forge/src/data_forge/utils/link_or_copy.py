@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import uuid
 from pathlib import Path
 
 from data_forge.logging_setup import get_logger
@@ -30,21 +31,39 @@ def link_or_copy(source: Path, dest: Path) -> str:
     "exists" (dest already there from a prior run — treated as success,
     not re-done, so repeated export runs are cheap).
     """
-    if dest.exists() or dest.is_symlink():
-        return "exists"
+    if not source.is_file():
+        raise FileNotFoundError(f"Export source does not exist or is not a file: {source}")
     dest.parent.mkdir(parents=True, exist_ok=True)
+    had_destination = dest.exists() or dest.is_symlink()
+    if had_destination:
+        try:
+            if os.path.samefile(source, dest):
+                return "exists"
+        except OSError:
+            try:
+                source_stat = source.stat()
+                dest_stat = dest.stat()
+                if source_stat.st_size == dest_stat.st_size and source_stat.st_mtime_ns == dest_stat.st_mtime_ns:
+                    return "exists"
+            except OSError:
+                pass
+
+    temp = dest.with_name(f".{dest.name}.{uuid.uuid4().hex}.tmp")
 
     try:
-        dest.symlink_to(source.resolve())
-        return "symlink"
-    except (OSError, NotImplementedError):
-        pass
+        try:
+            temp.symlink_to(source.resolve())
+            strategy = "symlink"
+        except (OSError, NotImplementedError):
+            try:
+                os.link(source, temp)
+                strategy = "hardlink"
+            except OSError:
+                shutil.copy2(source, temp)
+                strategy = "copy"
 
-    try:
-        os.link(source, dest)
-        return "hardlink"
-    except OSError:
-        pass
-
-    shutil.copy2(source, dest)
-    return "copy"
+        os.replace(temp, dest)
+        return f"replaced_{strategy}" if had_destination else strategy
+    finally:
+        if temp.exists() or temp.is_symlink():
+            temp.unlink()

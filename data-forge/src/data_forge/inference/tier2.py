@@ -34,7 +34,7 @@ class Tier2Engine:
         self._client = InferenceClient(
             http_client=engine.vllm_client,
             model_id=config.models["tier2"].model_id,
-            max_concurrent=8,  # Lower concurrency — Tier-2 is higher quality, lower volume
+            max_concurrent=min(8, config.vllm_server.max_num_seqs),
         )
 
     async def reclassify_safety(

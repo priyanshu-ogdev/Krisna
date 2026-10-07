@@ -88,21 +88,20 @@ def test_sync_missing_images_dir_raises_clear_error(tmp_path):
 
 def test_sync_empty_images_dir_raises(tmp_path):
     model_data = tmp_path / "model_data"
-    (model_data / "sketch_tier_maskgit" / "images").mkdir(parents=True)
-    with pytest.raises(ValueError, match="No images found"):
+    sketch_dir = model_data / "sketch_tier_maskgit"
+    (sketch_dir / "images").mkdir(parents=True)
+    (sketch_dir / "captions.jsonl").write_text("")
+    with pytest.raises(ValueError, match="caption allowlist is empty"):
         sync(model_data, tmp_path / "prepared", tokenizer=FakeVQTokenizer())
 
 
-def test_sync_missing_caption_falls_back_to_empty_string(tmp_path):
+def test_sync_refuses_missing_caption_allowlist(tmp_path):
     sketch_dir = tmp_path / "model_data" / "sketch_tier_maskgit"
     images_dir = sketch_dir / "images"
     images_dir.mkdir(parents=True)
     Image.new("RGB", (8, 8)).save(images_dir / "rico_core_0000001.png")
-    # No captions.jsonl.
-
-    manifest_path = sync(tmp_path / "model_data", tmp_path / "prepared", tokenizer=FakeVQTokenizer())
-    lines = [json.loads(l) for l in manifest_path.read_text().strip().split("\n")]
-    assert lines[0]["caption"] == ""
+    with pytest.raises(FileNotFoundError, match="caption allowlist"):
+        sync(tmp_path / "model_data", tmp_path / "prepared", tokenizer=FakeVQTokenizer())
 
 
 def test_sync_multiple_images(tmp_path):
@@ -137,13 +136,7 @@ class TestRecordIdVsFilenameBugFix:
         lines = [json.loads(l) for l in manifest_path.read_text().strip().split("\n")]
         assert lines[0]["caption"] == "a pricing table"
 
-    def test_legacy_captions_format_without_image_filename_warns_and_degrades(self, tmp_path, caplog):
-        """A pre-fix data-forge export (captions.jsonl with no
-        image_filename field at all) must not crash — it degrades to the
-        old (broken) stem-matching behavior, but logs a loud warning
-        explaining why captions are probably empty, instead of failing
-        silently the way the original bug did.
-        """
+    def test_legacy_captions_format_without_image_filename_is_rejected(self, tmp_path):
         sketch_dir = tmp_path / "model_data" / "sketch_tier_maskgit"
         images_dir = sketch_dir / "images"
         images_dir.mkdir(parents=True)
@@ -153,16 +146,22 @@ class TestRecordIdVsFilenameBugFix:
             json.dumps({"record_id": "uuid-abc", "caption": "will not match"})
         )
 
-        import logging
+        with pytest.raises(ValueError, match="current export format"):
+            sync(tmp_path / "model_data", tmp_path / "prepared", tokenizer=FakeVQTokenizer())
 
-        with caplog.at_level(logging.WARNING, logger="krisna_training.data_forge_bridge.sync_sketch_tier"):
-            manifest_path = sync(tmp_path / "model_data", tmp_path / "prepared", tokenizer=FakeVQTokenizer())
+    def test_orphaned_export_images_are_not_added_to_training(self, tmp_path):
+        model_data = _make_data_forge_export(
+            tmp_path / "model_data",
+            [("uuid-1", "current.png", "an allowed image")],
+        )
+        Image.new("RGB", (8, 8), color="red").save(
+            model_data / "sketch_tier_maskgit" / "images" / "orphan.png"
+        )
 
-        assert any("legacy" in r.message.lower() for r in caplog.records)
-        lines = [json.loads(l) for l in manifest_path.read_text().strip().split("\n")]
-        # Degrades to the old broken behavior (empty caption) — documented,
-        # not silent, and not a crash.
-        assert lines[0]["caption"] == ""
+        manifest_path = sync(model_data, tmp_path / "prepared", tokenizer=FakeVQTokenizer())
+        lines = [json.loads(line) for line in manifest_path.read_text().splitlines()]
+        assert len(lines) == 1
+        assert lines[0]["source_image"].endswith("current.png")
 
     def test_sync_codebook_size_mismatch_raises_value_error(self, tmp_path):
         """C2: Mismatched codebook size must raise ValueError to prevent silent corruption."""

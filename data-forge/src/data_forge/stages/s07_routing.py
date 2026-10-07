@@ -25,37 +25,66 @@ class RoutingStage(Stage):
         result = StageResult(stage_name=self.name)
         stage_cfg = config.get_stage("s07_routing")
 
-        records = manifest.get_records_by_ids(record_ids)
-        records = [r for r in records if r.status == "structured"]
-        if not records:
-            return result
-
-        # Tag domains
-        for rec in records:
-            domain = tag_domain(rec)
-            manifest.update_record(rec.id, "routing", domain=domain)
-            rec.domain = domain  # Update in-memory for router
-
-        # Route with ratio enforcement
         ratio = stage_cfg.get("ui_first_ratio", 0.70)
         overflow = stage_cfg.get("overflow_action", "exclude")
-        router = ShardRouter(ui_first_ratio=ratio, overflow_action=overflow)
-
-        assignments = router.route(records)
+        shard_size = stage_cfg.get("records_per_shard", 5000)
         routed = excluded = 0
+        ui_routed = general_routed = 0
+        updates: list[dict[str, Any]] = []
 
-        for assignment in assignments:
-            if assignment["status"] == "routed":
-                manifest.update_record(assignment["record_id"], "routing",
-                                       new_status="routed",
-                                       shard_id=assignment["shard_id"])
-                routed += 1
-            elif assignment["status"] == "overflow_excluded":
-                manifest.update_record(assignment["record_id"], "routing",
-                                       new_status="overflow_excluded",
-                                       exclusion_reason="ratio_overflow")
-                excluded += 1
+        # Keep memory bounded: the full corpus can exceed one million
+        # records, while the manifest materializes JSON payloads per row.
+        for start in range(0, len(record_ids), 5000):
+            records = manifest.get_records_by_ids(record_ids[start : start + 5000])
+            records = [r for r in records if r.status in ("structured", "recaptioned")]
+            if not records:
+                continue
 
+            domain_map: dict[str, str] = {}
+            for rec in records:
+                domain = tag_domain(rec)
+                domain_map[rec.id] = domain
+                rec.domain = domain
+
+            router = ShardRouter(
+                ui_first_ratio=ratio,
+                overflow_action=overflow,
+                records_per_shard=shard_size,
+            )
+            assignments = router.route(records)
+            local_routed = 0
+
+            for assignment in assignments:
+                rec_id = assignment["record_id"]
+                status = assignment["status"]
+                global_shard = (routed + local_routed) // shard_size
+                item: dict[str, Any] = {
+                    "id": rec_id,
+                    "new_status": status,
+                    "domain": domain_map[rec_id],
+                    "shard_id": f"shard_{global_shard:04d}",
+                }
+                local_routed += 1
+                if domain_map[rec_id] == "ui_first":
+                    ui_routed += 1
+                else:
+                    general_routed += 1
+                updates.append(item)
+
+                if len(updates) >= 500:
+                    manifest.bulk_update_records(updates, stage="routing")
+                    updates.clear()
+            routed += local_routed
+
+        if updates:
+            manifest.bulk_update_records(updates, stage="routing")
         result.records_processed = routed
         result.records_excluded = excluded
+        result.metadata = {
+            "ui_routed": ui_routed,
+            "general_routed": general_routed,
+            "actual_ui_ratio": ui_routed / routed if routed else 0.0,
+            "target_ui_ratio_for_training": ratio,
+            "records_per_shard": shard_size,
+        }
         return result

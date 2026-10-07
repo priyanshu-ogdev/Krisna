@@ -270,12 +270,14 @@ actually need, not to an arbitrary "bigger is better" figure.
 
 ### 8.4 Pipeline shape
 
-Chunk-based (default 10,000 images/chunk), one model loaded at a time
-per chunk to bound VRAM: CLIP (dedup) → Tier-1 VLM (quality, PII/OCR-text
-redaction, safety) → Tier-2 VLM (escalation, borderline records only) →
-Tier-1 VLM again (recaption, structure) → OCR specialist → deterministic
-routing → encoders. The escalation step's position (*before* recaption/
-structure, not after) is load-bearing: a record Tier-2 rescues from
+Chunk-based with a 50,000-record production chunk (10,000 for the local
+override), while internal inference/image batches remain bounded to fit
+the single-GPU host and reduce expensive model restarts: CLIP (dedup) →
+Tier-1 VLM (quality, face scrub, safety) → Tier-2 VLM (escalation,
+borderline records only) → Tier-1 VLM again (recaption, structure) → OCR
+specialist and text-PII redaction → deterministic routing → encoders.
+The escalation step's position (*before* recaption/structure, not after)
+is load-bearing: a record Tier-2 rescues from
 "borderline" to "safe" must still be reachable by the safety-tier
 filters that gate every later stage, or it's silently lost — a real bug
 this review found and fixed (`docs/review/16`).

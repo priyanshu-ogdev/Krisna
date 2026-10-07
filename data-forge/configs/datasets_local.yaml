@@ -1,0 +1,65 @@
+datasets:
+  websight:
+    display_name: WebSight
+    source_type: huggingface
+    repo_id: HuggingFaceM4/WebSight
+    revision: main
+    category: web_ui
+    expected_record_count: 2000000
+    license_url: https://huggingface.co/datasets/HuggingFaceM4/WebSight
+    license_status: unverified
+    license_notes: Massive synthetic web UI dataset. Pairs HTML/CSS with rendered
+      screenshots.
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+      - '*.parquet'
+      image_column: image
+      sample_size: 16
+  android_control:
+    display_name: Android Control (Google Research)
+    source_type: huggingface
+    repo_id: ckg/AndroidControlParsedWithImages-20k
+    revision: main
+    category: mobile_ui
+    expected_record_count: 20000
+    license_url: https://github.com/google-research/google-research/tree/master/android_control
+    license_status: verified
+    license_notes: 'CONFIRMED Apache-2.0 (Google Research Android Control upstream).
+      1080x2400 modern Android Material Design 3 screens across 833 apps, paired with
+      natural language multi-turn task instructions. Provides modern mobile UI distributions
+      replacing 2017 RICO styling.
+
+      '
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+      - '*.parquet'
+      image_column: png
+      caption_column: json.messages.0.content
+      sample_size: 16
+watcher_scan_targets:
+- query: UI design dataset
+  platforms:
+  - huggingface
+  - github
+  - paperswithcode
+  min_records: 1000
+- query: mobile app screenshot dataset
+  platforms:
+  - huggingface
+  min_records: 5000
+- query: web interface design dataset
+  platforms:
+  - huggingface
+  min_records: 1000
+- query: DesignSense-10k Adobe layout preference dataset
+  platforms:
+  - huggingface
+  - github
+  min_records: 1
+- query: DesignPref UI design preference dataset release
+  platforms:
+  - huggingface
+  - github
+  min_records: 1

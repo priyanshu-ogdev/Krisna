@@ -10,9 +10,9 @@ The Data-Forge is a custom, 20-stage Python orchestrator designed to process rea
 
 Preprocessing large image corpora through multiple VLMs (Qwen, VAEs, OCR, Safety) on a single GPU normally suffers from severe PCIe swapping bottlenecks. The Data-Forge solves this with a **Chunk-Based Directed Acyclic Graph (DAG)**:
 
-1. **Chunking**: The orchestrator splits the dataset into chunks (default 10,000 records).
-2. **Model Pinning**: A required model (e.g., Tier-1 VLM) is loaded into VRAM.
-3. **Execution**: The orchestrator runs all records in the chunk through every stage that requires that specific model.
+1. **Chunking**: Production config uses 50,000-record chunks; the local config stays at 10,000. Inference and image-processing windows remain separately bounded.
+2. **Model Pinning**: A required model (e.g., Tier-1 VLM) is loaded into VRAM with request concurrency capped to vLLM's configured sequence count.
+3. **Execution**: The orchestrator runs all records in the chunk through every stage that requires that specific model, avoiding repeated loads for small batches.
 4. **Teardown**: The model is gracefully unloaded, CUDA cache is cleared, and the next model is loaded.
 
 `EXECUTION_ORDER` in `orchestrator.py` is the single source of truth for stage sequencing, cross-checked at startup by `validate_stage_ordering()` against every registered stage's declared `requires` — a stage registered but missing from `EXECUTION_ORDER`, or declaring a dependency that `EXECUTION_ORDER` doesn't actually satisfy, fails loudly at startup rather than silently misbehaving mid-run.

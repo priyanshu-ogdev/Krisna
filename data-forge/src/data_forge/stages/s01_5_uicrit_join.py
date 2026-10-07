@@ -80,14 +80,14 @@ class UICritJoinStage(Stage):
         # per-row SQL query.
         stem_to_record: dict[str, str] = {}
         for source_dataset in _RICO_SOURCE_DATASETS:
-            for rec in manifest.query_by_dataset(source_dataset):
-                if not rec.source_file:
+            for rec_id, source_file in manifest.query_stems_by_dataset(source_dataset):
+                if not source_file:
                     continue
-                stem = rec.source_file.rsplit(".", 1)[0]
-                stem_to_record[stem] = rec.id
+                stem = source_file.rsplit(".", 1)[0]
+                stem_to_record[stem] = rec_id
                 num_stem = stem.split("_")[-1]
-                stem_to_record[num_stem] = rec.id
-                stem_to_record[num_stem.lstrip("0") or "0"] = rec.id
+                stem_to_record[num_stem] = rec_id
+                stem_to_record[num_stem.lstrip("0") or "0"] = rec_id
 
         log.info(
             "uicrit_join_starting",
@@ -97,6 +97,7 @@ class UICritJoinStage(Stage):
 
         matched = 0
         unmatched = 0
+        critique_updates: list[dict[str, Any]] = []
         for ann in annotations:
             join_key = ann["rico_join_key"]
             # Try the key as-is, then with common numeric-padding variants,
@@ -112,8 +113,14 @@ class UICritJoinStage(Stage):
                 continue
 
             critique_dict = to_critique_output_dict(ann)
-            manifest.update_record(record_id, "uicrit_join", critique_output=critique_dict)
+            critique_updates.append({
+                "id": record_id,
+                "critique_output": critique_dict,
+            })
             matched += 1
+
+        if critique_updates:
+            manifest.bulk_update_records(critique_updates, stage="uicrit_join")
 
         result.records_processed = matched
         result.records_failed = unmatched

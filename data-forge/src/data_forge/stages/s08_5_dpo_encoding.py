@@ -41,8 +41,10 @@ records — written directly to preference_pairs/" pattern).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any, ClassVar
 
+from safetensors.torch import save_file
 import torch
 
 from data_forge.config import PipelineConfig
@@ -85,6 +87,8 @@ class DPOEncodingStage(Stage):
             return result
 
         processed = failed = skipped = 0
+        enc_dev = "cuda" if torch.cuda.is_available() else "cpu"
+        enc_dtype = torch.float16 if enc_dev == "cuda" else torch.float32
 
         for source_dir in sorted(p for p in pref_root.iterdir() if p.is_dir()):
             source_key = source_dir.name
@@ -99,30 +103,41 @@ class DPOEncodingStage(Stage):
                     failed += 1
                     continue
 
-                if meta.get("dedup_status") != "unique" or meta.get("safety_tier") == "unsafe":
-                    # Never processed by s01_6 (duplicate/corrupt/not yet
-                    # run or unsafe) — do not encode it as if it were clean.
+                if (
+                    meta.get("dedup_status") != "unique"
+                    or meta.get("safety_tier") != "safe"
+                    or meta.get("pii_scrubbed") is not True
+                    or meta.get("text_pii_scrubbed") is not True
+                ):
                     skipped += 1
                     continue
 
                 pair_id = meta["pair_id"]
                 out_path = out_dir / f"{pair_id}.safetensors"
                 if out_path.exists():
+                    processed += 1
                     continue  # idempotent re-run
 
                 try:
-                    img_a = pad_to_multiple(load_image(meta_path.parent / meta["image_a"]), 16)
-                    img_b = pad_to_multiple(load_image(meta_path.parent / meta["image_b"]), 16)
+                    p_a = Path(meta["image_a"])
+                    p_b = Path(meta["image_b"])
+                    path_a = p_a if p_a.is_absolute() else (meta_path.parent / p_a)
+                    path_b = p_b if p_b.is_absolute() else (meta_path.parent / p_b)
+                    img_a = pad_to_multiple(load_image(path_a), 16)
+                    img_b = pad_to_multiple(load_image(path_b), 16)
 
-                    enc_dev = "cuda" if torch.cuda.is_available() else "cpu"
-                    enc_dtype = torch.float16 if enc_dev == "cuda" else torch.float32
-                    t_a = normalize_for_vae(image_to_tensor(img_a)).unsqueeze(0).to(enc_dev, dtype=enc_dtype)
-                    t_b = normalize_for_vae(image_to_tensor(img_b)).unsqueeze(0).to(enc_dev, dtype=enc_dtype)
-                    with torch.no_grad():
-                        lat_a = z_vae.encode(t_a).latent_dist.sample()
-                        lat_b = z_vae.encode(t_b).latent_dist.sample()
+                    t_a = normalize_for_vae(image_to_tensor(img_a)).to(enc_dev, dtype=enc_dtype)
+                    t_b = normalize_for_vae(image_to_tensor(img_b)).to(enc_dev, dtype=enc_dtype)
+                    with torch.inference_mode():
+                        if t_a.shape == t_b.shape:
+                            batch_t = torch.stack([t_a, t_b], dim=0)
+                            batch_lat = z_vae.encode(batch_t).latent_dist.sample()
+                            lat_a = batch_lat[0:1]
+                            lat_b = batch_lat[1:2]
+                        else:
+                            lat_a = z_vae.encode(t_a.unsqueeze(0)).latent_dist.sample()
+                            lat_b = z_vae.encode(t_b.unsqueeze(0)).latent_dist.sample()
 
-                    from safetensors.torch import save_file
                     save_file(
                         {"latent_a": lat_a.cpu(), "latent_b": lat_b.cpu()},
                         str(out_path),
