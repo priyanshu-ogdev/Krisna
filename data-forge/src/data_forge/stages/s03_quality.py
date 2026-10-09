@@ -88,37 +88,34 @@ class QualityStage(Stage):
             async with sem:
                 return await _process(rec)
 
-        chunk_window = max(batch_concurrency * 2, 256)
-        for c_start in range(0, len(records), chunk_window):
-            chunk = records[c_start : c_start + chunk_window]
-            tasks = [asyncio.create_task(_bounded_process(rec)) for rec in chunk]
-            results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(_bounded_process(rec)) for rec in records]
+        results = await asyncio.gather(*tasks)
 
-            updates: list[dict[str, Any]] = []
-            for res in results:
-                w, h = res.get("w"), res.get("h")
-                status = res["status"]
-                update_item: dict[str, Any] = {
-                    "id": res["id"],
-                    "new_status": status,
-                    "aesthetic_score": res.get("score"),
-                    "quality_output": res.get("out"),
-                    "image_width": w,
-                    "image_height": h,
-                }
-                if status == "quality_scored":
-                    processed += 1
+        updates: list[dict[str, Any]] = []
+        for res in results:
+            w, h = res.get("w"), res.get("h")
+            status = res["status"]
+            update_item: dict[str, Any] = {
+                "id": res["id"],
+                "new_status": status,
+                "aesthetic_score": res.get("score"),
+                "quality_output": res.get("out"),
+                "image_width": w,
+                "image_height": h,
+            }
+            if status == "quality_scored":
+                processed += 1
+            else:
+                update_item["reason"] = res.get("reason")
+                update_item["exclusion_reason"] = res.get("exclusion_reason")
+                if status == "excluded_failed":
+                    failed += 1
                 else:
-                    update_item["reason"] = res.get("reason")
-                    update_item["exclusion_reason"] = res.get("exclusion_reason")
-                    if status == "excluded_failed":
-                        failed += 1
-                    else:
-                        excluded += 1
-                updates.append(update_item)
+                    excluded += 1
+            updates.append(update_item)
 
-            if updates:
-                manifest.bulk_update_records(updates, stage="quality")
+        if updates:
+            manifest.bulk_update_records(updates, stage="quality")
 
         result.records_processed = processed
         result.records_excluded = excluded

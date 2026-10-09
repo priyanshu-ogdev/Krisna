@@ -18,5 +18,7 @@ Return a JSON object with exactly these fields:
 
 ## Rules
 1. Bounding box precision doesn't need to be pixel-perfect — approximate alignment is fine.
-2. Phantom elements (JSON claims something exists but it doesn't) are more serious than missing elements.
+2. Phantom elements (JSON claims something exists but it doesn't visually appear) are more serious than missing elements. Base your judgment STRICTLY on the visible image pixels. Do NOT assume the provided JSON is correct.
 3. The layout_type should match the dominant layout pattern — a single wrong sidebar doesn't change a "dashboard" to a "list".
+4. If the image is a non-UI photograph or illustration and the structural JSON has elements: [], hierarchy_depth: 0, and layout_type: "freeform", this is accurate and should be scored structure_matches_image = true, overall_pass = true, and bbox_accuracy = "good".
+

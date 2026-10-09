@@ -17,6 +17,8 @@ Preprocessing large image corpora through multiple VLMs (Qwen, VAEs, OCR, Safety
 
 `EXECUTION_ORDER` in `orchestrator.py` is the single source of truth for stage sequencing, cross-checked at startup by `validate_stage_ordering()` against every registered stage's declared `requires` — a stage registered but missing from `EXECUTION_ORDER`, or declaring a dependency that `EXECUTION_ORDER` doesn't actually satisfy, fails loudly at startup rather than silently misbehaving mid-run.
 
+Stage 8 overlaps CPU image decode/Canny preprocessing with VAE encoding through bounded input/output queues and separate CPU/GPU executors; queue and window sizes cap host-memory use rather than creating one task per corpus record. Latent and control artifacts are atomically written, and a per-record fingerprint ties reusable cache entries to the input image, encoder/stage settings, and layout metadata. Preference-pair processing likewise uses a bounded worker queue rather than waiting at fixed 256-pair batch boundaries. The optional DPO latent stage remains disabled because the current training path re-encodes source images and does not consume those cached pair latents.
+
 ## Pipeline Stages
 
 | Stage | Name | GPU Model | Purpose |

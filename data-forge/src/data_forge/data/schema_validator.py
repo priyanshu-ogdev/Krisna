@@ -18,14 +18,25 @@ class SchemaValidator:
 
     def __init__(self, schemas_dir: Path) -> None:
         self._schemas_dir = schemas_dir
-        self._cache: dict[str, dict[str, Any]] = {}
+        self._cache: dict[str, jsonschema.Draft7Validator] = {}
 
-    def _load_schema(self, name: str) -> dict[str, Any]:
+    def _get_validator(self, name: str) -> jsonschema.Draft7Validator:
         if name not in self._cache:
             schema_path = self._schemas_dir / f"{name}.json"
             if not schema_path.exists():
-                raise FileNotFoundError(f"Schema not found: {schema_path}")
-            self._cache[name] = json.loads(schema_path.read_text(encoding="utf-8"))
+                candidates = [
+                    Path.cwd() / "configs" / "schemas" / f"{name}.json",
+                    Path.cwd() / "data-forge" / "configs" / "schemas" / f"{name}.json",
+                    Path(__file__).resolve().parents[3] / "configs" / "schemas" / f"{name}.json",
+                ]
+                for c in candidates:
+                    if c.is_file():
+                        schema_path = c
+                        break
+                else:
+                    raise FileNotFoundError(f"Schema not found: {schema_path}")
+            schema_dict = json.loads(schema_path.read_text(encoding="utf-8"))
+            self._cache[name] = jsonschema.Draft7Validator(schema_dict)
         return self._cache[name]
 
     def validate(
@@ -36,8 +47,7 @@ class SchemaValidator:
         Returns:
             (is_valid, list_of_errors)
         """
-        schema = self._load_schema(schema_name)
-        validator = jsonschema.Draft7Validator(schema)
+        validator = self._get_validator(schema_name)
         errors = list(validator.iter_errors(data))
 
         if errors:

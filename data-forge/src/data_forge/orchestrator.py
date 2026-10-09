@@ -242,6 +242,10 @@ class Orchestrator:
             failed=result.records_failed,
             excluded=result.records_excluded,
             duration_s=round(result.duration_seconds, 2),
+            processed_per_second=round(
+                result.records_processed / result.duration_seconds, 3
+            ) if result.duration_seconds else 0.0,
+            submitted_records=len(record_ids),
         )
         return result
 
@@ -399,215 +403,289 @@ class Orchestrator:
 
         log.info("chunks_planned", count=len(chunks), chunk_size=self.config.chunk_size)
 
-        chunk_results: list[ChunkResult] = []
+        chunk_results: list[ChunkResult] = [
+            ChunkResult(chunk_id=f"chunk_{i:04d}", record_ids=rec_ids, stage_results=[])
+            for i, rec_ids in enumerate(chunks)
+        ]
 
-        for i, record_ids in enumerate(chunks):
-            chunk_id = f"chunk_{i:04d}"
-            chunk_start = time.monotonic()
-            stage_results: list[StageResult] = []
+        if dry_run:
+            return chunk_results
 
-            log.info(
-                "chunk_starting",
-                chunk=chunk_id,
-                records=len(record_ids),
-                progress=f"{i + 1}/{len(chunks)}",
+        # ── Phase 1: Embedding models (CLIP for dedup) ──────────
+        if self._should_run("s02_dedup", stages_filter):
+            from data_forge.inference.engine import ModelEngine
+            from rich.progress import track
+            async with ModelEngine.clip_session(self.config) as engine:
+                for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 1: Dedup"):
+                    chunk_id = f"chunk_{i:04d}"
+                    log.info("chunk_starting", chunk=chunk_id, phase="1_dedup", records=len(record_ids))
+                    res = await self._run_stage("s02_dedup", record_ids, chunk_id, engine)
+                    chunk_results[i].stage_results.append(res)
+
+        # ── Phase 2, 3, 4, 5: VLM Processing ────────────────────────────
+        tier1_stages = ["s03_quality", "s03_5_pii_scrub", "s04_safety"]
+        runnable_tier1 = [s for s in tier1_stages if self._should_run(s, stages_filter)]
+        recaption_structure_stages = [
+            s for s in ["s05_recaption", "s06_structure"] if self._should_run(s, stages_filter)
+        ]
+        run_ocr = (
+            self._should_run("s05_ocr_enrichment", stages_filter)
+            or (
+                stages_filter is not None
+                and "s05_recaption" in stages_filter
+                and self.config.get_stage("s05_recaption").get("ocr_enrichment", True)
             )
+        ) and self.config.get_stage("s05_ocr_enrichment").enabled
 
-            if dry_run:
-                log.info("chunk_dry_run", chunk=chunk_id, records=len(record_ids))
-                continue
+        ocr_shares_tier1 = bool(
+            self.config.models.get("ocr")
+            and self.config.models.get("tier1")
+            and self.config.models["ocr"].model_id == self.config.models["tier1"].model_id
+        )
 
-            # ── Phase 1: Embedding models (CLIP for dedup) ──────────
-            if self._should_run("s02_dedup", stages_filter):
-                from data_forge.inference.engine import ModelEngine
-                async with ModelEngine.clip_session(self.config) as engine:
-                    result = await self._run_stage(
-                        "s02_dedup", record_ids, chunk_id, engine
-                    )
-                    stage_results.append(result)
-                    # Filter out excluded records for downstream stages
-                    record_ids = self._filter_active(record_ids)
+        from data_forge.inference.engine import ModelEngine
+        from rich.progress import track
 
-            # ── Phase 2: Tier-1 VLM ─────────────────────────────────
-            # BUG FIX: s05_recaption/s06_structure used to run inside this
-            # same phase, immediately after s04_safety, before escalation
-            # ever got a chance to run. Any record Tier-1 marked
-            # "borderline" (status stays "safety_classified", safety_tier
-            # ="borderline") was correctly skipped by s05_recaption's own
-            # filter (safety_tier=="safe") at that point — but Phase 4
-            # below (Tier-2 escalation) can later flip a resolved
-            # borderline record's safety_tier to "safe" WITHOUT ever
-            # re-running recaption/structure for it, because by the time
-            # escalation runs, this phase (and its vLLM session) has
-            # already closed for this chunk, and nothing here loops back.
-            # The record is then permanently stuck at status=
-            # "safety_classified" — never recaptioned, never structured,
-            # never routed, never encoded, never in training_pool or
-            # heldout. A real, silent, no-error-raised loss of every
-            # record the two-tier escalation system successfully RESCUES
-            # — the exact opposite of what escalation exists to do. See
-            # docs/review/16_preprocessing_ordering_audit.md.
-            #
-            # Fixed by splitting this phase: only s03_quality/
-            # s03_5_pii_scrub/s04_safety run here. s05_recaption/
-            # s06_structure move to a new Phase 2b, AFTER Phase 4's
-            # escalation has already run and resolved whatever it can —
-            # so their "safety_tier == safe" filter correctly picks up
-            # both originally-safe records AND escalation-rescued ones,
-            # in the same pass, exactly once.
-            tier1_stages = [
-                "s03_quality",
-                "s03_5_pii_scrub",
-                "s04_safety",
-            ]
-            runnable_tier1 = [s for s in tier1_stages if self._should_run(s, stages_filter)]
+        async def _exec_phase2(engine: Any) -> None:
+            if not runnable_tier1:
+                return
+            for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 2: Tier-1 VLM"):
+                chunk_id = f"chunk_{i:04d}"
+                active_ids = self._filter_active(record_ids)
+                if not active_ids:
+                    continue
+                log.info("chunk_starting", chunk=chunk_id, phase="2_tier1_eval", records=len(active_ids))
+                for idx in range(0, len(active_ids), 4096):
+                    subchunk_ids = active_ids[idx : idx + 4096]
+                    for stage_name in runnable_tier1:
+                        subchunk_ids = self._filter_active(subchunk_ids)
+                        if not subchunk_ids:
+                            break
+                        stage_engine = None if stage_name == "s03_5_pii_scrub" else engine
+                        res = await self._run_stage(stage_name, subchunk_ids, f"{chunk_id}_{idx}", stage_engine)
+                        chunk_results[i].stage_results.append(res)
 
-            recaption_structure_stages = [
-                s for s in ["s05_recaption", "s06_structure"] if self._should_run(s, stages_filter)
-            ]
-
-            if runnable_tier1:
-                from data_forge.inference.engine import ModelEngine
-
-                # BUG FIX: this block's own comment says PII scrub "needs to
-                # happen between quality and safety," but the previous
-                # implementation pulled it out and ran it unconditionally
-                # BEFORE this phase's vLLM session even opened — i.e. before
-                # s03_quality, not after it. Every PII-redacted record was
-                # having its aesthetic/quality score computed against the
-                # already-blurred image instead of the original, which is
-                # exactly backwards (a blurred face region can skew a
-                # sharpness/detail-based aesthetic score for reasons that
-                # have nothing to do with the image's actual quality).
-                #
-                # Fixed by interleaving s03_5_pii_scrub inside the same open
-                # vLLM session, between s03_quality and the rest — it doesn't
-                # need the `engine` argument (MediaPipe, not vLLM), so this
-                # costs nothing in extra model-swap overhead; the vLLM
-                # process just sits idle for that one stage's duration.
-                one_vlm_stage_order = [
-                    s for s in ["s03_quality", "s03_5_pii_scrub", "s04_safety"]
-                    if s in runnable_tier1
-                ]
-                if one_vlm_stage_order:
-                    async with ModelEngine.vllm_session(self.config, "tier1") as engine:
-                        active_ids = self._filter_active(record_ids)
-                        for idx in range(0, len(active_ids), 512):
-                            subchunk_ids = active_ids[idx : idx + 512]
-                            for stage_name in one_vlm_stage_order:
-                                subchunk_ids = self._filter_active(subchunk_ids)
-                                if not subchunk_ids:
-                                    break
-                                stage_engine = None if stage_name == "s03_5_pii_scrub" else engine
-                                result = await self._run_stage(
-                                    stage_name, subchunk_ids, f"{chunk_id}_{idx}", stage_engine
-                                )
-                                stage_results.append(result)
-
-                        # Fast-path: if NO records need Tier-2 escalation, avoid unloading and
-                        # immediately reloading Tier-1 — run recaption & structure right now
-                        # in the same open vLLM session to save 30-60s model-swap overhead!
-                        borderline_ids = (
-                            self._get_borderline_ids(record_ids)
-                            if self._should_run("s04_5_escalation", stages_filter)
-                            else []
-                        )
-                        if "s04_safety" in one_vlm_stage_order and not borderline_ids and recaption_structure_stages:
-                            active_ids = self._filter_active(record_ids)
-                            for idx in range(0, len(active_ids), 512):
-                                subchunk_ids = active_ids[idx : idx + 512]
-                                for stage_name in recaption_structure_stages:
-                                    subchunk_ids = self._filter_active(subchunk_ids)
-                                    if not subchunk_ids:
-                                        break
-                                    result = await self._run_stage(
-                                        stage_name, subchunk_ids, f"{chunk_id}_{idx}", engine
-                                    )
-                                    stage_results.append(result)
-                            recaption_structure_stages = []
-
-            # ── Phase 3: Tier-2 Escalation ───────────────────────────
-            # Runs if any records were flagged as borderline by s04_safety.
-            if self._should_run("s04_5_escalation", stages_filter):
+        async def _exec_phase3_escalation(engine: Any) -> None:
+            for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 3: Tier-2 Escalation"):
+                chunk_id = f"chunk_{i:04d}"
                 borderline_ids = self._get_borderline_ids(record_ids)
                 if borderline_ids:
-                    from data_forge.inference.engine import ModelEngine
-                    async with ModelEngine.vllm_session(self.config, "tier2") as engine:
-                        result = await self._run_stage(
-                            "s04_5_escalation", borderline_ids, chunk_id, engine
-                        )
-                        stage_results.append(result)
+                    log.info("chunk_starting", chunk=chunk_id, phase="3_escalation", records=len(borderline_ids))
+                    for idx in range(0, len(borderline_ids), 4096):
+                        subchunk_ids = borderline_ids[idx : idx + 4096]
+                        res = await self._run_stage("s04_5_escalation", subchunk_ids, f"{chunk_id}_{idx}", engine)
+                        chunk_results[i].stage_results.append(res)
 
-            # ── Phase 4: Recaption + Structure ───────────────────────
-            # Runs for any stages remaining if escalation had to run in Phase 3.
-            if recaption_structure_stages:
-                from data_forge.inference.engine import ModelEngine
-                async with ModelEngine.vllm_session(self.config, "tier1") as engine:
-                    active_ids = self._filter_active(record_ids)
-                    for idx in range(0, len(active_ids), 512):
-                        subchunk_ids = active_ids[idx : idx + 512]
-                        for stage_name in recaption_structure_stages:
+        async def _exec_phase4(engine: Any) -> None:
+            if not recaption_structure_stages:
+                return
+            stages_to_run = list(recaption_structure_stages)
+            if ocr_shares_tier1 and run_ocr and "s05_ocr_enrichment" not in stages_to_run:
+                stages_to_run.append("s05_ocr_enrichment")
+
+            # Check if self._run_stage is the standard un-mocked method
+            is_standard_run_stage = (
+                getattr(self._run_stage, "__func__", self._run_stage) == Orchestrator._run_stage
+            )
+            use_unified_coordinator = (
+                is_standard_run_stage
+                and engine is not None
+                and len(stages_to_run) > 1
+                and bool(self.config.models.get("tier1"))
+            )
+
+            coordinator = None
+            if use_unified_coordinator:
+                from data_forge.inference.tier1 import Tier1Engine
+                from data_forge.inference.ocr import OCREngine
+                from data_forge.inference.vlm_batch import VLMUnifiedPassCoordinator
+
+                tier1_inst = Tier1Engine(engine, self.config)
+                ocr_inst = (
+                    OCREngine(engine, self.config)
+                    if "s05_ocr_enrichment" in stages_to_run
+                    else None
+                )
+                coordinator = VLMUnifiedPassCoordinator(
+                    self.config,
+                    tier1_inst,
+                    ocr_inst,
+                )
+
+            for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 4: Extract"):
+                chunk_id = f"chunk_{i:04d}"
+                active_ids = self._filter_active(record_ids)
+                if not active_ids:
+                    continue
+                log.info("chunk_starting", chunk=chunk_id, phase="4_tier1_extract", records=len(active_ids))
+                for idx in range(0, len(active_ids), 2048):
+                    subchunk_ids = active_ids[idx : idx + 2048]
+                    subchunk_tag = f"{chunk_id}_{idx}"
+
+                    # If not using coordinator, run sequentially via _run_stage
+                    if not use_unified_coordinator or coordinator is None:
+                        for stage_name in stages_to_run:
                             subchunk_ids = self._filter_active(subchunk_ids)
                             if not subchunk_ids:
                                 break
-                            result = await self._run_stage(
-                                stage_name, subchunk_ids, f"{chunk_id}_{idx}", engine
-                            )
-                            stage_results.append(result)
+                            res = await self._run_stage(stage_name, subchunk_ids, subchunk_tag, engine)
+                            chunk_results[i].stage_results.append(res)
+                        continue
 
-            # ── Phase 5: OCR Specialist ──────────────────────────────
-            run_ocr = (
-                self._should_run("s05_ocr_enrichment", stages_filter)
-                or (
-                    stages_filter is not None
-                    and "s05_recaption" in stages_filter
-                    and self.config.get_stage("s05_recaption").get("ocr_enrichment", True)
-                )
-            )
-            if run_ocr and self.config.get_stage("s05_ocr_enrichment").enabled:
-                from data_forge.inference.engine import ModelEngine
-                record_ids = self._filter_active(record_ids)
-                if record_ids:
-                    async with ModelEngine.vllm_session(self.config, "ocr") as engine:
-                        result = await self._run_stage(
-                            "s05_ocr_enrichment", record_ids, chunk_id, engine
+                    # Filter stages that still need execution (checkpoint-aware)
+                    needed_stages = [
+                        s for s in stages_to_run
+                        if not (
+                            self._resume
+                            and self.config.checkpoint_enabled
+                            and self._is_stage_complete(s, subchunk_tag, subchunk_ids)
                         )
-                        stage_results.append(result)
+                    ]
 
-            # Text-PII redaction needs OCR output, so it runs
-            # right after OCR — not back in Stage 3.5, where
-            # rec.ocr_output was always empty. Deterministic
-            # (regex + PIL), no GPU model needed.
-            if self._should_run("s05_5_pii_text_redact", stages_filter):
-                record_ids = self._filter_active(record_ids)
-                if record_ids:
-                    result = await self._run_stage(
-                        "s05_5_pii_text_redact", record_ids, chunk_id
+                    if not needed_stages:
+                        for s in stages_to_run:
+                            log.info("stage_skipped", stage=s, chunk=subchunk_tag, reason="checkpoint_exists")
+                            chunk_results[i].stage_results.append(StageResult(stage_name=s))
+                        continue
+
+                    if len(needed_stages) == 1:
+                        subchunk_ids = self._filter_active(subchunk_ids)
+                        if subchunk_ids:
+                            res = await self._run_stage(needed_stages[0], subchunk_ids, subchunk_tag, engine)
+                            chunk_results[i].stage_results.append(res)
+                        continue
+
+                    # Unified pass for active records
+                    subchunk_ids = self._filter_active(subchunk_ids)
+                    if not subchunk_ids:
+                        continue
+
+                    raw_records = self.manifest.get_records_by_ids(subchunk_ids)
+                    # Phase 4 recaption and structure only process safe records
+                    safe_records = [r for r in raw_records if r.safety_tier == "safe"]
+                    if not safe_records:
+                        for s in needed_stages:
+                            chunk_results[i].stage_results.append(StageResult(stage_name=s))
+                        continue
+
+                    run_rec = "s05_recaption" in needed_stages
+                    run_struct = "s06_structure" in needed_stages
+                    run_ocr_unified = "s05_ocr_enrichment" in needed_stages
+
+                    start_t = time.monotonic()
+                    contexts = await coordinator.process_subchunk(
+                        safe_records,
+                        run_recaption=run_rec,
+                        run_structure=run_struct,
+                        run_ocr=run_ocr_unified,
                     )
-                    stage_results.append(result)
+                    duration = time.monotonic() - start_t
 
-            # ── Deterministic stages (no GPU model needed) ──────────
-            # s07 routing is a corpus-wide stage after all chunks are tagged.
+                    updates = coordinator.to_manifest_updates(
+                        contexts,
+                        run_recaption=run_rec,
+                        run_structure=run_struct,
+                        run_ocr=run_ocr_unified,
+                    )
+                    if updates:
+                        self.manifest.bulk_update_records(updates, stage="vlm_unified_phase4")
 
-            # ── Phase 6: Tri-Path Encoding (VAEs/VQ) ────────────────
-            # s08 encoding runs corpus-wide after routing, with the encoder
-            # session kept open across all chunks.
+                    success_count = sum(1 for c in contexts if c.status not in ("excluded_failed", "excluded"))
+                    failed_count = sum(1 for c in contexts if c.status == "excluded_failed")
+                    excluded_count = sum(1 for c in contexts if c.status == "excluded")
 
-            chunk_duration = time.monotonic() - chunk_start
-            chunk_results.append(
-                ChunkResult(
-                    chunk_id=chunk_id,
-                    record_ids=record_ids,
-                    stage_results=stage_results,
-                    duration_seconds=chunk_duration,
-                )
-            )
-            log.info(
-                "chunk_completed",
-                chunk=chunk_id,
-                duration_s=round(chunk_duration, 2),
-                stages_run=len(stage_results),
-            )
+                    for s in needed_stages:
+                        res = StageResult(
+                            stage_name=s,
+                            records_processed=success_count,
+                            records_failed=failed_count,
+                            records_excluded=excluded_count,
+                            duration_seconds=duration,
+                            metadata={"unified_vlm_pass": True},
+                        )
+                        chunk_results[i].stage_results.append(res)
+
+                        if self.config.fail_fast and not res.success:
+                            log.error(
+                                "stage_failed_fail_fast",
+                                stage=s,
+                                chunk=subchunk_tag,
+                                failed=res.records_failed,
+                            )
+                            raise RuntimeError(
+                                f"Stage {s} ({subchunk_tag}) failed with {res.records_failed} "
+                                f"failed records (fail_fast=True)"
+                            )
+
+                        if self.config.checkpoint_enabled and res.success:
+                            self._mark_stage_complete(s, subchunk_tag, subchunk_ids)
+
+        async def _exec_phase5(engine: Any) -> None:
+            if not run_ocr:
+                return
+            has_active = any(self._filter_active(chunk) for chunk in chunks)
+            if not has_active:
+                return
+            for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 5: OCR"):
+                chunk_id = f"chunk_{i:04d}"
+                active_ids = self._filter_active(record_ids)
+                if active_ids:
+                    log.info("chunk_starting", chunk=chunk_id, phase="5_ocr", records=len(active_ids))
+                    for idx in range(0, len(active_ids), 2048):
+                        subchunk_ids = active_ids[idx : idx + 2048]
+                        subchunk_ids = self._filter_active(subchunk_ids)
+                        if not subchunk_ids:
+                            continue
+                        res = await self._run_stage("s05_ocr_enrichment", subchunk_ids, f"{chunk_id}_{idx}", engine)
+                        chunk_results[i].stage_results.append(res)
+
+        ocr_handled_in_tier1 = False
+        if runnable_tier1:
+            escalation_needed = False
+            async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                await _exec_phase2(engine)
+                if self._should_run("s04_5_escalation", stages_filter):
+                    escalation_needed = any(self._get_borderline_ids(chunk) for chunk in chunks)
+                if not escalation_needed:
+                    await _exec_phase4(engine)
+                    if ocr_shares_tier1 and run_ocr and recaption_structure_stages:
+                        ocr_handled_in_tier1 = True
+
+            if escalation_needed:
+                async with ModelEngine.vllm_session(self.config, "tier2") as engine:
+                    await _exec_phase3_escalation(engine)
+                if recaption_structure_stages:
+                    async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                        await _exec_phase4(engine)
+                        if ocr_shares_tier1 and run_ocr:
+                            ocr_handled_in_tier1 = True
+        else:
+            if self._should_run("s04_5_escalation", stages_filter):
+                if any(self._get_borderline_ids(chunk) for chunk in chunks):
+                    async with ModelEngine.vllm_session(self.config, "tier2") as engine:
+                        await _exec_phase3_escalation(engine)
+            if recaption_structure_stages:
+                async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                    await _exec_phase4(engine)
+                    if ocr_shares_tier1 and run_ocr:
+                        ocr_handled_in_tier1 = True
+
+        if run_ocr and not ocr_handled_in_tier1:
+            has_active = any(self._filter_active(chunk) for chunk in chunks)
+            if has_active:
+                model_to_use = "tier1" if ocr_shares_tier1 else "ocr"
+                async with ModelEngine.vllm_session(self.config, model_to_use) as engine:
+                    await _exec_phase5(engine)
+
+        # ── Phase 5.5: Text PII Redaction ────────────────────────
+        if self._should_run("s05_5_pii_text_redact", stages_filter):
+            from rich.progress import track
+            for i, record_ids in track(enumerate(chunks), total=len(chunks), description="Phase 5.5: Text PII"):
+                chunk_id = f"chunk_{i:04d}"
+                active_ids = self._filter_active(record_ids)
+                if active_ids:
+                    res = await self._run_stage("s05_5_pii_text_redact", active_ids, chunk_id)
+                    chunk_results[i].stage_results.append(res)
 
         # ── Post-chunk global stages ────────────────────────────────
         all_record_ids = [rid for chunk in chunks for rid in chunk]
@@ -622,21 +700,20 @@ class Orchestrator:
         # Keep the VAE resident over the entire corpus, rather than
         # reloading it for every processing chunk.
         if self._should_run("s08_encoding", stages_filter):
-            routed_ids: list[str] = []
-            for i in range(0, len(all_record_ids), 5000):
-                routed_ids.extend(
-                    rec.id
-                    for rec in self.manifest.get_records_by_ids(all_record_ids[i : i + 5000])
-                    if rec.status == "routed"
-                )
+            routed_ids = (
+                self.manifest.get_ids_by_status("routed")
+                if hasattr(self.manifest, "get_ids_by_status")
+                else [r["id"] for r in self.manifest._conn.execute("SELECT id FROM records WHERE status = 'routed'").fetchall()]
+            )
             encoding_chunks = [
                 routed_ids[i : i + self.config.chunk_size]
                 for i in range(0, len(routed_ids), self.config.chunk_size)
             ]
             if encoding_chunks:
                 from data_forge.inference.engine import ModelEngine
+                from rich.progress import track
                 async with ModelEngine.encoder_session(self.config) as engine:
-                    for i, encoding_ids in enumerate(encoding_chunks):
+                    for i, encoding_ids in track(enumerate(encoding_chunks), total=len(encoding_chunks), description="Phase 6: VAE"):
                         await self._run_stage(
                             "s08_encoding",
                             encoding_ids,

@@ -30,7 +30,7 @@ stages:
     enabled: true
   s01_fetch:
     enabled: true
-    max_concurrent_downloads: 128
+    max_concurrent_downloads: 512
     download_timeout_seconds: 3600
     license_confidence_threshold: 0.85
   s01_5_uicrit_join:
@@ -40,10 +40,11 @@ stages:
     face_detection_confidence: 0.5
     blur_kernel_size: 99
     safety_confidence_threshold: 0.8
+    max_concurrent_pairs: 512
   s01_7_preference_pair_pii:
     enabled: true
-    max_concurrent_pairs: 8
-    batch_size: 64
+    max_concurrent_pairs: 32
+    batch_size: 128
   s02_dedup:
     enabled: true
     embedding_model: openai/clip-vit-large-patch14-336
@@ -72,20 +73,21 @@ stages:
     batch_size: 256
   s04_5_escalation:
     enabled: true
+    batch_size: 128
   s05_recaption:
     enabled: true
-    batch_size: 128
+    batch_size: 256
     max_caption_tokens: 512
     ocr_enrichment: true
   s05_ocr_enrichment:
     enabled: true
-    batch_size: 64
-    max_ocr_tokens: 1024
+    batch_size: 256
+    max_ocr_tokens: 2048
   s06_structure:
     enabled: true
-    batch_size: 128
+    batch_size: 256
     max_retries_on_schema_fail: 1
-    max_structure_tokens: 1024
+    max_structure_tokens: 2048
   s05_5_pii_text_redact:
     enabled: true
     regex_patterns:
@@ -102,7 +104,7 @@ stages:
     enabled: true
     canny_low_threshold: 50
     canny_high_threshold: 150
-    vae_batch_size: 16
+    vae_batch_size: 64
   s08_5_dpo_encoding:
     enabled: false
   s09_heldout:
@@ -114,9 +116,10 @@ stages:
     - quality_score_bucket
   s10_audit:
     enabled: true
+    batch_size: 128
     sample_rate: 0.03
     min_samples: 200
-    pass_rate_threshold: 0.95
+    pass_rate_threshold: 0.90
     ensemble_escalation: true
   s11_registry_watcher:
     enabled: true

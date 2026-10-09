@@ -44,12 +44,19 @@ class SafetyStage(Stage):
             if not img_path.is_file():
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
 
-            try:
-                safety_out = await tier1.classify_safety(img_path)
-            except Exception as e:
-                return {"id": rec.id, "status": "excluded_failed", "reason": f"Safety inference exception: {e}", "exclusion_reason": "inference_failed"}
+            max_retries = stage_cfg.get("max_retries_on_schema_fail", 1)
+            safety_out = None
+            for attempt in range(max_retries + 1):
+                try:
+                    safety_out = await tier1.classify_safety(img_path)
+                    if safety_out is not None:
+                        break
+                except Exception as e:
+                    log.warning("safety_extraction_error", record_id=rec.id, attempt=attempt, error=str(e))
+                    safety_out = None
+
             if safety_out is None:
-                return {"id": rec.id, "status": "excluded_failed", "reason": "Safety inference failed", "exclusion_reason": "inference_failed"}
+                return {"id": rec.id, "status": "excluded_failed", "reason": "Safety inference failed after retries", "exclusion_reason": "inference_failed"}
 
             out_dict = safety_out.model_dump()
 
@@ -66,34 +73,31 @@ class SafetyStage(Stage):
             async with sem:
                 return await _process(rec)
 
-        chunk_window = max(batch_concurrency * 2, 256)
-        for c_start in range(0, len(records), chunk_window):
-            chunk = records[c_start : c_start + chunk_window]
-            tasks = [asyncio.create_task(_bounded_process(rec)) for rec in chunk]
-            results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(_bounded_process(rec)) for rec in records]
+        results = await asyncio.gather(*tasks)
 
-            updates: list[dict[str, Any]] = []
-            for res in results:
-                status = res["status"]
-                update_item: dict[str, Any] = {
-                    "id": res["id"],
-                    "new_status": status,
-                    "safety_tier": res.get("tier"),
-                    "safety_output": res.get("out"),
-                }
-                if status == "safety_classified":
-                    processed += 1
+        updates: list[dict[str, Any]] = []
+        for res in results:
+            status = res["status"]
+            update_item: dict[str, Any] = {
+                "id": res["id"],
+                "new_status": status,
+                "safety_tier": res.get("tier"),
+                "safety_output": res.get("out"),
+            }
+            if status == "safety_classified":
+                processed += 1
+            else:
+                update_item["reason"] = res.get("reason")
+                update_item["exclusion_reason"] = res.get("exclusion_reason")
+                if status == "excluded_failed":
+                    failed += 1
                 else:
-                    update_item["reason"] = res.get("reason")
-                    update_item["exclusion_reason"] = res.get("exclusion_reason")
-                    if status == "excluded_failed":
-                        failed += 1
-                    else:
-                        excluded += 1
-                updates.append(update_item)
+                    excluded += 1
+            updates.append(update_item)
 
-            if updates:
-                manifest.bulk_update_records(updates, stage="safety")
+        if updates:
+            manifest.bulk_update_records(updates, stage="safety")
 
         result.records_processed = processed
         result.records_excluded = excluded

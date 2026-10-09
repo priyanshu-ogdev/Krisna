@@ -48,16 +48,20 @@ class StructureStage(Stage):
             img_path = p if p.is_absolute() else (config.data_root / p)
             if not img_path.is_file():
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
-            try:
-                await asyncio.to_thread(load_image, img_path)
-            except UnidentifiedImageError:
-                return {"id": rec.id, "status": "excluded_failed", "reason": "Corrupt image", "exclusion_reason": "image_corrupt"}
-            except Exception as e:
-                return {"id": rec.id, "status": "excluded_failed", "reason": f"Image load error: {e}", "exclusion_reason": "image_error"}
 
-            structure_out = None
-            try:
-                for attempt in range(max_retries + 1):
+            # Bypass UI extraction for non-UI general visual datasets (e.g. pd12m, cc12m)
+            from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
+            if rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+                from data_forge.inference.structured_output import StructureOutput
+                empty_structure = StructureOutput(
+                    elements=[],
+                    layout_type="freeform",
+                    hierarchy_depth=0,
+                    background_style="image",
+                )
+                return {"id": rec.id, "status": "structured", "out": empty_structure.model_dump()}
+            for attempt in range(max_retries + 1):
+                try:
                     structure_out = await tier1.extract_structure(img_path)
                     if structure_out is not None:
                         out_dict = structure_out.model_dump()
@@ -66,9 +70,9 @@ class StructureStage(Stage):
                             break
                         log.warning("structure_schema_invalid", record_id=rec.id, attempt=attempt, errors=errors[:3])
                         structure_out = None  # Retry
-            except Exception as e:
-                log.error("structure_timeout_or_crash", record_id=rec.id, error=str(e))
-                # structure_out remains None, handled below
+                except Exception as e:
+                    log.warning("structure_extraction_error", record_id=rec.id, attempt=attempt, error=str(e))
+                    structure_out = None
 
             if structure_out is None:
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Structure extraction failed after retries or timeout", "exclusion_reason": "structure_extraction_failed"}
@@ -81,30 +85,27 @@ class StructureStage(Stage):
             async with sem:
                 return await _process(rec)
 
-        chunk_window = max(batch_concurrency * 2, 128)
-        for c_start in range(0, len(records), chunk_window):
-            chunk = records[c_start : c_start + chunk_window]
-            tasks = [asyncio.create_task(_bounded_process(rec)) for rec in chunk]
-            results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(_bounded_process(rec)) for rec in records]
+        results = await asyncio.gather(*tasks)
 
-            updates: list[dict[str, Any]] = []
-            for res in results:
-                status = res["status"]
-                update_item: dict[str, Any] = {
-                    "id": res["id"],
-                    "new_status": status,
-                    "structure_output": res.get("out"),
-                }
-                if status == "structured":
-                    processed += 1
-                else:
-                    update_item["reason"] = res.get("reason")
-                    update_item["exclusion_reason"] = res.get("exclusion_reason")
-                    failed += 1
-                updates.append(update_item)
+        updates: list[dict[str, Any]] = []
+        for res in results:
+            status = res["status"]
+            update_item: dict[str, Any] = {
+                "id": res["id"],
+                "new_status": status,
+                "structure_output": res.get("out"),
+            }
+            if status == "structured":
+                processed += 1
+            else:
+                update_item["reason"] = res.get("reason")
+                update_item["exclusion_reason"] = res.get("exclusion_reason")
+                failed += 1
+            updates.append(update_item)
 
-            if updates:
-                manifest.bulk_update_records(updates, stage="structure")
+        if updates:
+            manifest.bulk_update_records(updates, stage="structure")
 
         result.records_processed = processed
         result.records_failed = failed

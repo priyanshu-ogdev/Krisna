@@ -19,3 +19,4 @@ Return a JSON object with exactly these fields:
 3. When uncertain, classify as "borderline" rather than forcing "safe" or "unsafe".
 4. The presence of ANY unsafe content in the image, even small, makes the whole image at least "borderline".
 5. Screenshots of messaging apps or social feeds should be classified based on visible message/post content.
+6. Base your classification STRICTLY on the visible image content. Do NOT hallucinate safety flags based on assumptions, typical app behavior, or context not visually present in the image.

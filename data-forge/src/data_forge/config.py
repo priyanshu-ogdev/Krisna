@@ -36,15 +36,41 @@ def _default_data_root() -> Path:
     return Path.cwd() / "data_krisna"
 
 
+def _default_prompts_dir() -> Path:
+    candidates = [
+        Path.cwd() / "configs" / "prompts",
+        Path.cwd() / "data-forge" / "configs" / "prompts",
+        Path(__file__).resolve().parents[2] / "configs" / "prompts",
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return Path("configs/prompts")
+
+
+def _default_schemas_dir() -> Path:
+    candidates = [
+        Path.cwd() / "configs" / "schemas",
+        Path.cwd() / "data-forge" / "configs" / "schemas",
+        Path(__file__).resolve().parents[2] / "configs" / "schemas",
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return Path("configs/schemas")
+
+
+
 @dataclass
 class VLLMServerConfig:
     host: str = "127.0.0.1"
     port: int = 8000
     api_key: str = "data-forge-internal"
-    startup_timeout_seconds: int = 120
+    startup_timeout_seconds: int = 600
     health_check_interval_seconds: int = 5
     graceful_shutdown_timeout_seconds: int = 30
-    max_num_seqs: int = 16
+    max_num_seqs: int = 256
+    swap_space_gb: int = 32
 
 
 @dataclass
@@ -54,7 +80,7 @@ class ModelSpec:
     quantization: str | None = None
     dtype: str = "auto"
     max_model_len: int = 32768
-    gpu_memory_utilization: float = 0.85
+    gpu_memory_utilization: float = 0.95
     trust_remote_code: bool = True
     role: str = ""
     load_on_demand: bool = False
@@ -287,15 +313,19 @@ class PipelineConfig:
     storage: StorageConfig = field(default_factory=StorageConfig)
 
     # Prompts directory
-    prompts_dir: Path = field(default_factory=lambda: Path("configs/prompts"))
-    schemas_dir: Path = field(default_factory=lambda: Path("configs/schemas"))
+    prompts_dir: Path = field(default_factory=_default_prompts_dir)
+    schemas_dir: Path = field(default_factory=_default_schemas_dir)
+
+    _prompt_cache: dict[str, str] = field(default_factory=dict, init=False)
 
     def get_prompt(self, name: str) -> str:
         """Load a prompt template by name (without extension)."""
-        prompt_file = self.prompts_dir / f"{name}.txt"
-        if not prompt_file.exists():
-            raise FileNotFoundError(f"Prompt template not found: {prompt_file}")
-        return prompt_file.read_text(encoding="utf-8")
+        if name not in self._prompt_cache:
+            prompt_file = self.prompts_dir / f"{name}.txt"
+            if not prompt_file.exists():
+                raise FileNotFoundError(f"Prompt template not found: {prompt_file}")
+            self._prompt_cache[name] = prompt_file.read_text(encoding="utf-8")
+        return self._prompt_cache[name]
 
     def get_stage(self, stage_name: str) -> StageConfig:
         """Get stage config, returning a disabled default if not configured."""
@@ -309,7 +339,7 @@ def _parse_model_spec(data: dict[str, Any]) -> ModelSpec:
         quantization=data.get("quantization"),
         dtype=data.get("dtype", "auto"),
         max_model_len=data.get("max_model_len", 32768),
-        gpu_memory_utilization=data.get("gpu_memory_utilization", 0.85),
+        gpu_memory_utilization=data.get("gpu_memory_utilization", 0.95),
         trust_remote_code=data.get("trust_remote_code", True),
         role=data.get("role", ""),
         load_on_demand=data.get("load_on_demand", False),
@@ -467,12 +497,13 @@ def load_config(
                 host=vllm_data.get("host", "127.0.0.1"),
                 port=vllm_data.get("port", 8000),
                 api_key=vllm_data.get("api_key", "data-forge-internal"),
-                startup_timeout_seconds=vllm_data.get("startup_timeout_seconds", 120),
+                startup_timeout_seconds=vllm_data.get("startup_timeout_seconds", 600),
                 health_check_interval_seconds=vllm_data.get("health_check_interval_seconds", 5),
                 graceful_shutdown_timeout_seconds=vllm_data.get(
                     "graceful_shutdown_timeout_seconds", 30
                 ),
-                max_num_seqs=vllm_data.get("max_num_seqs", 16),
+                max_num_seqs=vllm_data.get("max_num_seqs", 256),
+                swap_space_gb=vllm_data.get("swap_space_gb", 32),
             )
 
     # --- datasets.yaml ---

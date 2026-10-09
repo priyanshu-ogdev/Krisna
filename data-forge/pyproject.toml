@@ -14,13 +14,14 @@ dependencies = [
     # --- Inference ---
     # "vllm" moved to optional [gpu] group to support Python 3.13 / Windows installs
     "openai>=1.40",
-    "torch>=2.6.0",
-    "torchvision>=0.21.0",
-    "transformers>=4.45",
+    "torch>=2.11.0,<2.12.0",
+    "torchvision>=0.26.0,<0.27.0",
+    "transformers>=4.45,<5.0",
     "safetensors>=0.4.5",
-    "diffusers>=0.31.0",         # used by engine.py for z_image_vae (only encoder
+    "diffusers>=0.31.0,<=0.35.2", # used by engine.py for z_image_vae (only encoder
                                   # trained now — qwen_image_vae removed, see
                                   # models.yaml's encoders comment)
+    "accelerate>=1.0.0",
     # Required by DeepSeek-OCR-2's trust_remote_code=True model code path
     "einops>=0.8.0",
     "addict>=2.4.0",
@@ -53,7 +54,7 @@ dependencies = [
 
     # --- Networking ---
     "httpx>=0.27",
-    "huggingface-hub>=0.24",
+    "huggingface-hub>=0.24,<1.0",
     "ruamel.yaml>=0.18",  # scripts/pin_revisions.py — comment-preserving YAML edits
 
     # --- Logging ---
@@ -76,7 +77,7 @@ dev = [
     "aiosqlite>=0.20",
 ]
 gpu = [
-    "vllm>=0.18.0",
+    "vllm==0.19.0",
 ]
 
 [project.scripts]

@@ -105,7 +105,7 @@ class PreferencePairPIIStage(Stage):
             raise ValueError("Preference-pair PII scrub requires at least one configured detection pattern")
 
         ocr = OCREngine(engine, config)
-        concurrency = max(1, min(int(stage_cfg.get("max_concurrent_pairs", 8)), 16))
+        concurrency = max(1, min(int(stage_cfg.get("max_concurrent_pairs", 32)), 64))
         semaphore = asyncio.Semaphore(concurrency)
         image_locks = [asyncio.Lock() for _ in range(256)]
         processed = failed = 0
