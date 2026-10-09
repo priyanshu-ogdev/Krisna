@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import os
 from pathlib import Path
@@ -67,17 +68,27 @@ class DedupStage(Stage):
                 return rec, sha, phash, err
 
             max_workers = min(64, max(4, (os.cpu_count() or 4) * 2))
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for rec, computed_sha, computed_phash, err in executor.map(_compute_hash, records):
-                    if computed_sha:
-                        rec.content_hash_sha256 = computed_sha
-                        rec.perceptual_hash = computed_phash
-                        computed_hashes.append((rec.id, computed_sha, computed_phash))
-                    elif err:
-                        log.warning("hash_compute_failed", id=rec.id, error=str(err))
-                    
-                    if rec.content_hash_sha256:
-                        hashes_to_query.append(rec.content_hash_sha256)
+            
+            def _process_all_hashes(recs):
+                res = []
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    for r in executor.map(_compute_hash, recs):
+                        res.append(r)
+                return res
+            
+            loop = asyncio.get_running_loop()
+            hashed_results = await loop.run_in_executor(None, _process_all_hashes, records)
+            
+            for rec, computed_sha, computed_phash, err in hashed_results:
+                if computed_sha:
+                    rec.content_hash_sha256 = computed_sha
+                    rec.perceptual_hash = computed_phash
+                    computed_hashes.append((rec.id, computed_sha, computed_phash))
+                elif err:
+                    log.warning("hash_compute_failed", id=rec.id, error=str(err))
+                
+                if rec.content_hash_sha256:
+                    hashes_to_query.append(rec.content_hash_sha256)
 
             if computed_hashes:
                 manifest.bulk_update_hashes(computed_hashes)
@@ -169,11 +180,16 @@ class DedupStage(Stage):
 
         # ── Phase 2: Semantic Dedup via CLIP Embeddings + FAISS ────────
         batch_size = stage_cfg.get("embedding_batch_size", 256)
-        embeddings, valid_indices, failed_indices = DedupEngine.generate_embeddings(
-            image_paths=image_paths,
-            clip_model=engine.clip_model,
-            clip_processor=engine.clip_processor,
-            batch_size=batch_size,
+        
+        loop = asyncio.get_running_loop()
+        embeddings, valid_indices, failed_indices = await loop.run_in_executor(
+            None,
+            lambda: DedupEngine.generate_embeddings(
+                image_paths=image_paths,
+                clip_model=engine.clip_model,
+                clip_processor=engine.clip_processor,
+                batch_size=batch_size,
+            )
         )
 
         # Mark corrupt/unreadable images as failed
@@ -213,8 +229,10 @@ class DedupStage(Stage):
         )
 
         # Step 2a: Intra-batch deduplication
-        intra_dupes, intra_survivor_indices = dedup_engine.dedup_batch(
-            embeddings, candidate_ids, threshold=threshold
+        intra_dupes, intra_survivor_indices = await loop.run_in_executor(
+            None,
+            dedup_engine.dedup_batch,
+            embeddings, candidate_ids, threshold
         )
         intra_survivor_embeddings = embeddings[intra_survivor_indices]
         intra_survivor_ids = [candidate_ids[i] for i in intra_survivor_indices]
@@ -227,18 +245,20 @@ class DedupStage(Stage):
         )
         index_path = manifests_dir / "faiss_index.bin"
         if index_path.exists():
-            dedup_engine.load_index(index_path)
+            await loop.run_in_executor(None, dedup_engine.load_index, index_path)
 
-        inter_dupes, true_survivor_indices = dedup_engine.search_existing(
-            intra_survivor_embeddings, intra_survivor_ids, threshold=threshold
+        inter_dupes, true_survivor_indices = await loop.run_in_executor(
+            None,
+            dedup_engine.search_existing,
+            intra_survivor_embeddings, intra_survivor_ids, threshold
         )
         true_survivor_embeddings = intra_survivor_embeddings[true_survivor_indices]
         true_survivor_ids = [intra_survivor_ids[i] for i in true_survivor_indices]
 
         # Step 2c: Add ONLY true survivors to persistent index and save
         if len(true_survivor_ids) > 0:
-            dedup_engine.add_records(true_survivor_embeddings, true_survivor_ids)
-            dedup_engine.save_index(index_path)
+            await loop.run_in_executor(None, dedup_engine.add_records, true_survivor_embeddings, true_survivor_ids)
+            await loop.run_in_executor(None, dedup_engine.save_index, index_path)
 
         # Step 2d: Record all semantic duplicates in manifest
         semantic_duplicate_updates: list[dict[str, Any]] = []

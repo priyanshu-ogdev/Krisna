@@ -22,3 +22,6 @@ Return a JSON object with exactly these fields:
 2. Screenshots of real apps in production states are generally higher quality than mockups or wireframes.
 3. Debug/developer UI (logcat, terminal, IDE) should score low — these are not design training data.
 4. Partial screenshots (cropped mid-element) should score lower than complete views.
+5. If the image is a photograph, artwork, illustration, or graphic design rather than a software interface, evaluate its overall visual composition, clarity, and aesthetic appeal; set is_complete_ui = true if the image is uncorrupted, and set design_era = "modern".
+6. Base your assessment STRICTLY on the visible image pixels. Do NOT hallucinate quality issues, and do NOT penalize a design based on assumptions. Your evaluation must be grounded entirely in what is visually discernible.
+

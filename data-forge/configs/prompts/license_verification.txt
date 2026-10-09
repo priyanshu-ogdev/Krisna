@@ -17,6 +17,6 @@ Return a JSON object with exactly these fields:
 
 ## Rules
 1. Be CONSERVATIVE. When in doubt, set booleans to `false` and confidence below 0.85.
-2. Do NOT hallucinate permissions. If a field cannot be determined from the provided text, set it to `false` and lower confidence.
+2. Do NOT hallucinate permissions. Extract permissions STRICTLY based on the provided text. Do not guess or assume standard terms if they are not explicitly written. If a field cannot be determined from the provided text, set it to false and lower confidence.
 3. The `source_citation` field MUST contain actual quoted text from the document. Do not paraphrase.
 4. If the page is a 404, error page, or contains no license information, return `license_type: "Not Found"` with confidence 0.0.

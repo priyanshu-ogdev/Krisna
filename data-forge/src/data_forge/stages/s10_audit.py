@@ -90,8 +90,12 @@ class AuditStage(Stage):
 
         async def _audit_one(rec):
             async with sem:
-                audit_out = await agent.audit_record(rec, tier1, config.data_root)
-                return rec, audit_out
+                try:
+                    audit_out = await agent.audit_record(rec, tier1, config.data_root)
+                    return rec, audit_out
+                except Exception as e:
+                    log.warning("audit_record_inference_failed", record_id=rec.id, error=str(e))
+                    return rec, None
 
         tasks = [_audit_one(rec) for rec in sample]
         results = await asyncio.gather(*tasks)

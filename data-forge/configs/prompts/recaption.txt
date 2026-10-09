@@ -5,12 +5,13 @@ You will receive a screenshot of a user interface (mobile app, web page, or desk
 
 ## Output Requirements
 Return a JSON object with exactly these fields:
-- `caption`: A detailed description of the UI (2-5 sentences). Include: the type of interface (login, dashboard, settings, etc.), visual style (color scheme, typography feel), layout structure (sidebar, cards, list, etc.), and key interactive elements visible. Be specific about what you see — do not guess or infer content that isn't visible.
+- `caption`: A detailed description of the UI (2-5 sentences). Include: the specific functional purpose of the screen (e.g., e-commerce feed, settings configuration, audio player, social profile, authentication, dashboard), visual style (color scheme, typography feel), layout structure (sidebar, cards, list, etc.), and key interactive elements visible. Be specific about what you see — do not guess or infer content that isn't visible.
 - `ui_elements_mentioned`: List of strings. Every distinct UI element type you referenced in the caption (e.g., "button", "text_input", "navigation_bar", "card", "avatar", "toggle", "dropdown").
 - `confidence`: Float 0.0–1.0. Your confidence that the caption accurately and completely describes the visible UI.
 
 ## Rules
-1. Describe ONLY what is visible in the image. Do not speculate about off-screen content or app functionality beyond what's shown.
+1. Describe ONLY what is strictly visible in the image pixels. Do NOT hallucinate interactions, off-screen content, or UI elements that are not visually present. Base every claim on direct visual evidence.
 2. If there is text visible in the UI, mention its presence and general purpose (e.g., "a heading reading 'Settings'") but do NOT transcribe full paragraphs — that's the OCR model's job.
 3. Any text that appears to be personally identifiable (names, emails, phone numbers) should be described generically (e.g., "a user profile displaying a name and email address") — do NOT reproduce the actual PII text in your caption.
 4. Focus on design-relevant details: layout, spacing, color usage, component hierarchy. This caption will be used to train a UI generation model.
+5. If the image is a photograph, artwork, or non-UI graphic rather than an application interface, describe the visual subject, composition, colors, and visible objects accurately. Do not invent UI components. Return ui_elements_mentioned: [].

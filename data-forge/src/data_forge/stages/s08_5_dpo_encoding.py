@@ -40,6 +40,7 @@ records — written directly to preference_pairs/" pattern).
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Any, ClassVar
@@ -90,73 +91,79 @@ class DPOEncodingStage(Stage):
         enc_dev = "cuda" if torch.cuda.is_available() else "cpu"
         enc_dtype = torch.float16 if enc_dev == "cuda" else torch.float32
 
-        for source_dir in sorted(p for p in pref_root.iterdir() if p.is_dir()):
-            source_key = source_dir.name
-            out_dir = dpo_root / source_key
-            out_dir.mkdir(parents=True, exist_ok=True)
+        def _process_dpo_pairs():
+            p_processed = p_failed = p_skipped = 0
+            for source_dir in sorted(p for p in pref_root.iterdir() if p.is_dir()):
+                source_key = source_dir.name
+                out_dir = dpo_root / source_key
+                out_dir.mkdir(parents=True, exist_ok=True)
 
-            for meta_path in sorted(source_dir.glob("*.json")):
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                except Exception as e:
-                    log.warning("dpo_encoding_bad_metadata", path=str(meta_path), error=str(e))
-                    failed += 1
-                    continue
+                for meta_path in sorted(source_dir.glob("*.json")):
+                    try:
+                        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    except Exception as e:
+                        log.warning("dpo_encoding_bad_metadata", path=str(meta_path), error=str(e))
+                        p_failed += 1
+                        continue
 
-                if (
-                    meta.get("dedup_status") != "unique"
-                    or meta.get("safety_tier") != "safe"
-                    or meta.get("pii_scrubbed") is not True
-                    or meta.get("text_pii_scrubbed") is not True
-                ):
-                    skipped += 1
-                    continue
+                    if (
+                        meta.get("dedup_status") != "unique"
+                        or meta.get("safety_tier") != "safe"
+                        or meta.get("pii_scrubbed") is not True
+                        or meta.get("text_pii_scrubbed") is not True
+                    ):
+                        p_skipped += 1
+                        continue
 
-                pair_id = meta["pair_id"]
-                out_path = out_dir / f"{pair_id}.safetensors"
-                if out_path.exists():
-                    processed += 1
-                    continue  # idempotent re-run
+                    pair_id = meta["pair_id"]
+                    out_path = out_dir / f"{pair_id}.safetensors"
+                    if out_path.exists():
+                        p_processed += 1
+                        continue  # idempotent re-run
 
-                try:
-                    p_a = Path(meta["image_a"])
-                    p_b = Path(meta["image_b"])
-                    path_a = p_a if p_a.is_absolute() else (meta_path.parent / p_a)
-                    path_b = p_b if p_b.is_absolute() else (meta_path.parent / p_b)
-                    img_a = pad_to_multiple(load_image(path_a), 16)
-                    img_b = pad_to_multiple(load_image(path_b), 16)
+                    try:
+                        p_a = Path(meta["image_a"])
+                        p_b = Path(meta["image_b"])
+                        path_a = p_a if p_a.is_absolute() else (meta_path.parent / p_a)
+                        path_b = p_b if p_b.is_absolute() else (meta_path.parent / p_b)
+                        img_a = pad_to_multiple(load_image(path_a), 16)
+                        img_b = pad_to_multiple(load_image(path_b), 16)
 
-                    t_a = normalize_for_vae(image_to_tensor(img_a)).to(enc_dev, dtype=enc_dtype)
-                    t_b = normalize_for_vae(image_to_tensor(img_b)).to(enc_dev, dtype=enc_dtype)
-                    with torch.inference_mode():
-                        if t_a.shape == t_b.shape:
-                            batch_t = torch.stack([t_a, t_b], dim=0)
-                            batch_lat = z_vae.encode(batch_t).latent_dist.sample()
-                            lat_a = batch_lat[0:1]
-                            lat_b = batch_lat[1:2]
-                        else:
-                            lat_a = z_vae.encode(t_a.unsqueeze(0)).latent_dist.sample()
-                            lat_b = z_vae.encode(t_b.unsqueeze(0)).latent_dist.sample()
+                        t_a = normalize_for_vae(image_to_tensor(img_a)).to(enc_dev, dtype=enc_dtype)
+                        t_b = normalize_for_vae(image_to_tensor(img_b)).to(enc_dev, dtype=enc_dtype)
+                        with torch.inference_mode():
+                            if t_a.shape == t_b.shape:
+                                batch_t = torch.stack([t_a, t_b], dim=0)
+                                batch_lat = z_vae.encode(batch_t).latent_dist.sample()
+                                lat_a = batch_lat[0:1]
+                                lat_b = batch_lat[1:2]
+                            else:
+                                lat_a = z_vae.encode(t_a.unsqueeze(0)).latent_dist.sample()
+                                lat_b = z_vae.encode(t_b.unsqueeze(0)).latent_dist.sample()
 
-                    save_file(
-                        {"latent_a": lat_a.cpu(), "latent_b": lat_b.cpu()},
-                        str(out_path),
-                    )
-                    (out_dir / f"{pair_id}.meta.json").write_text(
-                        json.dumps({
-                            "pair_id": pair_id,
-                            "prompt": meta.get("prompt", ""),
-                            "preferred": meta.get("preferred"),  # "a" or "b"
-                            "origin": meta.get("origin", source_key),
-                            "label_source": meta.get("label_source", "human"),
-                        }),
-                        encoding="utf-8",
-                    )
-                    processed += 1
+                        save_file(
+                            {"latent_a": lat_a.cpu(), "latent_b": lat_b.cpu()},
+                            str(out_path),
+                        )
+                        (out_dir / f"{pair_id}.meta.json").write_text(
+                            json.dumps({
+                                "pair_id": pair_id,
+                                "prompt": meta.get("prompt", ""),
+                                "preferred": meta.get("preferred"),  # "a" or "b"
+                                "origin": meta.get("origin", source_key),
+                                "label_source": meta.get("label_source", "human"),
+                            }),
+                            encoding="utf-8",
+                        )
+                        p_processed += 1
 
-                except Exception as e:
-                    log.warning("dpo_pair_encode_failed", pair=pair_id, error=str(e))
-                    failed += 1
+                    except Exception as e:
+                        log.warning("dpo_pair_encode_failed", pair=pair_id, error=str(e))
+                        p_failed += 1
+            return p_processed, p_failed, p_skipped
+            
+        loop = asyncio.get_running_loop()
+        processed, failed, skipped = await loop.run_in_executor(None, _process_dpo_pairs)
 
         result.records_processed = processed
         result.records_failed = failed

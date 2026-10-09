@@ -34,7 +34,7 @@ class Tier2Engine:
         self._client = InferenceClient(
             http_client=engine.vllm_client,
             model_id=config.models["tier2"].model_id,
-            max_concurrent=min(8, config.vllm_server.max_num_seqs),
+            max_concurrent=min(64, config.vllm_server.max_num_seqs),
         )
 
     async def reclassify_safety(
@@ -52,7 +52,7 @@ class Tier2Engine:
             f"The initial classifier marked this as 'borderline' with the "
             f"following rationale: {tier1_output.get('rationale', 'N/A')}\n"
             f"Flags: {tier1_output.get('flags', [])}\n\n"
-            f"Please provide your independent assessment."
+            f"Please provide your independent assessment. Verify strictly against the visible image whether any flagged concerns actually exist or if the initial assessment was a false positive. Do not assume the initial flags are correct."
         )
         result = await self._client.complete(
             prompt=enhanced_prompt,
@@ -110,7 +110,7 @@ class Tier2Engine:
             f"confidence={tier1_audit.get('confidence')}\n"
             f"Rationale: {tier1_audit.get('rationale', 'N/A')}\n"
             f"Issues: {tier1_audit.get('accuracy_issues', [])}\n\n"
-            f"Please provide your independent assessment."
+            f"Please provide your independent assessment. Carefully inspect the image to determine whether the reported issues are genuinely present or if the first audit hallucinated an error. Base your verdict strictly on the actual image."
         )
         result = await self._client.complete(
             prompt=enhanced_prompt,

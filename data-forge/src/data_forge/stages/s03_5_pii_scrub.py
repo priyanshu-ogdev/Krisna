@@ -10,6 +10,7 @@ docstring for why it can't happen here).
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import multiprocessing
 import os
@@ -126,41 +127,50 @@ class PIIScrubStage(Stage):
             except Exception as e:
                 return {"id": rec.id, "status": "error", "error": str(e)}
 
-        max_workers = min(16, max(2, multiprocessing.cpu_count()))
+        max_workers = min(32, max(2, multiprocessing.cpu_count()))
         updates: list[dict[str, Any]] = []
-        try:
+        
+        def _run_all_scrubs(recs):
+            res_list = []
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for res in executor.map(_process, records):
-                    if res["status"] == "pii_scrubbed":
-                        updates.append({
-                            "id": res["id"],
-                            "new_status": "pii_scrubbed",
-                            "scrubbed_image_path": res["scrubbed_path"],
-                            "pii_scrubbed": True,
-                            "pii_detections": res["detections"] if res["detections"] else None,
-                        })
-                        processed += 1
-                    elif res["status"] == "error":
-                        log.error("pii_scrub_failed", record_id=res["id"], error=res["error"])
-                        updates.append({
-                            "id": res["id"],
-                            "new_status": "excluded_failed",
-                            "reason": f"PII scrub error: {res['error']}",
-                            "exclusion_reason": "pii_scrub_error",
-                            "pii_scrubbed": False,
-                        })
-                        failed += 1
-                    else:
-                        updates.append({
-                            "id": res["id"],
-                            "new_status": res["status"],
-                            "reason": res.get("reason"),
-                            "exclusion_reason": res.get("exclusion_reason"),
-                            "pii_scrubbed": False,
-                        })
-                        failed += 1
+                for res in executor.map(_process, recs):
+                    res_list.append(res)
+            return res_list
+            
+        loop = asyncio.get_running_loop()
+        try:
+            results = await loop.run_in_executor(None, _run_all_scrubs, records)
+            for res in results:
+                if res["status"] == "pii_scrubbed":
+                    updates.append({
+                        "id": res["id"],
+                        "new_status": "pii_scrubbed",
+                        "scrubbed_image_path": res["scrubbed_path"],
+                        "pii_scrubbed": True,
+                        "pii_detections": res["detections"] if res["detections"] else None,
+                    })
+                    processed += 1
+                elif res["status"] == "error":
+                    log.error("pii_scrub_failed", record_id=res["id"], error=res["error"])
+                    updates.append({
+                        "id": res["id"],
+                        "new_status": "excluded_failed",
+                        "reason": f"PII scrub error: {res['error']}",
+                        "exclusion_reason": "pii_scrub_error",
+                        "pii_scrubbed": False,
+                    })
+                    failed += 1
+                else:
+                    updates.append({
+                        "id": res["id"],
+                        "new_status": res["status"],
+                        "reason": res.get("reason"),
+                        "exclusion_reason": res.get("exclusion_reason"),
+                        "pii_scrubbed": False,
+                    })
+                    failed += 1
 
-                    if len(updates) >= 500:
+                if len(updates) >= 500:
                         manifest.bulk_update_records(updates, stage="pii_scrub")
                         updates.clear()
         finally:

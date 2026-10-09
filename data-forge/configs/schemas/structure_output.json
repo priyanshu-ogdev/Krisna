@@ -12,7 +12,7 @@
       "type": "string",
       "enum": ["grid", "list", "form", "navigation", "dashboard", "detail", "modal", "split", "tabbed", "freeform"]
     },
-    "hierarchy_depth": { "type": "integer", "minimum": 1 },
+    "hierarchy_depth": { "type": "integer", "minimum": 0 },
     "background_style": {
       "type": ["string", "null"],
       "enum": ["solid_light", "solid_dark", "gradient", "image", "blurred", null]

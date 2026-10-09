@@ -68,14 +68,20 @@ async def check_unsloth_support(
 
         latest_release = releases[0]["tag_name"] if releases else "unknown"
 
-        # Search release notes and README for model mentions
+        # Search release notes and README for model mentions (checking base family as well as exact name)
         model_short = model_architecture.lower()
+        candidates = [
+            model_short,
+            model_short.replace("-awq", ""),
+            "-".join(model_short.split("-")[:2]),
+            model_short.split("-")[0],
+        ]
         found_in_releases = False
 
         for release in releases:
             body = (release.get("body") or "").lower()
             name = (release.get("name") or "").lower()
-            if model_short in body or model_short in name:
+            if any(cand in body or cand in name for cand in candidates):
                 found_in_releases = True
                 break
 
@@ -90,7 +96,7 @@ async def check_unsloth_support(
             readme_content = base64.b64decode(
                 readme_data.get("content", "")
             ).decode("utf-8", errors="replace").lower()
-            found_in_readme = model_short in readme_content
+            found_in_readme = any(cand in readme_content for cand in candidates)
         except Exception:
             found_in_readme = False
 

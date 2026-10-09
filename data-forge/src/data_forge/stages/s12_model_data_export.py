@@ -49,6 +49,7 @@ what's new, since link_or_copy() skips anything already in place.
 
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import json
 import multiprocessing
@@ -126,11 +127,13 @@ class ModelDataExportStage(Stage):
         else:
             training_pool = manifest.get_training_pool()
 
-        summary["sketch_tier_maskgit"] = self._export_sketch_tier(training_pool, config, root)
-        summary["polish_zimage_turbo"] = self._export_zimage(training_pool, config, root)
-        summary["dpo_alignment"] = self._export_dpo_pairs(config, root)
-        summary["planner_rag_corpus"] = self._export_planner_rag(manifest, config, root)
-        summary["eval_external"] = self._export_eval_external(config, root)
+        critique_records = manifest.get_all_records_with_critique()
+        loop = asyncio.get_running_loop()
+        summary["sketch_tier_maskgit"] = await loop.run_in_executor(None, self._export_sketch_tier, training_pool, config, root)
+        summary["polish_zimage_turbo"] = await loop.run_in_executor(None, self._export_zimage, training_pool, config, root)
+        summary["dpo_alignment"] = await loop.run_in_executor(None, self._export_dpo_pairs, config, root)
+        summary["planner_rag_corpus"] = await loop.run_in_executor(None, self._export_planner_rag, critique_records, config, root)
+        summary["eval_external"] = await loop.run_in_executor(None, self._export_eval_external, config, root)
 
         (root / "EXPORT_SUMMARY.json").write_text(
             json.dumps(summary, indent=2), encoding="utf-8"
@@ -179,14 +182,28 @@ class ModelDataExportStage(Stage):
                 images_linked += linked_count
                 captions.append(caption_data)
 
+        unique_captions = len({r.caption for r in records if r.caption})
+        diversity_ratio = (unique_captions / len(records)) if records else 1.0
+        if len(records) >= 20 and diversity_ratio < 0.20:
+            log.warning(
+                "severe_caption_collapse_detected",
+                target="sketch_tier_maskgit",
+                unique_captions=unique_captions,
+                total_records=len(records),
+                diversity_ratio=round(diversity_ratio, 4),
+                note="Over 80% of records share identical captions. Possible mock artifact leakage."
+            )
+
         with (model_dir / "captions.jsonl").open("w", encoding="utf-8") as f:
             for c in captions:
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
         self._write_summary(model_dir, {
             "records": len(records),
             "images_linked": images_linked,
+            "unique_captions": unique_captions,
+            "diversity_ratio": round(diversity_ratio, 4),
         })
-        return {"linked": images_linked, "records": len(records)}
+        return {"linked": images_linked, "records": len(records), "unique_captions": unique_captions}
 
     def _export_zimage(self, manifest_or_pool: Manifest | list[ManifestRecord], config: PipelineConfig, root: Path) -> dict[str, int]:
         model_dir = root / "polish_zimage_turbo"
@@ -231,6 +248,18 @@ class ModelDataExportStage(Stage):
                 images_linked += i_linked
                 captions.append(c_data)
 
+        unique_captions = len({r.caption for r in records if r.caption})
+        diversity_ratio = (unique_captions / len(records)) if records else 1.0
+        if len(records) >= 20 and diversity_ratio < 0.20:
+            log.warning(
+                "severe_caption_collapse_detected",
+                target="polish_zimage_turbo",
+                unique_captions=unique_captions,
+                total_records=len(records),
+                diversity_ratio=round(diversity_ratio, 4),
+                note="Over 80% of records share identical captions. Possible mock artifact leakage."
+            )
+
         with (model_dir / "captions.jsonl").open("w", encoding="utf-8") as f:
             for c in captions:
                 f.write(json.dumps(c, ensure_ascii=False) + "\n")
@@ -238,13 +267,15 @@ class ModelDataExportStage(Stage):
             "records": len(records),
             "latents_linked": linked,
             "images_linked": images_linked,
+            "unique_captions": unique_captions,
+            "diversity_ratio": round(diversity_ratio, 4),
             "note": "DPO alignment on top of this base fine-tune uses dpo_alignment/, "
                     "not this folder — see _export_dpo_pairs(). images/ is what the "
                     "official train_dreambooth_lora_z_image.py script actually consumes; "
                     "latents/ is kept for a future custom loop that can use precomputed "
                     "latents directly, but has no consumer yet.",
         })
-        return {"linked": linked, "records": len(records)}
+        return {"linked": linked, "records": len(records), "unique_captions": unique_captions}
 
     def _export_dpo_pairs(self, config: PipelineConfig, root: Path) -> dict[str, int]:
         """Export Diffusion-DPO training data — Z-Image-Turbo's only
@@ -318,7 +349,7 @@ class ModelDataExportStage(Stage):
         })
         return {"linked": counts.get("general_total", 0) + counts.get("domain_total", 0)}
 
-    def _export_planner_rag(self, manifest: Manifest, config: PipelineConfig, root) -> dict[str, int]:
+    def _export_planner_rag(self, records: list[ManifestRecord], config: PipelineConfig, root) -> dict[str, int]:
         """Export UICrit's real critique text for the product's RAG index.
 
         Replaces the old planner SFT export (linked planner_data/
@@ -331,7 +362,6 @@ class ModelDataExportStage(Stage):
         everything else in this pipeline before the product consumes it.
         """
         model_dir = root / "planner_rag_corpus"
-        records = manifest.get_all_records_with_critique()
         entries = []
         for rec in records:
             if not rec.critique_output:

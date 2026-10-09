@@ -113,10 +113,43 @@ class TestRobustJSONParsing:
         out = QualityOutput.model_validate(parsed)
         assert out.aesthetic_score == 0.85
 
-    def test_parse_json_with_surrounding_commentary(self):
+    def test_parse_json_truncated_unclosed_brackets(self):
         from data_forge.inference.client import _parse_json_robustly
-        raw = "Here is the result:\n{\"tier\": \"safe\", \"confidence\": 0.99, \"rationale\": \"Clean UI screen.\", \"flags\": []}\nHope this helps!"
+        # Truncated JSON missing closing brackets and braces
+        raw = "{\"caption\": \"A modern blue dashboard with graphs\", \"ui_elements_mentioned\": [\"button\", \"card\""
         parsed = _parse_json_robustly(raw)
-        out = SafetyOutput.model_validate(parsed)
-        assert out.tier == "safe"
+        assert parsed["caption"] == "A modern blue dashboard with graphs"
+        assert parsed["ui_elements_mentioned"] == ["button", "card"]
+
+    def test_sanitize_bbox_rectifies_inverted_coords(self):
+        from data_forge.inference.structured_output import sanitize_bbox
+        # x_min > x_max and y_min > y_max
+        inverted = [0.8, 0.9, 0.2, 0.1]
+        rectified = sanitize_bbox(inverted)
+        assert rectified[0] <= rectified[2]
+        assert rectified[1] <= rectified[3]
+        assert rectified == [0.2, 0.1, 0.8, 0.9]
+
+    def test_prune_degenerate_zero_area_bboxes(self):
+        data = {
+            "elements": [
+                {"type": "button", "bbox": [0.1, 0.2, 0.1, 0.2], "label": "Zero Area"},  # 0 width and height
+                {"type": "button", "bbox": [0.1, 0.2, 0.4, 0.5], "label": "Valid Button"},
+            ],
+            "layout_type": "form",
+            "hierarchy_depth": 1,
+        }
+        out = StructureOutput.model_validate(data)
+        assert len(out.elements) == 1
+        assert out.elements[0].label == "Valid Button"
+
+    def test_caption_prompt_echo_filtering(self):
+        data = {
+            "caption": "You are a UI recaptioning model: A modern blue dashboard for settings and account management.",
+            "ui_elements_mentioned": ["button"],
+            "confidence": 0.9,
+        }
+        out = CaptionOutput.model_validate(data)
+        assert not out.caption.lower().startswith("you are a ui recaptioning model")
+        assert "A modern blue dashboard" in out.caption
 

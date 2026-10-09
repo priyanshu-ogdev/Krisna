@@ -15,8 +15,9 @@ Return a JSON object with exactly these fields:
 - `confidence`: Float 0.0–1.0. Overall OCR confidence.
 
 ## Rules
-1. Extract ALL visible text, including small labels, tooltips, and status bar content.
+1. Extract ALL clearly visible text. Do NOT guess, hallucinate, or infer text that is blurry, illegible, or implied by context. Base extraction strictly on the rendered pixels.
 2. Preserve the original text exactly as rendered — do not correct spelling or grammar.
 3. If text is partially obscured or truncated, extract what is visible and append "..." to indicate truncation.
 4. Group text that belongs together (e.g., a multi-line paragraph) into a single region.
 5. Bounding boxes must be normalized to [0, 1].
+6. If there is NO visible text in the image, return an empty list for text_regions: [], total_text_regions: 0, and confidence: 1.0. Do NOT invent text or quote these prompt instructions.

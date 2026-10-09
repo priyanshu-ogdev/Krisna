@@ -145,7 +145,7 @@ class TestResolveModelRevisions:
         with patch("huggingface_hub.HfApi", return_value=_fake_api()):
             results = pin_revisions.resolve_model_revisions(REAL_MODELS_YAML, only=None, apply=False)
 
-        assert not any(r["repo_id"] == "Qwen/Qwen3.5-9B" for r in results)
+        assert not any(r["key"] == "models.product_planner" for r in results)
 
     def test_apply_produces_minimal_diff_on_real_file_copy(self, tmp_path):
         target = tmp_path / "models.yaml"

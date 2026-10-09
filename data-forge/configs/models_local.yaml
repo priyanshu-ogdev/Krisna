@@ -1,45 +1,43 @@
 models:
   tier1:
-    model_id: Qwen/Qwen2-VL-7B-Instruct-AWQ
+    model_id: Qwen/Qwen3.5-9B
     revision: main
-    quantization: awq
     dtype: auto
-    max_model_len: 8192
-    gpu_memory_utilization: 0.9
+    max_model_len: 16384
+    gpu_memory_utilization: 0.90
     trust_remote_code: true
     role: bulk_pipeline_engine
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 7
+    vram_estimate_gb: 10
   tier2:
-    model_id: Qwen/Qwen2-VL-7B-Instruct-AWQ
+    model_id: Qwen/Qwen3.8-27B
+    quantization: fp8
     revision: main
-    quantization: awq
     dtype: auto
-    max_model_len: 8192
-    gpu_memory_utilization: 0.9
+    max_model_len: 16384
+    gpu_memory_utilization: 0.90
     trust_remote_code: true
     role: escalation_engine
     load_on_demand: true
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 7
+    vram_estimate_gb: 28
   ocr:
-    model_id: deepseek-ai/DeepSeek-OCR-2
+    model_id: Qwen/Qwen3.5-9B
     revision: main
-    quantization: null
-    dtype: float16
-    max_model_len: 8192
-    gpu_memory_utilization: 0.85
+    dtype: auto
+    max_model_len: 16384
+    gpu_memory_utilization: 0.90
     trust_remote_code: true
     role: dedicated_ocr
     load_on_demand: true
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 6
+    vram_estimate_gb: 10
   embeddings:
     model_id: openai/clip-vit-large-patch14-336
     revision: main
@@ -70,3 +68,5 @@ vllm_server:
   startup_timeout_seconds: 120
   health_check_interval_seconds: 5
   graceful_shutdown_timeout_seconds: 30
+  max_num_seqs: 256
+  swap_space_gb: 32

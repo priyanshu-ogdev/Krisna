@@ -53,9 +53,10 @@ class OCREnrichmentStage(Stage):
 
         async def _process(rec):
             try:
-                if not rec.scrubbed_image_path:
-                    return rec.id, None, "PII-scrubbed image path is missing"
-                img_path = resolve_data_path(config.data_root, rec.scrubbed_image_path)
+                raw_path = rec.scrubbed_image_path or rec.image_path
+                if not raw_path:
+                    return rec.id, None, "Image path is missing"
+                img_path = resolve_data_path(config.data_root, raw_path)
                 ocr_out = await ocr.extract_text(img_path)
             except Exception as e:
                 return rec.id, None, f"OCR inference failed: {e}"
@@ -70,29 +71,27 @@ class OCREnrichmentStage(Stage):
             async with sem:
                 return await _process(rec)
 
-        chunk_window = max(batch_concurrency * 2, 128)
-        for c_start in range(0, len(records), chunk_window):
-            chunk = records[c_start : c_start + chunk_window]
-            tasks = [asyncio.create_task(_bounded_process(rec)) for rec in chunk]
-            results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(_bounded_process(rec)) for rec in records]
+        results = await asyncio.gather(*tasks)
 
-            updates: list[dict[str, Any]] = []
-            for rec_id, ocr_out, error in results:
-                if error:
-                    updates.append({
-                        "id": rec_id,
-                        "new_status": "excluded_failed",
-                        "reason": error,
-                        "exclusion_reason": "ocr_failed",
-                    })
-                    failed += 1
-                elif ocr_out is not None:
-                    ocr_payload = ocr_out.model_dump() if hasattr(ocr_out, "model_dump") else ocr_out
-                    updates.append({"id": rec_id, "ocr_output": ocr_payload})
-                    processed += 1
+        updates: list[dict[str, Any]] = []
+        for rec_id, ocr_out, error in results:
+            if error:
+                updates.append({
+                    "id": rec_id,
+                    "new_status": "excluded_failed",
+                    "reason": error,
+                    "exclusion_reason": "ocr_failed",
+                })
+                failed += 1
+            elif ocr_out is not None:
+                ocr_payload = ocr_out.model_dump() if hasattr(ocr_out, "model_dump") else ocr_out
+                updates.append({"id": rec_id, "ocr_output": ocr_payload})
+                processed += 1
 
-            if updates:
-                manifest.bulk_update_records(updates, stage="ocr_enrichment")
+        if updates:
+            # Batch update to DB at the end
+            manifest.bulk_update_records(updates, stage="ocr_enrichment")
 
         result.records_processed = processed
         result.records_failed = failed

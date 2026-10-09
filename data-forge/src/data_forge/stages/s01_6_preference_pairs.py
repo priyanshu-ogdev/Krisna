@@ -61,8 +61,8 @@ import hashlib
 import json
 import multiprocessing
 import os
-from pathlib import Path
 import threading
+from pathlib import Path
 from typing import Any, ClassVar
 
 from PIL import Image, UnidentifiedImageError
@@ -122,21 +122,13 @@ class PreferencePairsStage(Stage):
             return result
 
         if engine is None:
-            # Hard-fail rather than silently skipping safety classification
-            # — the whole point of the earlier bug fix is that this stage
-            # must not process preference pairs without a safety pass. If
-            # the orchestrator ever calls this stage without a Tier-1
-            # session again, that's a wiring regression that should be
-            # loud, not a quiet no-op that lets unscreened T2I images
-            # reach dpo_alignment/.
             log.error(
                 "preference_pairs_no_engine",
-                note="s01_6_preference_pairs requires a Tier-1 engine for safety "
-                     "classification — see orchestrator.py's ModelEngine.vllm_session"
-                     "(self.config, \"tier1\") wiring for this stage. Refusing to "
-                     "process any pairs without it rather than skipping safety checks.",
+                note="Refusing to process preference pairs without the required safety model.",
             )
-            return result
+            raise RuntimeError(
+                "s01_6_preference_pairs requires an active Tier-1 engine for safety classification"
+            )
         tier1 = Tier1Engine(engine, config)
 
         face_detector = load_face_detector(min_confidence=face_conf)
@@ -156,7 +148,10 @@ class PreferencePairsStage(Stage):
         flagged_borderline = 0
         total_faces_blurred = 0
 
-        semaphore = asyncio.Semaphore(128)
+        max_concurrent_pairs = stage_cfg.get("max_concurrent_pairs", 128)
+        if max_concurrent_pairs < 1:
+            raise ValueError("s01_6_preference_pairs.max_concurrent_pairs must be at least 1")
+        semaphore = asyncio.Semaphore(max_concurrent_pairs)
         max_workers = min(32, max(4, multiprocessing.cpu_count()))
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         thread_local = threading.local()
@@ -320,13 +315,50 @@ class PreferencePairsStage(Stage):
                 pair_meta_files = sorted(src_dir.glob("*.json"))
                 log.info("preference_pairs_processing_source", dataset=source_key, pairs=len(pair_meta_files))
 
-                # Batch run pairs in bounded chunks to prevent unbounded memory backlog
-                chunk_size = 256
-                for c_start in range(0, len(pair_meta_files), chunk_size):
-                    chunk = pair_meta_files[c_start : c_start + chunk_size]
-                    tasks = [_process_pair(p) for p in chunk]
-                    if tasks:
-                        await asyncio.gather(*tasks)
+                # Keep a bounded queue of paths and fixed workers. Unlike
+                # gather-on-chunks, this lets the next pair start as soon as
+                # a worker is free instead of waiting for a slow chunk tail.
+                pair_queue: asyncio.Queue[Path | None] = asyncio.Queue(
+                    maxsize=max_concurrent_pairs * 2
+                )
+                worker_count = min(max_concurrent_pairs, len(pair_meta_files))
+
+                async def _feed_pairs() -> None:
+                    for pair_meta_path in pair_meta_files:
+                        await pair_queue.put(pair_meta_path)
+                    for _ in range(worker_count):
+                        await pair_queue.put(None)
+
+                async def _pair_worker() -> None:
+                    nonlocal dropped_corrupt
+                    while True:
+                        pair_meta_path = await pair_queue.get()
+                        if pair_meta_path is None:
+                            return
+                        try:
+                            await _process_pair(pair_meta_path)
+                        except Exception as error:
+                            log.error(
+                                "preference_pair_worker_failed",
+                                pair=str(pair_meta_path),
+                                error=str(error),
+                            )
+                            dropped_corrupt += 1
+
+                if worker_count:
+                    feeder = asyncio.create_task(_feed_pairs())
+                    workers = [
+                        asyncio.create_task(_pair_worker())
+                        for _ in range(worker_count)
+                    ]
+                    try:
+                        await feeder
+                        await asyncio.gather(*workers)
+                    finally:
+                        for task in [feeder, *workers]:
+                            if not task.done():
+                                task.cancel()
+                        await asyncio.gather(feeder, *workers, return_exceptions=True)
 
         finally:
             executor.shutdown(wait=True)

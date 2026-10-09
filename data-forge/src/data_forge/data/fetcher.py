@@ -342,7 +342,9 @@ class DatasetFetcher:
         downloaded_dir = target_dir
 
         try:
-            dl_res = snapshot_download(
+            import asyncio
+            dl_res = await asyncio.to_thread(
+                snapshot_download,
                 repo_id=spec.repo_id,
                 repo_type="dataset",
                 revision=spec.revision or "main",
@@ -378,7 +380,8 @@ class DatasetFetcher:
         sample_df = None
         for pf in parquet_files:
             try:
-                sample_df = pd.read_parquet(pf)
+                import asyncio
+                sample_df = await asyncio.to_thread(pd.read_parquet, pf)
                 break
             except Exception as e:
                 log.warning("hf_parquet_images_first_file_failed", file=str(pf), error=str(e))
@@ -430,7 +433,8 @@ class DatasetFetcher:
             if sample_size and len(records) >= sample_size:
                 break
             try:
-                df = sample_df if pf_idx == 0 else pd.read_parquet(pf)
+                import asyncio
+                df = sample_df if pf_idx == 0 else await asyncio.to_thread(pd.read_parquet, pf)
             except Exception as e:
                 log.warning("hf_parquet_images_read_failed", file=str(pf), error=str(e))
                 continue
@@ -598,7 +602,9 @@ class DatasetFetcher:
                         token=self._hf_token,
                     )
             else:
-                snapshot_download(
+                import asyncio
+                await asyncio.to_thread(
+                    snapshot_download,
                     repo_id=spec.repo_id,
                     repo_type="dataset",
                     revision=spec.revision or "main",
@@ -618,7 +624,8 @@ class DatasetFetcher:
         frames = []
         for pf in parquet_files:
             try:
-                frames.append(pd.read_parquet(pf))
+                import asyncio
+                frames.append(await asyncio.to_thread(pd.read_parquet, pf))
             except Exception as e:
                 log.warning("preference_pair_parquet_read_failed", file=str(pf), error=str(e))
         if not frames:
@@ -778,7 +785,9 @@ class DatasetFetcher:
         downloaded_dir = target_dir
 
         try:
-            dl_res = snapshot_download(
+            import asyncio
+            dl_res = await asyncio.to_thread(
+                snapshot_download,
                 repo_id=spec.repo_id,
                 repo_type="dataset",
                 revision=parquet_revision,
@@ -799,7 +808,8 @@ class DatasetFetcher:
             frames = []
             for pf in parquet_files:
                 try:
-                    frames.append(pd.read_parquet(pf))
+                    import asyncio
+                    frames.append(await asyncio.to_thread(pd.read_parquet, pf))
                 except Exception as e:
                     log.warning("gamelabel_parquet_read_failed", file=str(pf), error=str(e))
             if frames:
@@ -810,12 +820,13 @@ class DatasetFetcher:
             import httpx
             url = f"https://huggingface.co/datasets/{spec.repo_id}/resolve/main/data.csv"
             try:
-                with httpx.Client(follow_redirects=True) as client:
-                    resp = client.get(url, headers={"Range": "bytes=0-10000000"}, timeout=20)
+                async with httpx.AsyncClient(follow_redirects=True) as client:
+                    resp = await client.get(url, headers={"Range": "bytes=0-10000000"}, timeout=20)
                     if resp.status_code in (200, 206) and len(resp.content) > 1000:
                         last_nl = resp.content.rfind(b"\n")
                         csv_bytes = resp.content[:last_nl]
-                        df = pd.read_csv(io.BytesIO(csv_bytes), on_bad_lines="skip")
+                        import asyncio
+                        df = await asyncio.to_thread(pd.read_csv, io.BytesIO(csv_bytes), on_bad_lines="skip")
                         log.info("gamelabel_range_download_success", rows=len(df))
             except Exception as e:
                 log.warning("gamelabel_range_download_failed", error=str(e))
@@ -969,6 +980,11 @@ class DatasetFetcher:
             log.error("missing_repo_id", dataset=key)
             return []
 
+        out_dir = self._config.resolved_paths["preference_pairs"] / key
+        if out_dir.exists() and any(out_dir.glob("*.json")):
+            log.info("local_preference_pairs_found", dataset=key, dir=str(out_dir))
+            return []
+
         try:
             meta_file = hf_hub_download(
                 repo_id=spec.repo_id, repo_type="dataset",
@@ -980,7 +996,8 @@ class DatasetFetcher:
             return []
 
         with open(meta_file, encoding="utf-8") as f:
-            entries = json.load(f)
+            import asyncio
+            entries = await asyncio.to_thread(json.load, f)
 
         usable = []
         skipped_ambiguous = 0
@@ -1071,12 +1088,22 @@ class DatasetFetcher:
             )
             return True
 
+        fail_count = 0
         import concurrent.futures
         max_workers = min(32, max(4, (os.cpu_count() or 4) * 2))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             for success in executor.map(_download_and_save_entry, enumerate(usable)):
                 if success:
                     written += 1
+                else:
+                    fail_count += 1
+                    if written == 0 and fail_count >= 10:
+                        log.warning(
+                            "hpdv2_downloads_failing_early_break",
+                            dataset=key,
+                            note="First 10 images failed to download; stopping early to prevent hanging.",
+                        )
+                        break
 
         log.info("hpdv2_ranked_pairs_written", dataset=key, count=written)
         return []  # Not manifest records — written directly to preference_pairs/
@@ -1106,7 +1133,9 @@ class DatasetFetcher:
         eval_dir.mkdir(parents=True, exist_ok=True)
 
         log.info("eval_reference_downloading", repo=spec.repo_id, dest=str(eval_dir))
-        snapshot_download(
+        import asyncio
+        await asyncio.to_thread(
+            snapshot_download,
             repo_id=spec.repo_id,
             repo_type="dataset",
             revision=spec.revision or "main",
@@ -1189,7 +1218,9 @@ class DatasetFetcher:
                     token=self._hf_token,
                 )
         else:
-            snapshot_download(
+            import asyncio
+            await asyncio.to_thread(
+                snapshot_download,
                 repo_id=spec.repo_id,
                 repo_type="dataset",
                 revision=spec.revision or "main",
@@ -1206,7 +1237,8 @@ class DatasetFetcher:
         frames = []
         for pf in parquet_files:
             try:
-                frames.append(pd.read_parquet(pf))
+                import asyncio
+                frames.append(await asyncio.to_thread(pd.read_parquet, pf))
             except Exception as e:
                 log.warning("caption_join_parquet_read_failed", file=str(pf), error=str(e))
         if not frames:
@@ -1402,11 +1434,13 @@ class DatasetFetcher:
         target_dir.mkdir(parents=True, exist_ok=True)
 
         import fnmatch
-        from huggingface_hub import HfApi, hf_hub_download
+        from huggingface_hub import HfApi, hf_hub_download, snapshot_download
 
         api = HfApi(token=self._hf_token)
         try:
-            repo_files = api.list_repo_files(repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main")
+            repo_files = await asyncio.to_thread(
+                api.list_repo_files, repo_id=spec.repo_id, repo_type="dataset", revision=spec.revision or "main"
+            )
             matching_files = []
             for pat in allow_patterns:
                 for rf in repo_files:
@@ -1420,7 +1454,8 @@ class DatasetFetcher:
             # For small/capped sample_size, download only the first shard to avoid downloading multi-gigabyte shard sets
             shards_to_download = matching_files[:1] if sample_size <= 50_000 else matching_files
             for rf in shards_to_download:
-                hf_hub_download(
+                await asyncio.to_thread(
+                    hf_hub_download,
                     repo_id=spec.repo_id,
                     repo_type="dataset",
                     filename=rf,
@@ -1429,7 +1464,8 @@ class DatasetFetcher:
                     token=self._hf_token,
                 )
         else:
-            snapshot_download(
+            await asyncio.to_thread(
+                snapshot_download,
                 repo_id=spec.repo_id,
                 repo_type="dataset",
                 revision=spec.revision or "main",
@@ -1454,12 +1490,12 @@ class DatasetFetcher:
             try:
                 # Memory optimization: project only required columns
                 import pyarrow.parquet as pq
-                file_schema = pq.read_schema(pf)
+                file_schema = await asyncio.to_thread(pq.read_schema, pf)
                 read_cols = [c for c in needed_cols if c in file_schema.names]
-                frames.append(pd.read_parquet(pf, columns=read_cols if read_cols else None))
+                frames.append(await asyncio.to_thread(pd.read_parquet, pf, columns=read_cols if read_cols else None))
             except Exception as e:
                 try:
-                    frames.append(pd.read_parquet(pf, columns=None))
+                    frames.append(await asyncio.to_thread(pd.read_parquet, pf, columns=None))
                 except Exception as inner_e:
                     log.warning("parquet_read_failed", file=str(pf), error=str(inner_e))
 
@@ -1470,7 +1506,8 @@ class DatasetFetcher:
         tsv_files = sorted(Path(target_dir).rglob("*.tsv"))
         for tf in tsv_files:
             try:
-                tsv_df = pd.read_csv(
+                tsv_df = await asyncio.to_thread(
+                    pd.read_csv,
                     tf, sep="\t", header=None, names=["caption", "url"],
                     on_bad_lines="skip", quoting=3,
                 )
@@ -1500,7 +1537,7 @@ class DatasetFetcher:
         # 3. Concurrently download images
         images_dir = dest / "images"
         images_dir.mkdir(parents=True, exist_ok=True)
-        concurrency = max(1, min(int(concurrency), 128))
+        concurrency = max(1, min(int(concurrency), 512))
         max_image_bytes = int(spec.fetch_config.get("max_image_bytes", 25_000_000))
         max_image_pixels = int(spec.fetch_config.get("max_image_pixels", 100_000_000))
         semaphore = asyncio.Semaphore(concurrency)
@@ -1769,7 +1806,9 @@ class DatasetFetcher:
         # Build allow_patterns from fetch_config
         allow_patterns = spec.fetch_config.get("file_patterns")
 
-        snapshot_dir = snapshot_download(
+        import asyncio
+        snapshot_dir = await asyncio.to_thread(
+            snapshot_download,
             repo_id=spec.repo_id,
             repo_type="dataset",
             revision=spec.revision or "main",

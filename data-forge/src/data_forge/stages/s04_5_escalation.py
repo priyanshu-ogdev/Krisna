@@ -36,7 +36,7 @@ class EscalationStage(Stage):
         tier2 = Tier2Engine(engine, config)
         resolved = escalated = 0
         updates: list[dict[str, Any]] = []
-        sem = asyncio.Semaphore(16)
+        sem = asyncio.Semaphore(min(64, config.vllm_server.max_num_seqs))
 
         async def _eval_rec(rec):
             raw_path = rec.scrubbed_image_path or rec.image_path

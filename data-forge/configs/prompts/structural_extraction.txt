@@ -20,3 +20,5 @@ Return a JSON object with exactly these fields:
 3. Group related elements under a parent container when visually enclosed.
 4. Do NOT include text content that could be PII — use generic labels only.
 5. Aim for completeness: every distinct visual component should appear in the tree.
+6. If the image is a natural photograph, artwork, or non-UI graphic with no user interface components, return an empty list for elements: [], hierarchy_depth: 0, and layout_type: "freeform". Do NOT invent UI elements.
+7. Extract ONLY components that are strictly visible in the image pixels. Do NOT hallucinate elements that might be off-screen, hidden behind menus, or implied by the layout.

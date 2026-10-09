@@ -244,11 +244,12 @@ class Manifest:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA cache_size=-64000")
+        self._conn.execute("PRAGMA cache_size=-524288")  # 512 MB in-memory page cache (tuned for 128GB RAM)
         self._conn.execute("PRAGMA temp_store=MEMORY")
-        self._conn.execute("PRAGMA mmap_size=268435456")
+        self._conn.execute("PRAGMA mmap_size=2147483648")  # 2 GB memory-mapped I/O for zero-copy queries
         self._conn.execute("PRAGMA foreign_keys=ON")
-        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._conn.execute("PRAGMA busy_timeout=30000")  # 30s lock wait tolerance for heavy concurrent transactions
+        self._conn.execute("PRAGMA wal_autocheckpoint=10000")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
         self._run_column_migrations()
@@ -965,6 +966,13 @@ class Manifest:
             ).fetchall()
             borderline_ids.extend(r["id"] for r in rows)
         return borderline_ids
+
+    def get_ids_by_status(self, status: str) -> list[str]:
+        """Fast projection returning all record IDs with a specific status using index."""
+        rows = self._conn.execute(
+            "SELECT id FROM records WHERE status = ?", (status,)
+        ).fetchall()
+        return [r["id"] for r in rows]
 
     # ── Dataset Versions ──────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ safety classification (first pass), license text parsing, audit pass.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 from data_forge.config import PipelineConfig
@@ -61,7 +62,10 @@ class Tier1Engine:
         return result if isinstance(result, SafetyOutput) else None
 
     async def generate_caption(
-        self, image_path: Path, source_caption_hint: str | None = None
+        self,
+        image_path: Path,
+        source_caption_hint: str | None = None,
+        image_payload: tuple[str, str] | None = None,
     ) -> CaptionOutput | None:
         prompt = self._config.get_prompt("recaption")
         # New: fold in the source dataset's own caption/label (e.g.
@@ -81,6 +85,7 @@ class Tier1Engine:
         result = await self._client.complete(
             prompt=prompt,
             image_path=image_path,
+            image_payload=image_payload,
             schema=CaptionOutput,
             max_tokens=self._config.get_stage("s05_recaption").get(
                 "max_caption_tokens", 512
@@ -89,12 +94,15 @@ class Tier1Engine:
         return result if isinstance(result, CaptionOutput) else None
 
     async def extract_structure(
-        self, image_path: Path
+        self,
+        image_path: Path,
+        image_payload: tuple[str, str] | None = None,
     ) -> StructureOutput | None:
         prompt = self._config.get_prompt("structural_extraction")
         result = await self._client.complete(
             prompt=prompt,
             image_path=image_path,
+            image_payload=image_payload,
             schema=StructureOutput,
             max_tokens=self._config.get_stage("s06_structure").get(
                 "max_structure_tokens", 2048
@@ -129,21 +137,22 @@ class Tier1Engine:
         caption_prompt = self._config.get_prompt("audit_caption")
         caption_full_prompt = f"{caption_prompt}\n\n## Caption to Verify\n{caption}"
 
-        caption_result = await self._client.complete(
-            prompt=caption_full_prompt,
-            image_path=image_path,
-            schema=AuditCaptionOutput,
-            max_tokens=1024,
-        )
-
         structure_prompt = self._config.get_prompt("audit_structure")
-        structure_full_prompt = f"{structure_prompt}\n\n## Structural JSON to Verify\n{structure_json}"
+        structure_full_prompt = f"{structure_prompt}\n\n## Structure to Verify\n{structure_json}"
 
-        structure_result = await self._client.complete(
-            prompt=structure_full_prompt,
-            image_path=image_path,
-            schema=AuditStructureOutput,
-            max_tokens=1024,
+        caption_result, structure_result = await asyncio.gather(
+            self._client.complete(
+                prompt=caption_full_prompt,
+                image_path=image_path,
+                schema=AuditCaptionOutput,
+                max_tokens=1024,
+            ),
+            self._client.complete(
+                prompt=structure_full_prompt,
+                image_path=image_path,
+                schema=AuditStructureOutput,
+                max_tokens=1024,
+            ),
         )
 
         if not isinstance(caption_result, AuditCaptionOutput) or not isinstance(structure_result, AuditStructureOutput):

@@ -83,9 +83,9 @@ class TestPreferencePairsSafetyGate:
         _write_pair(pref_root, "pickapic_v2", "p0000001")
 
         stage = PreferencePairsStage()
-        result = await stage.run(manifest, config, [], engine=None)
+        with pytest.raises(RuntimeError, match="active Tier-1 engine"):
+            await stage.run(manifest, config, [], engine=None)
 
-        assert result.records_processed == 0
         meta_path = pref_root / "pickapic_v2" / "p0000001.json"
         meta = json.loads(meta_path.read_text())
         assert "dedup_status" not in meta, "must not be marked processed without a safety pass"
@@ -246,4 +246,3 @@ class TestPreferencePairsSafetyGate:
         assert result.records_processed == 1
         # pair_inverted and pair_degenerate are both counted in dropped_duplicate (2 dropped)
         assert result.metadata["dropped_duplicate"] == 2
-

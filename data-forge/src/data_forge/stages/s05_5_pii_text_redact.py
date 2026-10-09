@@ -17,6 +17,7 @@ redaction box over the matched text region on the scrubbed image itself, so
 recorded.
 """
 
+import asyncio
 import concurrent.futures
 import math
 import multiprocessing
@@ -189,8 +190,11 @@ class PIITextRedactStage(Stage):
                 return {"id": rec.id, "error": f"Text-PII redaction failed: {e}"}
 
         updates: list[dict[str, Any]] = []
+        loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for res in executor.map(_process_redaction, records):
+            tasks = [loop.run_in_executor(executor, _process_redaction, rec) for rec in records]
+            for coro in asyncio.as_completed(tasks):
+                res = await coro
                 if res.get("error"):
                     updates.append({
                         "id": res["id"],
