@@ -96,6 +96,7 @@ class SketchBackend(ModelBackend):
             import gc
 
             self._model = None
+            self._text_embedder = None
             gc.collect()
             try:
                 import torch

@@ -37,21 +37,40 @@ class OCREnrichmentStage(Stage):
         records = [r for r in records if r.status in ("structured", "recaptioned")]
         if not records:
             return result
-        if engine is None:
+        from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
+
+        needs_ocr = any(
+            not (r.domain == "general_design" or r.source_dataset in _GENERAL_DESIGN_SOURCES)
+            for r in records
+        )
+        if needs_ocr and engine is None:
             updates = [{
                 "id": rec.id,
                 "new_status": "excluded_failed",
                 "reason": "OCR inference engine unavailable; refusing unscanned text",
                 "exclusion_reason": "ocr_engine_unavailable",
-            } for rec in records]
+            } for rec in records if not (rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES)]
             manifest.bulk_update_records(updates, stage="ocr_enrichment")
             result.records_failed = len(updates)
-            return result
+            records = [r for r in records if (r.domain == "general_design" or r.source_dataset in _GENERAL_DESIGN_SOURCES)]
+            if not records:
+                return result
 
-        ocr = OCREngine(engine, config)
+        ocr = OCREngine(engine, config) if (needs_ocr and engine is not None) else None
         processed = failed = 0
 
         async def _process(rec):
+            # Bypass OCR extraction for non-UI general visual datasets (e.g. pd12m, cc12m)
+            from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
+            if rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+                from data_forge.inference.structured_output import OCROutput
+                empty_ocr = OCROutput(
+                    text_regions=[],
+                    primary_language="en",
+                    total_text_regions=0,
+                    confidence=1.0,
+                )
+                return rec.id, empty_ocr, None
             try:
                 raw_path = rec.scrubbed_image_path or rec.image_path
                 if not raw_path:

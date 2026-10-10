@@ -567,48 +567,80 @@ def main() -> int:
             return None
         policy_transformer.eval()
         margins, losses = [], []
-        with torch.no_grad():
-            for i, batch in enumerate(val_dataloader):
-                if i >= args.val_batches:  # cap eval cost, same discipline as sketch/train.py's val_batches
-                    break
-                chosen_latents = vae.encode(batch["chosen_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
-                rejected_latents = vae.encode(batch["rejected_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
-                chosen_latents = chosen_latents * vae.config.scaling_factor
-                rejected_latents = rejected_latents * vae.config.scaling_factor
-                bsz = chosen_latents.shape[0]
-                u = compute_density_for_timestep_sampling(
-                    weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
-                )
-                u = apply_flow_matching_shift(u, fm_shift)
-                sigma_c = u.to(chosen_latents.device).view(bsz, 1, 1, 1)
-                u_r = compute_density_for_timestep_sampling(
-                    weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
-                )
-                u_r = apply_flow_matching_shift(u_r, fm_shift)
-                sigma_r = u_r.to(rejected_latents.device).view(bsz, 1, 1, 1)
-                noise_c, noise_r = torch.randn_like(chosen_latents), torch.randn_like(rejected_latents)
-                noisy_c = noise_latent_at_timestep(chosen_latents, noise_c, sigma_c)
-                noisy_r = noise_latent_at_timestep(rejected_latents, noise_r, sigma_r)
-                target_c = flow_matching_velocity_target(chosen_latents, noise_c)
-                target_r = flow_matching_velocity_target(rejected_latents, noise_r)
-                prompt_embeds = policy_pipe.encode_prompt(batch["prompt"])
-                if isinstance(prompt_embeds, torch.Tensor):
-                    prompt_embeds = prompt_embeds.to(accelerator.device)
-                elif isinstance(prompt_embeds, (tuple, list)):
-                    prompt_embeds = tuple(t.to(accelerator.device) if isinstance(t, torch.Tensor) else t for t in prompt_embeds)
-                pv_c = policy_transformer(noisy_c, sigma_c.flatten(), prompt_embeds).sample
-                pv_r = policy_transformer(noisy_r, sigma_r.flatten(), prompt_embeds).sample
-                ref_transformer.to(accelerator.device)
-                rv_c = ref_transformer(noisy_c, sigma_c.flatten(), prompt_embeds).sample
-                rv_r = ref_transformer(noisy_r, sigma_r.flatten(), prompt_embeds).sample
-                ref_transformer.to("cpu")
-                out = flow_matching_dpo_loss(
-                    policy_v_chosen=pv_c, policy_v_rejected=pv_r, ref_v_chosen=rv_c, ref_v_rejected=rv_r,
-                    target_v_chosen=target_c, target_v_rejected=target_r, beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
-                )
-                margins.append(out.implicit_reward_margin.item())
-                losses.append(out.loss.item())
-        policy_transformer.train()
+
+        def _forward_v(model, noisy_latents, timestep, embeds):
+            try:
+                noisy_list = list(noisy_latents.unsqueeze(2).unbind(dim=0))
+                pred = model(noisy_list, timestep, embeds, return_dict=False)[0]
+                return -torch.stack(pred, dim=0).squeeze(2)
+            except Exception:
+                out = model(noisy_latents, timestep, embeds)
+                if hasattr(out, "sample"):
+                    return out.sample
+                elif isinstance(out, (tuple, list)):
+                    return out[0]
+                return out
+
+        try:
+            with torch.no_grad():
+                for i, batch in enumerate(val_dataloader):
+                    if i >= args.val_batches:  # cap eval cost, same discipline as sketch/train.py's val_batches
+                        break
+                    chosen_latents = vae.encode(batch["chosen_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
+                    rejected_latents = vae.encode(batch["rejected_pixel_values"].to(vae.dtype).to(accelerator.device)).latent_dist.sample()
+                    shift_factor = getattr(vae.config, "shift_factor", 0.0) or 0.0
+                    scaling_factor = getattr(vae.config, "scaling_factor", 1.0) or 1.0
+                    chosen_latents = (chosen_latents - shift_factor) * scaling_factor
+                    rejected_latents = (rejected_latents - shift_factor) * scaling_factor
+                    bsz = chosen_latents.shape[0]
+                    u = compute_density_for_timestep_sampling(
+                        weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
+                    )
+                    u = apply_flow_matching_shift(u, fm_shift)
+                    sigma_c = u.to(chosen_latents.device).view(bsz, 1, 1, 1)
+                    u_r = compute_density_for_timestep_sampling(
+                        weighting_scheme="logit_normal", batch_size=bsz, logit_mean=0.0, logit_std=1.0, mode_scale=1.29,
+                    )
+                    u_r = apply_flow_matching_shift(u_r, fm_shift)
+                    sigma_r = u_r.to(rejected_latents.device).view(bsz, 1, 1, 1)
+                    noise_c, noise_r = torch.randn_like(chosen_latents), torch.randn_like(rejected_latents)
+                    noisy_c = noise_latent_at_timestep(chosen_latents, noise_c, sigma_c)
+                    noisy_r = noise_latent_at_timestep(rejected_latents, noise_r, sigma_r)
+                    target_c = flow_matching_velocity_target(chosen_latents, noise_c)
+                    target_r = flow_matching_velocity_target(rejected_latents, noise_r)
+
+                    encoded = policy_pipe.encode_prompt(
+                        batch["prompt"],
+                        do_classifier_free_guidance=False,
+                    )
+                    prompt_embeds = encoded[0] if isinstance(encoded, (tuple, list)) else encoded
+                    if isinstance(prompt_embeds, list):
+                        prompt_embeds = [t.to(accelerator.device) if isinstance(t, torch.Tensor) else t for t in prompt_embeds]
+                    elif isinstance(prompt_embeds, torch.Tensor):
+                        prompt_embeds = [prompt_embeds.to(accelerator.device)]
+
+                    timestep_normalized = sigma_c.flatten()
+                    pv_c = _forward_v(policy_transformer, noisy_c, timestep_normalized, prompt_embeds)
+                    pv_r = _forward_v(policy_transformer, noisy_r, timestep_normalized, prompt_embeds)
+
+                    ref_transformer.to(accelerator.device)
+                    rv_c = _forward_v(ref_transformer, noisy_c, timestep_normalized, prompt_embeds)
+                    rv_r = _forward_v(ref_transformer, noisy_r, timestep_normalized, prompt_embeds)
+                    ref_transformer.to("cpu")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
+                    out = flow_matching_dpo_loss(
+                        policy_v_chosen=pv_c, policy_v_rejected=pv_r, ref_v_chosen=rv_c, ref_v_rejected=rv_r,
+                        target_v_chosen=target_c, target_v_rejected=target_r, beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
+                    )
+                    margins.append(out.implicit_reward_margin.item())
+                    losses.append(out.loss.item())
+        finally:
+            policy_transformer.train()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
         if not margins:
             return None
         return {

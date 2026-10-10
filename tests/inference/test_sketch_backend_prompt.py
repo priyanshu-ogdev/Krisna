@@ -201,3 +201,20 @@ class TestPlannerOutputReasoningNoteWiring:
         await backend.run(planner_output=planner_output, message="a login screen")
 
         embedder.embed_text.assert_called_once_with("a login screen")
+
+
+class TestSketchBackendUnload:
+    @pytest.mark.asyncio
+    async def test_unload_clears_model_and_text_embedder_references(self):
+        embedder = MagicMock()
+        backend, fake_model = _make_backend_with_fakes(embedder)
+        assert backend._loaded is True
+        assert backend._model is fake_model
+        assert backend._text_embedder is embedder
+
+        await backend.unload()
+
+        assert backend._loaded is False
+        assert backend._model is None
+        assert backend._text_embedder is None
+

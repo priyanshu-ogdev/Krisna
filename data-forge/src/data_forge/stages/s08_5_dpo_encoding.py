@@ -141,20 +141,38 @@ class DPOEncodingStage(Stage):
                                 lat_a = z_vae.encode(t_a.unsqueeze(0)).latent_dist.sample()
                                 lat_b = z_vae.encode(t_b.unsqueeze(0)).latent_dist.sample()
 
-                        save_file(
-                            {"latent_a": lat_a.cpu(), "latent_b": lat_b.cpu()},
-                            str(out_path),
-                        )
-                        (out_dir / f"{pair_id}.meta.json").write_text(
-                            json.dumps({
-                                "pair_id": pair_id,
-                                "prompt": meta.get("prompt", ""),
-                                "preferred": meta.get("preferred"),  # "a" or "b"
-                                "origin": meta.get("origin", source_key),
-                                "label_source": meta.get("label_source", "human"),
-                            }),
-                            encoding="utf-8",
-                        )
+                        lat_a_cpu = lat_a.cpu()
+                        lat_b_cpu = lat_b.cpu()
+                        if not (torch.isfinite(lat_a_cpu).all() and torch.isfinite(lat_b_cpu).all()):
+                            raise ValueError(f"Corrupted DPO latent in pair {pair_id}: contains NaN or Inf values")
+
+                        tmp_out = out_path.with_name(f".{out_path.name}.tmp")
+                        try:
+                            save_file(
+                                {"latent_a": lat_a_cpu, "latent_b": lat_b_cpu},
+                                str(tmp_out),
+                            )
+                            import os
+                            os.replace(tmp_out, out_path)
+                        finally:
+                            tmp_out.unlink(missing_ok=True)
+
+                        meta_tmp = (out_dir / f".{pair_id}.meta.json.tmp")
+                        try:
+                            meta_tmp.write_text(
+                                json.dumps({
+                                    "pair_id": pair_id,
+                                    "prompt": meta.get("prompt", ""),
+                                    "preferred": meta.get("preferred"),  # "a" or "b"
+                                    "origin": meta.get("origin", source_key),
+                                    "label_source": meta.get("label_source", "human"),
+                                }),
+                                encoding="utf-8",
+                            )
+                            import os
+                            os.replace(meta_tmp, out_dir / f"{pair_id}.meta.json")
+                        finally:
+                            meta_tmp.unlink(missing_ok=True)
                         p_processed += 1
 
                     except Exception as e:

@@ -347,3 +347,43 @@ async def orchestrator_status() -> dict:
         "low_vram_mode": orchestrator.low_vram,
         "history_len": len(orchestrator.state.history),
     }
+
+
+def main() -> None:
+    """CLI entry point for running the Krisna Inference FastAPI service."""
+    import argparse
+    import os
+    import uvicorn
+
+    parser = argparse.ArgumentParser(
+        prog="krisna-inference",
+        description="Krisna Inference Swap Orchestrator FastAPI service",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("KRISNA_BIND_HOST", "127.0.0.1"),
+        help="Host to bind service to (default: 127.0.0.1 or KRISNA_BIND_HOST)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("KRISNA_PORT", "8420")),
+        help="Port to bind service to (default: 8420 or KRISNA_PORT)",
+    )
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        help="Enable uvicorn auto-reload for development",
+    )
+    args = parser.parse_args()
+
+    uvicorn.run(
+        "krisna_inference.orchestrator.service:app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
+
+
+if __name__ == "__main__":
+    main()

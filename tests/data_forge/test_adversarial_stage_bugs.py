@@ -336,3 +336,24 @@ def test_bulk_update_records_grouping(manifest):
     assert hist1[0]["new_status"] == "quality_scored"
 
 
+@pytest.mark.asyncio
+async def test_ocr_enrichment_bypasses_general_design_sources(manifest, config, sample_image, data_root):
+    """General design non-UI images (pd12m, cc12m) must bypass OCR without calling the engine,
+    preventing prompt echo hallucinations and saving massive GPU compute."""
+    rel_sample = str(sample_image.relative_to(data_root))
+    rec = manifest.create_record(source_dataset="pd12m", image_path=rel_sample)
+    manifest.update_record(rec.id, "test", new_status="structured", domain="general_design")
+
+    from unittest.mock import MagicMock
+    mock_engine = MagicMock()
+    stage = OCREnrichmentStage()
+    res = await stage.run(manifest, config, [rec.id], engine=mock_engine)
+
+    assert res.records_processed == 1
+    updated = manifest.get_record(rec.id)
+    assert updated.ocr_output is not None
+    assert updated.ocr_output["text_regions"] == []
+    assert updated.ocr_output["total_text_regions"] == 0
+
+
+

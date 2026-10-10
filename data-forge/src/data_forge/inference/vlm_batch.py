@@ -186,6 +186,15 @@ class VLMUnifiedPassCoordinator:
         async def _ocr_task() -> Any | None:
             if not run_ocr or self.ocr is None:
                 return None
+            from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
+            if rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+                from data_forge.inference.structured_output import OCROutput
+                return OCROutput(
+                    text_regions=[],
+                    primary_language="en",
+                    total_text_regions=0,
+                    confidence=1.0,
+                )
             try:
                 return await self.ocr.extract_text(
                     ctx.image_path,  # type: ignore[arg-type]

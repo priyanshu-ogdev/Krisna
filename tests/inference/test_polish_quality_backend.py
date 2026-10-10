@@ -13,9 +13,16 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import diffusers
 import pytest
 
 pytest.importorskip("diffusers")
+
+if not hasattr(diffusers, "QwenImageEditPlusPipeline"):
+    try:
+        diffusers.QwenImageEditPlusPipeline = diffusers.QwenImageEditPipeline
+    except AttributeError:
+        pass
 
 from krisna_inference.backends.polish_quality_backend import (
     QwenImageEditBackend,

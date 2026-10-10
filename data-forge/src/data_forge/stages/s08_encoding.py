@@ -110,6 +110,9 @@ class EncodingStage(Stage):
         def _atomic_latent(
             path: Path, tensors: dict[str, torch.Tensor], input_fingerprint: str
         ) -> None:
+            for name, tensor in tensors.items():
+                if not torch.isfinite(tensor).all():
+                    raise ValueError(f"Corrupted tensor '{name}': contains NaN or Inf values")
             temp_path = path.with_name(f".{path.name}.tmp")
             try:
                 save_file(
@@ -152,10 +155,16 @@ class EncodingStage(Stage):
                     return False
                 with safe_open(str(z_path), framework="pt", device="cpu") as latent_file:
                     metadata = latent_file.metadata() or {}
-                    return (
-                        metadata.get("input_fingerprint") == fingerprint
-                        and "latent" in latent_file.keys()
-                    )
+                    if (
+                        metadata.get("input_fingerprint") != fingerprint
+                        or "latent" not in latent_file.keys()
+                    ):
+                        return False
+                    cached_tensor = latent_file.get_tensor("latent")
+                    if not torch.isfinite(cached_tensor).all():
+                        log.warning("cached_latent_corrupted_nan_inf", record_id=rec.id)
+                        return False
+                    return True
             except Exception as error:
                 log.warning("invalid_encoding_cache", record_id=rec.id, error=str(error))
                 return False
@@ -172,6 +181,12 @@ class EncodingStage(Stage):
         vae_batch_size = stage_cfg.get("vae_batch_size", 16 if enc_dev == "cuda" else 4)
         if vae_batch_size < 1:
             raise ValueError("s08_encoding.vae_batch_size must be at least 1")
+
+        if enc_dev == "cuda" and torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
+
         stage_fingerprint_data["vae_batch_size"] = vae_batch_size
         stage_fingerprint_data["device"] = enc_dev
         stage_fingerprint_data["dtype"] = str(enc_dtype)
@@ -354,24 +369,44 @@ class EncodingStage(Stage):
                     batch = res_items[b_start : b_start + vae_batch_size]
                     batch_tensor = torch.stack(
                         [item["tensor"] for item in batch]
-                    ).to(enc_dev, dtype=enc_dtype, non_blocking=True)
+                    )
+                    if enc_dev == "cuda":
+                        batch_tensor = batch_tensor.pin_memory()
+                    batch_tensor = batch_tensor.to(enc_dev, dtype=enc_dtype, non_blocking=True)
                     try:
                         with torch.inference_mode():
-                            batch_latents = z_vae.encode(batch_tensor).latent_dist.sample().cpu()
+                            if enc_dev == "cuda":
+                                with torch.autocast(device_type="cuda", dtype=enc_dtype):
+                                    batch_latents = z_vae.encode(batch_tensor).latent_dist.sample().cpu()
+                            else:
+                                batch_latents = z_vae.encode(batch_tensor).latent_dist.sample().cpu()
+                        del batch_tensor
                         for item, latent in zip(batch, batch_latents):
-                            _atomic_latent(
-                                item["z_path"],
-                                {"latent": latent.unsqueeze(0).contiguous()},
-                                item["input_fingerprint"],
-                            )
-                            item["encoding_paths"]["z_image_latent"] = _rel(item["z_path"])
-                            item["record_bytes"] += item["z_path"].stat().st_size
+                            try:
+                                _atomic_latent(
+                                    item["z_path"],
+                                    {"latent": latent.unsqueeze(0).contiguous()},
+                                    item["input_fingerprint"],
+                                )
+                                item["encoding_paths"]["z_image_latent"] = _rel(item["z_path"])
+                                item["record_bytes"] += item["z_path"].stat().st_size
+                            except Exception as write_err:
+                                log.warning(
+                                    "latent_save_failed",
+                                    record_id=item["id"],
+                                    error=str(write_err),
+                                )
+                                item["error"] = str(write_err)
+                            finally:
+                                item.pop("tensor", None)
                     except Exception as batch_error:
                         log.warning(
                             "z_image_batch_encode_fallback",
                             batch_size=len(batch),
                             error=str(batch_error),
                         )
+                        if "batch_tensor" in locals():
+                            del batch_tensor
                         if enc_dev == "cuda" and torch.cuda.is_available():
                             torch.cuda.empty_cache()
                         for item in batch:
@@ -380,9 +415,16 @@ class EncodingStage(Stage):
                                     enc_dev, dtype=enc_dtype
                                 )
                                 with torch.inference_mode():
-                                    single_latent = (
-                                        z_vae.encode(single_tensor).latent_dist.sample().cpu()
-                                    )
+                                    if enc_dev == "cuda":
+                                        with torch.autocast(device_type="cuda", dtype=enc_dtype):
+                                            single_latent = (
+                                                z_vae.encode(single_tensor).latent_dist.sample().cpu()
+                                            )
+                                    else:
+                                        single_latent = (
+                                            z_vae.encode(single_tensor).latent_dist.sample().cpu()
+                                        )
+                                del single_tensor
                                 _atomic_latent(
                                     item["z_path"],
                                     {"latent": single_latent.contiguous()},
@@ -396,6 +438,9 @@ class EncodingStage(Stage):
                                     record_id=item["id"],
                                     error=str(error),
                                 )
+                                item["error"] = str(error)
+                            finally:
+                                item.pop("tensor", None)
 
                     for item in batch:
                         rec_item: dict[str, Any] = {"id": item["id"]}
@@ -405,7 +450,7 @@ class EncodingStage(Stage):
                         }.issubset(item["encoding_paths"]):
                             rec_item.update({
                                 "new_status": "excluded_failed",
-                                "reason": "Required latent or control-map artifact was not produced",
+                                "reason": item.get("error", "Required latent or control-map artifact was not produced"),
                                 "exclusion_reason": "encoding_incomplete",
                             })
                             window_failed += 1
@@ -493,6 +538,7 @@ class EncodingStage(Stage):
                     processed += window_processed
                     failed += window_failed
                     total_bytes += window_bytes
+                    prep_window.clear()
                 await feed_task
                 await asyncio.gather(*worker_tasks)
             finally:

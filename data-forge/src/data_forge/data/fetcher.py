@@ -1927,6 +1927,9 @@ class DatasetFetcher:
             try:
                 sha256 = self._compute_sha256(file_path)
                 width, height = self._get_image_dimensions(file_path)
+                if width is None or height is None:
+                    return None
+
 
                 try:
                     rel_path = str(file_path.relative_to(self._config.data_root))
@@ -1993,7 +1996,14 @@ class DatasetFetcher:
         try:
             from PIL import Image
 
+            if not file_path.is_file() or file_path.stat().st_size == 0:
+                return None, None
             with Image.open(file_path) as img:
-                return img.size  # (width, height)
+                img.verify()
+                w, h = img.size
+                if w <= 0 or h <= 0:
+                    return None, None
+                return w, h
         except Exception:
             return None, None
+

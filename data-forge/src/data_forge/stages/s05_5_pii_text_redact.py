@@ -142,35 +142,36 @@ class PIITextRedactStage(Stage):
                         "id": rec.id,
                         "error": "PII detected in text metadata without a usable image bounding box",
                     }
-                with Image.open(img_path) as source_image:
-                    image_format = source_image.format
-                    img = source_image.convert("RGB")
-                w, h = img.size
-                draw = ImageDraw.Draw(img)
-                for bbox in boxes_to_redact:
-                    x1, y1, x2, y2 = bbox
-                    if all(0.0 <= coordinate <= 1.0 for coordinate in bbox):
-                        px1, py1, px2, py2 = x1 * w, y1 * h, x2 * w, y2 * h
-                    else:
-                        px1, py1, px2, py2 = x1, y1, x2, y2
-                    px1 = max(0, min(w, px1))
-                    py1 = max(0, min(h, py1))
-                    px2 = max(0, min(w, px2))
-                    py2 = max(0, min(h, py2))
-                    if px2 <= px1 or py2 <= py1:
-                        return {
-                            "id": rec.id,
-                            "error": "PII bounding box is empty or outside the image",
-                        }
-                    draw.rectangle([px1, py1, px2, py2], fill=(0, 0, 0))
-
                 if boxes_to_redact:
+                    with Image.open(img_path) as source_image:
+                        image_format = source_image.format
+                        img = source_image.convert("RGB")
+                    w, h = img.size
+                    draw = ImageDraw.Draw(img)
+                    for bbox in boxes_to_redact:
+                        x1, y1, x2, y2 = bbox
+                        if all(0.0 <= coordinate <= 1.0 for coordinate in bbox):
+                            px1, py1, px2, py2 = x1 * w, y1 * h, x2 * w, y2 * h
+                        else:
+                            px1, py1, px2, py2 = x1, y1, x2, y2
+                        px1 = max(0, min(w, px1))
+                        py1 = max(0, min(h, py1))
+                        px2 = max(0, min(w, px2))
+                        py2 = max(0, min(h, py2))
+                        if px2 <= px1 or py2 <= py1:
+                            return {
+                                "id": rec.id,
+                                "error": "PII bounding box is empty or outside the image",
+                            }
+                        draw.rectangle([px1, py1, px2, py2], fill=(0, 0, 0))
+
                     if image_format not in {"JPEG", "PNG", "WEBP", "BMP", "TIFF"}:
                         return {"id": rec.id, "error": f"Unsupported image format for redaction: {image_format}"}
                     temp_path = img_path.with_name(f".{img_path.name}.redacting")
                     save_options = {"quality": 95} if image_format == "JPEG" else {}
                     img.save(temp_path, format=image_format, **save_options)
                     os.replace(temp_path, img_path)
+
                 
                 return {
                     "id": rec.id,

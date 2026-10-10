@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -76,6 +77,9 @@ class QualityStage(Stage):
                 return {"id": rec.id, "status": "excluded_failed", "reason": f"Quality scoring exception: {e}", "exclusion_reason": "inference_failed", "w": w, "h": h}
             if quality_out is None:
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Quality scoring failed", "exclusion_reason": "inference_failed", "w": w, "h": h}
+
+            if quality_out.aesthetic_score is None or math.isnan(quality_out.aesthetic_score) or math.isinf(quality_out.aesthetic_score):
+                return {"id": rec.id, "status": "excluded_failed", "reason": "Invalid aesthetic score (NaN/Inf)", "exclusion_reason": "inference_failed", "w": w, "h": h}
 
             if quality_out.aesthetic_score < threshold:
                 return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Aesthetic score {quality_out.aesthetic_score:.3f} < {threshold}", "exclusion_reason": "below_aesthetic_threshold", "score": quality_out.aesthetic_score, "out": quality_out.model_dump(), "w": w, "h": h}
