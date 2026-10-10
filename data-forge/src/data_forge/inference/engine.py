@@ -172,22 +172,45 @@ class ModelEngine:
 
         log.info("vllm_stopping", model=self._current_model)
 
+        proc = self._vllm_process
+        self._vllm_process = None
+        self._current_model = None
+
         try:
             import psutil
             try:
-                parent = psutil.Process(self._vllm_process.pid)
+                parent = psutil.Process(proc.pid)
                 children = parent.children(recursive=True)
                 for child in children:
-                    child.kill()
-                parent.kill()
+                    try:
+                        child.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                try:
+                    parent.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
                 psutil.wait_procs(children + [parent], timeout=10)
             except psutil.NoSuchProcess:
                 pass
         except Exception as e:
-            log.error("vllm_stop_error", error=str(e))
+            log.warning("vllm_psutil_kill_failed", error=str(e))
+        finally:
+            if sys.platform == "win32":
+                try:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                        check=False,
+                    )
+                except Exception:
+                    pass
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
 
-        self._vllm_process = None
-        self._current_model = None
         if self._vllm_log_handle is not None:
             self._vllm_log_handle.close()
             self._vllm_log_handle = None
@@ -196,8 +219,11 @@ class ModelEngine:
         import gc
         import torch
         gc.collect()
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
             
         await asyncio.sleep(2)
         log.info("vllm_stopped")
@@ -293,20 +319,30 @@ class ModelEngine:
 
     def unload_clip(self) -> None:
         """Unload CLIP model and free GPU memory."""
-        if self._clip_model is None:
+        if self._clip_model is None and self._clip_processor is None:
             return
 
         import gc
-
         import torch
 
-        del self._clip_model
-        del self._clip_processor
-        self._clip_model = None
-        self._clip_processor = None
+        if self._clip_model is not None:
+            try:
+                self._clip_model.to("cpu")
+            except Exception:
+                pass
+            del self._clip_model
+            self._clip_model = None
+
+        if self._clip_processor is not None:
+            del self._clip_processor
+            self._clip_processor = None
+
+        gc.collect()
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
         log.info("clip_unloaded")
 
     @property
@@ -405,16 +441,25 @@ class ModelEngine:
 
     def unload_encoders(self) -> None:
         """Unload all encoder models."""
-        import gc
+        if not self._encoders:
+            return
 
+        import gc
         import torch
 
-        for key in list(self._encoders.keys()):
-            del self._encoders[key]
+        for key, model in list(self._encoders.items()):
+            try:
+                model.to("cpu")
+            except Exception:
+                pass
+            del model
         self._encoders.clear()
+        gc.collect()
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            if hasattr(torch.cuda, "ipc_collect"):
+                torch.cuda.ipc_collect()
         log.info("encoders_unloaded")
 
     def get_encoder(self, key: str) -> Any:

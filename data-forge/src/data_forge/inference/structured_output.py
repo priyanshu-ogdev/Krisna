@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 BBoxCoord = Annotated[float, Field(ge=0.0, le=1.0)]
 
@@ -66,16 +66,46 @@ class CaptionOutput(BaseModel):
         if not isinstance(v, str):
             return str(v) if v else ""
         text = v.strip()
-        # Clean prompt echo headers if present
-        prompt_echos = [
+
+        # Remove markdown code fence wrapping if present
+        if text.startswith("```") and text.endswith("```"):
+            text = re.sub(r"^```(?:markdown|text)?\s*", "", text, flags=re.IGNORECASE)
+            text = re.sub(r"\s*```$", "", text).strip()
+
+        # Scrub special tokens
+        special_tokens = [
+            r"<\|im_start\|>(?:system|user|assistant|tool)?(?:\n|\s+)?",
+            r"<\|im_end\|>",
+            r"<unk>",
+            r"<s>",
+            r"</s>",
+            r"\[PAD\]",
+            r"\[UNK\]",
+            r"\[CLS\]",
+            r"\[SEP\]",
+        ]
+        for token_pat in special_tokens:
+            text = re.sub(token_pat, "", text, flags=re.IGNORECASE).strip()
+
+        # Clean conversational filler / prompt echo prefixes iteratively
+        filler_prefixes = [
+            r"^(?:sure|certainly|of course)[!,\.\s]+(?:here is|here's)[^:]*:\s*",
+            r"^as an ai(?:\s+language model)?[\,\.\s\-]*",
+            r"^as a language model[\,\.\s\-]*",
             r"^you are a ui recaptioning model[\.\s\:\-]*",
             r"^provide a detailed[\,\s]+dense caption[\.\s\:\-]*",
             r"^here is a detailed[\,\s]+dense caption[\.\s\:\-]*",
             r"^here is the caption[\.\s\:\-]*",
             r"^the screenshot contains[\.\s\:\-]*",
         ]
-        for pattern in prompt_echos:
-            text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+        changed = True
+        while changed:
+            changed = False
+            for pattern in filler_prefixes:
+                new_text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+                if new_text != text:
+                    text = new_text
+                    changed = True
         return text
 
     @field_validator("ui_elements_mentioned", mode="before")
@@ -451,6 +481,25 @@ class TextRegion(BaseModel):
     ]
     font_size_class: Literal["small", "medium", "large", "xlarge"] | None = None
 
+    @field_validator("text", mode="before")
+    @classmethod
+    def _validate_text(cls, v: Any) -> str:
+        text = str(v).strip() if v else ""
+        special_tokens = [
+            r"<\|im_start\|>(?:system|user|assistant|tool)?(?:\n|\s+)?",
+            r"<\|im_end\|>",
+            r"<unk>",
+            r"<s>",
+            r"</s>",
+            r"\[PAD\]",
+            r"\[UNK\]",
+            r"\[CLS\]",
+            r"\[SEP\]",
+        ]
+        for token_pat in special_tokens:
+            text = re.sub(token_pat, "", text, flags=re.IGNORECASE).strip()
+        return text
+
     @field_validator("bbox", mode="before")
     @classmethod
     def _validate_bbox(cls, v: Any) -> list[float]:
@@ -527,11 +576,18 @@ class OCROutput(BaseModel):
             "extract all visible text",
             "organized by region",
             "specialized ocr model",
+            "as an ai",
         )
         return [
             r for r in v
-            if not any(phrase in r.text.strip().lower() for phrase in prompt_echos)
+            if r.text.strip()
+            and not any(phrase in r.text.strip().lower() for phrase in prompt_echos)
         ]
+
+    @model_validator(mode="after")
+    def _sync_total_count(self) -> OCROutput:
+        self.total_text_regions = len(self.text_regions)
+        return self
 
 
 # ── Critique Output (Critic Tier / v10 PRD §5.2 Critique Adapter) ───────

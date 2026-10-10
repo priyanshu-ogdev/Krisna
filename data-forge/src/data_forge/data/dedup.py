@@ -427,10 +427,11 @@ class DedupEngine:
         is_cuda = target_device.startswith("cuda")
         model_dtype = getattr(clip_model, "dtype", torch.float16 if is_cuda else torch.float32)
 
-        # Optimize Ampere RTX A6000 Tensor Cores (TF32 precision)
+        # Optimize Ampere RTX A6000 Tensor Cores (TF32 precision & cuDNN benchmark)
         if is_cuda and torch.cuda.is_available():
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
+            torch.backends.cudnn.benchmark = True
 
         all_embeddings: list[np.ndarray] = []
         valid_indices: list[int] = []
@@ -490,15 +491,24 @@ class DedupEngine:
                     else:
                         feats = torch.as_tensor(outputs, device=target_device)
 
-                    # Normalize directly on GPU Tensor Cores before host transfer
                     feats = feats / feats.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
                     embeddings = feats.detach().cpu().numpy().astype(np.float32)
                     all_embeddings.append(embeddings)
                     valid_indices.extend(batch_valid_idx)
 
+                for img in batch_images:
+                    if hasattr(img, "close"):
+                        try:
+                            img.close()
+                        except Exception:
+                            pass
+                batch_images.clear()
+                del inputs
+                del feats
+
                 log.info(
                     "embeddings_batch_progress",
-                    processed=min(batch_start + len(batch_images), len(image_paths)),
+                    processed=min(batch_start + len(batch_valid_idx), len(image_paths)),
                     total=len(image_paths),
                 )
 
@@ -509,6 +519,27 @@ class DedupEngine:
 
         result = np.concatenate(all_embeddings, axis=0)
         result = np.ascontiguousarray(result, dtype=np.float32)
+
+        # Check for NaN / Inf embeddings to prevent FAISS index corruption
+        nan_or_inf = ~np.isfinite(result).all(axis=-1)
+        if np.any(nan_or_inf):
+            corrupt_indices = set(np.where(nan_or_inf)[0])
+            log.warning("corrupted_clip_embeddings_detected", count=len(corrupt_indices))
+            clean_valid_indices: list[int] = []
+            clean_rows: list[np.ndarray] = []
+            for i, orig_idx in enumerate(valid_indices):
+                if i in corrupt_indices:
+                    failed_indices.append(orig_idx)
+                else:
+                    clean_valid_indices.append(orig_idx)
+                    clean_rows.append(result[i])
+            valid_indices = clean_valid_indices
+            if clean_rows:
+                result = np.ascontiguousarray(np.stack(clean_rows, axis=0), dtype=np.float32)
+            else:
+                cfg_obj = getattr(clip_model, "config", None)
+                empty_dim = getattr(cfg_obj, "projection_dim", 768) if cfg_obj else 768
+                return np.empty((0, empty_dim), dtype=np.float32), [], failed_indices
 
         log.info(
             "embeddings_generated",

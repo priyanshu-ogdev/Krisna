@@ -153,3 +153,34 @@ class TestRobustJSONParsing:
         assert not out.caption.lower().startswith("you are a ui recaptioning model")
         assert "A modern blue dashboard" in out.caption
 
+    def test_caption_special_token_and_conversational_filler_removal(self):
+        data = {
+            "caption": "<|im_start|>system\nAs an AI language model, sure! Here is the caption: A sleek user profile interface with navigation bar and dark theme.<|im_end|>",
+            "ui_elements_mentioned": ["navigation_bar"],
+            "confidence": 0.95,
+        }
+        out = CaptionOutput.model_validate(data)
+        assert "<|im_start|>" not in out.caption
+        assert "<|im_end|>" not in out.caption
+        assert "as an ai" not in out.caption.lower()
+        assert out.caption.startswith("A sleek user profile interface")
+
+    def test_ocr_count_sync_and_prompt_echo_filter(self):
+        data = {
+            "text_regions": [
+                {"text": "Login", "bbox": [0.1, 0.1, 0.2, 0.15], "role": "button_label"},
+                {"text": "Specialized OCR model: this screenshot contains", "bbox": [0.0, 0.0, 0.5, 0.1], "role": "other"},
+                {"text": "<|im_start|>Password<|im_end|>", "bbox": [0.1, 0.2, 0.3, 0.25], "role": "input_placeholder"},
+            ],
+            "primary_language": "en",
+            "total_text_regions": 10,  # Deliberate mismatch from model
+            "confidence": 0.98,
+        }
+        out = OCROutput.model_validate(data)
+        # Prompt echo should be filtered, Password token scrubbed, total count synced
+        assert len(out.text_regions) == 2
+        assert out.total_text_regions == 2
+        assert out.text_regions[0].text == "Login"
+        assert out.text_regions[1].text == "Password"
+
+

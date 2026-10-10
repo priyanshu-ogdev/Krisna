@@ -16,8 +16,22 @@ log = get_logger("utils.image_utils")
 
 
 def load_image(path: Path | str) -> Image.Image:
-    """Load an image file and convert to RGB."""
-    return Image.open(str(path)).convert("RGB")
+    """Load an image file, verify data integrity, handle EXIF orientation, and convert to RGB.
+
+    Raises:
+        ValueError: If file is missing or 0 bytes.
+        PIL.UnidentifiedImageError / OSError: If image file is corrupt or truncated.
+    """
+    p = Path(path)
+    if not p.is_file() or p.stat().st_size == 0:
+        raise ValueError(f"Image file is missing or empty (0 bytes): {p}")
+
+    from PIL import ImageOps
+    with Image.open(p) as raw_img:
+        img = ImageOps.exif_transpose(raw_img)
+        img.load()  # Force reading all image chunks to detect truncation or byte corruption immediately
+        return img.convert("RGB")
+
 
 
 def resize_for_model(
@@ -70,17 +84,18 @@ def normalize_for_vae(
     mean: tuple[float, ...] = (0.5, 0.5, 0.5),
     std: tuple[float, ...] = (0.5, 0.5, 0.5),
 ) -> "torch.Tensor":
-    """Normalize tensor from [0, 1] to [-1, 1] for VAE input."""
+    """Normalize tensor from [0, 1] to [-1, 1] for VAE input and clamp NaNs."""
+    import torch
     try:
         import torchvision.transforms.functional as TF
 
-        return TF.normalize(tensor, mean, std)
+        out = TF.normalize(tensor, mean, std)
     except ImportError:
-        import torch
-
         mean_t = torch.tensor(mean, dtype=tensor.dtype, device=tensor.device).view(-1, 1, 1)
         std_t = torch.tensor(std, dtype=tensor.dtype, device=tensor.device).view(-1, 1, 1)
-        return (tensor - mean_t) / std_t
+        out = (tensor - mean_t) / std_t
+    return torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
+
 
 
 def pad_to_multiple(

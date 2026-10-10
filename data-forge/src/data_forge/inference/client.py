@@ -108,11 +108,16 @@ class ImagePayloadCache:
                     img.save(buf, format="JPEG", quality=92, optimize=True)
                     mime = "image/jpeg"
                 return mime, base64.b64encode(buf.getvalue()).decode("ascii")
-        except Exception:
-            # Fallback to direct file read if PIL cannot parse
+        except Exception as e:
+            # Fallback to direct file read if PIL cannot parse (e.g. test dummy bytes or custom formats)
+            if file_size == 0 or not image_path.is_file():
+                log.warning("image_empty_or_missing_cannot_encode", path=str(image_path), error=str(e))
+                raise ValueError(f"Image is missing or empty (0 bytes): {image_path} ({e})") from e
             mime = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/webp" if suffix == ".webp" else "image/png"
             with open(image_path, "rb") as f:
                 return mime, base64.b64encode(f.read()).decode("ascii")
+
+
 
     def clear(self) -> None:
         with self._lock:

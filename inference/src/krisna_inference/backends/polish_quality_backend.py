@@ -42,6 +42,17 @@ from krisna_inference.orchestrator.model_registry import ModelBackend, OOMSimula
 
 log = logging.getLogger("krisna_inference.backends.polish_quality")
 
+try:
+    import diffusers
+
+    if not hasattr(diffusers, "QwenImageEditPlusPipeline"):
+        try:
+            diffusers.QwenImageEditPlusPipeline = diffusers.QwenImageEditPipeline
+        except AttributeError:
+            pass
+except ImportError:
+    pass
+
 
 class QwenImageEditBackend(ModelBackend):
     def __init__(

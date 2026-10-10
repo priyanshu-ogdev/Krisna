@@ -124,17 +124,44 @@ class PreferencePairDataset:
         # lands in the same split across process restarts and DataLoader
         # workers, matching the PRD's own 5%-stratified-holdout
         # convention (§9's data-forge s09_heldout) rather than inventing
-        # a different holdout fraction for this stage.
         assert split in ("train", "val"), f"split must be 'train' or 'val', got {split!r}"
 
-        def _is_val(pair_id: str) -> bool:
-            digest = hashlib.sha256(pair_id.encode("utf-8")).hexdigest()
+        # Group-based deterministic split to strictly prevent data, session,
+        # and prompt leakage. Pairs sharing a session_id or prompt are kept
+        # together in the same split. Train and val splits are strictly disjoint
+        # under all circumstances.
+        groups: dict[str, list[Any]] = {}
+        for p in all_pairs:
+            sess = getattr(p, "session_id", None)
+            prompt = getattr(p, "prompt", None)
+            if sess and str(sess).strip():
+                gkey = f"session:{str(sess).strip()}"
+            elif prompt and str(prompt).strip():
+                gkey = f"prompt:{str(prompt).strip().lower()}"
+            else:
+                gkey = f"id:{p.id}"
+            groups.setdefault(gkey, []).append(p)
+
+        def _is_val_group(key: str) -> bool:
+            digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
             return (int(digest[:8], 16) / 0xFFFFFFFF) < val_fraction
 
-        if split == "val":
-            self.pairs = [p for p in all_pairs if _is_val(p.id)]
+        if val_fraction <= 0.0 or len(groups) <= 1:
+            val_group_keys = set()
+            train_group_keys = set(groups.keys())
         else:
-            self.pairs = [p for p in all_pairs if not _is_val(p.id)]
+            val_group_keys = {k for k in groups if _is_val_group(k)}
+            train_group_keys = {k for k in groups if k not in val_group_keys}
+            # Guard against edge-case where all groups hashed to val (starving train):
+            if not train_group_keys and groups:
+                first_key = sorted(groups.keys())[0]
+                train_group_keys.add(first_key)
+                val_group_keys.discard(first_key)
+
+        if split == "val":
+            self.pairs = [p for k in val_group_keys for p in groups[k]]
+        else:
+            self.pairs = [p for k in train_group_keys for p in groups[k]]
 
         if not self.pairs:
             raise ValueError(

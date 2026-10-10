@@ -221,9 +221,14 @@ class ZImageTurboBackend(ModelBackend):
                     raw_latents = self._pipe.vae.encode(t_sketch).latent_dist.sample()
                     z_sketch = (raw_latents - shift) * sf
 
+                    bridge_generator = (
+                        torch.Generator(device=z_sketch.device).manual_seed(seed)
+                        if seed is not None
+                        else None
+                    )
                     eps = torch.randn_like(
                         z_sketch,
-                        generator=generator,
+                        generator=bridge_generator,
                     )
                     # Optimal Transport Flow-Matching bridge interpolation:
                     latents = (1.0 - eff_bridge_strength) * z_sketch + eff_bridge_strength * eps

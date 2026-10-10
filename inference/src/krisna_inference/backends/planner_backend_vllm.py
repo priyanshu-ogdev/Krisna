@@ -195,12 +195,33 @@ class PlannerBackendVLLM(PlannerBackend):
         self._proc.stdin.write(request)
         self._proc.stdin.flush()
 
-        ready, _, _ = select.select([self._proc.stdout], [], [], effective_timeout)
-        if not ready:
-            raise BackendLoadError(
-                f"Planner (vLLM) worker '{cmd}' timed out after {effective_timeout}s"
-            )
-        line = self._proc.stdout.readline()
+        if sys.platform == "win32":
+            import queue
+            import threading
+
+            q: queue.Queue[str | None] = queue.Queue()
+
+            def _reader():
+                try:
+                    q.put(self._proc.stdout.readline())
+                except Exception:
+                    q.put(None)
+
+            t = threading.Thread(target=_reader, daemon=True)
+            t.start()
+            t.join(timeout=effective_timeout)
+            if t.is_alive():
+                raise BackendLoadError(
+                    f"Planner (vLLM) worker '{cmd}' timed out after {effective_timeout}s"
+                )
+            line = q.get_nowait()
+        else:
+            ready, _, _ = select.select([self._proc.stdout], [], [], effective_timeout)
+            if not ready:
+                raise BackendLoadError(
+                    f"Planner (vLLM) worker '{cmd}' timed out after {effective_timeout}s"
+                )
+            line = self._proc.stdout.readline()
         if not line:
             stderr_tail = self._proc.stderr.read()
             raise BackendLoadError(

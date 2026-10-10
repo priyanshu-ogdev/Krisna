@@ -46,9 +46,12 @@ weights/*
 data_krisna/
 D:*data_krisna*
 
-# OS generated files
+# OS generated files & IDE configs
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+.chatledger/
 
 # Archives
 *.zip

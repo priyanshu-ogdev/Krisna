@@ -123,11 +123,14 @@ class Orchestrator:
                 batch = record_ids[start : start + 800]
                 placeholders = ",".join("?" for _ in batch)
                 rows = self.manifest._conn.execute(
-                    f"SELECT id, status, updated_at FROM records WHERE id IN ({placeholders})",
+                    f"SELECT id, status, updated_at, caption, aesthetic_score, safety_tier, domain, shard_id FROM records WHERE id IN ({placeholders})",
                     batch,
                 ).fetchall()
                 for row in sorted(rows, key=lambda item: item["id"]):
-                    digest.update(f"{row['id']}\0{row['status']}\0{row['updated_at']}\n".encode("utf-8"))
+                    digest.update(
+                        f"{row['id']}\0{row['status']}\0{row['updated_at']}\0{row['caption']}\0"
+                        f"{row['aesthetic_score']}\0{row['safety_tier']}\0{row['domain']}\0{row['shard_id']}\n".encode("utf-8")
+                    )
         return digest.hexdigest()
 
     def _is_stage_complete(

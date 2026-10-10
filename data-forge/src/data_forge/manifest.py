@@ -10,6 +10,7 @@ All mutations are logged with timestamp, stage, and reason for full audit trail.
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import uuid
 from collections.abc import Generator, Iterator
@@ -17,6 +18,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import threading
+import time
 from typing import Any
 
 from data_forge.logging_setup import get_logger
@@ -175,20 +178,48 @@ class ManifestRecord:
     updated_at: str = ""
 
 
+_last_iso_timestamp = 0.0
+_iso_timestamp_lock = threading.Lock()
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    global _last_iso_timestamp
+    with _iso_timestamp_lock:
+        t = time.time()
+        if t <= _last_iso_timestamp:
+            t = _last_iso_timestamp + 0.000001
+        _last_iso_timestamp = t
+        return datetime.fromtimestamp(t, tz=timezone.utc).isoformat()
+
+
+def _sanitize_for_json(obj: Any) -> Any:
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(v) for v in obj]
+    return obj
 
 
 def _json_dumps(obj: Any) -> str | None:
     if obj is None:
         return None
-    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+    sanitized = _sanitize_for_json(obj)
+    return json.dumps(sanitized, ensure_ascii=False, separators=(",", ":"))
 
 
 def _json_loads(s: str | None) -> Any:
-    if s is None:
+    if s is None or not s.strip():
         return None
-    return json.loads(s)
+    try:
+        return json.loads(s)
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        log.warning("manifest_corrupted_json_blob", raw_snippet=s[:100], error=str(e))
+        return None
+
 
 
 def _row_to_record(row: sqlite3.Row) -> ManifestRecord:
@@ -240,6 +271,7 @@ class Manifest:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        is_existing = db_path.is_file() and db_path.stat().st_size > 0
         self._conn = sqlite3.connect(str(db_path), timeout=30.0, isolation_level="IMMEDIATE")
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -250,10 +282,30 @@ class Manifest:
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._conn.execute("PRAGMA busy_timeout=30000")  # 30s lock wait tolerance for heavy concurrent transactions
         self._conn.execute("PRAGMA wal_autocheckpoint=10000")
+        if is_existing:
+            ok, msgs = self.check_integrity(full=False)
+            if not ok:
+                log.error("manifest_db_corrupted_on_open", db_path=str(db_path), msgs=msgs)
+                raise sqlite3.DatabaseError(f"Manifest SQLite database is corrupted: {msgs}")
         self._conn.executescript(_SCHEMA_SQL)
         self._conn.commit()
         self._run_column_migrations()
         log.info("manifest_opened", db_path=str(db_path))
+
+    def check_integrity(self, full: bool = False) -> tuple[bool, list[str]]:
+        """Verify the SQLite database pages and indexes for corruption.
+
+        Runs PRAGMA quick_check (or PRAGMA integrity_check if full=True).
+        Returns (is_healthy, messages).
+        """
+        pragma = "integrity_check" if full else "quick_check"
+        cur = self._conn.execute(f"PRAGMA {pragma}")
+        rows = [r[0] for r in cur.fetchall()]
+        is_ok = len(rows) == 1 and rows[0].lower() == "ok"
+        if not is_ok:
+            log.error("manifest_integrity_check_failed", pragma=pragma, messages=rows)
+        return is_ok, rows
+
 
     def _run_column_migrations(self) -> None:
         """Add any columns introduced after a manifest.db already existed.
