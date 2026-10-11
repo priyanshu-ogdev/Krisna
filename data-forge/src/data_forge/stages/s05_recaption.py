@@ -15,6 +15,7 @@ from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
 from data_forge.utils.image_utils import load_image
+from data_forge.utils.path_safety import resolve_data_path
 
 log = get_logger("stages.s05")
 
@@ -39,8 +40,10 @@ class RecaptionStage(Stage):
             raw_path = rec.scrubbed_image_path or rec.image_path
             if not raw_path:
                 return {"id": rec.id, "status": "excluded_failed", "reason": "No image path specified", "exclusion_reason": "image_missing"}
-            p = Path(raw_path)
-            img_path = p if p.is_absolute() else (config.data_root / p)
+            try:
+                img_path = resolve_data_path(config.data_root, raw_path)
+            except Exception as e:
+                return {"id": rec.id, "status": "excluded_failed", "reason": f"Image path resolution failed: {e}", "exclusion_reason": "image_missing"}
             if not img_path.is_file():
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
 

@@ -17,7 +17,7 @@ datasets:
       download_mode: url_list
       image_url_column: url
       caption_column: caption
-      sample_size: 800000
+      sample_size: 45000
       download_concurrency: 32
       download_timeout_seconds: 15
       note: Metadata-only repo; images are fetched via URL column, not bundled files.
@@ -71,7 +71,7 @@ datasets:
       download_mode: hf_parquet_images
       file_patterns:
         - '*.parquet'
-      sample_size: 50000
+      sample_size: 25000
   ui_vision:
     display_name: UI-Vision
     source_type: huggingface
@@ -122,7 +122,7 @@ datasets:
       file_patterns:
         - '*.parquet'
       image_column: image
-      sample_size: 50000
+      sample_size: 25000
   android_control:
     display_name: Android Control (Google Research)
     source_type: huggingface
@@ -141,7 +141,7 @@ datasets:
         - '*.parquet'
       image_column: png
       caption_column: json.messages.0.content
-      sample_size: 25000
+      sample_size: 20000
   mind2web:
     display_name: Multimodal Mind2Web (Web Screens)
     source_type: huggingface
@@ -162,7 +162,7 @@ datasets:
       caption_column: confirmed_task
       viewport_crop: true
       max_aspect_ratio: 2.0
-      sample_size: 25000
+      sample_size: 10000
   showui_desktop:
     display_name: ShowUI Desktop
     source_type: huggingface
@@ -193,6 +193,7 @@ datasets:
       file_patterns:
         - '*.parquet'
       image_column: image
+      sample_size: 10000
   websight:
     display_name: WebSight
     source_type: huggingface
@@ -208,7 +209,7 @@ datasets:
       file_patterns:
         - '*.parquet'
       image_column: image
-      sample_size: 150000
+      sample_size: 25000
   gamelabel_10k:
     display_name: GameLabel-10K
     source_type: huggingface
@@ -290,7 +291,7 @@ datasets:
       download_mode: hf_parquet_images
       file_patterns:
         - '*.parquet'
-      sample_size: 150000
+      sample_size: 25000
   aria_ui:
     display_name: Aria-UI
     source_type: huggingface
@@ -305,7 +306,7 @@ datasets:
       file_patterns:
         - 'desktop/*.zip'
         - 'desktop/*.json'
-      sample_size: 100000
+      sample_size: 20000
   webui:
     display_name: WebUI (biglab)
     source_type: huggingface
@@ -336,7 +337,7 @@ datasets:
       file_patterns:
         - 'parquet/*.parquet'
       image_column: image
-      sample_size: 50000
+      sample_size: 15000
 watcher_scan_targets:
   - query: UI design dataset
     platforms:

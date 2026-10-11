@@ -221,9 +221,12 @@ class ModelEngine:
         gc.collect()
         gc.collect()
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            if hasattr(torch.cuda, "ipc_collect"):
-                torch.cuda.ipc_collect()
+            try:
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+            except Exception:
+                pass
             
         await asyncio.sleep(2)
         log.info("vllm_stopped")
@@ -340,9 +343,12 @@ class ModelEngine:
         gc.collect()
         gc.collect()
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            if hasattr(torch.cuda, "ipc_collect"):
-                torch.cuda.ipc_collect()
+            try:
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+            except Exception:
+                pass
         log.info("clip_unloaded")
 
     @property
@@ -457,9 +463,12 @@ class ModelEngine:
         gc.collect()
         gc.collect()
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            if hasattr(torch.cuda, "ipc_collect"):
-                torch.cuda.ipc_collect()
+            try:
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+            except Exception:
+                pass
         log.info("encoders_unloaded")
 
     def get_encoder(self, key: str) -> Any:

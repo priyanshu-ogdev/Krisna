@@ -15,8 +15,8 @@ from typing import Any
 from data_forge.config import PipelineConfig
 from data_forge.data.schema_validator import SchemaValidator
 from data_forge.inference.client import ImagePayloadCache, get_global_image_cache
-from data_forge.inference.ocr import OCREngine, OCROutput
-from data_forge.inference.structured_output import CaptionOutput, StructureOutput
+from data_forge.inference.ocr import OCREngine
+from data_forge.inference.structured_output import CaptionOutput, OCROutput, StructureOutput
 from data_forge.inference.tier1 import Tier1Engine
 from data_forge.logging_setup import get_logger
 from data_forge.manifest import ManifestRecord
