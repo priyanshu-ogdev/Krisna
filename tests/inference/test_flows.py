@@ -16,7 +16,7 @@ async def test_conversational_turn_flow(started_orchestrator: SwapOrchestrator, 
     assert result.stage == SessionStage.SKETCHING
     assert len(result.conversation_history) == 2  # user + planner
     assert result.conversation_history[0].role == "user"
-    assert result.sketch_tokens.revision == 1
+    assert result.layout.revision == 1
     # D2: First turn captures original_intent
     assert result.constraints.original_intent == "make a login screen"
 
@@ -38,7 +38,7 @@ async def test_finalize_flow_happy_path(
 ):
     result = await flows.finalize(started_orchestrator, store, sketch_ready_state.session_id)
     assert result.stage == SessionStage.FINALIZED
-    assert result.finalize_output.renderer_used == "z_image_turbo"
+    assert result.finalize_output.renderer_used == "qwen_image_2_1"
     assert result.finalize_output.image_ref is not None
     # Baseline restored after the flow completes.
     assert started_orchestrator.conversation_available()
@@ -131,7 +131,7 @@ async def test_finalize_flow_quality_tier(
     started_orchestrator: SwapOrchestrator, store: DesignStateStore, sketch_ready_state
 ):
     result = await flows.finalize(started_orchestrator, store, sketch_ready_state.session_id, quality=True)
-    assert result.finalize_output.renderer_used == "qwen_image_edit_2511"
+    assert result.finalize_output.renderer_used == "qwen_image_2_1"
 
 
 @pytest.mark.asyncio
@@ -140,14 +140,14 @@ async def test_finalize_flow_handoff_hook_invoked(
 ):
     calls = []
 
-    def hook(vq_tokens):
-        calls.append(vq_tokens)
-        return f"pixel_ref_for::{vq_tokens}"
+    def hook(wireframe_ref):
+        calls.append(wireframe_ref)
+        return f"pixel_ref_for::{wireframe_ref}"
 
     await flows.finalize(
         started_orchestrator, store, sketch_ready_state.session_id, handoff_hook=hook
     )
-    assert calls == ["vq_grid_ref_abc123"]
+    assert calls == ["wireframe://test/draft.png"]
 
 
 @pytest.mark.asyncio
@@ -179,16 +179,16 @@ async def test_critique_flow_happy_path(
     result = await flows.critique_pass(started_orchestrator, store, finalized_state.session_id)
     assert result.stage == SessionStage.FINALIZED  # returns to FINALIZED, not stuck CRITIQUING
     assert result.critique.requested is True
-    assert result.critique.source == "gemma4_31b"
+    assert result.critique.source == "planner_review"
     assert result.critique.result is not None
-    assert result.critique.result.critique_source == "gemma4_31b_frozen"
+    assert result.critique.result.critique_source == "planner_review"
 
 
 @pytest.mark.asyncio
 async def test_critique_flow_oom_rolls_back_stage(
     started_orchestrator: SwapOrchestrator, store: DesignStateStore, finalized_state
 ):
-    started_orchestrator.backends[Tier.CRITIC].fail_loads = 999
+    started_orchestrator.backends[Tier.PLANNER].fail_runs = 999
     with pytest.raises(flows.FlowError):
         await flows.critique_pass(started_orchestrator, store, finalized_state.session_id)
 
@@ -276,8 +276,8 @@ async def test_conversational_turn_multi_turn_history_and_critique_propagation(
 
     # Turn 2: Prior history (user + planner) and prior critique should be passed
     await flows.conversational_turn(started_orchestrator, store, state.session_id, "Make the buttons neon green")
-    assert len(captured_kwargs) == 2
-    turn2_kwargs = captured_kwargs[1]
+    assert len(captured_kwargs) == 3  # turn 1 + critique pass (planner review) + turn 2
+    turn2_kwargs = captured_kwargs[2]
     assert len(turn2_kwargs["conversation_history"]) == 2  # user + planner from turn 1
     assert turn2_kwargs["conversation_history"][0]["role"] == "user"
     assert turn2_kwargs["conversation_history"][0]["content"] == "Create a dark crypto wallet"

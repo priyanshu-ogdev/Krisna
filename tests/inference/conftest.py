@@ -34,7 +34,8 @@ def store(tmp_path) -> DesignStateStore:
 @pytest.fixture
 def sketch_ready_state(store: DesignStateStore) -> DesignState:
     state = store.create()
-    state.sketch_tokens.vq_tokens = "vq_grid_ref_abc123"
+    state.layout.layout_ref = "layout://test/draft.json"
+    state.layout.wireframe_ref = "wireframe://test/draft.png"
     state.touch()
     return store.save(state, expected_revision=0)
 
@@ -45,7 +46,8 @@ def finalized_state(store: DesignStateStore, sketch_ready_state: DesignState) ->
 
     state = sketch_ready_state
     state.stage = SessionStage.FINALIZED
-    state.finalize_output.renderer_used = "z_image_turbo"
+    state.finalize_output.renderer_used = "qwen_image_2_1"
     state.finalize_output.image_ref = "render://test/final.png"
     state.touch()
     return store.save(state, expected_revision=state.revision - 1)
+

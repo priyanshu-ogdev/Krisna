@@ -69,32 +69,12 @@ REGISTRY: dict[Tier, ModelSpec] = {
         always_resident=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
-        # bf16, ~14GB ESTIMATE (not yet measured on real hardware) —
-        # corrected from a previous 8.0GB figure that assumed NF4
-        # quantization this backend never actually applies (confirmed by
-        # reading polish_default_backend.py: `torch_dtype=resolve_dtype
-        # (self.dtype)` with no `quantization_config`, and deliberately
-        # so — see that file's `load()` comment on why NF4 here would be
-        # a train/inference precision mismatch against the bf16/fp16-
-        # trained LoRA). Arithmetic: Z-Image-Turbo is 6B params (Tongyi-
-        # MAI, 2025) at 2 bytes/param bf16 = ~12GB for the DiT alone,
-        # plus a text encoder and VAE the model card doesn't break out
-        # separately — 14.0 is a conservative round-up, consistent with
-        # Tongyi-MAI's own published "<16GB" full-pipeline guidance as an
-        # upper bound. Needs a real hardware measurement to replace this
-        # estimate with a confirmed number — see
-        # docs/review/13_ram_offload_and_precision_audit.md.
-        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo", vram_gb=14.0,
-        quantization="bf16 (deliberately unquantized — matches LoRA training precision)",
+        tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
+        quantization="bf16 (DreamBooth LoRA adapter)",
     ),
     Tier.POLISH_QUALITY: ModelSpec(
-        tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511", vram_gb=16.0,
-        # BUG FIX: was "NF4 (frozen backbone)" — that wording implies a
-        # trainable adapter sits on top of a frozen quantized backbone
-        # (the standard LoRA framing), when under the final PRD this
-        # model has NO adapter at all — the whole pipeline runs frozen,
-        # zero-shot ICL + SDEdit-style partial denoising only.
-        quantization="NF4 (fully frozen — no adapter)",
+        tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
+        quantization="bf16 (high-fidelity 40-step sampling)",
         fallback_tier=Tier.POLISH_DEFAULT,
     ),
 }
@@ -152,43 +132,14 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: REGISTRY[Tier.PLANNER],   # unchanged — already small
     Tier.SKETCH: REGISTRY[Tier.SKETCH],     # unchanged — already small
     Tier.POLISH_DEFAULT: ModelSpec(
-        tier=Tier.POLISH_DEFAULT, name="Z-Image-Turbo",
-        # ESTIMATE, same caveat as the REGISTRY entry above — this one
-        # additionally assumes `enable_model_cpu_offload()`'s real-world
-        # saving here is bounded by which single submodule dominates this
-        # model's size. Z-Image-Turbo's DiT transformer (the bulk of its
-        # 6B params) can't itself be offloaded away mid-forward-pass —
-        # only the text encoder and VAE can sit on CPU while idle. So the
-        # GPU floor is roughly "DiT alone" (~12GB) rather than "DiT +
-        # everything else" (~14GB): a real but modest ~2GB saving, unlike
-        # Polish Quality's offload (mechanism 1 above, same call) where
-        # more of the pipeline's weight is outside its single largest
-        # submodule. Fits its own 12GB low-VRAM envelope with
-        # approximately zero headroom. UPGRADE: this comment used to say
-        # "same situation as the Critic entry below" — that cross-
-        # reference went stale once Critic's own zero-headroom sizing was
-        # fixed (11.5/45.0, below) and this comment wasn't updated
-        # alongside it. Genuinely different situations, not just an
-        # unfixed duplicate: Critic's GPU-resident target was a
-        # continuously adjustable knob (how much of an LLM stays
-        # resident vs. offloads, with a computable RAM cost per GB
-        # moved), so shading it down and recomputing the RAM side was a
-        # real, justified fix. This tier's 12GB figure is already "the
-        # DiT alone, everything else already offloaded" — there's no
-        # further partial-offload knob to turn without switching to
-        # `enable_sequential_cpu_offload()`'s per-layer latency cost,
-        # which this project has declined elsewhere for the same reason.
-        # See swap_orchestrator.py's `vram_safety_margin_gb` for the
-        # opt-in mitigation, and validate this split against a real run
-        # before trusting it at the boundary.
-        vram_gb=12.0, ram_gb=2.0,
-        quantization="bf16 (deliberately unquantized) + diffusers enable_model_cpu_offload()",
+        tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1",
+        vram_gb=8.0, ram_gb=8.0,
+        quantization="bf16 + diffusers enable_model_cpu_offload()",
     ),
     Tier.POLISH_QUALITY: ModelSpec(
-        tier=Tier.POLISH_QUALITY, name="Qwen-Image-Edit-2511",
-        vram_gb=10.0, ram_gb=10.0,   # ESTIMATE — see mechanism (1) above;
-                                      # validate against a real run and adjust
-        quantization="NF4 + diffusers enable_model_cpu_offload()",
+        tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1",
+        vram_gb=10.0, ram_gb=10.0,
+        quantization="bf16 + diffusers enable_model_cpu_offload()",
         fallback_tier=Tier.POLISH_DEFAULT,
     ),
 }

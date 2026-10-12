@@ -41,44 +41,24 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
         from krisna_inference.backends.layout_backend import LayoutBackend
         return LayoutBackend(spec)
 
-    if spec.tier == Tier.POLISH_DEFAULT:
-        from krisna_inference.backends.polish_default_backend import ZImageTurboBackend
+    if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY):
+        from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
 
-        # Z-Image-Turbo is the ONE renderer this project actually fine-tunes
-        # (LoRA + Diffusion-DPO per the final PRD) — this LoRA wiring is
-        # correct and must stay, unlike the three removed above/below.
-        # WAS "Not wired to _LOW_VRAM — 8.0GB already fits a 12GB target."
-        # That 8.0GB figure assumed NF4 quantization this backend never
-        # applies (bf16 only, by design — see that file's load()). Real
-        # bf16 footprint is ~14GB, which does NOT already fit a 12GB
-        # target, so this now wires the same enable_cpu_offload mechanism
-        # Polish Quality uses. See model_registry.py's LOW_VRAM_REGISTRY
-        # entry for this tier and docs/review/13_ram_offload_and_precision_audit.md.
-        model_id = os.environ.get("KRISNA_POLISH_DEFAULT_MODEL_ID", "Tongyi-MAI/Z-Image-Turbo")
-        return ZImageTurboBackend(
+        model_id = os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
+        lora_path = os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH") if spec.tier == Tier.POLISH_DEFAULT else None
+        strength = float(
+            os.environ.get("KRISNA_POLISH_QUALITY_EDIT_STRENGTH", "0.65")
+            if spec.tier == Tier.POLISH_QUALITY
+            else os.environ.get("KRISNA_POLISH_DEFAULT_STRENGTH", "0.6")
+        )
+        steps = 40 if spec.tier == Tier.POLISH_QUALITY else 28
+
+        return QwenImage21Backend(
             spec,
             model_id=model_id,
-            lora_adapter_path=os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
-            # UPGRADE (matches polish-quality's KRISNA_POLISH_QUALITY_EDIT_STRENGTH
-            # convention, now that this tier also does real image-conditioned
-            # editing instead of the previous, buggy blank-slate txt2img —
-            # see polish_default_backend.py's module docstring).
-            strength=float(os.environ.get("KRISNA_POLISH_DEFAULT_STRENGTH", "0.6")),
-            enable_cpu_offload=_LOW_VRAM,
-        )
-
-    if spec.tier == Tier.POLISH_QUALITY:
-        from krisna_inference.backends.polish_quality_backend import QwenImageEditBackend
-
-        # REMOVED: KRISNA_POLISH_QUALITY_LORA_PATH. Qwen-Image-Edit-2511
-        # ships frozen — zero-shot ICL edit conditioning + SDEdit-style
-        # partial denoising at inference time. See polish_quality_backend.py.
-        return QwenImageEditBackend(
-            spec,
-            edit_strength=float(os.environ.get("KRISNA_POLISH_QUALITY_EDIT_STRENGTH", "0.65")),
-            # enable_model_cpu_offload() ONLY — never
-            # enable_sequential_cpu_offload(), which has a confirmed
-            # incompatibility with bnb NF4 (diffusers GH issue #10800).
+            lora_adapter_path=lora_path,
+            edit_strength=strength,
+            num_inference_steps=steps,
             enable_cpu_offload=_LOW_VRAM,
         )
 

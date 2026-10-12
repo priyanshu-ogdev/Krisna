@@ -11,7 +11,7 @@ def test_default_state_shape_matches_prd_5_1():
         "stage",
         "conversation_history",
         "constraints",
-        "sketch_tokens",
+        "layout",
         "finalize_output",
         "critique",
         "preference_pair_refs",
@@ -31,13 +31,13 @@ def test_append_turn_bumps_revision():
 def test_finalize_eligibility_requires_sketch_tokens():
     state = DesignState()
     assert not state.is_finalize_eligible()
-    state.sketch_tokens.vq_tokens = "grid_ref_1"
+    state.layout.layout_ref = "layout://test/1.json"
     assert state.is_finalize_eligible()
 
 
 def test_finalize_eligibility_false_once_finalized():
     state = DesignState()
-    state.sketch_tokens.vq_tokens = "grid_ref_1"
+    state.layout.layout_ref = "layout://test/1.json"
     state.stage = SessionStage.FINALIZED
     assert not state.is_finalize_eligible()
 

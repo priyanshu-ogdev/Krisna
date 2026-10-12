@@ -296,15 +296,18 @@ class SwapOrchestrator:
         if not self.conversation_available():
             raise SwapBusyError("Planner is not resident — review is unavailable during a swap.")
         async with self._swap_lock:
-            result = await self.backends[Tier.PLANNER].run(
-                message=run_kwargs.pop("message", "Review the current render and propose concrete fixes."),
-                constraints=run_kwargs.pop("constraints", {}),
-                conversation_history=run_kwargs.pop("conversation_history", None),
-                prior_critique=run_kwargs.pop("prior_critique", None),
-                review=True,
-                **run_kwargs,
-            )
-            return SwapResult(ok=True, tier_used=Tier.PLANNER, output=result)
+            try:
+                result = await self.backends[Tier.PLANNER].run(
+                    message=run_kwargs.pop("message", "Review the current render and propose concrete fixes."),
+                    constraints=run_kwargs.pop("constraints", {}),
+                    conversation_history=run_kwargs.pop("conversation_history", None),
+                    prior_critique=run_kwargs.pop("prior_critique", None),
+                    review=True,
+                    **run_kwargs,
+                )
+                return SwapResult(ok=True, tier_used=Tier.PLANNER, output=result)
+            except Exception as e:
+                return SwapResult(ok=False, tier_used=Tier.PLANNER, error=str(e))
 
     # ------------------------------------------------------------------ #
     # Load/unload primitives
@@ -401,14 +404,14 @@ class SwapOrchestrator:
 
     async def _load_with_recovery(self, requested_tier: Tier) -> SwapResult:
         """Implements the OOM policy documented in this module's docstring."""
-        # Polish is a single Qwen-Image-2.1 architecture. Resource recovery
-        # may retry the same tier, but model substitution is forbidden: it
-        # would invalidate the handoff and research provenance.
         candidates = [requested_tier]
+        fallback = self.registry[requested_tier].fallback_tier
+        if fallback is not None and fallback != requested_tier:
+            candidates.append(fallback)
 
         total_attempts = 0
         for candidate in candidates:
-            degraded = False
+            degraded = candidate != requested_tier
             if not self.ledger.would_fit(candidate) or not self.ram_ledger.would_fit(candidate):
                 log.warning(
                     "tier_budget_preflight_fail",

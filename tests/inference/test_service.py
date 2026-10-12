@@ -52,7 +52,7 @@ def test_message_finalize_critique_full_cycle(client: TestClient):
     r = client.post(f"/session/{session_id}/finalize", json={"quality": False})
     assert r.status_code == 200
     assert r.json()["stage"] == "finalized"
-    assert r.json()["finalize_output"]["renderer_used"] == "z_image_turbo"
+    assert r.json()["finalize_output"]["renderer_used"] == "qwen_image_2_1"
 
     r = client.post(f"/session/{session_id}/critique")
     assert r.status_code == 200

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.backends.planner_backend import PlannerBackend
+from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+from krisna_inference.backends.planner_schema import PlannerResponse
 from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
-def test_planner_build_system_prompt_incorporates_prior_critique():
-    spec = ModelSpec(tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5, quantization="NF4")
-    backend = PlannerBackend(spec)
+def test_planner_llama_prompt_incorporates_prior_critique():
+    spec = ModelSpec(tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5, quantization="GGUF")
+    backend = PlannerBackendLlama(spec)
 
     constraints = {"style": "dark neo-brutalist", "palette": ["#000000", "#ffff00"]}
     prior_critique = {
@@ -23,25 +24,28 @@ def test_planner_build_system_prompt_incorporates_prior_critique():
         ],
     }
 
-    system_prompt = backend._build_system_prompt(constraints, retrieved=[], prior_critique=prior_critique)
+    messages, retrieved = backend._prompt("Refine checkout flow", constraints, [], prior_critique, review=False)
+    system_prompt = messages[0]["content"]
 
-    assert "Prior Critic Feedback & Suggested Edits:" in system_prompt
-    assert "Overall Score: 0.72" in system_prompt
-    assert "visual_hierarchy: CTA button is hard to discern." in system_prompt
-    assert "[hero_cta] Increase contrast and size of primary action button" in system_prompt
-    assert "[navbar] Add subtle divider line below navigation" in system_prompt
+    assert "Prior review:" in system_prompt
+    assert "0.72" in system_prompt
+    assert "dark neo-brutalist" in system_prompt
 
 
-def test_planner_extract_json_delta_with_constraint_updates():
-    text = (
-        "Here is the planned design for the mobile checkout flow.\n\n"
-        '{"stage": "sketching", "constraint_updates": {"style": "minimalist", "palette": ["#ffffff", "#000000"]}, "tool_call": null, "reasoning_note": "Focused on clear CTA."}'
-    )
-    delta, error, span = PlannerBackend._extract_json_delta(text)
-    assert error is None
-    assert delta is not None
-    assert delta["stage"] == "sketching"
-    assert delta["constraint_updates"]["style"] == "minimalist"
-    assert delta["constraint_updates"]["palette"] == ["#ffffff", "#000000"]
-    assert delta["reasoning_note"] == "Focused on clear CTA."
-    assert span is not None
+def test_planner_schema_validation_with_constraint_updates():
+    payload = {
+        "schema_version": "planner.delta.v1",
+        "reply_text": "Here is the planned design for the mobile checkout flow.",
+        "design_state_delta": {
+            "stage": "sketching",
+            "constraint_updates": {"style": "minimalist", "palette": ["#ffffff", "#000000"]},
+            "tool_call": None,
+            "reasoning_note": "Focused on clear CTA.",
+        },
+    }
+    response = PlannerResponse.model_validate(payload)
+    assert response.reply_text == "Here is the planned design for the mobile checkout flow."
+    assert response.design_state_delta.stage == "sketching"
+    assert response.design_state_delta.constraint_updates["style"] == "minimalist"
+    assert response.design_state_delta.constraint_updates["palette"] == ["#ffffff", "#000000"]
+    assert response.design_state_delta.reasoning_note == "Focused on clear CTA."
