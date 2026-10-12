@@ -573,10 +573,16 @@ async function proxyJson(res, method, url, body) {
 }
 
 app.get("/api/health", (_req, res) => proxyJson(res, "GET", "/health"));
+app.get("/api/ready", (_req, res) => proxyJson(res, "GET", "/ready"));
 app.get("/api/status", (_req, res) => proxyJson(res, "GET", "/orchestrator/status"));
+app.get("/api/models/status", (_req, res) => proxyJson(res, "GET", "/models/status"));
+app.post("/api/models/warm", (req, res) => proxyJson(res, "POST", "/models/warm", req.body || {}));
+app.get("/api/models/warm/status", (_req, res) => proxyJson(res, "GET", "/models/warm/status"));
+app.post("/api/models/unload", (_req, res) => proxyJson(res, "POST", "/models/unload"));
 
 app.post("/api/session", (req, res) => proxyJson(res, "POST", "/session", req.body));
 app.get("/api/session/:id", (req, res) => proxyJson(res, "GET", `/session/${req.params.id}`));
+app.get("/api/session/:id/model-status", (req, res) => proxyJson(res, "GET", `/session/${req.params.id}/model-status`));
 
 // Binary proxy — proxyJson assumes a JSON body, which would corrupt image
 // bytes; the render route needs its own pass-through that forwards the
@@ -601,8 +607,12 @@ app.get("/api/session/:id/render", async (req, res) => {
 });
 app.post("/api/session/:id/message", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/message`, req.body));
+app.post("/api/session/:id/self-review", (req, res) =>
+  proxyJson(res, "POST", `/session/${req.params.id}/self-review`));
 app.post("/api/session/:id/finalize", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/finalize`, req.body));
+app.post("/api/session/:id/enhance", (req, res) =>
+  proxyJson(res, "POST", `/session/${req.params.id}/enhance`, req.body));
 app.post("/api/session/:id/critique", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/critique`, req.body || {}));
 
