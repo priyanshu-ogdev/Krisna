@@ -106,6 +106,8 @@ async def conversational_turn(
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
 
+    if state.refinement.exhausted:
+        state.refinement.reset_cycle()
     state.refinement.record_turn("user")
     state.touch()
 
