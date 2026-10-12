@@ -5,8 +5,8 @@ a pluggable `ModelBackend` protocol for actually loading/unloading weights.
 `MockBackend` lets the orchestrator and its state machine be fully tested
 without a GPU or any downloaded weights. Real backends (Qwen3.5-9B,
 Z-Image-Turbo, Qwen-Image-Edit-2511, Gemma 4) are implemented in
-`inference/` (`planner_backend.py`, `polish_default_backend.py`,
-`polish_quality_backend.py`, `critic_backend.py`) and wired in via
+`inference/` (`planner_backend_llama.py`, `polish_default_backend.py`,
+`polish_quality_backend.py`) and wired in via
 `inference/factory.py::real_backend_factory` — not stubs, real loading
 code. See each backend's module docstring for its actual quantization
 (NF4/4-bit for Planner/Critic/Quality-Polish per PRD §6's frozen-model
@@ -33,11 +33,10 @@ from enum import Enum
 
 
 class Tier(str, Enum):
-    PLANNER = "planner"                  # Qwen3.5-9B (fast mode: Qwen3.5-4B)
-    SKETCH = "sketch"                     # UI-domain MaskGIT/MaskGIL lineage
+    PLANNER = "planner"                  # frozen Qwen3.5-9B GGUF via llama.cpp
+    SKETCH = "sketch"                    # structured Layout IR + wireframe
     POLISH_DEFAULT = "polish_default"     # Z-Image-Turbo
     POLISH_QUALITY = "polish_quality"     # Qwen-Image-Edit-2511
-    CRITIC = "critic"                     # Gemma 4 31B Dense
 
 
 @dataclass(frozen=True)
@@ -62,17 +61,11 @@ REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5,
         quantization="4-bit (fast mode: Qwen3.5-4B available)",
         always_resident=True,
-        # NOTE for the opt-in vLLM path (KRISNA_PLANNER_BACKEND=vllm, see
-        # planner_backend_vllm.py): vLLM's own gpu_memory_utilization is a
-        # fraction of the REAL, live GPU's total memory, computed FROM
-        # this vram_gb value at load time (not hardcoded) — see that
-        # backend's load() docstring. This declared vram_gb is still the
-        # single source of truth either way; only how it gets translated
-        # into a concrete admission check differs by backend.
+        # Consumer release budget for the pinned llama.cpp GGUF artifact.
     ),
     Tier.SKETCH: ModelSpec(
-        tier=Tier.SKETCH, name="UI-domain MaskGIT/MaskGIL sketch tier",
-        vram_gb=3.0, quantization="n/a (small, from-scratch)",
+        tier=Tier.SKETCH, name="Krisna structured Layout IR",
+        vram_gb=0.2, quantization="deterministic renderer; no learned weights",
         always_resident=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
@@ -103,10 +96,6 @@ REGISTRY: dict[Tier, ModelSpec] = {
         # zero-shot ICL + SDEdit-style partial denoising only.
         quantization="NF4 (fully frozen — no adapter)",
         fallback_tier=Tier.POLISH_DEFAULT,
-    ),
-    Tier.CRITIC: ModelSpec(
-        tier=Tier.CRITIC, name="Gemma 4 31B Dense", vram_gb=18.0,
-        quantization="NF4 (fully frozen — on-demand product feature, never trained)",
     ),
 }
 
@@ -201,51 +190,6 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
                                       # validate against a real run and adjust
         quantization="NF4 + diffusers enable_model_cpu_offload()",
         fallback_tier=Tier.POLISH_DEFAULT,
-    ),
-    Tier.CRITIC: ModelSpec(
-        tier=Tier.CRITIC, name="Gemma 4 31B Dense",
-        vram_gb=11.5, ram_gb=45.0,   # UPGRADE (was vram_gb=12.0, ram_gb=40.0):
-                                      # 12.0 was picked to exactly equal the
-                                      # 12GB low-VRAM target envelope
-                                      # (service.py's KRISNA_VRAM_ENVELOPE_GB
-                                      # default) — zero headroom on paper
-                                      # against a target that itself doesn't
-                                      # account for CUDA context, allocator
-                                      # fragmentation, or activation memory.
-                                      # Dropping the GPU-resident target to
-                                      # 11.5GB bakes in ~0.5GB (~4%) real
-                                      # headroom against a 12GB card. This is
-                                      # NOT free — offloading less to the GPU
-                                      # means MORE params move to CPU at FP32
-                                      # (see mechanism (2) above), so ram_gb
-                                      # must go up too, not stay at 40.0:
-                                      # recomputed via the same method as
-                                      # before (bytes/param implied by the
-                                      # 18.0GB full-NF4 footprint above,
-                                      # applied to the new 11.5GB GPU split)
-                                      # gives ~44.3GB, rounded up to 45.0GB —
-                                      # still comfortably under the 48.0GB
-                                      # default RAM envelope (swap_orchestrator's
-                                      # ram_envelope_gb), so this doesn't just
-                                      # relocate the zero-headroom problem from
-                                      # the VRAM ledger onto the RAM ledger.
-                                      # KRISNA_CRITIC_MAX_GPU_GB's default in
-                                      # backends/factory.py MUST stay in sync
-                                      # with this vram_gb value.
-                                      # REGRESSION NOTE (now recurring —
-                                      # third time this fix has been lost
-                                      # from an uploaded working copy in
-                                      # this review; see docs/review's
-                                      # latest phase for the full pattern):
-                                      # if this drifts back to 12.0/40.0
-                                      # again, the issue is upstream of any
-                                      # single fix — something in how these
-                                      # working copies get produced between
-                                      # sessions isn't carrying edits forward.
-                                      # Still an estimate pending a real run.
-        quantization="NF4 (GPU-resident) + FP32 CPU offload via plain "
-                      "transformers+bitsandbytes, NOT unsloth — see "
-                      "critic_worker.py's _load() offload branch",
     ),
 }
 
@@ -357,23 +301,13 @@ class MockBackend(ModelBackend):
             }
         elif self.spec.tier == Tier.SKETCH:
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
-            base["vq_tokens_ref"] = f"vq_grid::{hash(str(rev)) & 0xFFFF:x}"
-            base["confidence_map_ref"] = f"conf_map::{hash(str(rev)) & 0xFFFF:x}"
+            base["layout_ref"] = f"layout://mock/{hash(str(rev)) & 0xFFFF:x}.json"
+            base["wireframe_ref"] = f"wireframe://mock/{hash(str(rev)) & 0xFFFF:x}.png"
         elif self.spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY):
             base["image_ref"] = f"render://mock/{self.spec.tier.value}/{hash(str(kwargs)) & 0xFFFF:x}.png"
             base["verifier_scores"] = {
                 "clip_alignment": 0.9, "ocr_readability": 0.95,
                 "layout_iou": 0.88, "aesthetic": 0.8, "handoff_consistency": 0.97,
-            }
-        elif self.spec.tier == Tier.CRITIC:
-            base["critique_result"] = {
-                "critique_source": "gemma4_31b_frozen",
-                "overall_score": 0.82,
-                "dimensions": {
-                    "visual_hierarchy": {"score": 0.8, "note": "Clear primary action."},
-                },
-                "suggested_edits": [],
-                "raw_model_output_ref": None,
             }
         return base
 

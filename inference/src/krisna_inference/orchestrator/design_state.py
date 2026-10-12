@@ -59,10 +59,10 @@ class Constraints(BaseModel):
     original_intent: str | None = None  # D2: preserves original user intent across long conversations
 
 
-class SketchTokens(BaseModel):
-    vq_tokens: str | None = None          # reference to latest committed token grid
-    confidence_map: str | None = None     # reference, Token-Critic output
-    revision: int = 0                     # increments per sketch round
+class LayoutDraft(BaseModel):
+    layout_ref: str | None = None
+    wireframe_ref: str | None = None
+    revision: int = 0
 
 
 class VerifierScores(BaseModel):
@@ -125,7 +125,7 @@ class DesignState(BaseModel):
     stage: SessionStage = SessionStage.CONVERSING
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     constraints: Constraints = Field(default_factory=Constraints)
-    sketch_tokens: SketchTokens = Field(default_factory=SketchTokens)
+    layout: LayoutDraft = Field(default_factory=LayoutDraft)
     finalize_output: FinalizeOutput = Field(default_factory=FinalizeOutput)
     critique: Critique = Field(default_factory=Critique)
     preference_pair_refs: list[str] = Field(default_factory=list)
@@ -145,7 +145,7 @@ class DesignState(BaseModel):
     # description of design intent, e.g. "User wants a warmer, friendlier
     # feel with rounded corners") so _synthesize_dpo_prompt() — used for
     # BOTH Polish-tier generation and DPO preference-pair training data —
-    # can enrich its prompt the same way sketch_backend.py's run() was
+    # can enrich its prompt from the structured layout route
     # already fixed to do with the SAME turn's live planner_output. This
     # field exists because, unlike Sketch's run() (which receives
     # planner_output directly from the same conversational turn),
@@ -176,7 +176,7 @@ class DesignState(BaseModel):
     def is_finalize_eligible(self) -> bool:
         """Finalize requires an active sketch to hand off from."""
         return self.stage in (SessionStage.CONVERSING, SessionStage.SKETCHING) and bool(
-            self.sketch_tokens.vq_tokens
+            self.layout.layout_ref
         )
 
     def is_critique_eligible(self) -> bool:

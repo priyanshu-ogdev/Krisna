@@ -176,7 +176,30 @@ against Z-Image-Turbo's live pipeline code.
 # actually public.
 ```
 
-## Polish tier training (Z-Image LoRA; Qwen-Image-Edit — honest gap)
+## Polish tier training (Qwen-Image-2.1 image-conditioned LoRA)
+
+The active Polish training architecture is Qwen-Image-2.1. Use the official
+Diffusers `train_dreambooth_lora_qwenimage21_img2img.py` script through the
+repository launcher. The dataset must provide condition-image, target-image,
+and caption columns. The retired Z-Image flow-matching DPO path is preserved
+only as historical source and cannot be launched.
+
+```bash
+./scripts/training/train_polish_default_lora.sh \
+  training/configs/polish_qwen_image21_lora.yaml
+```
+
+Prepare paired data explicitly; the target image must not be reused as its
+own condition because that trains identity copying rather than editing:
+
+```bash
+./scripts/training/prepare_polish_dataset.sh \
+  data/polish/conditions data/polish/targets \
+  data/polish_qwen_image21_pairs captions.json
+```
+
+The generated metadata contains `condition_image`, `image`, and `caption`,
+matching the official Qwen image-to-image training script.
 
 `training/src/krisna_training/polish/` takes a different approach from
 Sketch and Planner: it does **not** implement a from-scratch diffusion
@@ -187,11 +210,13 @@ training scripts instead of reinventing them.
 
 ```bash
 ./scripts/training/setup_env_diffusers_training.sh     # clones diffusers, installs example deps
-./scripts/training/prepare_polish_dataset.sh <image_dir> ./data/polish_default_train [captions.json]
-./scripts/training/train_polish_default_lora.sh         # Z-Image, via the official script
+./scripts/training/prepare_polish_dataset.sh <condition_dir> <target_dir> ./data/polish_qwen_image21_pairs [captions.json]
+./scripts/training/train_polish_default_lora.sh         # Qwen-Image-2.1, via the official script
 ```
 
-**Z-Image (polish_default): real, working.** Wraps
+**Historical Z-Image path (retired; not active).** The following notes are
+kept only to explain the migration and must not be used for new runs. It
+formerly wrapped
 `train_dreambooth_lora_z_image.py`
 (github.com/huggingface/diffusers/blob/main/examples/dreambooth/train_dreambooth_lora_z_image.py),
 diffusers' own maintained script. `configs/polish_default_lora_z_image.yaml`
@@ -253,8 +278,8 @@ pin conflict (see "Critic tier isolation" above — that isolation reasoning
 is unaffected by the freeze, since it's about version pins, not training).
 
 ```bash
-./scripts/training/setup_env_critic.sh          # now also: pip install -e . --no-deps
-./scripts/training/train_critic_qlora.sh
+The former Critic training commands were removed. Gemma Critic is not an
+active training component; product critique is Planner Review.
 ```
 
 Dataset: JSONL, one record per example —
@@ -347,4 +372,3 @@ anywhere in this pipeline; that source key existing doesn't mean anything
 currently writes it, but it's worth removing in a future pass rather than
 leaving the data structure able to represent a pattern the project
 explicitly rules out.
-

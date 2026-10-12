@@ -32,6 +32,7 @@ from krisna_inference.orchestrator.flows import FlowError
 from krisna_inference.orchestrator.logging_setup import configure_logging
 from krisna_inference.orchestrator.store import DesignStateStore
 from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krisna_inference.orchestrator.session_coordinator import SessionCoordinator
 
 configure_logging()
 log = logging.getLogger("krisna_inference (formerly krisna_orchestrator).service")
@@ -80,43 +81,10 @@ if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
     # real /finalize call. Not a hypothetical edge case — this was the
     # actual, only code path service.py used.
     from krisna_inference.backends.blob_store_singleton import get_blob_store
-    from krisna_inference.backends.sketch_handoff import make_vq_decode_handoff
-    from krisna_training.sketch.vq_tokenizer import VQTokenizer
-
-    _vqgan_checkpoint = os.environ.get("KRISNA_VQGAN_CHECKPOINT")
-    _vqgan_config = os.environ.get("KRISNA_VQGAN_CONFIG")
-    # Grid dims must match whichever Sketch checkpoint is actually loaded
-    # (KRISNA_SKETCH_CHECKPOINT) — Stage 1 is 16x16 (256px), Stage 2 is
-    # 32x32 (512px). Explicit env vars rather than reading the loaded
-    # SketchBackend's own config: that model loads asynchronously, after
-    # this module-level setup runs.
-    _sketch_grid_h = int(os.environ.get("KRISNA_SKETCH_GRID_H", "16"))
-    _sketch_grid_w = int(os.environ.get("KRISNA_SKETCH_GRID_W", "16"))
-
-    if _vqgan_checkpoint and _vqgan_config:
-        _vq_tokenizer = VQTokenizer(checkpoint_path=_vqgan_checkpoint, config_path=_vqgan_config)
-        _handoff_hook = make_vq_decode_handoff(_vq_tokenizer, _sketch_grid_h, _sketch_grid_w)
-    else:
-        log.warning(
-            "vqgan_checkpoint_not_configured",
-            extra={
-                "note": (
-                    "KRISNA_VQGAN_CHECKPOINT/KRISNA_VQGAN_CONFIG not set — "
-                    "Finalize will fail loudly (not silently) on first use "
-                    "rather than passing a token-grid blob ref to Polish as "
-                    "if it were a decoded image."
-                )
-            },
-        )
-
-        def _handoff_hook(vq_tokens_ref: str) -> str:
-            raise RuntimeError(
-                "Cannot finalize: KRISNA_VQGAN_CHECKPOINT/KRISNA_VQGAN_CONFIG "
-                "are not configured, so sketch tokens can't be decoded to a "
-                "pixel image before handing off to the Polish tier. Set both "
-                "env vars to the VQGAN (boris/vqgan_f16_16384) checkpoint/"
-                "config used by Sketch-tier training."
-            )
+    # Structured Sketch emits a deterministic wireframe/image reference
+    # directly. There is no VQ token decode stage in the consumer release.
+    def _handoff_hook(layout_ref: str) -> str:
+        return layout_ref
 else:
     orchestrator = SwapOrchestrator()  # MockBackend — safe default, no GPU/weights needed
     _verifier_stack = None
@@ -124,6 +92,30 @@ else:
 
 store = DesignStateStore(db_path="krisna_sessions.db")
 preference_store = PreferenceStore(db_path="krisna_preference_pairs.db")
+session_coordinator = SessionCoordinator(
+    inactivity_seconds=float(os.environ.get("KRISNA_SELF_REVIEW_IDLE_SECONDS", "30"))
+)
+
+
+async def _run_scheduled_self_review(session_id: str) -> None:
+    state = store.get(session_id)
+    if state.refinement.exhausted or not state.layout.layout_ref:
+        return
+    await flows.planner_self_review(orchestrator, store, session_id)
+    updated = store.get(session_id)
+    if not updated.refinement.exhausted and updated.stage.value in ("sketching", "conversing"):
+        _schedule_self_review(session_id)
+
+
+def _schedule_self_review(session_id: str) -> None:
+    state = store.get(session_id)
+    if state.refinement.exhausted or not state.layout.layout_ref:
+        return
+    state.refinement.self_review_scheduled = True
+    state.record_refinement_event("self_review_scheduled", "system")
+    state.touch()
+    store.save(state, state.revision - 1)
+    session_coordinator.user_activity(session_id, lambda: _run_scheduled_self_review(session_id))
 
 
 @asynccontextmanager
@@ -131,6 +123,7 @@ async def lifespan(_: FastAPI):
     await orchestrator.start()
     log.info("service_ready")
     yield
+    await session_coordinator.stop()
     await orchestrator.shutdown()
     preference_store.close()
 
@@ -250,9 +243,26 @@ async def get_session_render(session_id: str):
 
 @app.post("/session/{session_id}/message")
 async def post_message(session_id: str, req: MessageRequest) -> dict:
+    session_coordinator.cancel(session_id)
     try:
         state = await flows.conversational_turn(orchestrator, store, session_id, req.message)
-    except (SessionNotFoundError, SwapBusyError, StaleDesignStateError) as e:
+    except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
+        raise _error_response(e)
+    _schedule_self_review(session_id)
+    return state.to_wire() | {"revision": state.revision}
+
+
+@app.post("/session/{session_id}/self-review")
+async def post_self_review(session_id: str) -> dict:
+    """Run one autonomous Planner/Layout refinement turn.
+
+    A future session coordinator will call this after inactivity; exposing the
+    same operation now keeps the policy and HTTP behavior testable.
+    """
+    session_coordinator.cancel(session_id)
+    try:
+        state = await flows.planner_self_review(orchestrator, store, session_id)
+    except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
         raise _error_response(e)
     return state.to_wire() | {"revision": state.revision}
 
