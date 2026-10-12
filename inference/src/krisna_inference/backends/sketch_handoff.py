@@ -2,8 +2,8 @@
 pixel image" half of §5.3's Finalize diagram, using training/sketch's
 VQTokenizer (the same tokenizer sketch-tier training data was encoded
 with). The "-> re-encode into renderer's native latent" half doesn't need
-a separate step here: both polish backends (polish_default_backend.py,
-polish_quality_backend.py) already just take a pixel-image blob ref and do
+a separate step here: the Qwen-Image-2.1 Polish backend takes a pixel-image
+blob ref and does
 their own internal encoding as part of their normal forward pass.
 """
 
