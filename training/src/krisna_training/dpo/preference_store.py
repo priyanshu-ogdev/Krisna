@@ -39,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_pref_pairs_session ON preference_pairs(session_id
 # Pick-a-Pic pairs from DesignPref pairs without re-deriving it from
 # somewhere else.
 VALID_SOURCES = frozenset({
-    "verifier_stack", "gemma_critique", "uicrit_seed",
+    "verifier_stack", "planner_review", "gemma_critique", "uicrit_seed",
     "pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref",
 })
 

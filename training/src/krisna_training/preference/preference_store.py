@@ -47,7 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_pref_pairs_session ON preference_pairs(session_id
 # Valid sources include real human-labeled external preference datasets (Pick-a-Pic v2, HPDv2,
 # GameLabel-10K, DesignSense-10k, DesignPref) and runtime session sources.
 VALID_SOURCES = frozenset({
-    "verifier_stack", "gemma_critique", "uicrit_seed",
+    "verifier_stack", "planner_review", "gemma_critique", "uicrit_seed",
     "pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref",
 })
 
