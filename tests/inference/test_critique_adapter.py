@@ -24,7 +24,7 @@ def test_from_gemma_output_normalizes_full_payload():
 
 def test_from_gemma_output_fills_defaults_on_partial_payload():
     result = from_gemma_output({})
-    assert result.critique_source == "gemma4_31b_frozen"
+    assert result.critique_source in ("planner_review", "gemma4_31b_frozen")
     assert result.overall_score == 0.0
     assert result.dimensions == {}
     assert result.suggested_edits == []

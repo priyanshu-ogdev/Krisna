@@ -20,19 +20,21 @@ from krisna_inference.orchestrator.design_state import CritiqueDimensionScore, C
 
 
 def from_gemma_output(raw: dict) -> CritiqueResult:
-    """raw: the structured review dict returned by Planner Review (itself
-    already close to this shape — see critic_worker.py's _run()). This
-    re-validates it through the pydantic model rather than trusting the
-    subprocess blindly."""
+    """raw: the structured review dict returned by Planner Review (or legacy critic worker).
+    Re-validates it through the pydantic model rather than trusting the output blindly."""
     return CritiqueResult.model_validate(
         {
-            "critique_source": raw.get("critique_source", "gemma4_31b_frozen"),
+            "critique_source": raw.get("critique_source", "planner_review"),
             "overall_score": raw.get("overall_score", 0.0),
             "dimensions": raw.get("dimensions", {}),
             "suggested_edits": raw.get("suggested_edits", []),
             "raw_model_output_ref": raw.get("raw_model_output_ref"),
         }
     )
+
+
+from_planner_review = from_gemma_output
+
 
 
 # Best-effort proxy mapping from verifier-stack dimensions onto the same

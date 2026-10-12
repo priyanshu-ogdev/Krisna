@@ -36,10 +36,10 @@ implementations plus a real one:
 - `TorchBackend` — a deliberately-`NotImplementedError` placeholder,
   kept as the minimal interface reference.
 - `inference/factory.real_backend_factory` — the actual working
-  implementations (Qwen3.5 planner **[FROZEN — RAG]**, Z-Image-Turbo
-  **[TRAINED]**, Qwen-Image-Edit-2511 **[FROZEN]**, Gemma 4 critic
-  **[FROZEN]**, checkpoint-pluggable sketch tier **[TRAINED, from
-  scratch]**). See "Inference layer" below. Swap it in via
+  implementations (Qwen3.5-9B planner GGUF via llama.cpp **[FROZEN — RAG]**,
+  Krisna structured Layout IR **[DETERMINISTIC / TRAINED]**,
+  Qwen-Image-2.1 Polish **[TRAINED LoRA / HIGH-FIDELITY]**,
+  Planner Review **[FROZEN RESIDENT]**). Swap it in via
   `SwapOrchestrator(backend_factory=...)` or `KRISNA_USE_REAL_BACKENDS=1`
   — nothing in the orchestration layer itself changes (the orchestrator
   is training-status-agnostic by design: it only ever calls
@@ -63,20 +63,18 @@ inference/src/krisna_inference/
 │   ├── state_machine.py         # ResidencyState transitions (§7.4)
 │   ├── model_registry.py         # ModelSpec/Tier/REGISTRY/LOW_VRAM_REGISTRY
 │   ├── vram_budget.py             # VRAMLedger + RAMLedger
-│   ├── design_state.py             # §5.1 Design State object
+│   ├── design_state.py             # §5.1 Design State & RefinementBudget
 │   ├── flows.py                     # §5.3 sequence-flow helpers, offline-testable
 │   ├── service.py                    # FastAPI app
 │   ├── store.py                       # Design State persistence
 │   ├── exceptions.py, logging_setup.py
 ├── backends/              # real model-loading implementations
-│   ├── factory.py            # real_backend_factory — the one place env
-│   │                            vars turn into constructed backend objects
-│   ├── planner_backend.py     # Qwen3.5-9B, FROZEN, RAG + JSON-delta decode
-│   ├── planner_rag.py          # TF-IDF retrieval over data-forge's UICrit corpus
-│   ├── polish_default_backend.py  # Z-Image-Turbo, TRAINED (LoRA)
-│   ├── polish_quality_backend.py   # Qwen-Image-Edit-2511, FROZEN
-│   ├── critic_backend.py, critic_worker.py  # Gemma 4, FROZEN, isolated subprocess
-│   ├── sketch_backend.py, sketch_handoff.py, maskgit_model.py
+│   ├── factory.py            # real_backend_factory
+│   ├── planner_backend_llama.py # Qwen3.5-9B GGUF via llama.cpp, FROZEN, RAG
+│   ├── planner_schema.py      # versioned Planner output schema (planner.delta.v1)
+│   ├── planner_rag.py          # TF-IDF retrieval over UICrit corpus
+│   ├── layout_backend.py       # structured Layout IR & wireframe renderer
+│   ├── polish_backend_qwen.py  # unified Qwen-Image-2.1 with DreamBooth LoRA
 │   └── common.py, blob_store_singleton.py
 └── verifiers/              # CLIP/SigLIP, OCR, layout-IoU, aesthetic/safety,
                               # handoff-consistency — §5's verifier stack
@@ -342,11 +340,11 @@ change at all when you switch backends.
 
 | Tier | Backend | Model | Status |
 |---|---|---|---|
-| Planner | `planner_backend.PlannerBackend` | Qwen3.5-9B / Qwen3.5-4B (fast mode) | Real, **frozen** — RAG retrieval, no LoRA |
-| Sketch | `sketch_backend.SketchBackend` | MaskGIT-lineage, checkpoint-pluggable | Architecture + inference-time sampler + real training code (see "Sketch tier training" below). No trained checkpoint ships with this repo — you train one. |
-| Polish (default) | `polish_default_backend.ZImageTurboBackend` | Z-Image-Turbo | Real, **fine-tuned** — the one renderer this project actually trains (LoRA + Diffusion-DPO) |
-| Polish (quality) | `polish_quality_backend.QwenImageEditBackend` | Qwen-Image-Edit-2511 | Real, **frozen** — zero-shot ICL edit conditioning + SDEdit-style partial denoising (`edit_strength`), NF4, no LoRA |
-| Critic | `critic_backend.CriticBackend` | Gemma 4 31B Dense | Real, **frozen** on-demand product feature, runs in an isolated subprocess — see below |
+| Planner | `planner_backend_llama.PlannerBackendLlama` | Qwen3.5-9B GGUF via llama.cpp | Real, **frozen** — pinned runtime, RAG retrieval |
+| Sketch | `layout_backend.LayoutBackend` | Structured Layout IR `krisna.layout.v1` | Real, deterministic renderer / LayoutFlow base |
+| Polish (default) | `polish_backend_qwen.QwenImage21Backend` | Qwen-Image-2.1 | Real, DreamBooth LoRA adapter, 28 steps |
+| Polish (quality) | `polish_backend_qwen.QwenImage21Backend` | Qwen-Image-2.1 | Real, high-fidelity sampling, 40 steps |
+| Review | Resident Planner Review Mode | Qwen3.5-9B GGUF | In-place visual defect inspection & constraint updates |
 
 ### Enabling real backends
 

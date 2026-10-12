@@ -39,13 +39,12 @@ async def test_finalize_unloads_baseline_and_restores_it(started_orchestrator: S
 
 
 @pytest.mark.asyncio
-async def test_critique_unloads_baseline_and_restores_it(started_orchestrator: SwapOrchestrator):
+async def test_critique_runs_against_resident_planner(started_orchestrator: SwapOrchestrator):
     result = await started_orchestrator.request_critique()
     assert result.ok
-    assert result.tier_used == Tier.CRITIC
+    assert result.tier_used == Tier.PLANNER
     assert started_orchestrator.backends[Tier.PLANNER].is_loaded
     assert started_orchestrator.backends[Tier.SKETCH].is_loaded
-    assert not started_orchestrator.backends[Tier.CRITIC].is_loaded
     assert started_orchestrator.state.state == ResidencyState.IDLE_RESIDENT
 
 
@@ -105,19 +104,15 @@ async def test_oom_recovers_after_transient_failure_within_retry_budget(
 
 
 @pytest.mark.asyncio
-async def test_critic_oom_has_no_fallback_and_restores_baseline(
+async def test_review_rejected_while_swap_in_flight(
     started_orchestrator: SwapOrchestrator,
 ):
-    started_orchestrator.backends[Tier.CRITIC].fail_loads = 999
-    result = await started_orchestrator.request_critique()
-    assert not result.ok
-    assert result.error is not None
-    assert "critic" in result.error
-    # No user-visible failure of the SYSTEM: baseline must be back.
-    assert started_orchestrator.backends[Tier.PLANNER].is_loaded
-    assert started_orchestrator.backends[Tier.SKETCH].is_loaded
-    assert started_orchestrator.state.state == ResidencyState.IDLE_RESIDENT
-    assert started_orchestrator.conversation_available()
+    started_orchestrator.backends[Tier.POLISH_DEFAULT].load_latency_s = 0.05
+    t1 = asyncio.create_task(started_orchestrator.request_finalize(preferred_tier=Tier.POLISH_DEFAULT))
+    await asyncio.sleep(0.01)
+    with pytest.raises(SwapBusyError):
+        await started_orchestrator.request_critique()
+    await t1
 
 
 @pytest.mark.asyncio

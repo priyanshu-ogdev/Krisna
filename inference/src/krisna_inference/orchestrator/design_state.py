@@ -73,25 +73,13 @@ class VerifierScores(BaseModel):
     handoff_consistency: float | None = None
 
 
-RendererUsed = Literal["z_image_turbo", "qwen_image_edit_2511", None]
+RendererUsed = Literal["qwen_image_2_1", "z_image_turbo", "qwen_image_edit_2511", None]
 
 
 class FinalizeOutput(BaseModel):
     renderer_used: RendererUsed = None
     image_ref: str | None = None
     verifier_scores: VerifierScores = Field(default_factory=VerifierScores)
-    # BUG FOUND ON REVIEW (training-data integrity — see flows.py's
-    # finalize()/critique_pass()): the prompt actually used to GENERATE
-    # this image was previously never persisted anywhere. critique_pass()
-    # — which can run turns after finalize(), once the user has sent more
-    # chat messages — re-synthesized "the" prompt from state.conversation_
-    # history at CRITIQUE time and stored THAT in the resulting DPO
-    # preference pair, silently mismatching it against the image that was
-    # actually rendered under the ORIGINAL, now-stale prompt. That is a
-    # real (prompt, image) mixup baked directly into DPO training data —
-    # exactly the failure mode that teaches a model to associate the wrong
-    # text with an image. finalize() now freezes the real generation-time
-    # prompt here; critique_pass() reads it back instead of re-deriving it.
     prompt_used: str | None = None
 
 
@@ -113,9 +101,42 @@ class CritiqueResult(BaseModel):
 
 class Critique(BaseModel):
     requested: bool = False
-    source: Literal["gemma4_31b", None] = None
+    source: Literal["planner_review", "gemma4_31b", None] = None
     result: CritiqueResult | None = None
     timestamp: str | None = None
+
+
+class RefinementEvent(BaseModel):
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    event_type: str
+    source: Literal["user", "system", "self_review"]
+    note: str = ""
+
+
+class RefinementBudget(BaseModel):
+    turn_count: int = 0
+    max_turns: int = 4
+    cycle: int = 0
+    self_review_scheduled: bool = False
+    last_source: Literal["user", "system", "self_review"] | None = None
+    events: list[RefinementEvent] = Field(default_factory=list)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.turn_count >= self.max_turns
+
+    def record_turn(self, source: Literal["user", "self_review"]) -> None:
+        self.turn_count += 1
+        self.last_source = source
+        self.self_review_scheduled = False
+        self.events.append(RefinementEvent(event_type="turn_consumed", source=source))
+
+    def reset_cycle(self) -> None:
+        self.cycle += 1
+        self.turn_count = 0
+        self.self_review_scheduled = False
+        self.last_source = None
+        self.events.append(RefinementEvent(event_type="cycle_reset", source="user"))
 
 
 class DesignState(BaseModel):
@@ -129,6 +150,7 @@ class DesignState(BaseModel):
     finalize_output: FinalizeOutput = Field(default_factory=FinalizeOutput)
     critique: Critique = Field(default_factory=Critique)
     preference_pair_refs: list[str] = Field(default_factory=list)
+    refinement: RefinementBudget = Field(default_factory=RefinementBudget)
 
     # Not in the §5.1 JSON literally, but required for optimistic
     # concurrency and audit — kept out of the model's own `dict()` export
@@ -137,21 +159,6 @@ class DesignState(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-    # UPGRADE (docs/review/35_model_review_3_resync.md): same category as
-    # revision/created_at/updated_at above — not in PRD §5.1's literal
-    # JSON shape, added as an internal-only field rather than altering
-    # the PRD-defined wire contract. Persists the most recent Planner
-    # turn's design_state_delta.reasoning_note (a short, synthesized
-    # description of design intent, e.g. "User wants a warmer, friendlier
-    # feel with rounded corners") so _synthesize_dpo_prompt() — used for
-    # BOTH Polish-tier generation and DPO preference-pair training data —
-    # can enrich its prompt from the structured layout route
-    # already fixed to do with the SAME turn's live planner_output. This
-    # field exists because, unlike Sketch's run() (which receives
-    # planner_output directly from the same conversational turn),
-    # _synthesize_dpo_prompt() only has access to persisted DesignState —
-    # there was previously no field to carry this forward into a later
-    # finalize()/critique_pass() call.
     last_planner_reasoning_note: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
@@ -163,6 +170,7 @@ class DesignState(BaseModel):
         d.pop("created_at", None)
         d.pop("updated_at", None)
         d.pop("last_planner_reasoning_note", None)
+        d.pop("refinement", None)
         return d
 
     def touch(self) -> None:
@@ -172,6 +180,9 @@ class DesignState(BaseModel):
     def append_turn(self, role: Literal["user", "planner"], content: str) -> None:
         self.conversation_history.append(ConversationTurn(role=role, content=content))
         self.touch()
+
+    def record_refinement_event(self, event_type: str, source: Literal["user", "system", "self_review"], note: str = "") -> None:
+        self.refinement.events.append(RefinementEvent(event_type=event_type, source=source, note=note))
 
     def is_finalize_eligible(self) -> bool:
         """Finalize requires an active sketch to hand off from."""

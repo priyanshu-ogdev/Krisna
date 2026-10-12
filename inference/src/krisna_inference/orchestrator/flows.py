@@ -101,24 +101,89 @@ async def conversational_turn(
     sketch_out = result.get("sketch", {})
     new_layout_ref = sketch_out.get("layout_ref")
     if new_layout_ref:
-        # D1 FIX: only update sketch tokens and advance stage when this
-        # conversational turn actually produced new sketch output. The
-        # previous unconditional `state.stage = SKETCHING` could mark a
-        # session as sketch-eligible after a pure conversational turn (no
-        # new tokens generated), which would make is_finalize_eligible()
-        # return True against a stale vq_tokens_ref from an earlier turn.
         state.layout.layout_ref = new_layout_ref
         state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
-    else:
-        # Pure conversational turn — Planner ran but Sketch didn't produce
-        # new tokens (e.g. the planner decided more clarification was needed
-        # before committing a layout, or sketch is unloaded in fast-mode).
-        # Carry forward whatever tokens/stage already existed.
-        pass
+
+    state.refinement.record_turn("user")
     state.touch()
 
+    return store.save(state, expected_rev)
+
+
+async def planner_self_review(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+) -> DesignState:
+    """Run one bounded autonomous Planner+Layout refinement turn."""
+    state = store.get(session_id)
+    if state.refinement.exhausted:
+        raise FlowError(f"Refinement budget exhausted ({state.refinement.turn_count}/{state.refinement.max_turns})")
+    if not state.layout.layout_ref:
+        raise FlowError("No active layout draft to review")
+
+    expected_rev = state.revision
+    intent = state.constraints.original_intent or (
+        state.conversation_history[-1].content if state.conversation_history else "Refine UI layout"
+    )
+    history = [turn.model_dump() for turn in state.conversation_history]
+    prior_critique = (
+        state.critique.result.model_dump()
+        if (state.critique and state.critique.result)
+        else None
+    )
+
+    review_message = (
+        f"Autonomous self-review of current layout against original intent: '{intent}'. "
+        f"Active style: '{state.constraints.style}'. "
+        f"Inspect hierarchy, spacing, and contrast, and propose targeted constraint adjustments."
+    )
+
+    result = await orchestrator.run_conversational_turn(
+        session_id=session_id,
+        message=review_message,
+        constraints=state.constraints.model_dump(),
+        conversation_history=history,
+        prior_critique=prior_critique,
+    )
+
+    planner_out = result.get("planner", {})
+    planner_reply = planner_out.get("reply_text", "(planner self-review)")
+    state.append_turn("planner", str(planner_reply))
+    state.refinement.record_turn("self_review")
+
+    from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+
+    delta = planner_out.get("design_state_delta") or {}
+    constraint_updates = delta.get("constraint_updates") or {}
+    new_reasoning_note = str(delta.get("reasoning_note") or "").strip()
+    if new_reasoning_note:
+        state.last_planner_reasoning_note = new_reasoning_note
+
+    original_constraints = state.constraints.model_dump()
+    merged = apply_constraint_updates(original_constraints, constraint_updates)
+    state.constraints.style = merged["style"]
+    state.constraints.palette = merged["palette"]
+    state.constraints.layout_hints = merged["layout_hints"]
+    if merged["locked_regions"] != original_constraints["locked_regions"]:
+        from krisna_inference.orchestrator.design_state import LockedRegion
+
+        state.constraints.locked_regions = [
+            r if isinstance(r, LockedRegion) else LockedRegion(**r)
+            for r in merged["locked_regions"]
+        ]
+
+    sketch_out = result.get("sketch", {})
+    new_layout_ref = sketch_out.get("layout_ref")
+    if new_layout_ref:
+        state.layout.layout_ref = new_layout_ref
+        state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
+        state.layout.revision += 1
+        state.stage = SessionStage.SKETCHING
+
+    state.touch()
     return store.save(state, expected_rev)
 
 
@@ -205,7 +270,7 @@ async def finalize(
         store.save(state, expected_rev)
         raise FlowError(f"Finalize failed for session {session_id}: {result.error}")
 
-    renderer_used = "qwen_image_edit_2511" if result.tier_used == Tier.POLISH_QUALITY else "z_image_turbo"
+    renderer_used = "qwen_image_2_1"
     output = result.output or {}
 
     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
@@ -301,7 +366,7 @@ async def enhance_photo(
         store.save(state, expected_rev)
         raise FlowError(f"Enhance failed for session {session_id}: {result.error}")
 
-    renderer_used = "qwen_image_edit_2511" if result.tier_used == Tier.POLISH_QUALITY else "z_image_turbo"
+    renderer_used = "qwen_image_2_1"
     output = result.output or {}
 
     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
@@ -445,11 +510,11 @@ async def critique_pass(
         # fill a minimal, clearly-marked placeholder so the flow is still
         # exercisable end-to-end without the inference layer.
         state.critique.result = CritiqueResult(
-            critique_source="gemma4_31b_frozen",
+            critique_source="planner_review",
             overall_score=0.0,
             raw_model_output_ref=None,
         )
-    state.critique.source = "gemma4_31b"
+    state.critique.source = "planner_review"
     from datetime import datetime, timezone
 
     state.critique.timestamp = datetime.now(timezone.utc).isoformat()

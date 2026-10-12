@@ -1,10 +1,14 @@
 # Krisna Inference & Serving Architecture
 
-Comprehensive reference for single-GPU serving, swap orchestration, and multi-turn agentic flows.
+Comprehensive reference for consumer GPU serving, swap orchestration, and multi-turn agentic flows under the modernized architecture.
 
 > [!IMPORTANT]
 > **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration).
-> Krisna is a **swap orchestrator** that never keeps more than one large generative tier GPU-resident at a time.
+> The modernized architecture strictly preserves a **12GB VRAM consumer target envelope** with a clear single-model-per-responsibility division:
+> - **Planner Tier**: Frozen `llama.cpp` runtime with quantized GGUF weights (~6.5GB VRAM) and versioned JSON delta (`krisna.planner.v1`).
+> - **Sketch Tier**: Structured Layout IR (`krisna.layout.v1`) and deterministic wireframe renderer (~0.2GB VRAM).
+> - **Polish Tier**: Unified `Qwen-Image-2.1` diffusion pipeline with verified DreamBooth LoRA adapter and low-VRAM CPU offload (8.0–12.0GB VRAM).
+> - **Review/Critique**: Executed directly against the resident Planner in review mode (zero swap, zero second VLM).
 
 ---
 
@@ -15,23 +19,23 @@ User Intent (Chat Turn)
        │
        ▼
 ┌────────────────────────────────────────────────────────┐
-│ Tier A: Baseline (Always Resident, ~9.5GB VRAM)        │
-│  - Planner Backend (Qwen3.5-9B, NF4, RAG-grounded)     │
-│  - Sketch Backend (MaskGIT Transformer, 512px)         │
+│ Tier A: Baseline (Always Resident, ~6.7GB VRAM)        │
+│  - Planner Backend (Qwen3.5-9B GGUF via llama.cpp)     │
+│  - Sketch Backend (Structured Layout IR + Renderer)    │
 └────────────────────────────────────────────────────────┘
        │                                  │
-       ▼ (User requests Finalize)         ▼ (User requests Critique)
+       ▼ (User requests Finalize)         ▼ (Self-Review / Critique)
 ┌────────────────────────────────┐  ┌────────────────────────────────┐
-│ Tier B: Polish Tier (Swapped)  │  │ Tier C: Critic Tier (Swapped)  │
-│  - Polish-Default (Z-Image)    │  │  - Gemma 4 31B Dense (NF4)     │
-│  - or Polish-Quality (Qwen)    │  │  - Zero-shot VLM-as-a-judge    │
-│  - Verifier Stack Gate         │  │  - Multi-axis Critique Output  │
-└────────────────────────────────┘  └────────────────────────────────┘
-       │                                  │
-       └─────────────────┬────────────────┘
-                         ▼
-        Orchestrator unloads swappable tier,
-        reloads Tier A baseline, returns to IDLE.
+│ Tier B: Polish Tier (Swapped)  │  │ Planner Review Mode (Resident) │
+│  - Qwen-Image-2.1 Pipeline     │  │  - Zero GPU swap required      │
+│  - DreamBooth LoRA Adapter     │  │  - Visual & layout inspection  │
+│  - Standard 28 / Quality 40 St │  │  - Targeted constraint updates │
+│  - Verifier Stack Safety Gate  │  └────────────────────────────────┘
+└────────────────────────────────┘
+       │
+       ▼
+Orchestrator unloads Polish Tier,
+re-admits Baseline Tier, returns to IDLE_RESIDENT.
 ```
 
 ---
@@ -48,106 +52,57 @@ stateDiagram-v2
     POLISH_RESIDENT --> SWAPPING_BACK_FROM_POLISH: Polish Render Complete
     SWAPPING_BACK_FROM_POLISH --> IDLE_RESIDENT: Polish Unloaded, Baseline Reloaded
 
-    IDLE_RESIDENT --> SWAPPING_TO_CRITIC: Request Critique
-    SWAPPING_TO_CRITIC --> CRITIC_RESIDENT: Baseline Unloaded, Critic Loaded
-    CRITIC_RESIDENT --> SWAPPING_BACK_FROM_CRITIC: Critique Complete
-    SWAPPING_BACK_FROM_CRITIC --> IDLE_RESIDENT: Critic Unloaded, Baseline Reloaded
-
     SWAPPING_TO_POLISH --> ERROR_RECOVERY: Load Failure (OOM)
-    SWAPPING_TO_CRITIC --> ERROR_RECOVERY: Load Failure (OOM)
     ERROR_RECOVERY --> IDLE_RESIDENT: Re-admit Baseline, Session Preserved
 ```
+
+*Note: Self-review and visual critique operate directly in `IDLE_RESIDENT` against the resident Planner without triggering GPU swap overhead.*
 
 ---
 
 ## 3. Resource Ledgers & Envelopes (PRD §3, §7.2, §7.3)
 
-Admission is deterministic and CI-testable, governed by `VRAMLedger` and `RAMLedger` against declared budgets:
+Admission is deterministic and CI-tested, governed by `VRAMLedger` and `RAMLedger` against declared budgets:
 
 | Tier | Full Envelope (24GB Target) | Low-VRAM Envelope (12GB Target) | Offload Mechanism |
 |---|---|---|---|
-| **Planner** (Always Resident) | 6.5 GB VRAM / 0 GB RAM | 6.5 GB VRAM / 0 GB RAM | BitsAndBytes NF4 |
-| **Sketch** (Always Resident) | 3.0 GB VRAM / 0 GB RAM | 3.0 GB VRAM / 0 GB RAM | PyTorch BF16 / FP32 |
-| **Polish-Default** (Z-Image-Turbo) | 14.0 GB VRAM / 0 GB RAM | 12.0 GB VRAM / 2.0 GB RAM | `enable_model_cpu_offload()` |
-| **Polish-Quality** (Qwen-Image-Edit) | 16.0 GB VRAM / 0 GB RAM | 10.0 GB VRAM / 10.0 GB RAM | `enable_model_cpu_offload()` |
-| **Critic** (Gemma 4 31B) | 18.0 GB VRAM / 0 GB RAM | 11.5 GB VRAM / 45.0 GB RAM | Transformers + bnb FP32 offload |
+| **Planner** (Always Resident) | 6.5 GB VRAM / 0 GB RAM | 6.5 GB VRAM / 0 GB RAM | Pinned llama.cpp GGUF 4-bit |
+| **Sketch** (Always Resident) | 0.2 GB VRAM / 0 GB RAM | 0.2 GB VRAM / 0 GB RAM | Deterministic Layout Renderer |
+| **Polish-Default** (Qwen-Image-2.1) | 12.0 GB VRAM / 0 GB RAM | 8.0 GB VRAM / 8.0 GB RAM | Diffusers `enable_model_cpu_offload()` |
+| **Polish-Quality** (Qwen-Image-2.1) | 16.0 GB VRAM / 0 GB RAM | 10.0 GB VRAM / 10.0 GB RAM | Diffusers `enable_model_cpu_offload()` |
 
 ---
 
-## 4. Multi-Turn Agentic Feedback Loop
+## 4. Multi-Turn Agentic Feedback Loop & Refinement Budget
 
-1. **Context Preservation**:
+1. **Context & Intent Preservation**:
    - Every `POST /session/{id}/message` carries cumulative `conversation_history` into the Planner backend.
+   - Initial intent is locked in `constraints.original_intent` to prevent drift across extended dialogues.
 2. **Dynamic Constraints Merging**:
-   - Structured JSON output appended by Planner is parsed and stripped from the user reply.
-   - `constraint_updates` (theme, palette, devices, and `locked_regions: [{bbox, reason}]`) are merged into `DesignState.constraints`.
-3. **Conditioned Generation & Prompt Synthesis**:
-   - Sketch generation tokens (`vq_tokens`) ground CLIP text embeddings in active constraints.
-   - Finalize synthesizes a complete, detailed prompt from active constraints when none is explicitly supplied.
-4. **Closed Critic Feedback**:
-   - Critic passes return structured `suggested_edits` with bounding boxes.
-   - The Web Studio UI provides a 1-click **"✨ Iterate with Critic Edits"** button feeding structured feedback directly into the next Planner turn.
+   - Structured JSON output emitted by the Planner is parsed against `krisna.planner.v1`.
+   - `constraint_updates` (style, palette, layout_hints, and `locked_regions: [{bbox, reason}]`) are merged into `DesignState.constraints`.
+3. **Structured Layout Handoff**:
+   - Layout IR is persisted to `state.layout.layout_ref` (`.json`) with SVG/PNG wireframes (`.png`) saved to the blob store.
+   - Finalize takes wireframe input and transforms it into polished visuals via image conditioning.
+4. **Autonomous Self-Review & Turn Budget**:
+   - `RefinementBudget` enforces a strict turn cap (default 5 turns) with monotonic turn counters and exhaustion detection.
+   - Planner self-review inspects layout hierarchy, typography, and contrast, updating constraints before final rendering.
 
 ---
 
-## 5. Production Docker Containerization & Dual-Venv Isolation
-
-For release deployments, Krisna Inference is packaged into a high-performance GPU container architecture:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ docker/Dockerfile.inference (CUDA 12.4.1 / Python 3.11)     │
-│                                                             │
-│  ┌─────────────────────────┐   ┌──────────────────────────┐ │
-│  │ /opt/venv-inference     │   │ /opt/venv-critic         │ │
-│  │ - torch >= 2.6.0        │   │ - torch >= 2.6.0         │ │
-│  │ - transformers >= 5.2.0 │   │ - transformers == 5.5.0  │ │
-│  │ - diffusers >= 0.31.0   │   │ - unsloth + unsloth_zoo  │ │
-│  │ - SwapOrchestrator      │   │ - bitsandbytes           │ │
-│  │ - Planner / Sketch /    │   │ - critic_worker.py       │ │
-│  │   Polish models         │   │                          │ │
-│  └────────────┬────────────┘   └─────────────▲────────────┘ │
-│               │                              │              │
-│               └──────── JSON IPC Pipe ───────┘              │
-│                  (KRISNA_CRITIC_VENV_PYTHON)                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-- **Container Compose Stack**: `docker compose up -d` launches both the GPU inference engine (`:8420`) and the Web Studio UI (`:3000`).
-- **Host Launchers**: `./scripts/docker/run_docker.sh` and `.\scripts\docker\run_docker.ps1` execute host preflight probes (Docker daemon, NVIDIA Container Toolkit, and WSL2 acceleration).
-
----
-
-## 6. Fail-Fast Hardware & Deployment Preflight Verification
-
-Implemented in `krisna_inference.common.hardware` and runnable via `scripts/inference/check_hardware.py`:
-- Probes GPU existence, CUDA runtime, compute capability (`sm_75+` required, `sm_80+` recommended for native BF16), and physical VRAM.
-- Enforces envelopes: 16GB+ default, 11.5GB+ low-VRAM mode (`KRISNA_LOW_VRAM_MODE=1`).
-- Startup guard: When `KRISNA_USE_REAL_BACKENDS=1`, `service.py` immediately aborts if hardware is incompatible, preventing runtime hangs or crashes. MockBackend is strictly reserved for CI and automated testing.
-
----
-
-## 7. REST API Endpoints
+## 5. REST API Endpoints
 
 FastAPI service exposed on default port `8420`:
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/health` / `/healthz` | Liveness & readiness probes for Docker/k8s (residency state and VRAM snapshot). |
+| `GET` | `/health` / `/healthz` | Liveness & readiness probes (residency state and VRAM snapshot). |
 | `GET` | `/hardware` | Live hardware telemetry (GPU, driver, CUDA, free/total VRAM, and config status). |
-| `POST` | `/session` | Initializes a new `DesignState` session. |
+| `POST` | `/session` | Initializes a new `DesignState` session with `RefinementBudget`. |
 | `GET` | `/session/{id}` | Retrieves active `DesignState` snapshot. |
-| `POST` | `/session/{id}/message` | Advances conversational turn (Planner + Sketch pass). |
-| `POST` | `/session/{id}/finalize` | Initiates tier swap, decodes VQ tokens, runs Polish, scores verifiers. |
-| `POST` | `/session/{id}/critique` | Initiates tier swap to Gemma 4, evaluates design, returns structured feedback. |
+| `POST` | `/session/{id}/message` | Advances conversational turn (Planner + Layout IR pass). |
+| `POST` | `/session/{id}/review` | Runs bounded autonomous Planner self-review. |
+| `POST` | `/session/{id}/finalize` | Initiates tier swap, feeds wireframe to Qwen-Image-2.1, scores verifiers. |
+| `POST` | `/session/{id}/critique` | Evaluates finalized render using resident Planner review mode. |
 | `GET` | `/session/{id}/render` | Streams raw finalized image bytes (`image/png`). |
 | `GET` | `/orchestrator/status` | Reports residency state, declared ledgers, and live hardware probes. |
-
----
-
-## 8. Related Documentation
-
-- **[inference/README.md](../../inference/README.md)**: Serving setup, mock vs real backends, Docker flags, and requirements.
-- **[inference-frontend/README.md](../../inference-frontend/README.md)**: Node.js Web Studio & Canvas2D Generalization Visualizer.
-- **[inference-runtime/README.md](../../inference-runtime/README.md)**: CLI harness for multi-turn manual testing.
-- **[docs/review/28_docker_isolation_and_hardware_preflight.md](../review/28_docker_isolation_and_hardware_preflight.md)**: Phase 28 research and verification report.
