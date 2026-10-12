@@ -8,7 +8,10 @@ pub fn run() {
             pipeline::pipeline_snapshot,
             pipeline::record_user_turn,
             pipeline::record_self_review,
+            pipeline::record_finalize,
+            pipeline::record_rollback,
             pipeline::begin_revision_cycle,
+            pipeline::check_inactivity,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
