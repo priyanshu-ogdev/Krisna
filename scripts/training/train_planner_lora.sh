@@ -11,6 +11,6 @@ echo -e "\033[1;31mtraining/src/krisna_training/planner/__init__.py and\033[0m"
 echo -e "\033[1;31mdocs/review/03_planner.md for the full history.\033[0m"
 echo -e "\033[1;31m=========================================================\033[0m"
 
-echo -e "\033[1;36mStarting Planner BF16 LoRA training (Qwen3.5-9B)...\033[0m"
-source .venv/bin/activate
-python -m krisna_training.planner.train --config training/configs/planner_lora_train.yaml
+echo -e "\033[1;31mRefusing to start: Planner training is removed from the production design.\033[0m"
+echo -e "\033[1;33mUse scripts/inference/download_planner_models.py and evaluate_planner.py instead.\033[0m"
+exit 2
