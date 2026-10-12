@@ -985,4 +985,218 @@ table td:last-child { font-family: var(--font-mono); word-break: break-all; colo
   border-top: 1px dashed var(--line);
 }
 
+/* ------------------------------------------------------------------ *
+ * Flow Matching Vector Field & Latent Visualizer
+ * ------------------------------------------------------------------ */
+.flow-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.flow-controls-mini {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+}
+
+.select-control-sm {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--ash-200);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.select-control-sm:focus {
+  border-color: var(--cool);
+}
+
+.btn-toggle-active {
+  background: rgba(6, 182, 212, 0.2) !important;
+  border-color: var(--cool) !important;
+  color: var(--cool) !important;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.3);
+}
+
+.flow-scrubber-strip {
+  background: rgba(14, 19, 27, 0.95);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.65rem;
+  margin-top: 0.5rem;
+  backdrop-filter: blur(8px);
+}
+.flow-scrubber-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.7rem;
+  margin-bottom: 0.25rem;
+}
+.flow-scrubber-title {
+  color: var(--ash-400);
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+.flow-scrubber-val {
+  color: var(--hot);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.flow-slider {
+  width: 100%;
+  height: 4px;
+  accent-color: var(--hot);
+  cursor: pointer;
+}
+
+/* ------------------------------------------------------------------ *
+ * Model Management & Topbar Quick Actions
+ * ------------------------------------------------------------------ */
+.model-control-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+#btn-topbar-warm {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  transition: all 0.2s ease;
+}
+#btn-topbar-warm:hover {
+  background: rgba(245, 158, 11, 0.22);
+  border-color: #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+#btn-topbar-unload {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.08);
+  transition: all 0.2s ease;
+}
+#btn-topbar-unload:hover {
+  background: rgba(239, 68, 68, 0.22);
+  border-color: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+/* ------------------------------------------------------------------ *
+ * Generation Parameters Bar
+ * ------------------------------------------------------------------ */
+.generation-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  background: rgba(14, 19, 27, 0.7);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.control-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.control-label {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--ash-400);
+  white-space: nowrap;
+}
+.select-control {
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--ash-100);
+  font-family: var(--font-body);
+  font-size: 0.74rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.select-control:focus {
+  border-color: var(--cool);
+}
+.seed-input {
+  width: 72px;
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--ash-100);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.seed-input:focus {
+  border-color: var(--cool);
+}
+
+/* ------------------------------------------------------------------ *
+ * Studio Action Row & Button Hierarchy
+ * ------------------------------------------------------------------ */
+.studio-action-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+@media (max-width: 780px) {
+  .studio-action-row { grid-template-columns: 1fr 1fr; }
+}
+.btn-icon {
+  margin-right: 0.35rem;
+  display: inline-block;
+}
+#btn-self-review {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #c7d2fe;
+}
+#btn-self-review:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: #6366f1;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
+}
+#btn-enhance {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #a7f3d0;
+}
+#btn-enhance:hover {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #10b981;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+}
+
+/* ------------------------------------------------------------------ *
+ * Accessible Utilities & Visibility
+ * ------------------------------------------------------------------ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .hidden { display: none !important; }

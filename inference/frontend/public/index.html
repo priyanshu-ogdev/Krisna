@@ -10,30 +10,35 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <h1 class="visually-hidden">Krisna — Autonomous UI Design &amp; Flow Matching Inference Studio</h1>
   <header class="topbar">
     <div class="wordmark">
       <div class="brand-badge">
         <span class="wordmark-dot"></span>
         <span class="wordmark-main">krisna</span>
       </div>
-      <span class="wordmark-sub">inference studio &amp; control</span>
+      <span class="wordmark-sub">flow matching studio &amp; control</span>
     </div>
 
     <nav class="tabs">
-      <button class="tab-btn active" data-tab="setup">
+      <button class="tab-btn active" data-tab="setup" id="tab-btn-setup">
         <span class="tab-icon">⚙</span> Setup &amp; Weights
       </button>
-      <button class="tab-btn" data-tab="studio">
+      <button class="tab-btn" data-tab="studio" id="tab-btn-studio">
         <span class="tab-icon">⚡</span> Studio &amp; Inference
       </button>
     </nav>
 
     <div class="topbar-status">
-      <div id="hw-pill" class="pill sys-pill" title="Target Hardware Environment">
-        <i class="dot sys-dot"></i><span id="hw-pill-text">A6000 48GB · 128GB RAM</span>
+      <div class="model-control-group">
+        <button type="button" class="btn btn-ghost btn-xs" id="btn-topbar-warm" title="Pre-warm Planner &amp; Layout IR for instant turns">🔥 Pre-Warm</button>
+        <button type="button" class="btn btn-ghost btn-xs" id="btn-topbar-unload" title="Unload resident models and reclaim GPU VRAM">🧹 Unload GPU</button>
       </div>
-      <div id="mode-pill" class="pill mode-pill unknown" title="Inference Engine Mode">
-        <i class="dot"></i><span id="mode-pill-text">Checking Mode</span>
+      <div id="resident-pill" class="pill mode-pill" title="Resident Inference Tiers">
+        <i class="dot"></i><span id="resident-pill-text">Baseline: Idle</span>
+      </div>
+      <div id="hw-pill" class="pill sys-pill" title="Target Hardware Environment">
+        <i class="dot sys-dot"></i><span id="hw-pill-text">12–16GB VRAM · 16GB RAM</span>
       </div>
       <div id="health-pill" class="pill unknown" title="FastAPI Orchestrator Service Health">
         <i class="dot"></i><span id="health-pill-text">Checking Service</span>
@@ -155,30 +160,54 @@
           <div class="pixel-forming">
             <div class="canvas-controls-strip">
               <div class="canvas-mode-group">
-                <button type="button" class="mode-btn active" data-mode="pixels">🎨 Pixels</button>
-                <button type="button" class="mode-btn" data-mode="wireframe">📐 Wireframe</button>
-                <button type="button" class="mode-btn" data-mode="flow">⚡ Latent Flow</button>
+                <button type="button" class="mode-btn active" data-mode="pixels" id="mode-btn-pixels">🎨 Pixels</button>
+                <button type="button" class="mode-btn" data-mode="wireframe" id="mode-btn-wireframe">📐 Layout IR</button>
+                <button type="button" class="mode-btn" data-mode="flow" id="mode-btn-flow">⚡ Latent Flow</button>
+              </div>
+              <div class="flow-controls-mini hidden" id="flow-controls-mini">
+                <select id="flow-solver-select" class="select-control-sm" title="Numerical ODE Solver">
+                  <option value="euler">Euler (1st-Order)</option>
+                  <option value="midpoint" selected>Midpoint RK2 (2nd-Order)</option>
+                </select>
+                <button type="button" class="btn btn-ghost btn-xs" id="btn-flow-vectors" title="Toggle velocity vector arrows">Vectors</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="btn-flow-particles" title="Toggle particle streamlines">Streamlines</button>
               </div>
             </div>
             <div id="pixel-canvas-wrap" class="pixel-canvas-wrap" title="Click to view full-resolution inspection lightbox">
               <canvas id="pixel-canvas" width="280" height="280"></canvas>
               <canvas id="wireframe-canvas" width="280" height="280" class="wireframe-canvas hidden"></canvas>
+              <canvas id="flow-canvas" width="280" height="280" class="flow-canvas hidden"></canvas>
               <div id="radar-scan-line" class="radar-scan-line hidden"></div>
               <div id="pixel-step-overlay" class="pixel-step-overlay hidden">
                 <div class="pixel-step-track"><div id="pixel-step-fill" class="pixel-step-fill"></div></div>
-                <div id="pixel-step-label" class="pixel-step-text">step 0/9</div>
+                <div id="pixel-step-label" class="pixel-step-text">step 0/28</div>
               </div>
               <div id="pixel-canvas-label" class="pixel-canvas-label">no render yet</div>
               <div class="canvas-zoom-hint"><span>🔍 Click to inspect full resolution</span></div>
             </div>
+            <div class="flow-scrubber-strip hidden" id="flow-scrubber-strip">
+              <div class="flow-scrubber-head">
+                <span class="flow-scrubber-title">ODE Timestep Trajectory:</span>
+                <span class="flow-scrubber-val" id="flow-time-label">t = 0.00 (Gaussian Noise)</span>
+              </div>
+              <input type="range" id="flow-trajectory-slider" min="0" max="100" value="0" class="flow-slider" />
+            </div>
             <div class="telemetry-hud" id="telemetry-hud">
               <div class="telemetry-item">
                 <span class="hud-label">STEP</span>
-                <span class="hud-val" id="hud-step">0/9</span>
+                <span class="hud-val" id="hud-step">0/28</span>
               </div>
               <div class="telemetry-item">
                 <span class="hud-label">MANIFOLD</span>
                 <span class="hud-val" id="hud-phase">Idle</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="hud-label">VELOCITY ||v||</span>
+                <span class="hud-val" id="hud-velocity">0.00</span>
+              </div>
+              <div class="telemetry-item">
+                <span class="hud-label">GUIDANCE w(t)</span>
+                <span class="hud-val" id="hud-guidance">4.00</span>
               </div>
               <div class="telemetry-item">
                 <span class="hud-label">ENTROPY</span>
@@ -264,11 +293,19 @@
               <!-- Generation Parameter Controls -->
               <div class="generation-controls-bar">
                 <div class="control-group">
-                  <label class="control-label" for="finalize-quality-mode">Polish Fidelity Tier:</label>
+                  <label class="control-label" for="finalize-quality-mode">Polish Tier:</label>
                   <select id="finalize-quality-mode" class="select-control">
-                    <option value="default">Default: Z-Image-Turbo (9 Steps · Ultra-Fast)</option>
-                    <option value="quality">Quality: Qwen-Image-Edit-2511 (28 Steps · High-Fidelity)</option>
+                    <option value="default" selected>Standard: Qwen-Image-2.1 (28 Steps · Fast Flow ODE)</option>
+                    <option value="quality">Quality: Qwen-Image-2.1 (40 Steps · High-Fidelity RK2)</option>
                   </select>
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="guidance-input">CFG Guidance:</label>
+                  <input type="number" id="guidance-input" class="seed-input" value="4.0" step="0.5" min="1.0" max="10.0" />
+                </div>
+                <div class="control-group">
+                  <label class="control-label" for="strength-input">Strength:</label>
+                  <input type="number" id="strength-input" class="seed-input" value="0.65" step="0.05" min="0.1" max="1.0" />
                 </div>
                 <div class="control-group">
                   <label class="control-label" for="seed-input">Seed:</label>
@@ -283,11 +320,17 @@
               </form>
 
               <div class="btn-row studio-action-row">
-                <button class="btn btn-secondary" id="btn-finalize">
+                <button type="button" class="btn btn-secondary" id="btn-self-review" title="Trigger autonomous refinement turn without user prompt">
+                  <span class="btn-icon">🤖</span> Self-Review
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-finalize" title="Synthesize high-fidelity render from layout wireframe">
                   <span class="btn-icon">🎨</span> Finalize Render
                 </button>
-                <button class="btn btn-secondary" id="btn-critique">
-                  <span class="btn-icon">🔍</span> Run Critique Pass
+                <button type="button" class="btn btn-secondary" id="btn-enhance" title="Enhance current render with detail refinement">
+                  <span class="btn-icon">✨</span> Enhance
+                </button>
+                <button type="button" class="btn btn-secondary" id="btn-critique" title="Run multimodal UI critique pass">
+                  <span class="btn-icon">🔍</span> Critique Pass
                 </button>
               </div>
             </div>

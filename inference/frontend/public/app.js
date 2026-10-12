@@ -689,6 +689,19 @@ async function refreshStatus() {
         modeText.textContent = "MockBackend Mode";
       }
     }
+
+    const resPill = $("#resident-pill");
+    const resText = $("#resident-pill-text") || resPill;
+    if (resText) {
+      const resident = data?.vram?.resident || [];
+      if (resident.length > 0) {
+        resText.textContent = `Resident: ${resident.join(" + ")}`;
+        if (resPill) resPill.className = "pill mode-pill real";
+      } else {
+        resText.textContent = "Baseline: Idle";
+        if (resPill) resPill.className = "pill mode-pill";
+      }
+    }
   } catch (e) {
     // backend unreachable — leave last-known visuals in place, health
     // pill already communicates the outage.
@@ -792,23 +805,48 @@ class GeneralizationEngine {
     this.ctx = this.canvas?.getContext("2d");
     this.wireframeCanvas = $("#wireframe-canvas");
     this.wfCtx = this.wireframeCanvas?.getContext("2d");
+    this.flowCanvas = $("#flow-canvas");
+    this.flowCtx = this.flowCanvas?.getContext("2d");
     this.viewMode = "pixels"; // "pixels" | "wireframe" | "flow"
 
+    this.solverMode = "midpoint"; // "euler" | "midpoint" (RK2)
+    this.showVectors = true;
+    this.showParticles = true;
+    this.scrubberT = 0.0; // Interactive ODE timestep t in [0, 1]
+
     this.animating = false;
+    this.flowAnimating = false;
     this.animFrameId = null;
+    this.flowFrameId = null;
     this.startTime = 0;
     this.durationMs = 6000;
-    this.stepCount = 9;
+    this.stepCount = 28;
     this.progress = 0;
     this.cachedImage = null;
 
+    // Region locking interactive state
+    this.lockedNodeIds = new Set();
+    this.currentNodes = [];
+
+    // Semantic cluster targets for the Flow Matching vector field (Layout IR targets)
+    this.semanticTargets = [
+      { x: 140, y: 34, weight: 1.0, type: "header" },
+      { x: 140, y: 97, weight: 1.4, type: "hero" },
+      { x: 140, y: 158, weight: 0.9, type: "row" },
+      { x: 140, y: 203, weight: 1.1, type: "list" },
+      { x: 140, y: 249, weight: 1.2, type: "cta" },
+    ];
+
     this.particles = [];
-    this.initParticles(35);
+    this.initParticles(55);
+
+    // Setup wireframe interaction
+    this.initWireframeEvents();
 
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden && this.animating) {
+      if (document.hidden) {
         this.pause();
-      } else if (!document.hidden && this.animating) {
+      } else {
         this.resume();
       }
     });
@@ -817,16 +855,47 @@ class GeneralizationEngine {
   initParticles(count) {
     this.particles = [];
     for (let i = 0; i < count; i++) {
+      const x0 = 140 + (Math.random() - 0.5) * 240;
+      const y0 = 140 + (Math.random() - 0.5) * 240;
+      const target = this.semanticTargets[Math.floor(Math.random() * this.semanticTargets.length)];
       this.particles.push({
-        x: Math.random() * 280,
-        y: Math.random() * 280,
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: (Math.random() - 0.5) * 1.5,
-        size: Math.random() * 2.5 + 1,
-        color: Math.random() > 0.5 ? "rgba(99, 102, 241, " : "rgba(6, 182, 212, ",
+        x: x0,
+        y: y0,
+        x0: x0,
+        y0: y0,
+        target: target,
+        vx: 0,
+        vy: 0,
+        size: Math.random() * 2.2 + 1.2,
+        color: Math.random() > 0.4 ? "rgba(6, 182, 212, " : (Math.random() > 0.5 ? "rgba(99, 102, 241, " : "rgba(245, 158, 11, "),
         alpha: Math.random() * 0.7 + 0.3,
       });
     }
+  }
+
+  initWireframeEvents() {
+    if (!this.wireframeCanvas) return;
+    this.wireframeCanvas.addEventListener("click", (e) => {
+      const rect = this.wireframeCanvas.getBoundingClientRect();
+      const clickX = ((e.clientX - rect.left) / rect.width) * 280;
+      const clickY = ((e.clientY - rect.top) / rect.height) * 280;
+
+      for (let i = this.currentNodes.length - 1; i >= 0; i--) {
+        const node = this.currentNodes[i];
+        if (clickX >= node.x && clickX <= node.x + node.w && clickY >= node.y && clickY <= node.y + node.h) {
+          if (this.lockedNodeIds.has(node.id)) {
+            this.lockedNodeIds.delete(node.id);
+          } else {
+            this.lockedNodeIds.add(node.id);
+          }
+          if (sessionState) {
+            sessionState.locked_regions = Array.from(this.lockedNodeIds);
+          }
+          this.renderWireframe(this.wireframeCanvas, this.wfCtx, 280, 280);
+          break;
+        }
+      }
+    });
   }
 
   setViewMode(mode) {
@@ -834,13 +903,30 @@ class GeneralizationEngine {
     $$(".mode-btn").forEach((btn) => {
       btn.classList.toggle("active", btn.dataset.mode === mode);
     });
-    if (this.wireframeCanvas) {
-      this.wireframeCanvas.classList.toggle("hidden", mode !== "wireframe");
+
+    const isPixels = mode === "pixels";
+    const isWireframe = mode === "wireframe";
+    const isFlow = mode === "flow";
+
+    if (this.wireframeCanvas) this.wireframeCanvas.classList.toggle("hidden", !isWireframe);
+    if (this.flowCanvas) this.flowCanvas.classList.toggle("hidden", !isFlow);
+
+    const miniControls = $("#flow-controls-mini");
+    if (miniControls) miniControls.classList.toggle("hidden", !isFlow);
+
+    const scrubber = $("#flow-scrubber-strip");
+    if (scrubber) scrubber.classList.toggle("hidden", !isFlow);
+
+    if (isFlow) {
+      this.startFlowLoop();
+    } else {
+      this.stopFlowLoop();
     }
+
     this.redraw();
   }
 
-  startDenoising(expectedDurationMs = 6000, stepCount = 9) {
+  startDenoising(expectedDurationMs = 6000, stepCount = 28) {
     this.durationMs = expectedDurationMs;
     this.stepCount = stepCount;
     this.startTime = performance.now();
@@ -864,16 +950,40 @@ class GeneralizationEngine {
     }
   }
 
+  startFlowLoop() {
+    if (this.flowAnimating) return;
+    this.flowAnimating = true;
+    const runFlow = () => {
+      if (!this.flowAnimating || this.viewMode !== "flow") return;
+      const t = this.animating ? this.progress : this.scrubberT;
+      this.renderFlowCanvas(t);
+      this.flowFrameId = requestAnimationFrame(runFlow);
+    };
+    this.flowFrameId = requestAnimationFrame(runFlow);
+  }
+
+  stopFlowLoop() {
+    this.flowAnimating = false;
+    if (this.flowFrameId) {
+      cancelAnimationFrame(this.flowFrameId);
+      this.flowFrameId = null;
+    }
+  }
+
   pause() {
     if (this.animFrameId) {
       cancelAnimationFrame(this.animFrameId);
       this.animFrameId = null;
     }
+    this.stopFlowLoop();
   }
 
   resume() {
     if (this.animating && !this.animFrameId) {
       this.loop();
+    }
+    if (this.viewMode === "flow") {
+      this.startFlowLoop();
     }
   }
 
@@ -881,7 +991,7 @@ class GeneralizationEngine {
     if (!this.animating) return;
     const now = performance.now();
     const elapsed = now - this.startTime;
-    this.progress = Math.min(0.96, (elapsed / this.durationMs) * 0.95);
+    this.progress = Math.min(0.98, (elapsed / this.durationMs) * 0.95);
 
     this.renderDenoisingFrame(this.progress);
     this.updateTelemetry(this.progress, this.stepCount);
@@ -892,6 +1002,8 @@ class GeneralizationEngine {
   updateTelemetry(t, stepCount) {
     const stepEl = $("#hud-step");
     const phaseEl = $("#hud-phase");
+    const velEl = $("#hud-velocity");
+    const guidanceEl = $("#hud-guidance");
     const entropyEl = $("#hud-entropy");
 
     const activeStep = Math.min(stepCount, Math.floor(t * stepCount) + 1);
@@ -903,10 +1015,158 @@ class GeneralizationEngine {
     else if (t > 0.25) phaseName = "Semantic Manifold";
     if (phaseEl) phaseEl.textContent = phaseName;
 
+    // Vector field average velocity ||v||
+    const velNorm = Math.max(0.04, (1 - t * 0.85) * (1.2 + Math.sin(t * Math.PI) * 0.8));
+    if (velEl) velEl.textContent = velNorm.toFixed(2);
+
+    // Dynamic cosine guidance scale: w(t) = 1.0 + (w_max - 1.0) * cos(pi/2 * t)
+    const baseGuidance = parseFloat($("#guidance-input")?.value || "4.0");
+    const currentGuidance = 1.0 + (baseGuidance - 1.0) * Math.cos((Math.PI / 2) * t);
+    if (guidanceEl) guidanceEl.textContent = currentGuidance.toFixed(2);
+
     if (entropyEl) {
-      const entropy = Math.max(0.02, (1 - t) * 0.98 + (Math.sin(performance.now() * 0.01) * 0.02));
+      const entropy = Math.max(0.02, (1 - t) * 0.98 + (Math.sin(performance.now() * 0.008) * 0.02));
       entropyEl.textContent = entropy.toFixed(2);
     }
+  }
+
+  computeVelocityAt(x, y, t) {
+    let vx = 0;
+    let vy = 0;
+    const eps = 250.0;
+    for (const target of this.semanticTargets) {
+      const dx = target.x - x;
+      const dy = target.y - y;
+      const distSq = dx * dx + dy * dy + eps;
+      const force = (target.weight * 400.0) / distSq;
+      vx += dx * force * (1.0 - t * 0.7);
+      vy += dy * force * (1.0 - t * 0.7);
+    }
+    const mag = Math.sqrt(vx * vx + vy * vy);
+    const maxMag = 4.0;
+    if (mag > maxMag) {
+      vx = (vx / mag) * maxMag;
+      vy = (vy / mag) * maxMag;
+    }
+    return { vx, vy, mag };
+  }
+
+  renderFlowCanvas(t) {
+    if (!this.flowCtx || !this.flowCanvas) return;
+    const w = this.flowCanvas.width;
+    const h = this.flowCanvas.height;
+    const ctx = this.flowCtx;
+
+    ctx.fillStyle = "#05070a";
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle coordinate grid
+    const cols = 14;
+    const cellW = w / cols;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= cols; i++) {
+      ctx.beginPath();
+      ctx.moveTo(i * cellW, 0); ctx.lineTo(i * cellW, h); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, i * cellW); ctx.lineTo(w, i * cellW); ctx.stroke();
+    }
+
+    // Semantic cluster centroids (Layout IR target anchors)
+    for (const target of this.semanticTargets) {
+      const alpha = 0.2 + t * 0.6;
+      ctx.fillStyle = `rgba(99, 102, 241, ${alpha * 0.25})`;
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, 22 * target.weight, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(6, 182, 212, ${alpha * 0.5})`;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // Velocity Vector Field Arrows (Grid of ODE derivatives)
+    if (this.showVectors) {
+      const step = 28;
+      const dt = 0.1;
+      for (let y = 14; y < h; y += step) {
+        for (let x = 14; x < w; x += step) {
+          const v0 = this.computeVelocityAt(x, y, t);
+          let endX, endY;
+
+          if (this.solverMode === "midpoint") {
+            const midX = x + 0.5 * dt * v0.vx * 15;
+            const midY = y + 0.5 * dt * v0.vy * 15;
+            const vMid = this.computeVelocityAt(midX, midY, t + 0.5 * dt);
+            endX = x + vMid.vx * 12;
+            endY = y + vMid.vy * 12;
+
+            ctx.strokeStyle = "rgba(99, 102, 241, 0.35)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(midX, midY);
+            ctx.stroke();
+
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.75)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+          } else {
+            endX = x + v0.vx * 12;
+            endY = y + v0.vy * 12;
+            ctx.strokeStyle = "rgba(6, 182, 212, 0.65)";
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+          }
+
+          const angle = Math.atan2(endY - y, endX - x);
+          const arrowLen = 3.5;
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.beginPath();
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(endX - arrowLen * Math.cos(angle - Math.PI / 6), endY - arrowLen * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(endX - arrowLen * Math.cos(angle + Math.PI / 6), endY - arrowLen * Math.sin(angle + Math.PI / 6));
+          ctx.closePath();
+          ctx.fill();
+        }
+      }
+    }
+
+    // Streamline particles drifting along ODE trajectory
+    if (this.showParticles) {
+      for (const p of this.particles) {
+        const v = this.computeVelocityAt(p.x, p.y, t);
+        p.vx = p.vx * 0.85 + v.vx * 0.15;
+        p.vy = p.vy * 0.85 + v.vy * 0.15;
+
+        p.x += p.vx * 1.5;
+        p.y += p.vy * 1.5;
+
+        if (p.x < 4 || p.x > w - 4 || p.y < 4 || p.y > h - 4) {
+          p.x = 140 + (Math.random() - 0.5) * 200;
+          p.y = 140 + (Math.random() - 0.5) * 200;
+          p.vx = 0;
+          p.vy = 0;
+        }
+
+        ctx.fillStyle = `${p.color}${Math.max(0.15, (1 - t * 0.3) * p.alpha)})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = "rgba(8, 10, 15, 0.75)";
+    ctx.fillRect(w - 110, 8, 102, 20);
+    ctx.fillStyle = "#06b6d4";
+    ctx.font = '9px "JetBrains Mono", monospace';
+    ctx.fillText(`${this.solverMode.toUpperCase()} ODE`, w - 104, 22);
   }
 
   renderDenoisingFrame(t) {
@@ -919,52 +1179,10 @@ class GeneralizationEngine {
     ctx.fillRect(0, 0, w, h);
 
     if (this.viewMode === "flow") {
-      this.drawLatentFlowField(ctx, w, h, t);
+      this.renderFlowCanvas(t);
     } else {
       this.drawGeneralizationStage(ctx, w, h, t);
     }
-  }
-
-  drawLatentFlowField(ctx, w, h, t) {
-    const cols = 14;
-    const cellW = w / cols;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= cols; i++) {
-      ctx.beginPath();
-      ctx.moveTo(i * cellW, 0);
-      ctx.lineTo(i * cellW, h);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, i * cellW);
-      ctx.lineTo(w, i * cellW);
-      ctx.stroke();
-    }
-
-    const time = performance.now() * 0.002;
-    for (const p of this.particles) {
-      p.x += p.vx * (1.5 - t);
-      p.y += p.vy * (1.5 - t);
-      if (p.x < 0) p.x = w;
-      if (p.x > w) p.x = 0;
-      if (p.y < 0) p.y = h;
-      if (p.y > h) p.y = 0;
-
-      ctx.fillStyle = `${p.color}${(1 - t * 0.5) * p.alpha})`;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (1 - t * 0.4), 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.save();
-    ctx.translate(w / 2, h / 2);
-    ctx.rotate(time * 0.5);
-    ctx.strokeStyle = `rgba(245, 158, 11, ${0.4 + t * 0.5})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 35 * (1 - t * 0.5), 0, Math.PI * (1 + t));
-    ctx.stroke();
-    ctx.restore();
   }
 
   drawGeneralizationStage(ctx, w, h, t) {
@@ -1074,12 +1292,14 @@ class GeneralizationEngine {
     const scaleY = h / 280;
 
     const components = [
-      { label: "Nav: Header / Brand", x: 20, y: 16, w: 240, h: 36, color: "#6366f1" },
-      { label: "Hero: Balance Card", x: 20, y: 60, w: 240, h: 74, color: "#06b6d4" },
-      { label: "Row: Quick Actions", x: 20, y: 142, w: 240, h: 32, color: "#10b981" },
-      { label: "List: Activity Data", x: 20, y: 182, w: 240, h: 42, color: "#8b5cf6" },
-      { label: "Button: Primary CTA", x: 20, y: 232, w: 240, h: 34, color: "#f59e0b" },
+      { id: "node-nav", label: "Nav: Header / Brand", x: 20, y: 16, w: 240, h: 36, color: "#6366f1" },
+      { id: "node-hero", label: "Hero: Balance Card", x: 20, y: 60, w: 240, h: 74, color: "#06b6d4" },
+      { id: "node-actions", label: "Row: Quick Actions", x: 20, y: 142, w: 240, h: 32, color: "#10b981" },
+      { id: "node-list", label: "List: Activity Data", x: 20, y: 182, w: 240, h: 42, color: "#8b5cf6" },
+      { id: "node-cta", label: "Button: Primary CTA", x: 20, y: 232, w: 240, h: 34, color: "#f59e0b" },
     ];
+
+    this.currentNodes = components;
 
     for (const comp of components) {
       const rx = comp.x * scaleX;
@@ -1087,23 +1307,42 @@ class GeneralizationEngine {
       const rw = comp.w * scaleX;
       const rh = comp.h * scaleY;
 
-      ctx.fillStyle = `${comp.color}15`;
-      ctx.fillRect(rx, ry, rw, rh);
+      const isLocked = this.lockedNodeIds.has(comp.id);
 
-      ctx.strokeStyle = comp.color;
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(rx, ry, rw, rh);
+      if (isLocked) {
+        ctx.fillStyle = "rgba(245, 158, 11, 0.2)";
+        ctx.fillRect(rx, ry, rw, rh);
 
-      ctx.fillStyle = "rgba(8, 10, 15, 0.85)";
-      ctx.fillRect(rx + 2, ry + 2, 95 * scaleX, 13 * scaleY);
-      ctx.fillStyle = comp.color;
-      ctx.font = `${Math.round(8 * scaleX)}px "JetBrains Mono", monospace`;
-      ctx.fillText(comp.label, rx + 4, ry + 10 * scaleY);
+        ctx.strokeStyle = "#f59e0b";
+        ctx.lineWidth = 2.0;
+        ctx.strokeRect(rx, ry, rw, rh);
+
+        ctx.fillStyle = "rgba(245, 158, 11, 0.95)";
+        ctx.fillRect(rx + 2, ry + 2, 110 * scaleX, 14 * scaleY);
+        ctx.fillStyle = "#05070a";
+        ctx.font = `bold ${Math.round(8 * scaleX)}px "JetBrains Mono", monospace`;
+        ctx.fillText(`🔒 LOCKED`, rx + 4, ry + 11 * scaleY);
+      } else {
+        ctx.fillStyle = `${comp.color}15`;
+        ctx.fillRect(rx, ry, rw, rh);
+
+        ctx.strokeStyle = comp.color;
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(rx, ry, rw, rh);
+
+        ctx.fillStyle = "rgba(8, 10, 15, 0.85)";
+        ctx.fillRect(rx + 2, ry + 2, 95 * scaleX, 13 * scaleY);
+        ctx.fillStyle = comp.color;
+        ctx.font = `${Math.round(8 * scaleX)}px "JetBrains Mono", monospace`;
+        ctx.fillText(comp.label, rx + 4, ry + 10 * scaleY);
+      }
     }
   }
 
   redraw() {
-    if (this.cachedImage) {
+    if (this.viewMode === "flow") {
+      this.renderFlowCanvas(this.animating ? this.progress : this.scrubberT);
+    } else if (this.cachedImage) {
       this.drawLoadedImage(this.cachedImage);
     } else if (sessionState?.stage === "finalizing") {
       this.renderDenoisingFrame(this.progress);
@@ -1378,10 +1617,12 @@ let busy = false;
 
 function setBusy(isBusy) {
   busy = isBusy;
-  $("#message-input").disabled = isBusy;
-  $("#btn-send").disabled = isBusy;
-  $("#btn-finalize").disabled = isBusy;
-  $("#btn-critique").disabled = isBusy;
+  if ($("#message-input")) $("#message-input").disabled = isBusy;
+  if ($("#btn-send")) $("#btn-send").disabled = isBusy;
+  if ($("#btn-self-review")) $("#btn-self-review").disabled = isBusy;
+  if ($("#btn-finalize")) $("#btn-finalize").disabled = isBusy;
+  if ($("#btn-enhance")) $("#btn-enhance").disabled = isBusy;
+  if ($("#btn-critique")) $("#btn-critique").disabled = isBusy;
 }
 
 function showChatError(message) {
@@ -1406,38 +1647,29 @@ function removeThinkingBubble() {
   $("#thinking-bubble")?.remove();
 }
 
-// Z-Image-Turbo's own documented step count (polish_default_backend.py:
-// num_inference_steps=9) — used here only to label the overlay
-// truthfully ("step N/9"), not because this synchronous /finalize call
-// reports real per-step progress back to the browser. The fill ticks on
-// a fixed interval against a rough expected duration, explicitly
-// labeled "estimated" in the UI text, and always completes to 100% the
-// moment the real response arrives rather than drifting past it.
-const POLISH_STEP_COUNT = 9;
 let stepTicker = null;
-
-function startStepOverlay() {
+function startStepOverlay(stepCount = 28) {
   const overlay = $("#pixel-step-overlay");
   const fill = $("#pixel-step-fill");
   const label = $("#pixel-step-label");
   overlay.classList.remove("hidden");
   let step = 0;
-  const expectedMs = 6000; // rough — real duration depends on hardware, not measured here
-  const tickMs = expectedMs / POLISH_STEP_COUNT;
+  const expectedMs = stepCount > 30 ? 10000 : 6000;
+  const tickMs = expectedMs / stepCount;
   fill.style.width = "0%";
-  label.textContent = `step 0/${POLISH_STEP_COUNT} (estimated)`;
+  label.textContent = `step 0/${stepCount} (ODE trajectory)`;
   stepTicker = setInterval(() => {
-    step = Math.min(step + 1, POLISH_STEP_COUNT - 1); // never claims 100% until the real response lands
-    fill.style.width = `${(step / POLISH_STEP_COUNT) * 100}%`;
-    label.textContent = `step ${step}/${POLISH_STEP_COUNT} (estimated)`;
+    step = Math.min(step + 1, stepCount - 1);
+    fill.style.width = `${(step / stepCount) * 100}%`;
+    label.textContent = `step ${step}/${stepCount} (ODE trajectory)`;
   }, tickMs);
 }
-function stopStepOverlay(completed) {
+function stopStepOverlay(completed, stepCount = 28) {
   if (stepTicker) { clearInterval(stepTicker); stepTicker = null; }
   const overlay = $("#pixel-step-overlay");
   if (completed) {
     $("#pixel-step-fill").style.width = "100%";
-    $("#pixel-step-label").textContent = `step ${POLISH_STEP_COUNT}/${POLISH_STEP_COUNT} — done`;
+    $("#pixel-step-label").textContent = `step ${stepCount}/${stepCount} — converged`;
     setTimeout(() => overlay.classList.add("hidden"), 600);
   } else {
     overlay.classList.add("hidden");
@@ -1484,45 +1716,122 @@ $("#message-form").addEventListener("submit", async (e) => {
   }
 });
 
+// Self-Review: triggers autonomous Planner refinement without requiring user turn
+$("#btn-self-review")?.addEventListener("click", async () => {
+  if (!sessionState || busy) return;
+  clearChatError();
+  setBusy(true);
+  addThinkingBubble("planner (self-review)");
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/self-review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    removeThinkingBubble();
+    if (r.ok) {
+      applySession(await r.json());
+    } else {
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    removeThinkingBubble();
+    showChatError(`Couldn't reach backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
+});
+
+// Finalize Render: runs Polish tier synthesis
 $("#btn-finalize").addEventListener("click", async () => {
   if (!sessionState || busy) return;
   const qualityMode = $("#finalize-quality-mode")?.value || "default";
   const quality = qualityMode === "quality";
+  const stepCount = quality ? 40 : 28;
   const seedVal = $("#seed-input")?.value?.trim();
   const seed = seedVal ? parseInt(seedVal, 10) : undefined;
+  const prompt = $("#message-input")?.value?.trim() || undefined;
 
   clearChatError();
   setBusy(true);
   renderPhasePipeline("finalizing");
   $("#pixel-canvas").classList.add("forming");
-  $("#pixel-canvas-label").textContent = `${quality ? "qwen-image-edit-2511" : "z-image-turbo"} forming pixels…`;
+  $("#pixel-canvas-label").textContent = `${quality ? "Qwen-Image-2.1 Quality (40 Steps)" : "Qwen-Image-2.1 Standard (28 Steps)"} forming pixels…`;
 
-  // Start 60fps hardware-accelerated flow-matching denoising visualizer
-  genEngine.startDenoising(quality ? 12000 : 6000, quality ? 28 : 9);
-  startStepOverlay();
+  genEngine.startDenoising(quality ? 10000 : 6000, stepCount);
+  startStepOverlay(stepCount);
 
   try {
     const payload = { quality };
     if (seed !== undefined && !isNaN(seed)) payload.seed = seed;
+    if (prompt) payload.prompt = prompt;
     const r = await fetch(`/api/session/${sessionState.session_id}/finalize`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (r.ok) {
-      stopStepOverlay(true);
+      stopStepOverlay(true, stepCount);
       applySession(await r.json());
     } else {
-      stopStepOverlay(false);
+      stopStepOverlay(false, stepCount);
       genEngine.stopDenoising(false);
       renderPhasePipeline(sessionState.stage);
       showChatError(await extractErrorDetail(r));
     }
   } catch (err) {
-    stopStepOverlay(false);
+    stopStepOverlay(false, stepCount);
     genEngine.stopDenoising(false);
     renderPhasePipeline(sessionState.stage);
     showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
+});
+
+// Enhance: re-runs Polish tier with detail refinement
+$("#btn-enhance")?.addEventListener("click", async () => {
+  if (!sessionState || busy) return;
+  const imgRef = sessionState.finalize_output?.image_ref;
+  if (!imgRef) {
+    showChatError("No finalize render exists yet. Finalize a render first before enhancing.");
+    return;
+  }
+  clearChatError();
+  setBusy(true);
+  renderPhasePipeline("finalizing");
+  $("#pixel-canvas").classList.add("forming");
+  $("#pixel-canvas-label").textContent = "Enhancing render details with Polish tier…";
+
+  const qualityMode = $("#finalize-quality-mode")?.value || "default";
+  const quality = qualityMode === "quality";
+  const stepCount = quality ? 40 : 28;
+  const prompt = $("#message-input")?.value?.trim() || "High quality polished UI elements";
+  genEngine.startDenoising(quality ? 10000 : 6000, stepCount);
+  startStepOverlay(stepCount);
+
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/enhance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_ref: imgRef, prompt, quality }),
+    });
+    if (r.ok) {
+      stopStepOverlay(true, stepCount);
+      applySession(await r.json());
+    } else {
+      stopStepOverlay(false, stepCount);
+      genEngine.stopDenoising(false);
+      renderPhasePipeline(sessionState.stage);
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    stopStepOverlay(false, stepCount);
+    genEngine.stopDenoising(false);
+    renderPhasePipeline(sessionState.stage);
+    showChatError(`Couldn't reach backend: ${err.message || err}`);
   } finally {
     setBusy(false);
     refreshStatus();
@@ -1556,6 +1865,106 @@ $("#btn-critique").addEventListener("click", async () => {
   } finally {
     setBusy(false);
     refreshStatus();
+  }
+});
+
+// Flow Vector Field Controls & Trajectory Scrubber
+$("#flow-solver-select")?.addEventListener("change", (e) => {
+  genEngine.solverMode = e.target.value;
+  if (genEngine.viewMode === "flow") {
+    genEngine.renderFlowCanvas(genEngine.animating ? genEngine.progress : genEngine.scrubberT);
+  }
+});
+
+$("#btn-flow-vectors")?.addEventListener("click", () => {
+  genEngine.showVectors = !genEngine.showVectors;
+  $("#btn-flow-vectors")?.classList.toggle("btn-toggle-active", genEngine.showVectors);
+  if (genEngine.viewMode === "flow") {
+    genEngine.renderFlowCanvas(genEngine.animating ? genEngine.progress : genEngine.scrubberT);
+  }
+});
+
+$("#btn-flow-particles")?.addEventListener("click", () => {
+  genEngine.showParticles = !genEngine.showParticles;
+  $("#btn-flow-particles")?.classList.toggle("btn-toggle-active", genEngine.showParticles);
+  if (genEngine.viewMode === "flow") {
+    genEngine.renderFlowCanvas(genEngine.animating ? genEngine.progress : genEngine.scrubberT);
+  }
+});
+
+$("#flow-trajectory-slider")?.addEventListener("input", (e) => {
+  const t = parseInt(e.target.value, 10) / 100;
+  genEngine.scrubberT = t;
+  const label = $("#flow-time-label");
+  let desc = "Gaussian Noise";
+  if (t >= 0.95) desc = "Converged Polish Output";
+  else if (t >= 0.70) desc = "Detail Crystallization";
+  else if (t >= 0.35) desc = "Component Clustering";
+  else if (t > 0.0) desc = "Semantic Vector Drift";
+  if (label) label.textContent = `t = ${t.toFixed(2)} (${desc})`;
+  genEngine.updateTelemetry(t, genEngine.stepCount);
+  if (genEngine.viewMode === "flow") {
+    genEngine.renderFlowCanvas(t);
+  }
+});
+
+// Topbar Pre-Warm & Unload GPU controls
+let warmPollingTimer = null;
+async function triggerWarmup() {
+  const btn = $("#btn-topbar-warm");
+  const pillText = $("#resident-pill-text");
+  if (btn) btn.textContent = "Warming…";
+  if (pillText) pillText.textContent = "Warming Baseline…";
+  try {
+    const r = await fetch("/api/models/warm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ background: true }),
+    });
+    if (r.ok) {
+      if (warmPollingTimer) clearInterval(warmPollingTimer);
+      warmPollingTimer = setInterval(async () => {
+        try {
+          const sr = await fetch("/api/models/warm/status");
+          if (sr.ok) {
+            const st = await sr.json();
+            if (st.status === "ready") {
+              clearInterval(warmPollingTimer);
+              warmPollingTimer = null;
+              if (btn) btn.textContent = "🔥 Pre-Warmed";
+              if (pillText) pillText.textContent = "Planner Resident";
+              refreshStatus();
+            } else if (st.status === "error") {
+              clearInterval(warmPollingTimer);
+              warmPollingTimer = null;
+              if (btn) btn.textContent = "Warm Failed";
+              if (pillText) pillText.textContent = "Warm Error";
+            }
+          }
+        } catch {}
+      }, 1200);
+    }
+  } catch (err) {
+    if (btn) btn.textContent = "🔥 Pre-Warm";
+    if (pillText) pillText.textContent = "Warm Error";
+  }
+}
+$("#btn-topbar-warm")?.addEventListener("click", triggerWarmup);
+
+$("#btn-topbar-unload")?.addEventListener("click", async () => {
+  const btn = $("#btn-topbar-unload");
+  const pillText = $("#resident-pill-text");
+  if (btn) btn.textContent = "Unloading…";
+  try {
+    const r = await fetch("/api/models/unload", { method: "POST" });
+    if (r.ok) {
+      if (btn) btn.textContent = "🧹 Unloaded";
+      if (pillText) pillText.textContent = "VRAM Cleared";
+      setTimeout(() => { if (btn) btn.textContent = "🧹 Unload GPU"; }, 2500);
+      refreshStatus();
+    }
+  } catch {
+    if (btn) btn.textContent = "🧹 Unload GPU";
   }
 });
 
