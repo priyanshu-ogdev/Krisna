@@ -134,3 +134,25 @@ currently masked positions, sorts them by combined generator/critic confidence,
 and commits selected tokens. This repository fact is more authoritative for
 Krisna behavior than a generic MaskGIT description; see
 `inference/src/krisna_inference/backends/maskgit_model.py`.
+
+## Unified diffusion rendering & preference alignment
+
+- Alibaba Qwen Team, *Qwen-Image-2.1: Advanced Visual Foundation Models with Image Conditioning* (2026).
+- Brooks, Holynski, & Efros, *InstructPix2Pix: Learning to Follow Image Editing Instructions* (CVPR 2023): https://arxiv.org/abs/2211.09800
+- Wallace, Dang, Rafailov, Zhou, Lou, Purushwalkam, Ermon, Xiong, Joty, & Naik, *Diffusion Model Alignment Using Direct Preference Optimization* (CVPR 2024): https://arxiv.org/abs/2311.12908
+- Ho & Salimans, *Classifier-Free Diffusion Guidance* (NeurIPS Workshop 2022): https://arxiv.org/abs/2207.12598
+
+## Core UI & preference datasets
+
+- Deka et al., *Rico: A Mobile App Dataset for Integrated Design and Code Search* (ACM UIST 2017): https://dl.acm.org/doi/10.1145/3126594.3126651
+- Li et al., *CLAY: A Controllable Large-scale UI Layout Dataset with Visual and Semantic Annotations* (ACM CHI 2022): https://dl.acm.org/doi/10.1145/3491102.3502041
+- Leiva et al., *Enrico: A Dataset for Topic Modeling of Mobile GUI Designs* (ACM MobileHCI 2020): https://dl.acm.org/doi/10.1145/3379503.3403544
+- Wang et al., *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning* (ACM UIST 2021): https://dl.acm.org/doi/10.1145/3472749.3474765
+- Google Research, *UICrit: Multimodal UI Design Critique Dataset* (2023): `google-research-datasets/uicrit`
+- GameLabel-10K, *High-Contrast Game UI Preference Dataset* (2024): MIT License.
+
+## Canonical research documentation
+
+- **Formal Research Paper**: [`docs/RESEARCH_PAPER.md`](RESEARCH_PAPER.md) — *Krisna: Bounded Multi-Turn Agentic UI Design via Structured Layout IR and Unified Diffusion Rendering*.
+- **Developer Notes & Feature Audit**: [`docs/DEV_NOTES.md`](DEV_NOTES.md) — Engineering history, component specifications, memory ledgers, and feature retention audit.
+

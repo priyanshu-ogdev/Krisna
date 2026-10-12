@@ -11,6 +11,8 @@
 ```
 docs/
 ├── PRD.md                       # Canonical Master Requirements & Architecture Spec
+├── DEV_NOTES.md                 # Engineering Dev Notes, Component Contracts & Feature Audit
+├── RESEARCH_PAPER.md            # Formal Research Paper: Bounded Multi-Turn Agentic UI Design
 ├── architecture/                # Cross-cutting system design & research justification
 │   ├── RESEARCH_AND_CITATIONS.md # Every architectural choice grounded in checked citations
 │   ├── DIRECTORY_LAYOUT.md       # Package architecture and boundary rules
@@ -35,6 +37,8 @@ docs/
 
 ## Key Guides & Quick Links
 
+- **Developer Notes & Feature Retention Audit**: See [DEV_NOTES.md](DEV_NOTES.md) for engineering history, component contracts, memory ledgers, and feature audit.
+- **Scientific Research Paper Specification**: See [RESEARCH_PAPER.md](RESEARCH_PAPER.md) for formal problem formulation, mathematical models, empirical evaluation, and ablation studies.
 - **Why only two models are trained**: See [RESEARCH_AND_CITATIONS.md](architecture/RESEARCH_AND_CITATIONS.md) §1 and [PRD.md §6](PRD.md#6-model-stack-the-no-rlhf-loop-revision).
 - **Single-GPU Swap Orchestrator**: See [inference/README.md](inference/README.md) and [PRD.md §7](PRD.md#7-inference-orchestration).
 - **Production Docker & Dual-Venv Isolation**: See [inference/README.md §5](inference/README.md#5-production-docker-containerization--dual-venv-isolation) and [PRD.md §7.7](PRD.md#77-production-docker-containerization-dual-venv-isolation).
