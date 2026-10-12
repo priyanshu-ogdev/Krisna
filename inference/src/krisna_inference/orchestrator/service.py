@@ -188,6 +188,80 @@ async def health():
     }
 
 
+@app.get("/ready")
+async def ready():
+    """Readiness probe: checks if orchestrator is running and state store is accessible."""
+    is_ready = orchestrator.conversation_available() or orchestrator.state.state.value != "uninitialized"
+    return {
+        "ready": is_ready,
+        "residency_state": orchestrator.state.state.value,
+        "store_accessible": True,
+    }
+
+
+@app.get("/models/status")
+async def models_status():
+    """Detailed model artifact discovery, memory allocations, and hardware status."""
+    from krisna_inference.backends.model_loader import (
+        discover_planner_model,
+        discover_mmproj_model,
+        probe_cuda_hardware,
+    )
+    from krisna_inference.orchestrator.vram_budget import probe_real_ram, probe_real_vram
+
+    planner_path = discover_planner_model()
+    mmproj_path = discover_mmproj_model()
+    hw = probe_cuda_hardware()
+
+    return {
+        "residency_state": orchestrator.state.state.value,
+        "resident_tiers": [t.value for t in getattr(orchestrator.ledger, "resident_tiers", [])],
+        "planner": {
+            "discovered_path": str(planner_path) if planner_path else None,
+            "mmproj_path": str(mmproj_path) if mmproj_path else None,
+            "runtime": "llama.cpp",
+        },
+        "polish": {
+            "model_id": os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1"),
+            "lora_adapter": os.environ.get("KRISNA_POLISH_LORA_PATH") or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
+        },
+        "vram_ledger": orchestrator.ledger.snapshot(),
+        "ram_ledger": orchestrator.ram_ledger.snapshot(),
+        "real_vram": probe_real_vram(),
+        "real_ram": probe_real_ram(),
+        "cuda_hardware": hw,
+        "low_vram_mode": orchestrator.low_vram,
+    }
+
+
+@app.post("/models/warm")
+async def warm_models():
+    """Pre-warm baseline tiers (Planner + Layout) for zero cold-start turn latency."""
+    try:
+        await orchestrator.start()
+        return {
+            "status": "warmed",
+            "residency_state": orchestrator.state.state.value,
+            "resident_tiers": [t.value for t in getattr(orchestrator.ledger, "resident_tiers", [])],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
+
+
+@app.post("/models/unload")
+async def unload_models():
+    """Unload all resident models and release GPU cache for external resource reclamation."""
+    try:
+        await orchestrator.shutdown()
+        return {
+            "status": "unloaded",
+            "residency_state": orchestrator.state.state.value,
+            "resident_tiers": [],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unload failed: {e}")
+
+
 @app.post("/session")
 async def create_session(req: NewSessionRequest) -> dict:
     state = DesignState()

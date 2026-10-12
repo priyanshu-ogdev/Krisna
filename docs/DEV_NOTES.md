@@ -163,6 +163,32 @@ The following components were intentionally removed based on empirical findings 
   - Automatically cancels pending self-reviews upon receipt of a new user message.
   - Triggers autonomous self-review passes until turn budget is exhausted.
 
+### 3.5 Rust Desktop Control Plane (`src-tauri`)
+
+- **Implementation**: `inference/frontend/src-tauri/src/pipeline.rs` & `lib.rs`
+- **Core Architecture**: In-process Rust policy enforcement acting as a low-latency barrier before Python model invocation:
+  - **Inactivity Coordinator**: Monotonic timer checking (`check_inactivity`) with 30s timeout that flags `self_review_due` during user contemplation in the `sketching` stage.
+  - **Audit Event Ledger**: Records up to 100 bounded `RefinementEvent` records (`turn_completed`, `cycle_started`, `finalized`, `safety_rollback`).
+  - **Optimistic Concurrency & Revision Envelopes**: Rejects stale commands (`expected_revision != current_revision`) with `stale pipeline revision` errors.
+  - **Turn Budget Enforcement**: Rejects user and self-review turns once `turn_count >= MAX_TURNS (4)`.
+  - **State Transitions**: Native `record_finalize` and `record_rollback` commands synchronizing directly with `DesignState`.
+
+### 3.6 Production Service Endpoints & Local Runner
+
+- **Implementation**: `inference/src/krisna_inference/orchestrator/service.py` & `scripts/inference/run_local.py`
+- **Health & Readiness**:
+  - `GET /health`: Liveness probe reporting process status, residency state, and declared VRAM ledger.
+  - `GET /ready`: Readiness probe verifying orchestrator initialization and SQLite store accessibility.
+- **Model Lifecycle & Hardware Telemetry**:
+  - `GET /models/status`: Returns discovered GGUF path, multimodal projector path, live CUDA VRAM allocations, system RAM utilization, and Diffusers LoRA adapter status.
+  - `POST /models/warm`: Pre-warms Planner and Layout baseline tiers via `mmap` for sub-second first-turn latency.
+  - `POST /models/unload`: Unloads resident GPU models and cleans PyTorch CUDA cache for memory reclamation.
+- **Production Local Runner (`scripts/inference/run_local.py`)**:
+  - Automated hardware preflight (CUDA availability, VRAM size, host RAM).
+  - Model artifact auto-discovery across candidate paths and SHA256 manifest verification.
+  - Dynamic `KRISNA_LOW_VRAM_MODE` calibration for cards with < 16GB VRAM.
+  - Fast single-command startup for native Windows and Linux execution.
+
 ---
 
 ## 4. Hardware Budget & Memory Ledgers
@@ -208,7 +234,7 @@ The system enforces deterministic admission via `VRAMLedger` and `RAMLedger` (`i
 
 ### 5.2 Running the Test Suites
 
-To execute the complete inference test suite (175 tests):
+To execute the complete inference test suite (182 tests):
 ```powershell
 python -m pytest tests/inference -v
 ```

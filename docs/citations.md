@@ -49,6 +49,9 @@ being treated as a production checkpoint.
 
 - https://github.com/ggml-org/llama.cpp/blob/master/docs/multimodal.md
 - https://github.com/ggml-org/llama.cpp/blob/master/examples/server/README.md
+- Gerganov, G., et al. (2023). *llama.cpp: Port of Facebook's LLaMA model in C/C++*. GitHub repository: https://github.com/ggml-org/llama.cpp. Demonstrating zero-copy memory mapping (`use_mmap`) for instantaneous process startup and unified GGUF quantized model execution.
+- Dao, T., Fu, D. Y., Ermon, S., Rudra, A., & Ré, C. (NeurIPS 2022). *FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness*. arXiv:2205.14135.
+- Dao, T. (2023). *FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning*. arXiv:2307.08691. Enabling $\mathcal{O}(N)$ memory scaling for long-context KV cache evaluation on Ampere and Ada GPUs.
 
 ## Quantization
 
