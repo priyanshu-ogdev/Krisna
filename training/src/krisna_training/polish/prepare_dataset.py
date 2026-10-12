@@ -45,6 +45,36 @@ log = logging.getLogger("krisna_training.polish.prepare_dataset")
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
+def prepare_image_pairs(condition_dir: str | Path, target_dir: str | Path,
+                        output_dir: str | Path, captions: dict | str | Path | None = None) -> Path:
+    """Prepare the official Qwen img2img schema.
+
+    Pairing is filename-based and strict: silently using a target as its own
+    condition would train identity copying, so missing or ambiguous pairs fail.
+    """
+    condition_dir, target_dir, output_dir = map(Path, (condition_dir, target_dir, output_dir))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dense, _ = load_captions(captions)
+    conditions = {p.name: p for p in condition_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS}
+    targets = {p.name: p for p in target_dir.rglob("*") if p.suffix.lower() in IMAGE_EXTENSIONS}
+    if not targets:
+        raise ValueError(f"No target images found under {target_dir}")
+    missing = sorted(set(targets) - set(conditions))
+    if missing:
+        raise ValueError(f"Missing condition images for {len(missing)} targets (first: {missing[:3]})")
+    metadata = output_dir / "metadata.jsonl"
+    with metadata.open("w", encoding="utf-8") as handle:
+        for name in sorted(targets):
+            target_name = f"target_{name}"
+            condition_name = f"condition_{name}"
+            shutil.copy2(targets[name], output_dir / target_name)
+            shutil.copy2(conditions[name], output_dir / condition_name)
+            caption = dense.get(name, "Refine this design into a polished production render.")
+            handle.write(json.dumps({"image": target_name, "condition_image": condition_name,
+                                     "caption": caption}) + "\n")
+    return output_dir
+
+
 def load_captions(
     captions_input: dict[str, str] | dict[str, dict] | str | Path | None,
 ) -> tuple[dict[str, str], dict[str, str]]:

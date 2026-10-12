@@ -5,10 +5,11 @@ set -euo pipefail
 CONFIG="${1:-training/configs/polish_stage2_dpo_general.yaml}"
 [[ ! -f "$CONFIG" ]] && CONFIG="training/configs/dpo_z_image_stage1_general.yaml"
 
-echo -e "\033[1;36mLaunching Z-Image-Turbo Diffusion-DPO training...\033[0m"
+echo -e "\033[1;31mThe legacy Z-Image Diffusion-DPO path is retired.\033[0m"
 echo -e "\033[1;33mSee docs/architecture/RESEARCH_AND_CITATIONS.md §4 for the loss\033[0m"
 echo -e "\033[1;33mderivation, and training/README.md's 'DPO alignment' section.\033[0m"
-source .venv/bin/activate
+echo -e "\033[1;33mUse scripts/training/train_polish_default_lora.sh with the Qwen-Image-2.1 img2img config.\033[0m"
+exit 2
 
 # BUG FIX (docs/review/27_dpo_base_lora_wiring.md): both general-DPO configs
 # ship with `lora-adapter-path: null`, and this launcher used to translate
