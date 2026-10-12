@@ -34,7 +34,7 @@ pip install -e "inference/[backends]"   # torch, transformers, diffusers, bitsan
 ```
 
 (Critic runs in its own isolated venv — see
-`scripts/training/setup_env_critic.sh` — because it needs a different
+the former Critic environment — it is no longer required because Planner Review
 pinned `transformers` version than the other tiers. `download_weights.py`
 checks for `./venv-critic/bin/python` and tells you if it's missing.)
 
@@ -125,4 +125,3 @@ on top of the base fine-tune.
   `orchestrator/service.py` (tests rely on it), but this control panel
   has exactly one supported way to run the backend, and it isn't that
   one.
-
