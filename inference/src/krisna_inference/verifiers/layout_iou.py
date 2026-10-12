@@ -37,9 +37,20 @@ class LayoutIoUVerifier:
 
         ious = []
         for expected in expected_regions:
-            best = max((_iou(expected["bbox"], d) for d in detected), default=0.0)
+            if isinstance(expected, dict):
+                if "bbox" in expected:
+                    exp_box = expected["bbox"]
+                elif "x" in expected and "y" in expected and "w" in expected and "h" in expected:
+                    exp_box = [expected["x"], expected["y"], expected["w"], expected["h"]]
+                else:
+                    continue
+            elif isinstance(expected, (list, tuple)) and len(expected) >= 4:
+                exp_box = expected[:4]
+            else:
+                continue
+            best = max((_iou(exp_box, d) for d in detected), default=0.0)
             ious.append(best)
-        return sum(ious) / len(ious)
+        return sum(ious) / len(ious) if ious else 0.0
 
     @staticmethod
     def _contour_detector(image) -> list[list[float]]:

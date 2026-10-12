@@ -506,14 +506,14 @@ async def critique_pass(
 
         state.critique.result = from_gemma_output(critique_payload)
     else:
-        # Mock backends won't produce a real Critique Adapter payload —
-        # fill a minimal, clearly-marked placeholder so the flow is still
-        # exercisable end-to-end without the inference layer.
-        state.critique.result = CritiqueResult(
-            critique_source="planner_review",
-            overall_score=0.0,
-            raw_model_output_ref=None,
+        from krisna_inference.verifiers.critique_adapter import from_planner_review
+
+        v_scores = (
+            state.finalize_output.verifier_scores.model_dump()
+            if (state.finalize_output and state.finalize_output.verifier_scores)
+            else None
         )
+        state.critique.result = from_planner_review(output, verifier_scores=v_scores)
     state.critique.source = "planner_review"
     from datetime import datetime, timezone
 

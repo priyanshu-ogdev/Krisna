@@ -98,14 +98,30 @@ session_coordinator = SessionCoordinator(
 )
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
 async def _run_scheduled_self_review(session_id: str) -> None:
-    state = store.get(session_id)
-    if state.refinement.exhausted or not state.layout.layout_ref:
-        return
-    await flows.planner_self_review(orchestrator, store, session_id)
-    updated = store.get(session_id)
-    if not updated.refinement.exhausted and updated.stage.value in ("sketching", "conversing"):
-        _schedule_self_review(session_id)
+    async with _get_session_lock(session_id):
+        try:
+            state = store.get(session_id)
+        except Exception:
+            return
+        if state.refinement.exhausted or not state.layout.layout_ref:
+            return
+        try:
+            await flows.planner_self_review(orchestrator, store, session_id)
+            updated = store.get(session_id)
+            if not updated.refinement.exhausted and updated.stage.value in ("sketching", "conversing"):
+                _schedule_self_review(session_id)
+        except Exception as e:
+            log.warning("scheduled_self_review_skipped_or_failed", extra={"session_id": session_id, "error": str(e)})
 
 
 def _schedule_self_review(session_id: str) -> None:
@@ -333,15 +349,6 @@ async def get_session_render(session_id: str):
     if not path.exists():
         raise HTTPException(status_code=404, detail="Image reference exists but the blob is missing on disk.")
     return FileResponse(path, media_type="image/png")
-
-
-_session_locks: dict[str, asyncio.Lock] = {}
-
-
-def _get_session_lock(session_id: str) -> asyncio.Lock:
-    if session_id not in _session_locks:
-        _session_locks[session_id] = asyncio.Lock()
-    return _session_locks[session_id]
 
 
 @app.get("/session/{session_id}/model-status")
