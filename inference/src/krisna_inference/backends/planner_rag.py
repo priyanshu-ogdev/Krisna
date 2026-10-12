@@ -112,11 +112,10 @@ def load_default_embedder() -> Callable[[str], Sequence[float]]:
 
 
 def resolve_embed_fn_from_env() -> Callable[[str], Sequence[float]] | None:
-    """Single shared entry point both planner_backend.py and
-    planner_backend_vllm.py call, so the opt-in env-var check can't drift
+    """Single shared entry point for the Planner runtime.
     between the two backends — same "one implementation, not two that
     could disagree" discipline as _generate_raw()'s extraction (see
-    planner_backend_vllm.py's module docstring). Callers should run this
+    runtime adapter). Callers should run this
     inside asyncio.to_thread — model loading is real, blocking work, even
     though it's a local, already-downloaded checkpoint (not a network
     call) in the real deployment.

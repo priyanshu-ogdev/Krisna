@@ -48,3 +48,9 @@
 vllm==0.29.0
 torch==2.13.0
 transformers==5.17.0
+
+# Native-PC runtime. Install this in the main inference environment only when
+# selecting KRISNA_PLANNER_BACKEND=llama. CUDA wheels are platform-specific;
+# pin the locally validated wheel in deployment lockfiles after the hardware
+# bake-off rather than pretending one wheel fits every Windows/Linux GPU.
+llama-cpp-python>=0.3.16
