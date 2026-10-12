@@ -122,16 +122,37 @@ We define the deterministic projection operator $\Pi: \mathcal{L} \to \mathcal{I
 $$\mathcal{I}_{\text{wire}}(x, y) = \text{RenderSVG}(\mathcal{L}, W, H)$$
 Because $\Pi$ is purely deterministic, $\text{Var}(\Pi(\mathcal{L})) = 0$, completely eliminating codebook quantization noise.
 
-### 3.4 Tier 3: Unified Diffusion Polish & Region-Locked Inpainting
-The Polish tier synthesizes a production-grade render $\mathcal{I}_{\text{render}}$ from wireframe $\mathcal{I}_{\text{wire}}$ using `Qwen-Image-2.1`. The diffusion process operates over continuous latent space $\mathbf{z}_t$:
-$$\mathrm{d}\mathbf{z}_t = \mathbf{v}_\theta(\mathbf{z}_t, t, \mathbf{c}_{\text{text}}, \mathcal{I}_{\text{wire}}) \mathrm{d}t$$
+### 3.4 Tier 3: Unified Flow-Matching Polish & Feathered Region Locking
+The Polish tier synthesizes a production-grade render $\mathcal{I}_{\text{render}}$ from wireframe $\mathcal{I}_{\text{wire}}$ using `Qwen-Image-2.1`. Grounded in continuous Normalizing Flows (Lipman et al., ICLR 2023; Liu et al., ICLR 2023) and Multimodal Rectified Flows (Esser et al., ICML 2024), the generative process solves the continuous Ordinary Differential Equation (ODE):
+$$\frac{\mathrm{d}\mathbf{z}_t}{\mathrm{d}t} = \mathbf{v}_\theta(\mathbf{z}_t, t, \mathbf{c}_{\text{text}}, \mathcal{I}_{\text{wire}}), \quad t \in [t_{\text{start}}, 1.0]$$
+where $t_{\text{start}} = \max(0.0, 1.0 - s_{\text{edit}})$.
 
-#### Exact Region Locking
-Let $\mathcal{R}_{\text{lock}} = \{e_i \in \mathcal{E} \mid \ell_i = 1\}$ denote the set of locked elements. We construct a binary spatial mask $\mathcal{M}_{\text{lock}} \in \{0, 1\}^{H \times W}$:
-$$\mathcal{M}_{\text{lock}}(x, y) = \bigvee_{e_i \in \mathcal{R}_{\text{lock}}} \mathbb{I}\left( (x, y) \in \mathbf{b}_i \right)$$
-The composite image returned by the system is guaranteed to preserve locked pixels identically:
-$$\mathcal{I}_{\text{out}} = \mathcal{M}_{\text{lock}} \odot \mathcal{I}_{\text{prior}} + (1 - \mathcal{M}_{\text{lock}}) \odot \mathcal{I}_{\text{render}}$$
-where $\odot$ denotes the Hadamard product.
+#### 3.4.1 Numerical ODE Integrators
+We implement both 1st-order Euler and 2nd-order Midpoint (RK2) predictor-corrector discretization schemes:
+1. **Euler Step**:
+   $$\mathbf{z}_{t + \Delta t} = \mathbf{z}_t + \Delta t \cdot \mathbf{v}_\theta(\mathbf{z}_t, t, \mathbf{c}_{\text{text}}, \mathcal{I}_{\text{wire}})$$
+2. **Midpoint / RK2 Predictor-Corrector**:
+   $$\mathbf{k}_1 = \mathbf{v}_\theta(\mathbf{z}_t, t, \mathbf{c}_{\text{text}}, \mathcal{I}_{\text{wire}})$$
+   $$\mathbf{z}_{\text{mid}} = \mathbf{z}_t + \frac{\Delta t}{2} \cdot \mathbf{k}_1$$
+   $$\mathbf{k}_2 = \mathbf{v}_\theta\left(\mathbf{z}_{\text{mid}}, t + \frac{\Delta t}{2}, \mathbf{c}_{\text{text}}, \mathcal{I}_{\text{wire}}\right)$$
+   $$\mathbf{z}_{t + \Delta t} = \mathbf{z}_t + \Delta t \cdot \mathbf{k}_2$$
+
+#### 3.4.2 Dynamic Classifier-Free Guidance & Dual Conditioning
+To eliminate color blowout and contrast saturation in late flow steps, we employ dynamic cosine-decayed guidance (Brooks et al., CVPR 2023):
+$$w(t) = 1.0 + (w_{\max} - 1.0) \cdot \cos\left(\frac{\pi}{2} \cdot \frac{t - t_{\text{start}}}{1.0 - t_{\text{start}}}\right)$$
+coupled with dual text-and-image conditioning vectors:
+$$\hat{\mathbf{v}}(\mathbf{z}_t, t, \mathbf{c}_I, \mathbf{c}_T) = \mathbf{v}(\mathbf{z}_t, t, \emptyset, \emptyset) + s_I [\mathbf{v}(\mathbf{z}_t, t, \mathbf{c}_I, \emptyset) - \mathbf{v}(\mathbf{z}_t, t, \emptyset, \emptyset)] + w(t) [\mathbf{v}(\mathbf{z}_t, t, \mathbf{c}_I, \mathbf{c}_T) - \mathbf{v}(\mathbf{z}_t, t, \mathbf{c}_I, \emptyset)]$$
+
+#### 3.4.3 Feathered Region Locking
+Let $\mathcal{R}_{\text{lock}} = \{e_i \in \mathcal{E} \mid \ell_i = 1\}$ denote user-locked elements. We generate a binary spatial mask $\mathcal{M}_{\text{lock}} \in \{0, 1\}^{H \times W}$, smoothed with Gaussian boundary falloff to eliminate seam discontinuities:
+$$\mathcal{M}_{\text{feather}} = \mathcal{M}_{\text{lock}} * G_\sigma \quad (\sigma = 8\text{px})$$
+$$\mathcal{I}_{\text{out}} = \mathcal{M}_{\text{feather}} \odot \mathcal{I}_{\text{prior}} + (1 - \mathcal{M}_{\text{feather}}) \odot \mathcal{I}_{\text{render}}$$
+
+#### 3.4.4 Dual-Loader Asynchronous Memory Orchestration
+To execute within consumer envelopes (12GB–16GB VRAM, 16GB Host RAM), the architecture coordinates 2 distinct runtime loaders:
+1. **Loader 1 (llama.cpp GGUF)**: Zero-copy memory mapping (`use_mmap=True`) for frozen Planner and Layout IR.
+2. **Loader 2 (Torch/Diffusers)**: Flow-matching velocity pipeline with CPU offloading for Qwen-Image-2.1.
+Background pre-warming (`start_background_warm()`) executes non-blockingly via an asynchronous worker task, allowing instant session initialization while tracking lifecycle stages (`loading_planner`, `loading_layout`, `ready`, `swapping`). Incoming conversational turns non-blockingly await background warming with timeout isolation, guaranteeing zero unhandled 409 collisions.
 
 ### 3.5 Verifier Stack & Safety Gating
 Before $\mathcal{I}_{\text{out}}$ is returned to the user, it is evaluated by an ensemble of automated verifiers:

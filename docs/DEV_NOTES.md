@@ -252,3 +252,29 @@ To ensure no features degrade during future pull requests:
 - `test_finalize_respects_locked_regions`: Verifies that coordinate bounding boxes are preserved through inpainting.
 - `test_refinement_budget_enforces_four_turns`: Verifies that conversational drift is bounded by turn policy.
 - `test_session_coordinator_debounces_inactivity`: Verifies that self-review triggers only after 30s of user silence.
+
+### 5.4 Dual-Loader Asynchronous Model Loading Architecture
+
+The system coordinates two distinct model loaders on single-GPU hardware:
+1. **Model Loader 1: llama.cpp Runtime (`PlannerBackendLlama`)**:
+   - Zero-copy memory mapped GGUF execution via `use_mmap=True`.
+   - FlashAttention KV cache allocation for long-context RAG prompts.
+   - Grammar-constrained JSON decoding (`PlannerResponse`).
+2. **Model Loader 2: Diffusers Flow-Matching Runtime (`QwenImage21Backend`)**:
+   - Velocity-based ODE numerical solvers (Euler and 2nd-order Midpoint).
+   - Time-decayed dynamic guidance schedule $w(t) = 1.0 + (w_{\max} - 1.0) \cdot \cos(\frac{\pi}{2} t)$.
+   - Cosine-feathered boundary inpainting for locked regions.
+   - Low-VRAM CPU offload option (`enable_model_cpu_offload`).
+
+**Asynchronous Pre-Warming & Non-Blocking Coordination**:
+- `SwapOrchestrator.start_background_warm()` triggers non-blocking background initialization.
+- Real-time progress is trackable via `GET /models/warm/status` and `GET /session/{session_id}/model-status`.
+- Conversational turns non-blockingly await background warming completion, preventing 409 collisions.
+- Per-session asynchronous locks in `service.py` prevent concurrency race conditions.
+
+### 5.5 Rust Control Plane & Zero-Dependency HTTP Client
+
+The desktop frontend control plane (`inference/frontend/src-tauri/src/`) maintains local policy boundaries in Rust:
+- `backend_client.rs`: Zero-dependency, offline-reliable HTTP client using `std::net::TcpStream` with timeouts and retries.
+- Tauri commands (`backend_health`, `backend_ready`, `backend_models_status`, `backend_warm_models`, `backend_send_message`, `backend_finalize`) proxy requests to the Python inference server while enforcing turn budget constraints and optimistic revision matching.
+
