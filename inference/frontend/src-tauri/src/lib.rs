@@ -1,3 +1,4 @@
+pub mod backend_client;
 mod pipeline;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,6 +13,18 @@ pub fn run() {
             pipeline::record_rollback,
             pipeline::begin_revision_cycle,
             pipeline::check_inactivity,
+            pipeline::backend_health,
+            pipeline::backend_ready,
+            pipeline::backend_models_status,
+            pipeline::backend_warm_models,
+            pipeline::backend_warm_status,
+            pipeline::backend_unload_models,
+            pipeline::backend_create_session,
+            pipeline::backend_get_session,
+            pipeline::backend_session_model_status,
+            pipeline::backend_send_message,
+            pipeline::backend_trigger_self_review,
+            pipeline::backend_finalize,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -13,6 +13,8 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
 
+use crate::backend_client::BackendClient;
+
 const MAX_TURNS: u8 = 4;
 const DEFAULT_INACTIVITY_TIMEOUT_SECS: u64 = 30;
 
@@ -226,6 +228,122 @@ pub fn check_inactivity(
         snapshot.self_review_due = true;
     }
     Ok(should_trigger)
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BackendTurnAck {
+    pub ack: CommandAck,
+    pub backend_state: serde_json::Value,
+}
+
+#[tauri::command]
+pub fn backend_health() -> Result<serde_json::Value, String> {
+    BackendClient::default().get_health()
+}
+
+#[tauri::command]
+pub fn backend_ready() -> Result<serde_json::Value, String> {
+    BackendClient::default().get_ready()
+}
+
+#[tauri::command]
+pub fn backend_models_status() -> Result<serde_json::Value, String> {
+    BackendClient::default().get_models_status()
+}
+
+#[tauri::command]
+pub fn backend_warm_models(background: Option<bool>) -> Result<serde_json::Value, String> {
+    BackendClient::default().warm_models(background.unwrap_or(false))
+}
+
+#[tauri::command]
+pub fn backend_warm_status() -> Result<serde_json::Value, String> {
+    BackendClient::default().get_warm_status()
+}
+
+#[tauri::command]
+pub fn backend_unload_models() -> Result<serde_json::Value, String> {
+    BackendClient::default().unload_models()
+}
+
+#[tauri::command]
+pub fn backend_create_session(
+    style: Option<String>,
+    palette: Option<Vec<String>>,
+) -> Result<serde_json::Value, String> {
+    BackendClient::default().create_session(style, palette.unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn backend_get_session(session_id: String) -> Result<serde_json::Value, String> {
+    BackendClient::default().get_session(&session_id)
+}
+
+#[tauri::command]
+pub fn backend_session_model_status(session_id: String) -> Result<serde_json::Value, String> {
+    BackendClient::default().get_session_model_status(&session_id)
+}
+
+#[tauri::command]
+pub fn backend_send_message(
+    state: State<'_, PipelineState>,
+    session_id: String,
+    command: CommandEnvelope,
+    message: String,
+) -> Result<BackendTurnAck, String> {
+    let mut snapshot = state.0.lock().map_err(|_| "pipeline state poisoned")?;
+    begin_command(&snapshot, &command)?;
+    let client = BackendClient::default();
+    let backend_res = client.send_message(&session_id, &message)?;
+    let detail = Some(message);
+    consume(&mut snapshot, "user", detail)?;
+    let ack_data = ack(&snapshot, &command);
+    Ok(BackendTurnAck {
+        ack: ack_data,
+        backend_state: backend_res,
+    })
+}
+
+#[tauri::command]
+pub fn backend_trigger_self_review(
+    state: State<'_, PipelineState>,
+    session_id: String,
+    command: CommandEnvelope,
+) -> Result<BackendTurnAck, String> {
+    let mut snapshot = state.0.lock().map_err(|_| "pipeline state poisoned")?;
+    begin_command(&snapshot, &command)?;
+    let client = BackendClient::default();
+    let backend_res = client.trigger_self_review(&session_id)?;
+    consume(&mut snapshot, "self_review", Some("autonomous refinement".into()))?;
+    let ack_data = ack(&snapshot, &command);
+    Ok(BackendTurnAck {
+        ack: ack_data,
+        backend_state: backend_res,
+    })
+}
+
+#[tauri::command]
+pub fn backend_finalize(
+    state: State<'_, PipelineState>,
+    session_id: String,
+    command: CommandEnvelope,
+    quality: Option<bool>,
+    prompt: Option<String>,
+) -> Result<BackendTurnAck, String> {
+    let mut snapshot = state.0.lock().map_err(|_| "pipeline state poisoned")?;
+    begin_command(&snapshot, &command)?;
+    let client = BackendClient::default();
+    let backend_res = client.trigger_finalize(&session_id, quality.unwrap_or(false), prompt)?;
+    snapshot.stage = "finalized".into();
+    snapshot.revision += 1;
+    snapshot.last_activity_secs = current_epoch_secs();
+    snapshot.self_review_due = false;
+    append_event(&mut snapshot, "finalized", "user", command.detail.clone());
+    let ack_data = ack(&snapshot, &command);
+    Ok(BackendTurnAck {
+        ack: ack_data,
+        backend_state: backend_res,
+    })
 }
 
 #[cfg(test)]
