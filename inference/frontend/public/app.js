@@ -94,7 +94,12 @@ function renderCheckpoints(data) {
             </div>
             <span class="ckpt-path">${escapeHtml(s.path)}</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-xs" onclick="useSketchPath('${escapeHtml(s.path)}')">Use</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="useSketchPath('${escapeHtml(s.path)}')" title="Auto-populate Sketch path in form">
+            <svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+              <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Use</span>
+          </button>
         </div>
       `);
     }
@@ -124,7 +129,12 @@ function renderCheckpoints(data) {
             </div>
             <span class="ckpt-path">${escapeHtml(p.path)}</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-xs" onclick="usePolishPath('${escapeHtml(p.path)}')">Use</button>
+          <button type="button" class="btn btn-ghost btn-xs" onclick="usePolishPath('${escapeHtml(p.path)}')" title="Auto-populate Polish LoRA path in form">
+            <svg class="ui-icon ui-icon-xs ui-icon-amber" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+              <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Use</span>
+          </button>
         </div>
       `);
     }
@@ -268,6 +278,14 @@ function applySkipFlags(flags) {
   }
 }
 
+const STEP_STATUS_ICONS = {
+  done: `<svg class="ui-icon ui-icon-xs" style="width:10px;height:10px;color:#05070a" viewBox="0 0 12 12" fill="none" stroke="currentColor"><path d="M2.5 6.5l2.5 2.5 4.5-5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  active: `<svg class="ui-icon ui-icon-xs ui-icon-spin-hover" style="width:10px;height:10px;color:#05070a" viewBox="0 0 12 12" fill="none" stroke="currentColor"><circle cx="6" cy="6" r="3.5" stroke-width="1.8" stroke-dasharray="7 4"/></svg>`,
+  failed: `<svg class="ui-icon ui-icon-xs" style="width:10px;height:10px;color:#fff" viewBox="0 0 12 12" fill="none" stroke="currentColor"><path d="M3 3l6 6M9 3l-6 6" stroke-width="2" stroke-linecap="round"/></svg>`,
+  skipped: `<svg class="ui-icon ui-icon-xs" style="width:8px;height:8px;color:var(--ash-500)" viewBox="0 0 10 10" fill="none" stroke="currentColor"><path d="M2 5h6" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+  pending: ``,
+};
+
 function renderTracker() {
   const ol = $("#tracker");
   ol.innerHTML = "";
@@ -275,8 +293,9 @@ function renderTracker() {
     const s = stepState[step.id];
     const li = document.createElement("li");
     li.className = `tracker-step ${s.status}`;
+    const icon = STEP_STATUS_ICONS[s.status] || "";
     li.innerHTML = `
-      <span class="step-dot"></span>
+      <span class="step-dot">${icon}</span>
       <div class="step-title">${i + 1}. ${step.title}</div>
       ${s.detail ? `<div class="step-detail">${escapeHtml(s.detail)}</div>` : ""}
     `;
@@ -1318,10 +1337,19 @@ class GeneralizationEngine {
         ctx.strokeRect(rx, ry, rw, rh);
 
         ctx.fillStyle = "rgba(245, 158, 11, 0.95)";
-        ctx.fillRect(rx + 2, ry + 2, 110 * scaleX, 14 * scaleY);
+        ctx.fillRect(rx + 2, ry + 2, 86 * scaleX, 14 * scaleY);
+
+        // Vector padlock badge
+        ctx.strokeStyle = "#05070a";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(rx + 8, ry + 5.5, 2.2, Math.PI, 0, false);
+        ctx.stroke();
         ctx.fillStyle = "#05070a";
+        ctx.fillRect(rx + 5.5, ry + 5.5, 5, 4.5);
+
         ctx.font = `bold ${Math.round(8 * scaleX)}px "JetBrains Mono", monospace`;
-        ctx.fillText(`🔒 LOCKED`, rx + 4, ry + 11 * scaleY);
+        ctx.fillText("LOCKED", rx + 14, ry + 10.5 * scaleY);
       } else {
         ctx.fillStyle = `${comp.color}15`;
         ctx.fillRect(rx, ry, rw, rh);
@@ -1438,14 +1466,14 @@ function renderChat() {
     bar.className = "active-constraints-bar";
     const parts = [];
     if (constraints.style) {
-      parts.push(`<span class="constraint-chip">🎨 ${escapeHtml(constraints.style)}</span>`);
+      parts.push(`<span class="constraint-chip"><svg class="ui-icon ui-icon-xs ui-icon-indigo" viewBox="0 0 14 14" fill="none" stroke="currentColor"><circle cx="7" cy="7" r="5.5" stroke-width="1.3"/><circle cx="5" cy="5.5" r="1" fill="currentColor"/><circle cx="8.5" cy="4.5" r="1" fill="currentColor"/><circle cx="9.5" cy="7.5" r="1" fill="currentColor"/></svg> ${escapeHtml(constraints.style)}</span>`);
     }
     if (constraints.palette && constraints.palette.length > 0) {
       const swatches = constraints.palette.map(c => `<span class="color-dot" style="background:${escapeHtml(c)}" title="${escapeHtml(c)}"></span>`).join("");
       parts.push(`<span class="constraint-chip"><span class="swatches-inline">${swatches}</span> Palette (${constraints.palette.length})</span>`);
     }
     if (constraints.layout_hints) {
-      parts.push(`<span class="constraint-chip">📐 ${escapeHtml(constraints.layout_hints)}</span>`);
+      parts.push(`<span class="constraint-chip"><svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 14 14" fill="none" stroke="currentColor"><rect x="1.5" y="1.5" width="11" height="11" rx="1.5" stroke-width="1.3"/><path d="M1.5 5h11M5 5v7.5" stroke-width="1.2"/></svg> ${escapeHtml(constraints.layout_hints)}</span>`);
     }
     bar.innerHTML = `<span class="constraints-title">Active Constraints:</span> ${parts.join(" ")}`;
     log.appendChild(bar);
@@ -1459,6 +1487,14 @@ function renderChat() {
   }
   log.scrollTop = log.scrollHeight;
 }
+
+const VERIFIER_ICONS = {
+  clip_alignment: `<svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M1 8s3-5.5 7-5.5S15 8 15 8s-3 5.5-7 5.5S1 8 1 8z" stroke-width="1.3"/><circle cx="8" cy="8" r="2.5" stroke-width="1.3" fill="rgba(6,182,212,0.3)"/></svg>`,
+  ocr_readability: `<svg class="ui-icon ui-icon-xs ui-icon-indigo" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M3 3h10M8 3v10M5 13h6" stroke-width="1.4" stroke-linecap="round"/><path d="M2 7h2M12 7h2" stroke-width="1.2" stroke-linecap="round"/></svg>`,
+  layout_iou: `<svg class="ui-icon ui-icon-xs ui-icon-amber" viewBox="0 0 16 16" fill="none" stroke="currentColor"><rect x="2" y="2" width="8" height="8" rx="1.5" stroke-width="1.3"/><rect x="6" y="6" width="8" height="8" rx="1.5" stroke-width="1.3" fill="rgba(245,158,11,0.25)"/></svg>`,
+  aesthetic: `<svg class="ui-icon ui-icon-xs ui-icon-emerald" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M8 1.5l2 4 4.5.7-3.3 3.2.8 4.6L8 11.8l-4 2.2.8-4.6L1.5 6.2l4.5-.7L8 1.5z" stroke-width="1.3" stroke-linejoin="round" fill="rgba(16,185,129,0.25)"/></svg>`,
+  handoff_consistency: `<svg class="ui-icon ui-icon-xs ui-icon-rose" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M3 5h7a3 3 0 0 1 3 3v0a3 3 0 0 1-3 3H3" stroke-width="1.3" stroke-linecap="round"/><path d="M5.5 2.5L3 5l2.5 2.5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+};
 
 function renderFinalizePanel() {
   const out = $("#finalize-panel");
@@ -1477,7 +1513,10 @@ function renderFinalizePanel() {
         ${scoreEntries.map(([k, v]) => `
           <div class="verifier-card">
             <div class="verifier-card-head">
-              <span class="verifier-name">${escapeHtml(k.replace(/_/g, " "))}</span>
+              <span class="verifier-title-group">
+                ${VERIFIER_ICONS[k] || `<svg class="ui-icon ui-icon-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor"><circle cx="8" cy="8" r="6" stroke-width="1.3"/></svg>`}
+                <span class="verifier-name">${escapeHtml(k.replace(/_/g, " "))}</span>
+              </span>
               <span class="verifier-pct">${Math.round(v * 100)}%</span>
             </div>
             <div class="verifier-track">
@@ -1493,7 +1532,13 @@ function renderFinalizePanel() {
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
       <div><strong>Renderer:</strong> <span class="tag tag-phase">${escapeHtml(fo.renderer_used || "polish")}</span></div>
       <div class="btn-row-sm">
-        <button type="button" class="btn btn-ghost btn-xs" id="btn-zoom-inline">🔍 Inspect Fullscreen</button>
+        <button type="button" class="btn btn-ghost btn-xs" id="btn-zoom-inline">
+          <svg class="ui-icon ui-icon-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+            <circle cx="7" cy="7" r="4.5" stroke-width="1.4"/>
+            <path d="M10.5 10.5L14 14M7 5v4M5 7h4" stroke-width="1.4" stroke-linecap="round"/>
+          </svg>
+          <span>Inspect Fullscreen</span>
+        </button>
       </div>
     </div>
     <div class="hint" style="margin-top:0.2rem"><strong>Image Ref:</strong> <code>${escapeHtml(fo.image_ref)}</code></div>
@@ -1530,7 +1575,12 @@ function renderCritiquePanel() {
         return `<li class="critique-edit-item">
           ${region}
           <span class="edit-instruction">${instr}</span>
-          <button type="button" class="btn btn-ghost btn-xs btn-apply-single-edit" data-edit-index="${idx}" title="Copy to prompt input">Apply ↳</button>
+          <button type="button" class="btn btn-ghost btn-xs btn-apply-single-edit" data-edit-index="${idx}" title="Copy to prompt input">
+            <svg class="ui-icon ui-icon-xs" viewBox="0 0 12 12" fill="none" stroke="currentColor">
+              <path d="M2.5 4v4.5a1 1 0 0 0 1 1H8M2.5 8.5L6 5M2.5 8.5L6 12" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Apply</span>
+          </button>
         </li>`;
       }
       return `<li class="critique-edit-item"><span class="edit-instruction">${escapeHtml(String(edit))}</span></li>`;
@@ -1540,7 +1590,11 @@ function renderCritiquePanel() {
   const iterateBtnHtml = suggestedEdits.length > 0 ? `
     <div class="critique-action-bar">
       <button type="button" class="btn btn-primary btn-sm" id="btn-apply-all-edits">
-        ✨ Iterate with Critic Edits
+        <svg class="ui-icon ui-icon-xs ui-icon-amber" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+          <path d="M8 2a6 6 0 1 1-4.2 10.2M8 2v3M8 2H5" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="8" cy="8" r="2" fill="currentColor"/>
+        </svg>
+        <span>Iterate with Critic Edits</span>
       </button>
       <span class="hint" style="margin-left: 0.5rem; align-self: center;">Preloads all critic edits into turn input</span>
     </div>
@@ -1912,8 +1966,9 @@ $("#flow-trajectory-slider")?.addEventListener("input", (e) => {
 let warmPollingTimer = null;
 async function triggerWarmup() {
   const btn = $("#btn-topbar-warm");
+  const lbl = $("#btn-topbar-warm-label") || btn;
   const pillText = $("#resident-pill-text");
-  if (btn) btn.textContent = "Warming…";
+  if (lbl) lbl.textContent = "Warming…";
   if (pillText) pillText.textContent = "Warming Baseline…";
   try {
     const r = await fetch("/api/models/warm", {
@@ -1931,13 +1986,13 @@ async function triggerWarmup() {
             if (st.status === "ready") {
               clearInterval(warmPollingTimer);
               warmPollingTimer = null;
-              if (btn) btn.textContent = "🔥 Pre-Warmed";
+              if (lbl) lbl.textContent = "Pre-Warmed";
               if (pillText) pillText.textContent = "Planner Resident";
               refreshStatus();
             } else if (st.status === "error") {
               clearInterval(warmPollingTimer);
               warmPollingTimer = null;
-              if (btn) btn.textContent = "Warm Failed";
+              if (lbl) lbl.textContent = "Warm Failed";
               if (pillText) pillText.textContent = "Warm Error";
             }
           }
@@ -1945,7 +2000,7 @@ async function triggerWarmup() {
       }, 1200);
     }
   } catch (err) {
-    if (btn) btn.textContent = "🔥 Pre-Warm";
+    if (lbl) lbl.textContent = "Pre-Warm";
     if (pillText) pillText.textContent = "Warm Error";
   }
 }
@@ -1953,18 +2008,19 @@ $("#btn-topbar-warm")?.addEventListener("click", triggerWarmup);
 
 $("#btn-topbar-unload")?.addEventListener("click", async () => {
   const btn = $("#btn-topbar-unload");
+  const lbl = $("#btn-topbar-unload-label") || btn;
   const pillText = $("#resident-pill-text");
-  if (btn) btn.textContent = "Unloading…";
+  if (lbl) lbl.textContent = "Unloading…";
   try {
     const r = await fetch("/api/models/unload", { method: "POST" });
     if (r.ok) {
-      if (btn) btn.textContent = "🧹 Unloaded";
+      if (lbl) lbl.textContent = "Unloaded";
       if (pillText) pillText.textContent = "VRAM Cleared";
-      setTimeout(() => { if (btn) btn.textContent = "🧹 Unload GPU"; }, 2500);
+      setTimeout(() => { if (lbl) lbl.textContent = "Unload GPU"; }, 2500);
       refreshStatus();
     }
   } catch {
-    if (btn) btn.textContent = "🧹 Unload GPU";
+    if (lbl) lbl.textContent = "Unload GPU";
   }
 });
 
