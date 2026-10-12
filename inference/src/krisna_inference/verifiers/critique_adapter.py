@@ -6,7 +6,7 @@ the preference-pair store) never needs to know or care which one it was —
 `critique_source` is the only distinguishing field, per §5.2's own text.
 
 critic_worker.py (which runs in the isolated critic venv, see
-critic_backend.py) does its own best-effort JSON shaping because it can't
+    Planner Review performs its own structured output validation because it can't
 import this module — that venv only has transformers/unsloth, not the rest
 of krisna_inference (formerly krisna_orchestrator). `from_gemma_output()` here re-validates/normalizes
 whatever comes back from that subprocess through the same pydantic model
@@ -20,7 +20,7 @@ from krisna_inference.orchestrator.design_state import CritiqueDimensionScore, C
 
 
 def from_gemma_output(raw: dict) -> CritiqueResult:
-    """raw: the `critique_result` dict CriticBackend.run() returns (itself
+    """raw: the structured review dict returned by Planner Review (itself
     already close to this shape — see critic_worker.py's _run()). This
     re-validates it through the pydantic model rather than trusting the
     subprocess blindly."""
