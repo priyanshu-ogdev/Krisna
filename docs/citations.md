@@ -138,12 +138,40 @@ and commits selected tokens. This repository fact is more authoritative for
 Krisna behavior than a generic MaskGIT description; see
 `inference/src/krisna_inference/backends/maskgit_model.py`.
 
+## Flow-matching dynamics & ODE solvers
+
+- Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., & Le, M. (ICLR 2023).
+  *Flow Matching for Generative Modeling*. arXiv:2210.02747.
+  Foundational continuous normalizing flows regressing vector fields onto straight optimal transport paths. Governed by the continuous ODE $dx_t = v_\theta(x_t, t, c) dt$.
+- Liu, X., Gong, C., & Liu, Q. (ICLR 2023).
+  *Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow*. arXiv:2209.03003.
+  Straight vector-field trajectories connecting data distributions to Gaussian priors; establishes few-step Euler and 2nd-order Midpoint (RK2) predictor-corrector integration.
+- Esser, P., Kulal, S., Blattmann, A., Entezari, R., Müller, J., Saini, H., ... & Rombach, R. (ICML 2024).
+  *Scaling Rectified Flow Transformers for High-Resolution Image Synthesis*. arXiv:2403.03206.
+  MMDiT architecture, velocity-based flow matching parameterization, and resolution-dependent time-shift function $\tilde{t} = \frac{s \cdot t}{1 + (s - 1) t}$.
+
 ## Unified diffusion rendering & preference alignment
 
-- Alibaba Qwen Team, *Qwen-Image-2.1: Advanced Visual Foundation Models with Image Conditioning* (2026).
-- Brooks, Holynski, & Efros, *InstructPix2Pix: Learning to Follow Image Editing Instructions* (CVPR 2023): https://arxiv.org/abs/2211.09800
-- Wallace, Dang, Rafailov, Zhou, Lou, Purushwalkam, Ermon, Xiong, Joty, & Naik, *Diffusion Model Alignment Using Direct Preference Optimization* (CVPR 2024): https://arxiv.org/abs/2311.12908
-- Ho & Salimans, *Classifier-Free Diffusion Guidance* (NeurIPS Workshop 2022): https://arxiv.org/abs/2207.12598
+- Alibaba Qwen Team (2026).
+  *Qwen-Image-2.1: Advanced Visual Foundation Models with Image Conditioning & Flow Matching*.
+- Brooks, T., Holynski, A., & Efros, A. A. (IEEE/CVF CVPR 2023).
+  *InstructPix2Pix: Learning to Follow Image Editing Instructions*. arXiv:2211.09800.
+  Dual classifier-free guidance mixing text and visual conditioning vectors:
+  $$\hat{v}(x_t, t, c_I, c_T) = v(x_t, t, \emptyset, \emptyset) + s_I [v(x_t, t, c_I, \emptyset) - v(x_t, t, \emptyset, \emptyset)] + s_T [v(x_t, t, c_I, c_T) - v(x_t, t, c_I, \emptyset)]$$
+  and time-decayed dynamic guidance scheduling $w(t) = 1.0 + (w_{\max} - 1.0) \cdot \cos(\frac{\pi}{2} t)$.
+- Wallace, B., Dang, M., Rafailov, R., Zhou, L., Lou, A., Purushwalkam, S., Ermon, S., Xiong, C., Joty, S., & Naik, N. (IEEE/CVF CVPR 2024).
+  *Diffusion Model Alignment Using Direct Preference Optimization*. arXiv:2311.12908.
+- Ho, J., & Salimans, T. (NeurIPS Workshop 2022).
+  *Classifier-Free Diffusion Guidance*. arXiv:2207.12598.
+
+## Asynchronous model swapping & systems runtime
+
+- Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., ... & Stoica, I. (ACM SOSP 2023).
+  *Efficient Memory Management for Large Language Model Serving with PagedAttention*.
+- Gerganov, G., et al. (2023).
+  *llama.cpp: Port of Facebook's LLaMA model in C/C++*. Demonstrating zero-copy memory mapping (`use_mmap`) for instantaneous process startup.
+- PRD §7.4 & Krisna Dual-Loader Architecture:
+  Coordinating the 2 baseline tiers (`PlannerBackendLlama` via llama.cpp GGUF zero-copy mmap, and `LayoutBackend` deterministic LayoutFlow) with the swappable Polish tier (`QwenImage21Backend` via Diffusers flow-matching pipeline). Non-blocking background pre-warming (`start_background_warm()`) decoupled from the incoming turn loop.
 
 ## Core UI & preference datasets
 
@@ -158,4 +186,5 @@ Krisna behavior than a generic MaskGIT description; see
 
 - **Formal Research Paper**: [`docs/RESEARCH_PAPER.md`](RESEARCH_PAPER.md) — *Krisna: Bounded Multi-Turn Agentic UI Design via Structured Layout IR and Unified Diffusion Rendering*.
 - **Developer Notes & Feature Audit**: [`docs/DEV_NOTES.md`](DEV_NOTES.md) — Engineering history, component specifications, memory ledgers, and feature retention audit.
+
 
