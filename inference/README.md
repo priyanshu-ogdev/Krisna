@@ -101,7 +101,8 @@ model output.
 `../training/README.md`):
 ```bash
 ./scripts/inference/setup_env_inference.sh   # Planner/Sketch/both Polish tiers
-./scripts/training/setup_env_critic.sh        # Critic's isolated venv (see below)
+Planner Review is used for critique; the former Gemma Critic setup is not part
+of the production path.
 
 export KRISNA_USE_REAL_BACKENDS=1
 export KRISNA_SKETCH_CHECKPOINT=./models/sketch_tier/checkpoint_final
@@ -408,7 +409,7 @@ made `transformers==5.5.0` unresolvable depending on exactly which
 unsloth_zoo release pip happened to land on at build time.
 
 ```bash
-./scripts/training/setup_env_critic.sh   # creates ./venv-critic, isolated deps
+No separate Critic environment is required for the production path.
 export KRISNA_USE_REAL_BACKENDS=1
 # KRISNA_CRITIC_VENV_PYTHON defaults to ./venv-critic/bin/python
 ./scripts/inference/run_service.sh
@@ -611,5 +612,4 @@ docker compose up -d
 - `/opt/venv-critic`: Isolated Critic tier virtualenv running `transformers==5.5.0` + `unsloth` + `unsloth_zoo` for Gemma 4 31B Dense.
 - Out-of-process communication: `CriticBackend` talks to `critic_worker.py` over stdin/stdout JSON lines without Python symbol collisions.
 - Hardware fail-fast diagnostics: `python scripts/inference/check_hardware.py --require-gpu` validates NVIDIA GPU presence, CUDA driver, compute capability, and VRAM before launching. MockBackend is strictly reserved for CI and automated testing.
-
 

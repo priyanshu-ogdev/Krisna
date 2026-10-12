@@ -16,7 +16,7 @@ reaching — see state_machine.py's module docstring for the same note):
      (currently: POLISH_QUALITY -> POLISH_DEFAULT, per §6's stack table),
      attempt the fallback tier instead. The caller is told the requested
      tier was degraded, not just handed a silent substitution.
-  4. If there's no fallback tier (CRITIC has none) or the fallback also
+  4. If there is no fallback tier or the fallback also
      fails, recovery gives up on the *request* but not the *system*:
      baseline residency (Planner + Sketch) is restored before control
      returns to the caller, and OOMRecoveryExhausted is raised. This is
@@ -287,46 +287,24 @@ class SwapOrchestrator:
     # ------------------------------------------------------------------ #
 
     async def request_critique(self, **run_kwargs) -> SwapResult:
-        if self._swap_lock.locked():
-            raise SwapBusyError("Another swap is already in flight.")
+        """Run Planner Review in place of the retired Gemma Critic.
+
+        Review is deliberately resident and shares the Planner contract.  The
+        old Gemma path remains in the repository only for migration/reference
+        purposes; it is no longer admitted by the product flow.
+        """
+        if not self.conversation_available():
+            raise SwapBusyError("Planner is not resident — review is unavailable during a swap.")
         async with self._swap_lock:
-            return await self._critique_locked(**run_kwargs)
-
-    async def _critique_locked(self, **run_kwargs) -> SwapResult:
-        self.state.apply(SwapTrigger.CRITIQUE_REQUESTED)
-        await self._unload_baseline()
-
-        result = await self._load_with_recovery(Tier.CRITIC)
-        if not result.ok:
-            return result
-
-        self.state.apply(SwapTrigger.CRITIC_LOAD_COMPLETE)
-        active_tier: Tier | None = Tier.CRITIC
-        output = None
-        try:
-            try:
-                output = await self.backends[Tier.CRITIC].run(**run_kwargs)
-            except Exception as e:
-                if _is_oom_error(e):
-                    log.warning(
-                        "critic_run_oom",
-                        extra={"tier": Tier.CRITIC.value, "error": str(e)},
-                    )
-                    if active_tier is not None:
-                        await self._unload_one(active_tier)
-                        active_tier = None
-                    return await self._enter_recovery(Tier.CRITIC, result.attempts + 1)
-                raise
-        finally:
-            if self.state.state == ResidencyState.CRITIC_RESIDENT:
-                self.state.apply(SwapTrigger.CRITIC_DONE)
-                if active_tier is not None:
-                    await self._unload_one(active_tier)
-                await self._restore_baseline()
-                self.state.apply(SwapTrigger.BASELINE_RESTORED)
-
-        result.output = output
-        return result
+            result = await self.backends[Tier.PLANNER].run(
+                message=run_kwargs.pop("message", "Review the current render and propose concrete fixes."),
+                constraints=run_kwargs.pop("constraints", {}),
+                conversation_history=run_kwargs.pop("conversation_history", None),
+                prior_critique=run_kwargs.pop("prior_critique", None),
+                review=True,
+                **run_kwargs,
+            )
+            return SwapResult(ok=True, tier_used=Tier.PLANNER, output=result)
 
     # ------------------------------------------------------------------ #
     # Load/unload primitives
@@ -423,14 +401,14 @@ class SwapOrchestrator:
 
     async def _load_with_recovery(self, requested_tier: Tier) -> SwapResult:
         """Implements the OOM policy documented in this module's docstring."""
+        # Polish is a single Qwen-Image-2.1 architecture. Resource recovery
+        # may retry the same tier, but model substitution is forbidden: it
+        # would invalidate the handoff and research provenance.
         candidates = [requested_tier]
-        fallback = self.registry[requested_tier].fallback_tier
-        if fallback is not None:
-            candidates.append(fallback)
 
         total_attempts = 0
         for candidate in candidates:
-            degraded = candidate != requested_tier
+            degraded = False
             if not self.ledger.would_fit(candidate) or not self.ram_ledger.would_fit(candidate):
                 log.warning(
                     "tier_budget_preflight_fail",
@@ -440,7 +418,7 @@ class SwapOrchestrator:
                         "ram_ledger": self.ram_ledger.snapshot(),
                     },
                 )
-                continue  # try next candidate (fallback), same as an OOM
+                continue
 
             for attempt in range(1, self.max_retries + 1):
                 total_attempts += 1

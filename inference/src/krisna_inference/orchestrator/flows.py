@@ -76,7 +76,7 @@ async def conversational_turn(
     # UPGRADE (docs/review/35_model_review_3_resync.md): persist this
     # turn's reasoning_note so _synthesize_dpo_prompt() — used for both
     # Polish-tier generation and DPO training-data prompts — can enrich
-    # its prompt the same way sketch_backend.py's run() already does
+    # its prompt through the structured layout route
     # with the SAME turn's live planner_output. Only overwrite when this
     # turn's delta actually carries a non-empty note; a turn where the
     # Planner has nothing new to add (reasoning_note empty/missing)
@@ -99,28 +99,24 @@ async def conversational_turn(
         ]
 
     sketch_out = result.get("sketch", {})
-    new_vq_ref = sketch_out.get("vq_tokens_ref")
-    if new_vq_ref:
+    new_layout_ref = sketch_out.get("layout_ref")
+    if new_layout_ref:
         # D1 FIX: only update sketch tokens and advance stage when this
         # conversational turn actually produced new sketch output. The
         # previous unconditional `state.stage = SKETCHING` could mark a
         # session as sketch-eligible after a pure conversational turn (no
         # new tokens generated), which would make is_finalize_eligible()
         # return True against a stale vq_tokens_ref from an earlier turn.
-        state.sketch_tokens.vq_tokens = new_vq_ref
-        state.sketch_tokens.confidence_map = sketch_out.get(
-            "confidence_map_ref", state.sketch_tokens.confidence_map
-        )
-        state.sketch_tokens.revision += 1
+        state.layout.layout_ref = new_layout_ref
+        state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
+        state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
     else:
         # Pure conversational turn — Planner ran but Sketch didn't produce
         # new tokens (e.g. the planner decided more clarification was needed
         # before committing a layout, or sketch is unloaded in fast-mode).
         # Carry forward whatever tokens/stage already existed.
-        state.sketch_tokens.confidence_map = sketch_out.get(
-            "confidence_map_ref", state.sketch_tokens.confidence_map
-        )
+        pass
     state.touch()
 
     return store.save(state, expected_rev)
@@ -173,7 +169,7 @@ async def finalize(
     if not state.is_finalize_eligible():
         raise FlowError(
             f"Session {session_id} is not finalize-eligible "
-            f"(stage={state.stage.value}, has_sketch={bool(state.sketch_tokens.vq_tokens)})"
+            f"(stage={state.stage.value}, has_layout={bool(state.layout.layout_ref)})"
         )
 
     state.stage = SessionStage.FINALIZING
@@ -181,7 +177,7 @@ async def finalize(
     store.save(state, expected_rev)
     expected_rev = state.revision
 
-    handoff_input = state.sketch_tokens.vq_tokens
+    handoff_input = state.layout.wireframe_ref or state.layout.layout_ref
     pixel_ref = handoff_hook(handoff_input) if handoff_hook else handoff_input
 
     # Synthesize prompt from conversational intent and constraints if not explicitly provided.
@@ -533,7 +529,7 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
         descriptors.append(f"layout: {state.constraints.layout_hints}")
     # UPGRADE (docs/review/35_model_review_3_resync.md): the same
     # Planner-reasoning-note enrichment already applied to
-    # sketch_backend.py's run(), carried forward here via the persisted
+    # structured layout backend, carried forward here via the persisted
     # state field (see DesignState.last_planner_reasoning_note's
     # docstring for why a persisted field was needed here but not for
     # Sketch). Bound is DELIBERATELY much more generous than Sketch's
