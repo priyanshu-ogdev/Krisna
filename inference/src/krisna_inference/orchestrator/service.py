@@ -11,6 +11,7 @@ without importing Python internals directly.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -160,6 +161,10 @@ class CritiqueRequest(BaseModel):
     compare_against_score: float | None = None
 
 
+class WarmRequest(BaseModel):
+    background: bool = False
+
+
 def _error_response(e: Exception) -> HTTPException:
     if isinstance(e, SessionNotFoundError):
         return HTTPException(status_code=404, detail=str(e))
@@ -235,17 +240,32 @@ async def models_status():
 
 
 @app.post("/models/warm")
-async def warm_models():
-    """Pre-warm baseline tiers (Planner + Layout) for zero cold-start turn latency."""
+async def warm_models(req: WarmRequest | None = None):
+    """Pre-warm baseline tiers (Planner + Layout) synchronously or in background."""
+    req = req or WarmRequest()
     try:
+        if req.background:
+            await orchestrator.start_background_warm()
+            return {
+                "status": "warming",
+                "background": True,
+                "warm_status": orchestrator.warm_status,
+            }
         await orchestrator.start()
         return {
             "status": "warmed",
+            "background": False,
             "residency_state": orchestrator.state.state.value,
             "resident_tiers": [t.value for t in getattr(orchestrator.ledger, "resident_tiers", [])],
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Warmup failed: {e}")
+
+
+@app.get("/models/warm/status")
+async def warm_models_status():
+    """Poll asynchronous pre-warming progress for baseline tiers."""
+    return orchestrator.warm_status
 
 
 @app.post("/models/unload")
@@ -315,15 +335,40 @@ async def get_session_render(session_id: str):
     return FileResponse(path, media_type="image/png")
 
 
+_session_locks: dict[str, asyncio.Lock] = {}
+
+
+def _get_session_lock(session_id: str) -> asyncio.Lock:
+    if session_id not in _session_locks:
+        _session_locks[session_id] = asyncio.Lock()
+    return _session_locks[session_id]
+
+
+@app.get("/session/{session_id}/model-status")
+async def get_session_model_status(session_id: str) -> dict:
+    """Query model residency readiness and asynchronous warm status for this session."""
+    try:
+        _ = store.get(session_id)
+    except SessionNotFoundError as e:
+        raise _error_response(e)
+    return {
+        "session_id": session_id,
+        "ready": orchestrator.conversation_available(),
+        "residency_state": orchestrator.state.state.value,
+        "warm_status": orchestrator.warm_status,
+    }
+
+
 @app.post("/session/{session_id}/message")
 async def post_message(session_id: str, req: MessageRequest) -> dict:
     session_coordinator.cancel(session_id)
-    try:
-        state = await flows.conversational_turn(orchestrator, store, session_id, req.message)
-    except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
-        raise _error_response(e)
-    _schedule_self_review(session_id)
-    return state.to_wire() | {"revision": state.revision}
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.conversational_turn(orchestrator, store, session_id, req.message)
+        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
+            raise _error_response(e)
+        _schedule_self_review(session_id)
+        return state.to_wire() | {"revision": state.revision}
 
 
 @app.post("/session/{session_id}/self-review")
@@ -334,36 +379,39 @@ async def post_self_review(session_id: str) -> dict:
     same operation now keeps the policy and HTTP behavior testable.
     """
     session_coordinator.cancel(session_id)
-    try:
-        state = await flows.planner_self_review(orchestrator, store, session_id)
-    except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
-        raise _error_response(e)
-    return state.to_wire() | {"revision": state.revision}
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.planner_self_review(orchestrator, store, session_id)
+        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
+            raise _error_response(e)
+        return state.to_wire() | {"revision": state.revision}
 
 
 @app.post("/session/{session_id}/finalize")
 async def post_finalize(session_id: str, req: FinalizeRequest) -> dict:
-    try:
-        state = await flows.finalize(
-            orchestrator, store, session_id,
-            quality=req.quality, prompt=req.prompt, verifier_stack=_verifier_stack,
-            handoff_hook=_handoff_hook,
-        )
-    except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
-        raise _error_response(e)
-    return state.to_wire() | {"revision": state.revision}
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.finalize(
+                orchestrator, store, session_id,
+                quality=req.quality, prompt=req.prompt, verifier_stack=_verifier_stack,
+                handoff_hook=_handoff_hook,
+            )
+        except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        return state.to_wire() | {"revision": state.revision}
 
 
 @app.post("/session/{session_id}/enhance")
 async def post_enhance(session_id: str, req: EnhanceRequest) -> dict:
-    try:
-        state = await flows.enhance_photo(
-            orchestrator, store, session_id,
-            image_ref=req.image_ref, prompt=req.prompt, quality=req.quality
-        )
-    except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
-        raise _error_response(e)
-    return state.to_wire() | {"revision": state.revision}
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.enhance_photo(
+                orchestrator, store, session_id,
+                image_ref=req.image_ref, prompt=req.prompt, quality=req.quality
+            )
+        except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        return state.to_wire() | {"revision": state.revision}
 
 
 @app.post("/session/{session_id}/critique")
@@ -372,14 +420,15 @@ async def post_critique(session_id: str, req: CritiqueRequest | None = None) -> 
     compare_against = None
     if req.compare_against_image_ref is not None and req.compare_against_score is not None:
         compare_against = {"image_ref": req.compare_against_image_ref, "score": req.compare_against_score}
-    try:
-        state = await flows.critique_pass(
-            orchestrator, store, session_id,
-            preference_store=preference_store, compare_against=compare_against,
-        )
-    except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
-        raise _error_response(e)
-    return state.to_wire() | {"revision": state.revision}
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.critique_pass(
+                orchestrator, store, session_id,
+                preference_store=preference_store, compare_against=compare_against,
+            )
+        except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        return state.to_wire() | {"revision": state.revision}
 
 
 @app.get("/preference-pairs/stats")

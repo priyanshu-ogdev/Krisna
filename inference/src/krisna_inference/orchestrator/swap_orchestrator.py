@@ -124,6 +124,8 @@ class SwapOrchestrator:
     backends: dict[Tier, ModelBackend] = field(init=False)
     _swap_lock: asyncio.Lock = field(init=False, repr=False)
     _started: bool = field(default=False, init=False)
+    _warm_task: asyncio.Task | None = field(default=None, init=False, repr=False)
+    _warm_status: dict[str, Any] = field(init=False)
 
     def __post_init__(self) -> None:
         self.state = StateMachine(ResidencyState.IDLE_RESIDENT)
@@ -132,20 +134,103 @@ class SwapOrchestrator:
         self.ram_ledger = RAMLedger(envelope_gb=self.ram_envelope_gb, registry=self.registry)
         self.backends = {tier: self.backend_factory(spec) for tier, spec in self.registry.items()}
         self._swap_lock = asyncio.Lock()
+        self._warm_task = None
+        self._warm_status = {
+            "state": "idle",
+            "stage": "idle",
+            "error": None,
+            "loaded_tiers": [],
+            "resident": [],
+        }
 
     # ------------------------------------------------------------------ #
     # Lifecycle
     # ------------------------------------------------------------------ #
+
+    @property
+    def warm_status(self) -> dict[str, Any]:
+        resident = [t.value for t in getattr(self.ledger, "resident_tiers", [])]
+        self._warm_status["resident"] = resident
+        return dict(self._warm_status)
+
+    async def start_background_warm(self) -> asyncio.Task:
+        """Start asynchronous non-blocking pre-warm of baseline tiers (Planner + Layout)."""
+        if self._warm_task and not self._warm_task.done():
+            return self._warm_task
+
+        all_loaded = all(
+            tier in getattr(self.ledger, "resident_tiers", set())
+            for tier in ALWAYS_RESIDENT_TIERS
+        )
+        if all_loaded:
+            self._warm_status = {
+                "state": "ready",
+                "stage": "ready",
+                "error": None,
+                "loaded_tiers": [t.value for t in ALWAYS_RESIDENT_TIERS],
+                "resident": [t.value for t in getattr(self.ledger, "resident_tiers", [])],
+            }
+            loop = asyncio.get_running_loop()
+            future = loop.create_future()
+            future.set_result(None)
+            self._warm_task = asyncio.ensure_future(future)
+            return self._warm_task
+
+        self._warm_status = {
+            "state": "warming",
+            "stage": "starting",
+            "error": None,
+            "loaded_tiers": [],
+            "resident": [t.value for t in getattr(self.ledger, "resident_tiers", [])],
+        }
+        self._warm_task = asyncio.create_task(self._do_background_warm())
+        return self._warm_task
+
+    async def _do_background_warm(self) -> None:
+        try:
+            for tier in ALWAYS_RESIDENT_TIERS:
+                self._warm_status["stage"] = f"loading_{tier.value}"
+                await self._load_one(tier)
+                if tier.value not in self._warm_status["loaded_tiers"]:
+                    self._warm_status["loaded_tiers"].append(tier.value)
+            self._started = True
+            self._warm_status["state"] = "ready"
+            self._warm_status["stage"] = "ready"
+            log.info("orchestrator_background_warm_complete", extra={"resident": self.ledger.snapshot()})
+        except Exception as e:
+            self._warm_status["state"] = "error"
+            self._warm_status["stage"] = "failed"
+            self._warm_status["error"] = str(e)
+            log.error("orchestrator_background_warm_failed", extra={"error": str(e)})
+            raise
 
     async def start(self) -> None:
         """Load baseline residency (Planner + Sketch). Call once at
         service startup."""
         for tier in ALWAYS_RESIDENT_TIERS:
             await self._load_one(tier)
+            if tier.value not in self._warm_status["loaded_tiers"]:
+                self._warm_status["loaded_tiers"].append(tier.value)
         self._started = True
+        self._warm_status["state"] = "ready"
+        self._warm_status["stage"] = "ready"
         log.info("orchestrator_started", extra={"resident": self.ledger.snapshot()})
 
     async def shutdown(self) -> None:
+        if self._warm_task and not self._warm_task.done():
+            self._warm_task.cancel()
+            try:
+                await self._warm_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._warm_task = None
+        self._warm_status = {
+            "state": "idle",
+            "stage": "idle",
+            "error": None,
+            "loaded_tiers": [],
+            "resident": [],
+        }
         for tier in list(self.backends):
             if self.backends[tier].is_loaded:
                 await self._unload_one(tier)
@@ -159,6 +244,12 @@ class SwapOrchestrator:
         return self.state.is_conversation_eligible() and not self._swap_lock.locked()
 
     async def run_conversational_turn(self, **kwargs) -> Any:
+        if self._warm_task and not self._warm_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._warm_task), timeout=self.load_timeout_s)
+            except Exception as e:
+                log.warning("conversational_turn_warm_wait_warning: %s", e)
+
         if not self.conversation_available():
             raise SwapBusyError(
                 "Planner is not resident — a swap is in flight "
@@ -314,6 +405,8 @@ class SwapOrchestrator:
     # ------------------------------------------------------------------ #
 
     async def _load_one(self, tier: Tier) -> None:
+        if tier in getattr(self.ledger, "resident_tiers", set()) and self.backends[tier].is_loaded:
+            return
         spec = self.registry[tier]
         try:
             self.ledger.admit(tier)
