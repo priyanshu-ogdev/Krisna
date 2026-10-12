@@ -33,7 +33,49 @@ def from_gemma_output(raw: dict) -> CritiqueResult:
     )
 
 
-from_planner_review = from_gemma_output
+def from_planner_review(raw: dict, verifier_scores: dict | None = None) -> CritiqueResult:
+    """Normalize Planner Review output into CritiqueResult with suggested edits and verifier grounding."""
+    dimensions = {}
+    overall_score = float(raw.get("overall_score", 0.0))
+
+    if verifier_scores:
+        v_critique = from_verifier_scores(verifier_scores)
+        dimensions = v_critique.dimensions
+        if overall_score == 0.0:
+            overall_score = v_critique.overall_score
+
+    suggested_edits = list(raw.get("suggested_edits", []))
+    delta = raw.get("design_state_delta") or {}
+    reasoning = delta.get("reasoning_note")
+    if reasoning and not any(isinstance(e, dict) and e.get("instruction") == str(reasoning) for e in suggested_edits):
+        suggested_edits.append({"instruction": str(reasoning), "region": None})
+    reply = raw.get("reply_text")
+    if reply and reply != "(planner reply)" and not any(isinstance(e, dict) and e.get("instruction") == str(reply) for e in suggested_edits):
+        suggested_edits.append({"instruction": str(reply), "region": None})
+    if delta.get("constraint_updates"):
+        for k, v in delta["constraint_updates"].items():
+            if v and k != "reasoning_note":
+                suggested_edits.append({"instruction": f"Adjust {k}: {v}", "region": None})
+
+    if not dimensions and (raw.get("runtime_metadata") or raw.get("design_state_delta")):
+        dimensions = {
+            "review_assessment": CritiqueDimensionScore(
+                score=overall_score or 0.85,
+                note=str(reply or "Completed Planner Review assessment.")
+            )
+        }
+        if overall_score == 0.0:
+            overall_score = 0.85
+
+    return CritiqueResult.model_validate(
+        {
+            "critique_source": raw.get("critique_source", "planner_review"),
+            "overall_score": overall_score,
+            "dimensions": dimensions or raw.get("dimensions", {}),
+            "suggested_edits": suggested_edits,
+            "raw_model_output_ref": raw.get("raw_model_output_ref"),
+        }
+    )
 
 
 

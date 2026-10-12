@@ -295,10 +295,19 @@ class QwenImage21Backend(ModelBackend):
         w, h = dst.size
 
         for region in locked_regions:
-            rx = int(region.get("x", 0) * (w if region.get("x", 0) <= 1.0 else 1))
-            ry = int(region.get("y", 0) * (h if region.get("y", 0) <= 1.0 else 1))
-            rw = int(region.get("w", 0) * (w if region.get("w", 0) <= 1.0 else 1))
-            rh = int(region.get("h", 0) * (h if region.get("h", 0) <= 1.0 else 1))
+            if isinstance(region, dict) and "bbox" in region:
+                bx, by, bw, bh = region["bbox"]
+            elif isinstance(region, (list, tuple)) and len(region) >= 4:
+                bx, by, bw, bh = region[:4]
+            else:
+                bx = region.get("x", 0)
+                by = region.get("y", 0)
+                bw = region.get("w", 0)
+                bh = region.get("h", 0)
+            rx = int(bx * (w if bx <= 1.0 else 1))
+            ry = int(by * (h if by <= 1.0 else 1))
+            rw = int(bw * (w if bw <= 1.0 else 1))
+            rh = int(bh * (h if bh <= 1.0 else 1))
             draw.rectangle([rx, ry, rx + rw, ry + rh], fill=255)
 
         # Apply boundary feathering

@@ -37,7 +37,10 @@ class AestheticVerifier:
             urlretrieve(AESTHETIC_WEIGHTS_URL, weights_path)
 
         linear = nn.Linear(768, 1)
-        state = torch.load(weights_path, map_location="cpu")
+        try:
+            state = torch.load(weights_path, map_location="cpu", weights_only=True)
+        except Exception:
+            state = torch.load(weights_path, map_location="cpu")
         linear.load_state_dict(state)
         linear.eval()
         device = "cuda" if torch.cuda.is_available() else "cpu"
