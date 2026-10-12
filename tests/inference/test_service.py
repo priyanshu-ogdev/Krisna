@@ -152,3 +152,34 @@ def test_session_render_returns_404_for_mock_refs(client: TestClient):
     assert r.status_code == 200
     r = client.get(f"/session/{sid}/render")
     assert r.status_code == 404
+
+
+def test_async_warm_and_session_model_status(client: TestClient):
+    """Verifies non-blocking pre-warm and per-session model readiness polling."""
+    # Create session
+    r = client.post("/session", json={"style": "glassmorphism"})
+    assert r.status_code == 200
+    sid = r.json()["session_id"]
+
+    # Poll session model status
+    r = client.get(f"/session/{sid}/model-status")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["session_id"] == sid
+    assert "ready" in data
+    assert "warm_status" in data
+
+    # Trigger background warm
+    r = client.post("/models/warm", json={"background": True})
+    assert r.status_code == 200
+    warm_resp = r.json()
+    assert warm_resp["background"] is True
+    assert "warm_status" in warm_resp
+
+    # Poll warm status endpoint
+    r = client.get("/models/warm/status")
+    assert r.status_code == 200
+    status_resp = r.json()
+    assert "state" in status_resp
+    assert "stage" in status_resp
+
