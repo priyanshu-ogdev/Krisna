@@ -1,74 +1,47 @@
-# Krisna Training Documentation
+# Training documentation
 
-Comprehensive reference and mathematical derivations for training the generative components of Krisna's agentic UI pipeline.
+This directory is the authoritative training documentation set. It describes
+the current executable source tree, its known gaps, and the gated research
+architecture. It does not claim that a configuration or launcher is a completed
+training run.
 
-> [!IMPORTANT]
-> **Canonical Specification**: Defined in [docs/PRD.md §6](../PRD.md#6-model-stack-the-no-rlhf-loop-revision) (The No-RLHF Model Stack) and [docs/PRD.md §8](../PRD.md#8-data-pipeline-data-forge).
-> Of the five model tiers, exactly **two** are trained; three ship frozen.
+## Start here
 
----
+1. **[ARCHITECTURE.md](ARCHITECTURE.md)** — current model/trainability matrix,
+   data contracts, agentic image/VL training boundary, research comparisons, and
+   the recommended gate sequence.
+2. **[TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)** — read-only readiness checks,
+   data preparation, and the one supported Polish launcher.
 
-## 1. Trained Generative Components
+## Current training decision
 
-| Component | Architecture | Base Model / Checkpoint | Training Methodology | Target Checkpoint |
-|---|---|---|---|---|
-| **Sketch Tier** | Bidirectional MaskGIT Transformer | From scratch | Progressive 2-Stage Cross-Entropy with CFG Dropout (10%) | `checkpoints/sketch_stage2_512/checkpoint_final.pt` |
-| **Polish (Default)** | Single-Stream DiT (S3-DiT) | `Tongyi-MAI/Z-Image-Turbo` | DreamBooth LoRA (1024px) + Diffusion-DPO Velocity Alignment (512px) | `models/dpo_checkpoints/<run>/final/` |
+| Component | Current status |
+|---|---|
+| Planner | Frozen Qwen3.5-9B GGUF/RAG path; no active Planner LoRA training |
+| Structure | Deterministic `krisna.layout.v1` baseline; no complete learned Sketch trainer in this checkout |
+| Polish Default | Intended Qwen-Image-2.1 supervised LoRA; pair preparation exists, external trainer/API still requires validation |
+| Polish Quality | Frozen Qwen-Image-2.1 comparison path |
+| DPO | Deferred historical path; not part of the active launcher |
 
----
+## Source-of-truth checks
 
-## 2. Mathematical Foundations
+Run the read-only audit before preparing a run:
 
-### 2.1 Sketch Tier: Progressive ViT Positional Interpolation
-To scale from Stage 1 ($256 \times 256$, grid $16 \times 16 = 256$ tokens) to Stage 2 ($512 \times 512$, grid $32 \times 32 = 1024$ tokens), Krisna employs bicubic interpolation of learned 2D positional embeddings prior to prefix token concatenation:
+```bash
+python scripts/training/audit_training_pipeline.py
+```
 
-$$\mathbf{P}_{512} = \text{BicubicInterpolate}\left(\mathbf{P}_{256}, \text{size}=(32, 32)\right)$$
+The audit reports model IDs, missing source/trainer artifacts, configured and
+realized dataset counts, and launcher inconsistencies. It does not install
+dependencies, download weights, modify data, or start training.
 
-This preserves spatial layout geometry learned during Stage 1 without training 512px from scratch, verified in `training/src/krisna_training/sketch/pos_embed.py`.
+## Important terminology
 
-### 2.2 Classifier-Free Guidance (CFG) & Caption Regularization
-During training, conditioning dropout is enforced at rate $p_{uncond} = 0.10$. At inference, sampling uses Muse's linear ramped CFG schedule (Chang et al. 2023):
+- **Configured** means a model ID, path, or expected count appears in source.
+- **Realized** means the corresponding artifact exists in the current workspace.
+- **Validated** means a smoke test or run receipt proves the contract.
+- **Measured** means a real run produced hardware and evaluation evidence.
 
-$$\ell_g = (1 + t)\ell_c - t\ell_u, \quad t \in [0, \gamma]$$
-
-where $\ell_c$ represents logits conditioned on active prompt/constraints, $\ell_u$ represents unconditional logits, and $\gamma$ is the target guidance scale.
-
-Captions are mixed at a 95/5 ratio:
-- **95%**: Dense VLM-generated descriptions capturing layout hierarchy and widget semantics.
-- **5%**: Original short dataset prompts to ensure robustness against concise user inputs (Betker et al. 2023).
-
-### 2.3 Polish Tier: Flow-Matching Velocity DPO
-Z-Image-Turbo is a flow-matching model predicting velocity $v_\theta(x_t, t, c)$ along a straight optimal transport probability path between noise $x_1 \sim \mathcal{N}(0, I)$ and clean latent $x_0$:
-
-$$x_t = (1 - t)x_0 + t x_1, \quad v^* = x_1 - x_0$$
-
-Direct Preference Optimization (DPO) aligns velocity predictions on human preference pairs $(x^w, x^l)$ without RLHF loops (Wallace et al. 2024, Bin et al. 2025):
-
-$$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x^w, x^l), t} \left[ \log \sigma \left( \beta \cdot \left( \Delta \mathcal{E}_{\text{policy}} - \Delta \mathcal{E}_{\text{ref}} \right) \right) \right] + \lambda_{\text{anchor}} \mathcal{L}_{\text{anchor}}$$
-
-where the squared error differences are:
-
-$$\Delta \mathcal{E}_{\text{policy}} = \|v_\theta(x_t^l, t, c) - v^{*, l}\|^2 - \|v_\theta(x_t^w, t, c) - v^{*, w}\|^2$$
-
-$$\Delta \mathcal{E}_{\text{ref}} = \|v_{\text{ref}}(x_t^l, t, c) - v^{*, l}\|^2 - \|v_{\text{ref}}(x_t^w, t, c) - v^{*, w}\|^2$$
-
-$$\mathcal{L}_{\text{anchor}} = \|v_\theta(x_t^w, t, c) - v_{\text{ref}}(x_t^w, t, c)\|^2$$
-
----
-
-## 3. Hardware Execution & Memory Budgets
-
-| Task | Target Device | Precision | Peak VRAM | Offload Strategy |
-|---|---|---|---|---|
-| Sketch Stage 1 (256px) | RTX A6000 (48GB) | BF16 / FP32 | ~12 GB | Pure VRAM resident |
-| Sketch Stage 2 (512px) | RTX A6000 (48GB) | BF16 | ~22 GB | Pure VRAM resident |
-| Z-Image-Turbo LoRA (1024px) | RTX A6000 (48GB) | BF16 | ~32 GB | Gradient checkpointing + AdamW 8-bit |
-| Z-Image-Turbo DPO (512px) | RTX A6000 (48GB) | BF16 | ~28 GB | Live VAE encoding + frozen reference model |
-
----
-
-## 4. Runbooks & Detailed Guides
-
-- **[TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)**: End-to-end execution guide on Intel Core i9 + NVIDIA RTX A6000 under Windows PowerShell.
-- **[training/README.md](../../training/README.md)**: Package setup, dataset preparation, and command-line execution walkthrough.
-- **[SYNC_DESIGN.md](../architecture/SYNC_DESIGN.md)**: Data-Forge to Training sync contract.
+The research papers cited in this section are precedents for specific design
+choices only. They do not establish that Krisna has reproduced their scores or
+that an external trainer accepts the repository's current flags.

@@ -1,267 +1,147 @@
-# Krisna Training Runbook
+# Training readiness runbook
 
-**Target Platform**: Intel Core i9 | NVIDIA RTX A6000 (48GB VRAM) | 128GB RAM | Windows 11 / Server  
-**Canonical Reference**: PRD §6 (Status: Final, no-RLHF revision)  
-**Execution Shells**: PowerShell (`.\scripts\training\train_all.ps1`) or Git Bash (`./train.sh`)
+This is a readiness and execution guide for the current checkout. It is
+intentionally conservative: it will not describe a missing trainer, empty
+dataset, or historical launcher as active.
 
----
+## 1. Read-only audit
 
-## 1. System Architecture & Model Stack
+From the repository root:
 
-The Krisna training layer trains the generative models that produce UI designs from user prompts. Per PRD §6, the pipeline operates with **no AI-judge training signals** and keeps Planner and Critic frozen at inference.
-
-```mermaid
-graph TD
-    DF[Data-Forge Pipeline: s00-s12] --> Bridge[scripts/data-forge/sync_to_training.py]
-    Bridge --> S256[data/sketch_train_256]
-    Bridge --> S512[data/sketch_train_512]
-    Bridge --> Pol[data/polish_default_train]
-    Bridge --> DPO[krisna_preference_pairs.db]
-    Bridge --> RAG[data/planner_rag_corpus]
-    
-    S256 --> T1[Tier 1: Sketch Stage 1 256px]
-    T1 --> Ckpt1[checkpoints/sketch_stage1_256]
-    Ckpt1 --> T2[Tier 2: Sketch Stage 2 512px]
-    S512 --> T2
-    T2 --> Ckpt2[checkpoints/sketch_stage2_512]
-    
-    Pol --> T3[Tier 3: Polish Default LoRA]
-    T3 --> Ckpt3[models/polish_checkpoints/default_lora]
-    Ckpt3 -.-> T4[Tier 4: Polish DPO Stage 1]
-    DPO --> T4
-    T4 --> Ckpt4[models/dpo_checkpoints/stage1_general]
-    
-    RAG --> InfRAG[Inference: Planner UICrit RAG Index]
-```
-
-### Active vs Frozen Model Tiers
-
-| Tier | Status | Architecture & Base | Training Data | Hardware Profile (A6000 48GB) |
-|---|---|---|---|---|
-| **sketch-stage1** | **ACTIVE** | MaskGIT transformer (256px, 16x16 grid) | `data/sketch_train_256/manifest.jsonl` | Batch=32, lr=3e-4, num_workers=8, ~14GB VRAM |
-| **sketch-stage2** | **ACTIVE** | MaskGIT transformer (512px, 32x32 grid, continued via `init_from`) | `data/sketch_train_512/manifest.jsonl` | Batch=16, lr=1.5e-4, num_workers=6, grad_ckpt=true, ~28GB VRAM |
-| **polish-default** | **ACTIVE** | Z-Image-Turbo DreamBooth LoRA (rank=32, alpha=32) | `data/polish_default_train/` | Diffusers script, 1024px, bf16, ~24GB VRAM |
-| **polish-dpo** | **ACTIVE** | Flow-matching Diffusion-DPO (beta=2000) | `krisna_preference_pairs.db` | Ref-model CPU-offloaded, batch=1, grad_accum=4, 512px, ~38GB VRAM |
-| **planner** | *DEPRECATED* | Qwen3.5-9B (Frozen) | None (UICrit RAG at inference) | Frozen; zero-shot in-context learning |
-| **critic** | *DEPRECATED* | Gemma 4 31B Dense (Frozen) | None (Frozen zero-shot) | Frozen; zero-shot scoring |
-
----
-
-## 2. Environment Preparation
-
-### Step 2.1: Automated Setup via PowerShell / Shell Scripts
-
-Automated setup scripts are provided for both standard training dependencies and Polish tier diffusers requirements:
-
-```powershell
-# Windows (PowerShell):
-.\scripts\training\setup_env_training.ps1             # Core training environment & editable install
-.\scripts\training\setup_env_diffusers_training.ps1   # Diffusers repo & Dreambooth requirements
-.\scripts\training\download_vqgan.ps1                 # Downloads VQGAN codebook to checkpoints/vqgan/
-```
-
-Or on Linux / Git Bash:
 ```bash
-./scripts/training/setup_env_training.sh
-./scripts/training/setup_env_diffusers_training.sh
-./scripts/training/download_vqgan.sh
+python scripts/training/audit_training_pipeline.py
 ```
 
-### Step 2.2: Manual Python Virtual Environment & Dependencies (Alternative)
+Expected current findings in a clean checkout include:
 
-From the repository root (`D:\Krisna`):
+- Planner frozen;
+- Layout/Sketch learned trainer unavailable or research-only;
+- Qwen-Image-2.1 is the configured Polish model;
+- paired-data preparation is present;
+- the external Qwen trainer is absent unless the operator supplies a pinned
+  checkout;
+- pair counts are zero until Data-Forge output is actually built and synced.
 
-```powershell
-# Create virtual environment if not present
-python -m venv .venv
+The audit is read-only. It does not download models, clone Diffusers, install
+packages, create data, or invoke a GPU.
 
-# Activate environment
-.\.venv\Scripts\Activate.ps1
+## 2. Build the data contract first
 
-# Upgrade pip & packaging tools
-python -m pip install --upgrade pip setuptools wheel
+The required Polish corpus is not the DPO database. It is a manifest of
+condition/target pairs:
 
-# Install PyTorch with CUDA 12.4/12.6 support
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-
-# Install Krisna training and inference packages in editable mode
-pip install -e training/
-pip install -e inference/
-pip install -e data-forge/
-
-# Install diffusers & Dreambooth requirements for Polish Tier
-pip install accelerate peft transformers diffusers[torch] pyyaml
+```text
+condition = deterministic wireframe rendered from validated Layout IR
+caption   = controlled instruction or provenance-preserving description
 ```
 
-### Step 2.3: Accelerate Configuration
+Before any training run:
 
-Run non-interactive Accelerate configuration for single-GPU A6000:
+1. ingest eligible RICO/CLAY records;
+2. split by application/page/source identity;
+3. validate hierarchy, IDs, bounds, and image readability;
+4. render the condition wireframe deterministically;
+5. join condition to target by a stable pair ID;
+6. hash both images and record the license/provenance;
+7. write train/validation/test manifests;
+8. verify no target is used as its own condition.
 
-```powershell
-accelerate config default --mixed_precision bf16
+The existing strict filename pair helper is:
+
+```text
+training/src/krisna_training/polish/prepare_dataset.py
 ```
 
-Verify VQGAN files exist:
-- `checkpoints/vqgan/last.ckpt` (~3.8 GB)
-- `checkpoints/vqgan/model.yaml`
+It is a format bridge, not proof that a real corpus exists.
 
----
+## 3. Environment and external trainer gate
 
-## 3. Data-Forge Pipeline & Bridge Synchronization
+The current launcher constructs:
 
-### Step 3.1: Generate Processed Datasets
-
-Run the Data-Forge pipeline stages to completion (s00 through s12):
-
-```powershell
-.\run_data_forge.ps1 run
+```text
+third_party/diffusers/examples/dreambooth/
+  train_dreambooth_lora_qwenimage21_img2img.py
 ```
 
-This generates exports in `DATA_ROOT` (default `D:\data_krisna`):
-- `model_data/sketch_tier_maskgit/images/` + `captions.jsonl`
-- `model_data/polish_zimage_turbo/images/` + `captions.jsonl`
-- `preference_pairs/` (human preference pairs from Pick-a-Pic v2 & HPD v2)
-- `model_data/planner_rag_corpus/uicrit_critiques.jsonl`
+The setup helper now checks out the pinned Diffusers revision
+`efe46a5b177af67c64b3666da8ddddac7ee12163`, and the launcher validates the
+official CLI contract before calling `accelerate`. This still does not replace
+the required one-batch GPU smoke test.
 
-### Step 3.2: Synchronize into Training Datasets
+The gate must prove, with a one-batch smoke test:
 
-Execute the unified bridge sync:
+- Qwen-Image-2.1 loads;
+- the condition image reaches the image-conditioning input;
+- the target image supplies supervision;
+- base weights are frozen;
+- LoRA weights are trainable and receive gradients;
+- one optimizer step changes LoRA weights;
+- adapter save/load succeeds;
+- serving loads the same adapter and pipeline family.
 
-```powershell
-python scripts/data-forge/sync_to_training.py --data-root "D:\data_krisna"
+## 4. Supported intended launcher
+
+After the gates above pass:
+
+```bash
+./scripts/training/train_polish_default_lora.sh \
+  training/configs/polish_qwen_image21_lora.yaml
 ```
 
-To verify dataset readiness without modifying files:
-```powershell
-python scripts/data-forge/sync_to_training.py --data-root "D:\data_krisna" --check-only
+The configuration selects:
+
+```text
+base model: Qwen/Qwen-Image-2.1
+conditioning column: condition_image
+target column: image
+caption column: caption
+resolution: 1024
+LoRA rank: 64
+LoRA alpha: 32
 ```
 
-Expected outputs produced in `./data/`:
-1. `data/sketch_train_256/manifest.jsonl` + `tokens/*.npy` (256px MaskGIT tokens)
-2. `data/sketch_train_512/manifest.jsonl` + `tokens/*.npy` (512px MaskGIT tokens)
-3. `data/polish_default_train/` (scrubbed images + `metadata.jsonl`)
-4. `krisna_preference_pairs.db` + `krisna_blobs/` (SQLite table with parsed Pick-a-Pic & HPD pairs)
-5. `data/planner_rag_corpus/uicrit_critiques.jsonl` (Human UICrit critique text)
+The rank, alpha, step count, and scheduler are starting hypotheses. They are
+not tuned results. Scale steps from the realized manifest size and effective
+batch rather than assuming a fixed corpus size.
 
----
+## 5. What not to run as active training
 
-## 4. Launching Model Training
+- `train_polish_dpo.sh`: explicitly retired and exits before training.
+- Historical Z-Image configs and launch branches: not the current Qwen path.
+- Planner LoRA: guarded as deprecated/frozen.
+- Critic QLoRA: deprecated/frozen.
+- Sketch/MaskGIT launchers: not present as complete source-backed training
+  entry points in the current checkout.
 
-### Option A: Sequential Execution of All 4 Tiers (Recommended)
+## 6. Required run receipt
 
-To run the complete pipeline end-to-end with automated pre-flight checks and hardware monitoring:
+Every accepted run must write a `training_receipt.json` with:
 
-```powershell
-# Dry run first to verify environment and datasets:
-.\scripts\training\train_all.ps1 -All -DryRun
+- exact model and trainer revisions;
+- dataset manifest hash and train/validation/test counts;
+- source split policy;
+- trainable and frozen parameter counts;
+- target LoRA modules;
+- resolution, seed, effective batch, and target passes;
+- adapter checkpoint path and hash;
+- one-batch smoke-test results;
+- hardware, precision, peak VRAM, and wall-clock measurements.
 
-# Live execution:
-.\scripts\training\train_all.ps1 -All
-```
+Without this receipt, report the state as **configured** or **pending
+validation**, not trained or measured.
 
-To auto-sync from `DATA_ROOT` before training:
-```powershell
-.\scripts\training\train_all.ps1 -Sync -DataRoot "D:\data_krisna" -All
-```
+## 7. Evaluation order
 
-### Option B: Tier-by-Tier Manual Execution
+Evaluate the supervised Polish adapter before preference alignment:
 
-#### Tier 1: Sketch Stage 1 (256px MaskGIT from scratch)
-```powershell
-# Standard Baseline (55M parameters, ~4-6GB VRAM):
-.\scripts\training\train_all.ps1 -Tier sketch-stage1 -Config training/configs/sketch_stage1_256.yaml
+1. exact text/OCR error;
+2. layout/node and box adherence;
+3. protected-pixel equality for locked regions;
+4. prompt and constraint following;
+5. handoff consistency;
+6. safety;
+7. human preference and perceptual metrics;
+8. latency and peak memory.
 
-# SOTA High-Capacity (337M parameters, ~24-28GB VRAM on 48GB A6000):
-.\scripts\training\train_all.ps1 -Tier sketch-stage1 -Config training/configs/sketch_stage1_a6000_sota.yaml
-```
-- **Canonical Baseline**: `training/configs/sketch_stage1_256.yaml` (55M params, batch=32)
-- **SOTA High-VRAM**: `training/configs/sketch_stage1_a6000_sota.yaml` (337M params, hidden_dim=1024, layers=24, heads=16, RMSNorm, batch=64, grad_accum=2)
-- **Artifact**: `checkpoints/sketch_stage1_256_sota/checkpoint_final.pt`
-
-#### Tier 2: Sketch Stage 2 (512px progressive continuation)
-```powershell
-# Standard Baseline (55M parameters, ~12-16GB VRAM):
-.\scripts\training\train_all.ps1 -Tier sketch-stage2 -Config training/configs/sketch_stage2_512.yaml
-
-# SOTA High-Capacity (337M parameters, ~36-42GB VRAM on 48GB A6000):
-.\scripts\training\train_all.ps1 -Tier sketch-stage2 -Config training/configs/sketch_stage2_a6000_sota.yaml
-```
-- **Canonical Baseline**: `training/configs/sketch_stage2_512.yaml`
-- **SOTA High-VRAM**: `training/configs/sketch_stage2_a6000_sota.yaml` (1024 tokens, batch=32, grad_accum=2, grad_ckpt=true)
-- **Prerequisite**: Verifies `checkpoints/sketch_stage1_256_sota/checkpoint_final.pt` exists and interpolates 16x16 positional embeddings to 32x32.
-- **Artifact**: `checkpoints/sketch_stage2_512_sota/checkpoint_final.pt`
-
-#### Tier 3: Polish Default LoRA (Z-Image-Turbo Base Fine-Tuning)
-```powershell
-.\scripts\training\train_all.ps1 -Tier polish-default
-```
-- **Canonical Config**: `training/configs/polish_stage1_default_lora.yaml` (legacy: `polish_default_lora_z_image.yaml`)
-- **Steps**: 1,500 steps
-- **Artifact**: `models/polish_checkpoints/default_lora/pytorch_lora_weights.safetensors`
-
-#### Tier 4: Polish Diffusion-DPO Stage 1 (General Human Preference)
-```powershell
-.\scripts\training\train_all.ps1 -Tier polish-dpo
-```
-- **Canonical Config**: `training/configs/polish_stage2_dpo_general.yaml` (legacy: `dpo_z_image_stage1_general.yaml`)
-- **Steps**: 1,000 steps
-- **Artifact**: `models/dpo_checkpoints/stage1_general/final/`
-
----
-
-## 5. Hyperparameter Tuning & Research Guidance
-
-### Sketch Tier (MaskGIT)
-- **Sequence Length**: 256 tokens at 256px, 1024 tokens at 512px.
-- **Gradient Checkpointing**: Kept `false` in Stage 1 (attention fits easily in 48GB); set to `true` in Stage 2 to prevent peak activation OOM at 1024 tokens.
-- **Caption Mixing**: `caption_mix_ratio: 0.95` exposes the model to 5% short/human captions (Betker et al. 2023), preventing failure when user prompts are short.
-- **CFG Dropout**: `cfg_dropout_prob: 0.1` enables classifier-free guidance at inference time.
-
-### Polish Tier (Z-Image-Turbo Diffusion-DPO)
-- **Beta Parameter Sweep**: The baseline default is `beta: 2000.0`. In flow-matching models with velocity prediction (like Z-Image-Turbo), the loss scale differs from epsilon-prediction diffusion. Candidate sweep values:
-  - `beta: 2000.0` (baseline)
-  - `beta: 1000.0` (moderate regularization)
-  - `beta: 500.0` (tight anchor to reference model if visual artifacts or over-saturation appear)
-- **Stage 2 UI-Domain DPO Recipe**: Once human UI preference pairs (DesignSense-10k / DesignPref) are available:
-  1. Create `training/configs/dpo_z_image_stage2_domain.yaml`
-  2. Set `lora-adapter-path: "models/dpo_checkpoints/stage1_general"`
-  3. Set `output-dir: "models/dpo_checkpoints/stage2_domain"`
-  4. Set `source: ["designsense_10k", "designpref"]`
-  5. Run: `.\scripts\training\train_all.ps1 -Tier polish-dpo -Config training/configs/dpo_z_image_stage2_domain.yaml`
-
----
-
-## 6. Checkpoint Verification & Inference Wiring
-
-### Step 6.1: Verify Trained Checkpoints
-
-Ensure the output artifacts exist and have expected non-zero sizes:
-```powershell
-Get-ChildItem -Path checkpoints\sketch_stage1_256\checkpoint_final.pt
-Get-ChildItem -Path checkpoints\sketch_stage2_512\checkpoint_final.pt
-Get-ChildItem -Path models\dpo_checkpoints\stage1_general\
-Get-ChildItem -Path data\planner_rag_corpus\uicrit_critiques.jsonl
-```
-
-### Step 6.2: Wire Checkpoints to Live Inference
-
-Update your repository root `.env` file or export environment variables:
-
-```env
-# Sketch Tier Checkpoint (512px progressive model)
-KRISNA_SKETCH_CHECKPOINT=checkpoints/sketch_stage2_512/checkpoint_final.pt
-
-# Polish Tier LoRA Adapter (Fine-tuned + DPO aligned)
-KRISNA_POLISH_DEFAULT_LORA_PATH=models/dpo_checkpoints/stage1_general
-
-# Planner UICrit RAG Corpus Directory
-KRISNA_DATA_DIR=data
-```
-
-### Step 6.3: Validate Full Inference Pipeline
-
-Test that inference backend auto-discovers and loads all active checkpoints:
-
-```powershell
-python -m krisna_inference.orchestrator.cli --dry-run
-```
+Preference alignment is a separate experiment. It must not be used to hide an
+unvalidated supervised trainer or a missing condition-image path.
