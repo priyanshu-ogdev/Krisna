@@ -1,23 +1,51 @@
 # Qwen-Image-2.1 image-conditioned LoRA training.
 # Dataset must expose condition_image, image, and caption columns.
+#
+# FIXED (training pipeline audit, Oct 2026):
+#   rank: 32 -> 64  (7B single-stream MMDiT benefits from higher capacity; 32 was a sketch-tier default)
+#   lr_scheduler: constant -> cosine  (the pinned trainer has no cosine_with_warmup option)
+#   lr_warmup_steps: 0 -> 200  (protection against gradient spikes on randomly-initialized LoRA weights)
+#   max_train_steps: 1000 -> 5000  (1000 steps on a 125K corpus = 0.008% coverage; smoke-test, not training)
+#   lora_alpha: 32 -> 32  (alpha = rank/2 = 32 is correct for MMDiT; kept intentionally — NOT alpha=rank)
+#   validation: held-out rows are materialized as typed split files; the native
+#               trainer does not implement val_fraction/val_every.
+#
+#   max_train_steps is a starting point. For larger datasets scale:
+#   steps = ceil(target_passes * dataset_size / effective_batch)
+#   where effective_batch = train_batch_size * gradient_accumulation_steps.
+
 diffusers_dir: "./third_party/diffusers"
 pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
 dataset_name: "./data/polish_qwen_image21_pairs"
+instance_prompt: "a polished production UI screen"
 cond_image_column: "condition_image"
 image_column: "image"
 caption_column: "caption"
 output_dir: "./checkpoints/qwen_image21_lora"
 resolution: 1024
+use_aspect_ratio_buckets: true
+aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
+random_flip: false
 train_batch_size: 1
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
 learning_rate: 1.0e-4
-lr_scheduler: "constant"
-lr_warmup_steps: 0
-max_train_steps: 1000
+lr_scheduler: "cosine"
+lr_warmup_steps: 200
+max_train_steps: 5000
 mixed_precision: "bf16"
 seed: 0
-rank: 32
+rank: 64
 lora_alpha: 32
-validation_prompt: "Refine this UI design into a polished production render."
+# The official trainer requires a real condition image for validation. Set both
+# fields before a validation run; the launcher refuses to silently fabricate it.
+validation_prompt: null
+validation_image: null
 validation_epochs: 25
+val_fraction: null
+val_every: null
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "image_conditioned_edit"
+base_weights_frozen: true
+lora_layers: "to_k,to_q,to_v,to_out.0"

@@ -4,14 +4,13 @@
     Target Hardware: Intel Core i9, NVIDIA RTX A6000 (48GB VRAM), 128GB RAM.
 
 .DESCRIPTION
-    Native PowerShell training dispatcher for all active Krisna model tiers:
-      1. sketch-stage1   (MaskGIT transformer, 256px resolution)
-      2. sketch-stage2   (MaskGIT transformer, 512px resolution, continued from stage 1)
-      3. polish-default  (Z-Image-Turbo DreamBooth LoRA base fine-tuning)
-      4. polish-dpo      (Diffusion-DPO flow-matching preference alignment)
+    Native PowerShell dispatcher for the current Krisna training contract.
+    Only the Qwen-Image-2.1 paired image-edit LoRA path is an active intended
+    training path. Planner is frozen, Layout IR is deterministic, and the
+    historical Sketch/DPO launchers are not source-backed active trainers.
 
 .PARAMETER All
-    Execute all 4 active training tiers sequentially in dependency order.
+    Execute the active Qwen-Image-2.1 supervised Polish tier after pre-flight.
 
 .PARAMETER Tier
     Specific tier to run: 'sketch-stage1', 'sketch-stage2', 'polish-default', 'polish-dpo', 'planner', 'critic'.
@@ -64,29 +63,23 @@ function Show-Help {
 
 function Show-Tiers {
     Write-Host @'
-Tier            Status       Design intent (per PRD & docs/review/)
+Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   ACTIVE       MaskGIT transformer, from scratch, 256px/16x16 grid.
-                             batch=32, lr=3e-4, 1000-step warmup, adam_beta1=0.9,
-                             adam_beta2=0.96. caption_mix_ratio=0.95, cfg_dropout=0.1.
-                             num_workers=8. No gradient checkpointing needed at 256px.
+sketch-stage1   RESEARCH     Deterministic Layout IR is the current baseline; no complete
+                              source-backed learned Sketch trainer is present.
 
-sketch-stage2   ACTIVE       MaskGIT transformer, progressive init from stage1, 512px/32x32.
-                             batch=16, lr=1.5e-4, adam_beta1=0.9, adam_beta2=0.96, num_workers=6.
-                             use_gradient_checkpointing=true -- REQUIRED safeguard at 1024 tokens.
+sketch-stage2   RESEARCH     Same: keep as a future LayoutFlow/MaskGIT ablation only.
 
-polish-default  ACTIVE       Z-Image-Turbo LoRA (rank=32, alpha=rank) via official diffusers
-                             dreambooth-LoRA script. Base fine-tune step at resolution=1024.
+polish-default  PENDING      Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
+                              local code prepares pairs and delegates to an external
+                              trainer that must be pinned and one-batch validated.
 
-polish-dpo      ACTIVE       Flow-matching Diffusion-DPO (beta=2000, candidates [500, 1000, 2000]).
-                             Reference model CPU-offloaded for 48GB VRAM envelope.
-                             Resolution=512 deliberate for compute efficiency.
+polish-dpo      DEFERRED     Historical path. It is not part of the active Qwen training
+                              pipeline and must not be launched by -All.
 
-planner         DEPRECATED   Frozen at inference under final no-RLHF PRD revision (RAG over
-                             UICrit corpus). Training produces an unconsumed adapter.
+planner         FROZEN       Qwen3.5-9B GGUF + UICrit RAG. No Planner LoRA training.
 
-critic          DEPRECATED   Frozen, zero-shot at inference under final no-RLHF PRD revision.
-                             Training produces an unconsumed adapter.
+critic          FROZEN       No Critic training in the active no-RLHF pipeline.
 '@ -ForegroundColor Cyan
 }
 
@@ -163,13 +156,29 @@ function Test-Preflight {
             }
         }
         "polish-default" {
-            $d = "$RepoRoot\data\polish_default_train"
+            $d = "$RepoRoot\data\polish_qwen_image21_pairs"
             if (-not (Test-Path $d)) {
                 Write-Host "  [PRE-FLIGHT FAILED] Polish training directory not found: $d" -ForegroundColor Red
-                Write-Host "    Run data sync first: .\scripts\training\train_all.ps1 -Sync -DataRoot <DATA_ROOT>" -ForegroundColor Yellow
+                Write-Host "    Build the condition/target pair manifest first; see docs/training/TRAINING_RUNBOOK.md" -ForegroundColor Yellow
                 $failed = $true
             } else {
-                Write-Host "  [PRE-FLIGHT OK] Polish training dir found: $d" -ForegroundColor Green
+                $manifest = Join-Path $d "manifest.jsonl"
+                $receipt = Join-Path $d "dataset_receipt.json"
+                if (-not (Test-Path $manifest) -or -not (Test-Path $receipt)) {
+                    Write-Host "  [PRE-FLIGHT FAILED] Qwen pair manifest/receipt missing under $d" -ForegroundColor Red
+                    Write-Host "    A directory alone is not a training corpus; run the audited pair preparation/export first." -ForegroundColor Yellow
+                    $failed = $true
+                } else {
+                    $rows = @(Get-Content -LiteralPath $manifest | Where-Object { $_.Trim().Length -gt 0 })
+                    $receiptJson = Get-Content -LiteralPath $receipt -Raw | ConvertFrom-Json
+                    $pairCount = [int]($receiptJson.pair_count)
+                    if ($rows.Count -eq 0 -or $pairCount -le 0 -or $rows.Count -ne $pairCount) {
+                        Write-Host "  [PRE-FLIGHT FAILED] Qwen pair receipt is empty or inconsistent (rows=$($rows.Count), receipt=$pairCount)" -ForegroundColor Red
+                        $failed = $true
+                    } else {
+                        Write-Host "  [PRE-FLIGHT OK] Qwen pair corpus verified: $pairCount pairs" -ForegroundColor Green
+                    }
+                }
             }
         }
         "polish-dpo" {
@@ -257,33 +266,17 @@ function Execute-Tier {
 
     switch ($StageName) {
         "sketch-stage1" {
-            $defaultCfg = if (Test-Path "$RepoRoot\training\configs\sketch_stage1_256.yaml") { "training/configs/sketch_stage1_256.yaml" } else { "training/configs/sketch_train_stage1_256.yaml" }
-            $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
-            $cmd = @("-m", "krisna_training.sketch.train", "--config", $cfg)
-            if ($DryRun) {
-                $cmdStr = $cmd -join " "
-                Write-Host "  [DRY RUN] Would execute: $Python $cmdStr" -ForegroundColor Magenta
-                return
-            }
-            $cmdStr = $cmd -join " "
-            Write-Host "  Executing: $Python $cmdStr" -ForegroundColor DarkGray
-            & $Python @cmd 2>&1 | Tee-Object -FilePath $Log -Append
+            Write-Host "  [RESEARCH ONLY] No source-backed Sketch trainer exists in this checkout." -ForegroundColor Yellow
+            if (-not $DryRun) { exit 2 }
+            return
         }
         "sketch-stage2" {
-            $defaultCfg = if (Test-Path "$RepoRoot\training\configs\sketch_stage2_512.yaml") { "training/configs/sketch_stage2_512.yaml" } else { "training/configs/sketch_train_stage2_512.yaml" }
-            $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
-            $cmd = @("-m", "krisna_training.sketch.train", "--config", $cfg)
-            if ($DryRun) {
-                $cmdStr = $cmd -join " "
-                Write-Host "  [DRY RUN] Would execute: $Python $cmdStr" -ForegroundColor Magenta
-                return
-            }
-            $cmdStr = $cmd -join " "
-            Write-Host "  Executing: $Python $cmdStr" -ForegroundColor DarkGray
-            & $Python @cmd 2>&1 | Tee-Object -FilePath $Log -Append
+            Write-Host "  [RESEARCH ONLY] No source-backed Sketch trainer exists in this checkout." -ForegroundColor Yellow
+            if (-not $DryRun) { exit 2 }
+            return
         }
         "polish-default" {
-            $defaultCfg = if (Test-Path "$RepoRoot\training\configs\polish_stage1_default_lora.yaml") { "training/configs/polish_stage1_default_lora.yaml" } else { "training/configs/polish_default_lora_z_image.yaml" }
+            $defaultCfg = "training/configs/polish_qwen_image21_lora.yaml"
             $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
             $pyScript = @'
 import subprocess, sys, yaml
@@ -291,9 +284,9 @@ from pathlib import Path
 config_path = sys.argv[1]
 cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
 diffusers_dir = Path(cfg.pop('diffusers_dir'))
-script = diffusers_dir / 'examples' / 'dreambooth' / 'train_dreambooth_lora_z_image.py'
+script = diffusers_dir / 'examples' / 'dreambooth' / 'train_dreambooth_lora_qwenimage21_img2img.py'
 if not script.exists():
-    raise SystemExit(f'Script not found: {script}')
+    raise SystemExit(f'Qwen image-edit trainer not found: {script}. Pin/provide the trainer before launching.')
 args = [sys.executable, '-m', 'accelerate.commands.launch', str(script)]
 for k, v in cfg.items():
     if v is None: continue
@@ -311,31 +304,10 @@ subprocess.run(args, check=True)
             & $Python -c $pyScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
         }
         "polish-dpo" {
-            $defaultCfg = if (Test-Path "$RepoRoot\training\configs\polish_stage2_dpo_general.yaml") { "training/configs/polish_stage2_dpo_general.yaml" } else { "training/configs/dpo_z_image_stage1_general.yaml" }
-            $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
-            $pyScript = @'
-import subprocess, sys, yaml
-from pathlib import Path
-config_path = sys.argv[1]
-cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
-args = [sys.executable, '-m', 'accelerate.commands.launch', '-m', 'krisna_training.polish.train_dpo']
-for k, v in cfg.items():
-    if v is None: continue
-    if isinstance(v, bool):
-        if v: args.append(f'--{k}')
-        continue
-    if isinstance(v, list):
-        for item in v: args.append(f'--{k}={item}')
-        continue
-    args.append(f'--{k}={v}')
-print('Running:', ' '.join(args))
-subprocess.run(args, check=True)
-'@
-            if ($DryRun) {
-                Write-Host "  [DRY RUN] Would launch Diffusion-DPO via accelerate using $cfg" -ForegroundColor Magenta
-                return
-            }
-            & $Python -c $pyScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+            Write-Host "  [DEFERRED] polish-dpo is not part of the active Qwen-Image-2.1 pipeline." -ForegroundColor Yellow
+            Write-Host "  Build and validate supervised Polish first; see docs/training/ARCHITECTURE.md." -ForegroundColor Yellow
+            if (-not $DryRun) { exit 2 }
+            return
         }
         default {
             Write-Host "Unknown tier: $StageName" -ForegroundColor Red
@@ -353,7 +325,7 @@ subprocess.run(args, check=True)
 
 # Main Execution Loop
 if ($All) {
-    $stages = @("sketch-stage1", "sketch-stage2", "polish-default", "polish-dpo")
+    $stages = @("polish-default")
     $total = $stages.Count
     $idx = 1
 

@@ -2,45 +2,38 @@
 set -euo pipefail
 
 CONFIG="${1:-training/configs/polish_qwen_image21_lora.yaml}"
-
-echo -e "\033[1;36mLaunching Qwen-Image-2.1 image-conditioned LoRA training...\033[0m"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$ROOT"
 source .venv/bin/activate
+export PYTHONPATH="$ROOT/training/src${PYTHONPATH:+:$PYTHONPATH}"
+
+echo -e "\033[1;36mRunning CPU-only Qwen-Image-2.1 training preflight...\033[0m"
+# This performs all receipt, split, path, image-hash, and pinned-HEAD checks
+# before accelerate is started.  Its command rendering redacts hub_token.
+python3 -m krisna_training.polish.train_preflight "$CONFIG"
 
 python3 - "$CONFIG" <<'PYEOF'
+import json
 import subprocess
 import sys
-import yaml
 from pathlib import Path
 
-config_path = sys.argv[1]
-cfg = yaml.safe_load(Path(config_path).read_text())
+import yaml
 
-diffusers_dir = Path(cfg.pop("diffusers_dir"))
-script = diffusers_dir / "examples" / "dreambooth" / "train_dreambooth_lora_qwenimage21_img2img.py"
-if not script.exists():
-    raise SystemExit(
-        f"Script not found at {script} — run ./scripts/training/setup_env_diffusers_training.sh first."
-    )
-
-args = ["accelerate", "launch", str(script)]
-for key, value in cfg.items():
-    if value is None:
-        continue
-    if isinstance(value, bool):
-        if value:
-            args.append(f"--{key}")
-        continue
-    args.append(f"--{key}={value}")
-
-print("Running:", " ".join(args))
+config = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+receipt = json.loads((Path(config["dataset_name"]) / "dataset_receipt.json").read_text(encoding="utf-8"))
+args = [
+    sys.executable, "scripts/training/write_qwen_image21_manifest.py",
+    config["output_dir"], "--dataset-dir", config["dataset_name"],
+    "--base-revision", config["pretrained_model_revision"],
+    "--resolution", str(config.get("resolution", 1024)),
+    "--inference-steps", str(config.get("validation_num_inference_steps", 40)),
+    "--rank", str(config["rank"]), "--lora-alpha", str(config["lora_alpha"]),
+    "--lora-target-modules", config.get("lora_layers", ""),
+    "--dataset-manifest-sha256", receipt["manifest_sha256"],
+    "--split-counts-json", json.dumps(receipt["split_counts"], sort_keys=True),
+]
 subprocess.run(args, check=True)
-output_dir = cfg.get("output_dir")
-if output_dir:
-    manifest_args = [sys.executable, "scripts/training/write_qwen_image21_manifest.py", output_dir,
-                     "--resolution", str(cfg.get("resolution", 1024)),
-                     "--inference-steps", "40", "--rank", str(cfg.get("rank", 32)),
-                     "--lora-alpha", str(cfg.get("lora_alpha", 32))]
-    subprocess.run(manifest_args, check=True)
 PYEOF
 
 echo -e "\033[1;32mDone. LoRA at the output_dir in $CONFIG.\033[0m"

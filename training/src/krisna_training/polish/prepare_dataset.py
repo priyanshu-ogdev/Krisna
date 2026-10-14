@@ -35,14 +35,218 @@ rather than silently presented as identical to Sketch's mechanism.
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import random
+import re
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 log = logging.getLogger("krisna_training.polish.prepare_dataset")
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_qwen_pairs_from_manifest(
+    manifest_path: str | Path,
+    output_dir: str | Path,
+    source_root: str | Path | None = None,
+) -> Path:
+    """Materialize a strict Qwen dataset from a Data-Forge pair manifest.
+
+    The function deliberately refuses an unassigned split, missing provenance,
+    duplicate pair IDs, missing files, or hash mismatches. It is the training
+    side of the Data-Forge ``polish_qwen_image21/manifest.jsonl`` contract and
+    keeps the source receipt in ``metadata.jsonl`` rather than reducing the
+    data to filename/caption pairs.
+    """
+    manifest_path = Path(manifest_path)
+    output_dir = Path(output_dir)
+    root = Path(source_root) if source_root is not None else manifest_path.parent
+    output_dir.parent.mkdir(parents=True, exist_ok=True)
+    rows: list[dict] = []
+    source_files: dict[str, tuple[Path, Path]] = {}
+    seen: set[str] = set()
+    for line_number, line in enumerate(manifest_path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid Qwen manifest JSON at line {line_number}") from exc
+        pair_id = str(row.get("record_id") or row.get("pair_id") or "").strip()
+        if not pair_id or not re.fullmatch(r"[A-Za-z0-9._-]+", pair_id) or pair_id in seen:
+            raise ValueError(f"Missing or duplicate pair ID at line {line_number}")
+        if row.get("split") not in {"train", "validation", "test"}:
+            raise ValueError(f"Pair {pair_id} has no source-disjoint split assignment")
+        if not row.get("source_dataset") or not row.get("source_provenance"):
+            raise ValueError(f"Pair {pair_id} is missing source provenance")
+        condition = (root / str(row["condition_image"])).resolve()
+        target = (root / str(row["target_image"])).resolve()
+        try:
+            condition.relative_to(root.resolve())
+            target.relative_to(root.resolve())
+        except ValueError as exc:
+            raise ValueError(f"Pair {pair_id} image path escapes source root") from exc
+        if not condition.is_file() or not target.is_file():
+            raise ValueError(f"Pair {pair_id} references a missing image")
+        condition_sha = _sha256_file(condition)
+        target_sha = _sha256_file(target)
+        if condition_sha == target_sha:
+            raise ValueError(f"Pair {pair_id} condition and target are identical")
+        if row.get("condition_sha256") != condition_sha or row.get("target_sha256") != target_sha:
+            raise ValueError(f"Pair {pair_id} image hash receipt does not match bytes")
+        condition_name = f"condition_{pair_id}{condition.suffix.lower() or '.png'}"
+        target_name = f"target_{pair_id}{target.suffix.lower() or '.png'}"
+        source_group = row.get("source_group") or row.get("source_group_id") or row.get("group")
+        rows.append({
+            "pair_id": pair_id,
+            "image": target_name,
+            "condition_image": condition_name,
+            "caption": row.get("caption") or row.get("prompt") or "",
+            "split": row["split"],
+            "source_dataset": row["source_dataset"],
+            "source_group": source_group,
+            "source_revision": row.get("source_revision"),
+            "source_provenance": row["source_provenance"],
+            "condition_sha256": condition_sha,
+            "target_sha256": target_sha,
+        })
+        source_files[pair_id] = (condition, target)
+        seen.add(pair_id)
+    if not rows:
+        raise ValueError(f"No Qwen pairs found in {manifest_path}")
+    # A group is the strongest available split identity.  If the upstream
+    # manifest has no group, dataset identity is the conservative fallback:
+    # one source dataset may not straddle train/validation/test.
+    group_splits: dict[str, set[str]] = {}
+    for row in rows:
+        group = str(row.get("source_group") or f"dataset:{row['source_dataset']}")
+        group_splits.setdefault(group, set()).add(row["split"])
+    overlap = {group: sorted(splits) for group, splits in group_splits.items() if len(splits) > 1}
+    if overlap:
+        raise ValueError(f"source groups cross dataset splits: {list(overlap)[:3]}")
+
+    # datasets is intentionally required here: JSON metadata alone is not a
+    # native typed two-image dataset and would let the trainer guess a schema.
+    try:
+        from datasets import Dataset, Features, Image, Value
+    except ImportError as exc:
+        raise RuntimeError(
+            "Qwen preparation requires the 'datasets' and 'pyarrow' packages; "
+            "install the pinned training environment before preparing data"
+        ) from exc
+    try:
+        import pyarrow  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "Qwen preparation requires pyarrow for split-isolated Parquet output"
+        ) from exc
+
+    split_counts = {split: sum(row["split"] == split for row in rows)
+                    for split in ("train", "validation", "test")}
+    if split_counts["train"] <= 0:
+        raise ValueError("Qwen dataset must contain at least one train pair")
+    columns = ["image", "condition_image", "caption", "pair_id", "split",
+               "source_dataset", "source_revision", "source_provenance", "source_group",
+               "condition_sha256", "target_sha256"]
+    features = Features({
+        "image": Image(), "condition_image": Image(), "caption": Value("string"),
+        "pair_id": Value("string"), "split": Value("string"),
+        "source_dataset": Value("string"), "source_revision": Value("string"),
+        "source_provenance": Value("string"), "source_group": Value("string"),
+        "condition_sha256": Value("string"), "target_sha256": Value("string"),
+    })
+    with TemporaryDirectory(prefix="qwen-pairs-") as staging_name:
+        staging = Path(staging_name)
+        for split in ("train", "validation", "test"):
+            split_rows = [row for row in rows if row["split"] == split]
+            if not split_rows:
+                stale = output_dir / split
+                if stale.exists():
+                    shutil.rmtree(stale)
+                continue
+            split_dir = staging / split
+            split_dir.mkdir(parents=True)
+            serializable = []
+            for row in split_rows:
+                condition, target = source_files[row["pair_id"]]
+                serializable.append({
+                    "image": {"bytes": target.read_bytes(), "path": None},
+                    "condition_image": {"bytes": condition.read_bytes(), "path": None},
+                    "caption": row["caption"], "pair_id": row["pair_id"],
+                    "split": row["split"], "source_dataset": row["source_dataset"],
+                    "source_revision": str(row.get("source_revision") or ""),
+                    "source_provenance": json.dumps(row["source_provenance"], sort_keys=True),
+                    "source_group": str(row.get("source_group") or ""),
+                    "condition_sha256": row["condition_sha256"],
+                    "target_sha256": row["target_sha256"],
+                })
+            Dataset.from_list(serializable, features=features).to_parquet(str(split_dir / "data.parquet"))
+
+        # Keep the historical root file as a train-only compatibility index;
+        # no validation/test row is ever mixed into it.
+        train_rows = [row for row in rows if row["split"] == "train"]
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "metadata.jsonl").write_text(
+            "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in train_rows),
+            encoding="utf-8",
+        )
+        for split in ("train", "validation", "test"):
+            split_rows = [row for row in rows if row["split"] == split]
+            if split_rows:
+                split_dir = output_dir / split
+                split_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(staging / split / "data.parquet", split_dir / "data.parquet")
+                (split_dir / "metadata.jsonl").write_text(
+                    "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in split_rows),
+                    encoding="utf-8",
+                )
+                for row in split_rows:
+                    condition, target = source_files[row["pair_id"]]
+                    shutil.copy2(condition, split_dir / row["condition_image"])
+                    shutil.copy2(target, split_dir / row["image"])
+
+        def sha(path: Path) -> str:
+            return _sha256_file(path)
+        metadata_hashes = {
+            split: sha(output_dir / split / "metadata.jsonl")
+            for split in ("train", "validation", "test")
+            if (output_dir / split / "metadata.jsonl").exists()
+        }
+        parquet_hashes = {
+            split: sha(output_dir / split / "data.parquet")
+            for split in ("train", "validation", "test")
+            if (output_dir / split / "data.parquet").exists()
+        }
+    counts = {split: sum(row["split"] == split for row in rows) for split in ("train", "validation", "test")}
+    (output_dir / "dataset_receipt.json").write_text(
+        json.dumps({
+            "schema_version": 2,
+            "manifest_path": str(manifest_path),
+            "pair_count": len(rows),
+            "split_counts": counts,
+            "manifest_sha256": _sha256_file(manifest_path),
+            "columns": columns,
+            "metadata_sha256": metadata_hashes,
+            "parquet_sha256": parquet_hashes,
+            "image_hashes": {row["pair_id"]: {
+                "condition": row["condition_sha256"], "target": row["target_sha256"]
+            } for row in rows},
+            "source_split_policy": "group disjoint; source_dataset fallback when group is absent",
+        }, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return output_dir
 
 
 def prepare_image_pairs(condition_dir: str | Path, target_dir: str | Path,

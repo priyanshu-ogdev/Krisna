@@ -241,4 +241,18 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    print(
+        "\n"
+        "ERROR: krisna_training.planner.train is DEPRECATED and cannot be run directly.\n"
+        "\n"
+        "The Planner (Qwen3.5-9B) ships FROZEN under the no-RLHF-loop PRD revision.\n"
+        "It is grounded via RAG retrieval over the UICrit corpus, not via fine-tuning.\n"
+        "Running this script would spend GPU training compute on a model whose resulting\n"
+        "adapter is never loaded at inference time.\n"
+        "\n"
+        "If a future PRD revision un-freezes the Planner tier, revert this guard and\n"
+        "see krisna_training/planner/__init__.py for the full re-activation checklist.\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
