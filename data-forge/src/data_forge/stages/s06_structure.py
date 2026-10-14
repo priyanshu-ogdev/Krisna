@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 from typing import Any, ClassVar
-
-from PIL import UnidentifiedImageError
 
 from data_forge.config import PipelineConfig
 from data_forge.data.schema_validator import SchemaValidator
@@ -15,7 +12,6 @@ from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
-from data_forge.utils.image_utils import load_image
 from data_forge.utils.path_safety import resolve_data_path
 
 log = get_logger("stages.s06")
@@ -34,10 +30,11 @@ class StructureStage(Stage):
 
         records = manifest.get_records_by_ids(record_ids)
         records = [r for r in records if r.status == "recaptioned"]
-        if not records or engine is None:
+        if not records:
             return result
 
-        tier1 = Tier1Engine(engine, config)
+        self.require_vlm_engine(config, engine)
+        tier1 = Tier1Engine(engine, config) if engine is not None else None
         validator = SchemaValidator(config.schemas_dir)
         processed = failed = 0
 
@@ -52,9 +49,29 @@ class StructureStage(Stage):
             if not img_path.is_file():
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
 
+            # Prefer a source-provided hierarchy when it already conforms to
+            # Krisna's canonical structure schema. This is deterministic and
+            # avoids asking a VLM to re-infer structure that Figma2Code or
+            # MobileViews supplied. Invalid/non-canonical source structures are
+            # retained as provenance and fall through to the normal extractor.
+            if not config.strict_vlm_no_fallback and isinstance(rec.source_structure, dict):
+                valid_source, source_errors = validator.validate_structure(rec.source_structure)
+                if valid_source:
+                    return {"id": rec.id, "status": "structured", "out": rec.source_structure,
+                            "source_structure_reused": True}
+                log.info("source_structure_not_canonical", record_id=rec.id,
+                         errors=source_errors[:2])
+
+            if engine is None:
+                return {"id": rec.id, "status": "excluded_failed",
+                        "reason": "No structure engine and source structure was unavailable or invalid",
+                        "exclusion_reason": "structure_engine_unavailable"}
+
             # Bypass UI extraction for non-UI general visual datasets (e.g. pd12m, cc12m)
             from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
-            if rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+            if not config.strict_vlm_no_fallback and (
+                rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES
+            ):
                 from data_forge.inference.structured_output import StructureOutput
                 empty_structure = StructureOutput(
                     elements=[],
@@ -65,7 +82,7 @@ class StructureStage(Stage):
                 return {"id": rec.id, "status": "structured", "out": empty_structure.model_dump()}
             for attempt in range(max_retries + 1):
                 try:
-                    structure_out = await tier1.extract_structure(img_path)
+                    structure_out = await tier1.extract_structure(img_path)  # type: ignore[union-attr]
                     if structure_out is not None:
                         out_dict = structure_out.model_dump()
                         valid, errors = validator.validate_structure(out_dict)

@@ -48,12 +48,24 @@ class UICritJoinStage(Stage):
     ) -> StageResult:
         result = StageResult(stage_name=self.name)
 
-        uicrit_spec = config.datasets.get("uicrit")
+        stage_cfg = config.get_stage("s01_5_uicrit_join")
+        annotation_key = stage_cfg.get("annotation_dataset", "uicrit")
+        configured_targets = stage_cfg.get("target_datasets", _RICO_SOURCE_DATASETS)
+        if isinstance(configured_targets, str):
+            target_datasets = (configured_targets,)
+        else:
+            target_datasets = tuple(configured_targets or ())
+
+        uicrit_spec = config.datasets.get(annotation_key)
         if uicrit_spec is None or not uicrit_spec.annotation_only:
-            log.info("uicrit_join_skipped", reason="uicrit not configured as annotation_only")
+            log.info(
+                "uicrit_join_skipped",
+                reason="annotation dataset is not configured as annotation_only",
+                annotation_dataset=annotation_key,
+            )
             return result
 
-        repo_dir = config.data_root / "raw" / "uicrit" / "repo"
+        repo_dir = config.data_root / "raw" / annotation_key / "repo"
         if not repo_dir.exists():
             log.warning(
                 "uicrit_repo_not_found",
@@ -79,7 +91,7 @@ class UICritJoinStage(Stage):
         # scale — an in-memory dict is the right tool here, not another
         # per-row SQL query.
         stem_to_record: dict[str, str] = {}
-        for source_dataset in _RICO_SOURCE_DATASETS:
+        for source_dataset in target_datasets:
             for rec_id, source_file in manifest.query_stems_by_dataset(source_dataset):
                 if not source_file:
                     continue

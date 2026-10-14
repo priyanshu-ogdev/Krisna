@@ -15,7 +15,7 @@ import sqlite3
 import uuid
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import datetime, timezone
 from pathlib import Path
 import threading
@@ -93,7 +93,16 @@ CREATE TABLE IF NOT EXISTS records (
                                      -- silently dropped by bulk_create_records
                                      -- (dict key never read there) — genuinely
                                      -- never stored anywhere until this fix.
-    ocr_output_json       TEXT,
+     provenance_url        TEXT,
+     source_revision       TEXT,
+     source_record_id      TEXT,
+     source_group_id       TEXT,
+     group_id              TEXT,
+     canonical_id          TEXT,
+     source_provenance_json TEXT,
+     source_metadata_json  TEXT,
+     source_structure_json TEXT,
+     ocr_output_json       TEXT,
     structure_output_json TEXT,
     domain                TEXT,
     shard_id              TEXT,
@@ -165,6 +174,15 @@ class ManifestRecord:
     caption: str | None = None
     caption_output: dict[str, Any] | None = None
     source_caption: str | None = None
+    provenance_url: str | None = None
+    source_revision: str | None = None
+    source_record_id: str | None = None
+    source_group_id: str | None = None
+    group_id: str | None = None
+    canonical_id: str | None = None
+    source_provenance: dict[str, Any] | None = None
+    source_metadata: dict[str, Any] | None = None
+    source_structure: Any = None
     ocr_output: dict[str, Any] | None = None
     structure_output: dict[str, Any] | None = None
     domain: str | None = None
@@ -246,6 +264,15 @@ def _row_to_record(row: sqlite3.Row) -> ManifestRecord:
         caption=row["caption"],
         caption_output=_json_loads(row["caption_output_json"]),
         source_caption=row["source_caption"],
+        provenance_url=row["provenance_url"],
+        source_revision=row["source_revision"],
+        source_record_id=row["source_record_id"],
+        source_group_id=row["source_group_id"],
+        group_id=row["group_id"],
+        canonical_id=row["canonical_id"],
+        source_provenance=_json_loads(row["source_provenance_json"]),
+        source_metadata=_json_loads(row["source_metadata_json"]),
+        source_structure=_json_loads(row["source_structure_json"]),
         ocr_output=_json_loads(row["ocr_output_json"]),
         structure_output=_json_loads(row["structure_output_json"]),
         domain=row["domain"],
@@ -326,6 +353,15 @@ class Manifest:
         migrations = [
             ("records", "critique_output_json", "TEXT"),
             ("records", "source_caption", "TEXT"),
+            ("records", "provenance_url", "TEXT"),
+            ("records", "source_revision", "TEXT"),
+            ("records", "source_record_id", "TEXT"),
+            ("records", "source_group_id", "TEXT"),
+            ("records", "group_id", "TEXT"),
+            ("records", "canonical_id", "TEXT"),
+            ("records", "source_provenance_json", "TEXT"),
+            ("records", "source_metadata_json", "TEXT"),
+            ("records", "source_structure_json", "TEXT"),
         ]
         for table, column, col_type in migrations:
             try:
@@ -338,6 +374,9 @@ class Manifest:
                 # Column already exists (fresh DB created via _SCHEMA_SQL
                 # above already has it, or a prior run already migrated) —
                 # nothing to do.
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_records_canonical ON records(canonical_id)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_records_source_group ON records(source_dataset, source_group_id)")
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
@@ -368,10 +407,30 @@ class Manifest:
         cols = ["id", "source_dataset", "source_file", "status", "image_path", "created_at", "updated_at"]
         vals = [record_id, source_dataset, source_file, "fetched", image_path, now, now]
 
-        for k, v in kwargs.items():
-            if hasattr(ManifestRecord, k) and k not in cols:
-                cols.append(k)
-                vals.append(v)
+        json_fields = {
+            "license_output": "license_output_json", "quality_output": "quality_output_json",
+            "pii_detections": "pii_detections_json", "safety_output": "safety_output_json",
+            "caption_output": "caption_output_json", "ocr_output": "ocr_output_json",
+            "structure_output": "structure_output_json", "encoding_paths": "encoding_paths_json",
+            "audit_output": "audit_output_json", "critique_output": "critique_output_json",
+            "source_metadata": "source_metadata_json", "source_structure": "source_structure_json",
+            "source_provenance": "source_provenance_json",
+        }
+        bool_fields = {"license_verified", "pii_scrubbed"}
+        allowed_fields = {field.name for field in fields(ManifestRecord)}
+        for key, value in kwargs.items():
+            if key not in allowed_fields:
+                continue
+            column = json_fields.get(key, key)
+            if column in cols:
+                continue
+            cols.append(column)
+            if key in json_fields:
+                vals.append(_json_dumps(value))
+            elif key in bool_fields:
+                vals.append(None if value is None else int(bool(value)))
+            else:
+                vals.append(value)
 
         col_str = ", ".join(cols)
         placeholder_str = ", ".join("?" for _ in cols)
@@ -435,6 +494,9 @@ class Manifest:
             "encoding_paths": "encoding_paths_json",
             "audit_output": "audit_output_json",
             "critique_output": "critique_output_json",
+            "source_metadata": "source_metadata_json",
+            "source_structure": "source_structure_json",
+            "source_provenance": "source_provenance_json",
         }
         bool_fields = {"license_verified", "pii_scrubbed"}
 
@@ -496,6 +558,9 @@ class Manifest:
             "encoding_paths": "encoding_paths_json",
             "audit_output": "audit_output_json",
             "critique_output": "critique_output_json",
+            "source_metadata": "source_metadata_json",
+            "source_structure": "source_structure_json",
+            "source_provenance": "source_provenance_json",
         }
         bool_fields = {"license_verified", "pii_scrubbed"}
 
@@ -597,6 +662,15 @@ class Manifest:
                 None if license_verified is None else int(license_verified),
                 rec.get("file_size_bytes"),
                 rec.get("source_caption"),
+                rec.get("provenance_url"),
+                rec.get("source_revision"),
+                rec.get("source_record_id"),
+                rec.get("source_group_id") or rec.get("group_id"),
+                rec.get("group_id") or rec.get("source_group_id"),
+                rec.get("canonical_id"),
+                _json_dumps(rec.get("source_provenance")),
+                _json_dumps(rec.get("source_metadata")),
+                _json_dumps(rec.get("source_structure")),
                 now,
                 now,
             )
@@ -607,8 +681,11 @@ class Manifest:
                 """INSERT INTO records
                    (id, source_dataset, source_file, status, image_path,
                     content_hash_sha256, image_width, image_height, license_verified,
-                    file_size_bytes, source_caption, created_at, updated_at)
-                   VALUES (?, ?, ?, 'fetched', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                     file_size_bytes, source_caption, provenance_url, source_revision,
+                     source_record_id, source_group_id, group_id, canonical_id,
+                     source_provenance_json, source_metadata_json, source_structure_json,
+                     created_at, updated_at)
+                   VALUES (?, ?, ?, 'fetched', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 batch_data,
             )
         inserted = len(batch_data)

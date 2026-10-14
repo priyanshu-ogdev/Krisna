@@ -1,5 +1,14 @@
 # Data Completeness: PRD Model → Pipeline Output Trace
 
+> **SUPERSEDED CURRENT-STATE WARNING (2026-10-15).** This file contains the
+> historical v16 Data-Forge-to-Z-Image/Sketch trace below. It is retained as a
+> reasoning record, but its “Complete”, `~410K`, Z-Image, and historical DPO
+> statements are **not** the current training state. The current canonical
+> state is [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md)
+> and [`docs/research/DATASET_ACCEPTANCE_MATRIX.md`](../research/DATASET_ACCEPTANCE_MATRIX.md):
+> no training-eligible source, no realized Qwen pair corpus, and no trained
+> checkpoint are present in this workspace.
+
 This document traces, for every PRD model component, whether data-forge
 actually produces what its training method needs — not just whether the
 model stack itself is finalized. It's kept as a living reference, not a
@@ -219,3 +228,13 @@ undermining the fixes already made:
   underlying screens under different column names.
 - **`cli.py`'s `--stages` shortcut map** still pointed at deleted stage
   names after the removal. Fixed.
+# Negative-audit status (2026-10-14)
+
+The historical completeness tables below describe earlier candidate designs;
+they are not the current fetch allowlist. The current registry is
+quarantine-first: only Figma2Code is enabled as a UI-design candidate, and
+UI-Vision, ScreenSpot, TASTE, and PartiPrompts are evaluation-only. All other
+candidate sources are disabled after provenance, relevance, synthetic-content,
+or asset-rights review. The read-only receipt command is
+`python scripts/data-forge/audit_registry.py`; its `training_export_ready` flag
+must be true before any final training attempt. At this revision it is false.

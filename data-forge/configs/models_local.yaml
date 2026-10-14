@@ -1,46 +1,65 @@
 models:
   tier1:
-    model_id: Qwen/Qwen3.5-9B
-    revision: main
+    # Primary local preprocessing VLM. Qwen3.8-27B is a native vision-language
+    # model and the FP8 serving path fits the RTX 6000 48GB envelope while
+    # leaving headroom for multimodal KV cache.
+    model_id: Qwen/Qwen3.8-27B
+    quantization: fp8
+    revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
     dtype: auto
-    max_model_len: 16384
-    gpu_memory_utilization: 0.90
+    max_model_len: 32768
+    gpu_memory_utilization: 0.92
     trust_remote_code: true
+    reasoning_parser: qwen3
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
     role: bulk_pipeline_engine
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 10
+    vram_estimate_gb: 32
   tier2:
+    # Strict local mode does not fall back to a weaker model. Escalation uses
+    # the same pinned model contract and only changes the prompt/rubric.
     model_id: Qwen/Qwen3.8-27B
     quantization: fp8
-    revision: main
+    revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
     dtype: auto
-    max_model_len: 16384
-    gpu_memory_utilization: 0.90
+    max_model_len: 32768
+    gpu_memory_utilization: 0.92
     trust_remote_code: true
+    reasoning_parser: qwen3
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
     role: escalation_engine
     load_on_demand: true
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 28
+    vram_estimate_gb: 32
   ocr:
-    model_id: Qwen/Qwen3.5-9B
-    revision: main
+    model_id: Qwen/Qwen3.8-27B
+    quantization: fp8
+    revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
     dtype: auto
-    max_model_len: 16384
-    gpu_memory_utilization: 0.90
+    max_model_len: 32768
+    gpu_memory_utilization: 0.92
     trust_remote_code: true
+    reasoning_parser: qwen3
+    chat_template_kwargs:
+      enable_thinking: false
+      preserve_thinking: false
     role: dedicated_ocr
     load_on_demand: true
     capabilities:
     - text
     - vision
-    vram_estimate_gb: 10
+    vram_estimate_gb: 32
   embeddings:
     model_id: openai/clip-vit-large-patch14-336
-    revision: main
+    revision: ce19dc912ca5cd21c8a653c79e251e808ccabcd1
     dtype: float16
     device: cuda
     role: image_embeddings
@@ -54,7 +73,7 @@ models:
 encoders:
   z_image_vae:
     model_id: Tongyi-MAI/Z-Image-Turbo
-    revision: main
+    revision: f332072aa78be7aecdf3ee76d5c247082da564a6
     dtype: float16
     device: cuda
     role: z_image_continuous_latents
@@ -68,5 +87,8 @@ vllm_server:
   startup_timeout_seconds: 120
   health_check_interval_seconds: 5
   graceful_shutdown_timeout_seconds: 30
-  max_num_seqs: 256
+  # 27B FP8 multimodal serving is memory-bound by the vision KV cache. Keep
+  # enough parallelism to saturate the GPU without reserving an unsafe 256-way
+  # request fan-out; host-side image queues use the 128GB RAM separately.
+  max_num_seqs: 48
   swap_space_gb: 32

@@ -35,6 +35,7 @@ class Tier1Engine:
             http_client=engine.vllm_client,
             model_id=config.models["tier1"].model_id,
             max_concurrent=config.vllm_server.max_num_seqs,
+            extra_body=config.models["tier1"].chat_template_kwargs,
         )
 
     async def score_quality(

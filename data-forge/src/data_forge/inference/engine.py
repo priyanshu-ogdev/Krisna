@@ -100,6 +100,8 @@ class ModelEngine:
             cmd.extend(["--quantization", model_spec.quantization])
         if model_spec.trust_remote_code:
             cmd.append("--trust-remote-code")
+        if model_spec.reasoning_parser:
+            cmd.extend(["--reasoning-parser", model_spec.reasoning_parser])
         if model_spec.revision != "main":
             cmd.extend(["--revision", model_spec.revision])
 

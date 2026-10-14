@@ -492,6 +492,9 @@ class Orchestrator:
             )
             use_unified_coordinator = (
                 is_standard_run_stage
+                # The unified path has general-design synthetic-output
+                # shortcuts. Strict profiles use the guarded stage flow.
+                and not self.config.strict_vlm_no_fallback
                 and engine is not None
                 and len(stages_to_run) > 1
                 and bool(self.config.models.get("tier1"))

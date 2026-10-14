@@ -16,10 +16,8 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scripts" / "data-forge"))
-import pin_revisions  # noqa: E402
+import pin_revisions
 
 REAL_DATASETS_YAML = Path(__file__).parent.parent.parent / "data-forge" / "configs" / "datasets.yaml"
 REAL_MODELS_YAML = Path(__file__).parent.parent.parent / "data-forge" / "configs" / "models.yaml"
@@ -100,10 +98,14 @@ class TestResolveDatasetRevisions:
 
     def test_already_pinned_entries_are_reported_not_reresolved(self, tmp_path):
         target = tmp_path / "datasets.yaml"
-        target.write_text(REAL_DATASETS_YAML.read_text(encoding="utf-8").replace(
-            'pd12m:\n    display_name: "PD12M (Public Domain 12M)"\n    source_type: "huggingface"\n    repo_id: "Spawning/PD12M"\n    revision: "main"',
-            'pd12m:\n    display_name: "PD12M (Public Domain 12M)"\n    source_type: "huggingface"\n    repo_id: "Spawning/PD12M"\n    revision: "abc123alreadypinned"',
-        ), encoding="utf-8")
+        # Keep this fixture independent of unrelated fields added to the
+        # catalog entry (for example ``enabled`` or ``display_name``).
+        pinned_yaml = REAL_DATASETS_YAML.read_text(encoding="utf-8").replace(
+            '    revision: "main"',
+            '    revision: "abc123alreadypinned"',
+            1,
+        )
+        target.write_text(pinned_yaml, encoding="utf-8")
         fake = _fake_api()
         with patch("huggingface_hub.HfApi", return_value=fake):
             results = pin_revisions.resolve_dataset_revisions(target, only={"pd12m"}, apply=False)

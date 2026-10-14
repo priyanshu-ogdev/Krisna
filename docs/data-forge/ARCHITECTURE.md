@@ -1,5 +1,13 @@
 # Data-Forge Architecture Specification (v16 — No-RLHF-Loop)
 
+> **Historical architecture notice (2026-10-15).** This document still
+> describes the former Sketch/Z-Image/DPO data path. It is not the active
+> Qwen-Image-2.1 training contract. Use
+> [`LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md`](LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md),
+> [`../research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md),
+> and [`../research/SOTA_AUDIT_2026-10.md`](../research/SOTA_AUDIT_2026-10.md)
+> for current decisions and readiness.
+
 ## Overview
 
 The Data-Forge is a custom, 20-stage Python orchestrator designed to process real, published data — images and human-labeled preference pairs — into training-ready latents on a single workstation (specifically a 48GB VRAM GPU like an RTX A6000). It replaces manual curation with **VLM-as-Judge** auditing (for content gates, not preference labeling) and deterministic logic, enforcing a strict zero-touch automation philosophy.

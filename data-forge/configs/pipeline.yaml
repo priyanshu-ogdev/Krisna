@@ -1,6 +1,14 @@
 pipeline:
   version: 0.14.0
   dataset_version_prefix: krisna_v
+  source_policy:
+    # Only explicitly approved, provenance-complete sources may feed a model
+    # training export. Synthetic records remain useful for tests/evaluation,
+    # but are never accepted by an approved training export.
+    approved_model_training_exports: true
+    allow_synthetic: false
+    require_verified_license: true
+    require_immutable_revisions: true
 paths:
   raw: raw/
   scrubbed: scrubbed/
@@ -30,11 +38,13 @@ stages:
     enabled: true
   s01_fetch:
     enabled: true
-    max_concurrent_downloads: 512
+    # Keep network concurrency bounded to avoid RAM/file-descriptor spikes.
+    max_concurrent_downloads: 16
     download_timeout_seconds: 3600
     license_confidence_threshold: 0.85
   s01_5_uicrit_join:
-    enabled: true
+    # Disabled until a legally cleared, pinned RICO target is supplied.
+    enabled: false
   s01_6_preference_pairs:
     enabled: true
     face_detection_confidence: 0.5
@@ -55,10 +65,10 @@ stages:
     exact_hash_dedup: true
   s03_quality:
     enabled: true
-    aesthetic_score_threshold: 0.4
+    aesthetic_score_threshold: 0.5
     min_resolution:
-    - 256
-    - 256
+    - 512
+    - 512
     max_resolution:
     - 8192
     - 8192
@@ -110,6 +120,9 @@ stages:
   s09_heldout:
     enabled: true
     heldout_fraction: 0.05
+    # Keep upstream source identities out of both train and held-out splits.
+    # Set false only for explicitly labeled non-production experiments.
+    source_disjoint: true
     stratify_by:
     - domain
     - source

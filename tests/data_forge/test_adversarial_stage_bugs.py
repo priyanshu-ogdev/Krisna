@@ -166,6 +166,33 @@ async def test_heldout_sampling_is_deterministic(manifest, config):
 
 
 @pytest.mark.asyncio
+async def test_heldout_default_keeps_source_identities_disjoint(manifest, config):
+    """Production held-out carving must not split one upstream source."""
+    rec_ids = []
+    for source, count in (("source_a", 3), ("source_b", 3), ("source_c", 3)):
+        for index in range(count):
+            rec = manifest.create_record(source_dataset=source, image_path=f"{source}_{index}.png")
+            manifest.update_record(
+                rec.id, "test", new_status="encoded", domain="ui_first",
+                encoding_paths={"z_image_latent": f"z_{source}_{index}.safetensors", "control_map": f"c_{source}_{index}.json"},
+            )
+            rec_ids.append(rec.id)
+
+    config.stages["s09_heldout"] = StageConfig(
+        params={"heldout_fraction": 0.34, "random_seed": 12345}
+    )
+    await HeldoutStage().run(manifest, config, rec_ids)
+
+    heldout_sources = {r.source_dataset for r in manifest.get_heldout()}
+    training_sources = {
+        r.source_dataset for r in manifest.get_records_by_ids(rec_ids)
+        if r.status == "training_pool"
+    }
+    assert heldout_sources
+    assert heldout_sources.isdisjoint(training_sources)
+
+
+@pytest.mark.asyncio
 async def test_inference_exceptions_do_not_crash_stages(manifest, config, sample_image, data_root):
     """Stages 03, 04, 05, 06 must handle inference exceptions per record without crashing the batch."""
     from unittest.mock import MagicMock, AsyncMock, patch
@@ -354,6 +381,5 @@ async def test_ocr_enrichment_bypasses_general_design_sources(manifest, config, 
     assert updated.ocr_output is not None
     assert updated.ocr_output["text_regions"] == []
     assert updated.ocr_output["total_text_regions"] == 0
-
 
 

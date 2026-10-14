@@ -1,16 +1,32 @@
+# Candidate catalog, not an approved training allowlist. Counts and historical
+# license notes below are registry claims, not realized counts or legal review.
+# Approve sources only after pinned provenance, asset rights, and sample review.
+# `expected_record_count` is an upstream/registry count claim. A
+# `fetch_config.sample_size` is only a configured download cap; neither field is
+# evidence that the records are present locally. The explicit source metadata
+# below keeps candidate status, synthetic provenance, and intended targets
+# separate so an unverified source cannot become training-eligible by accident.
 datasets:
   pd12m:
+    enabled: false
     display_name: "PD12M (Public Domain 12M)"
     source_type: "huggingface"
     repo_id: "Spawning/PD12M"
     revision: "main"
     category: general_visual
     expected_record_count: 12400000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/Spawning/PD12M
+    quality_tier: unrated
+    training_targets: []
     license_url: https://cdla.dev/permissive-2-0/
     license_status: unverified
     license_notes: 'CDLA-Permissive-2.0, entirely public domain / CC0 sourced. Should be a clean pass through the License Agent, but still runs through it rather than being assumed. NOTE: this dataset ships as parquet metadata + external image URLs (hosted on the pd12m S3 bucket), not bundled image files â€” the fetcher needs an img2dataset-style download path, not a plain file-pattern glob.
 
       '
+    note: "Quarantined: general web imagery is irrelevant to the UI wireframe-to-screenshot objective and external URL rights are not a training receipt."
     fetch_config:
       file_patterns:
         - '*.parquet'
@@ -22,17 +38,25 @@ datasets:
       download_timeout_seconds: 15
       note: Metadata-only repo; images are fetched via URL column, not bundled files.
   pickapic_v2:
+    enabled: false
     display_name: Pick-a-Pic v2
     source_type: huggingface
     repo_id: liuhuohuo2/pick-a-pic-v2
     revision: main
     category: dpo_preference_general
     expected_record_count: 500000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/liuhuohuo2/pick-a-pic-v2
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/liuhuohuo2/pick-a-pic-v2
     license_status: unverified
     license_notes: 'Real, web-collected human preference comparisons (pickapic.io), MIT license per the PickScore repo. General text-to-image domain, not UI-specific â€” this is Stage-1 DPO signal (broad aesthetic alignment), not a substitute for the UI-domain datasets below. Image bytes are embedded directly in columns jpg_0/jpg_1 per the dataset card â€” no external URL fetch needed.
 
       '
+    note: "Quarantined: preference data is deferred and cannot supervise the Qwen condition-image to target-image contract."
     fetch_config:
       file_patterns:
         - '*.parquet'
@@ -44,15 +68,23 @@ datasets:
       label_convention: index
       sample_size: 60000
   hpdv2:
+    enabled: false
     display_name: HPDv2 (Human Preference Dataset v2)
     source_type: huggingface
     repo_id: ymhao/HPDv2
     revision: main
     category: dpo_preference_general
     expected_record_count: 798000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/ymhao/HPDv2
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/ymhao/HPDv2
     license_status: unverified
     license_notes: Apache 2.0, confirmed on the dataset card. Real human annotator rankings, general T2I domain.
+    note: "Quarantined: general text-to-image preference rankings are outside the active UI-polish objective."
     fetch_config:
       download_mode: hpdv2_ranked_list
       annotation_file: train.json
@@ -63,14 +95,32 @@ datasets:
     repo_id: xcodemind/Figma2Code
     revision: main
     category: web_ui
-    expected_record_count: 50000
+    expected_record_count: 2817
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/xcodemind/Figma2Code
+    quality_tier: silver
+    training_targets: []
     license_url: https://huggingface.co/datasets/xcodemind/Figma2Code
     license_status: verified
     license_notes: MIT License. Extremely high-quality UI/UX design aesthetic sourced from Figma.
+    note: "Retained as a high-value UI design/structure candidate; it does not create Qwen pairs until a deterministic condition renderer and asset-rights receipt exist."
     fetch_config:
-      download_mode: hf_parquet_images
+      download_mode: figma2code
       file_patterns:
-        - '*.parquet'
+        - 'data_test/*.parquet'
+        - 'data_rest/*.parquet'
+      image_column: root
+      parquet_columns:
+        - root
+        - filekey
+        - node_id
+        - annotation
+        - statistics
+        - raw_metadata
+        - processed_metadata
+      parquet_batch_size: 256
       sample_size: 25000
   ui_vision:
     display_name: UI-Vision
@@ -78,11 +128,20 @@ datasets:
     repo_id: ServiceNow/ui-vision
     revision: main
     category: desktop_ui
-    expected_record_count: 10000
+    expected_record_count: 1464
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/ServiceNow/ui-vision
+    quality_tier: gold
+    training_targets: []
     license_url: https://huggingface.co/datasets/ServiceNow/ui-vision
-    license_status: unverified
-    license_notes: Desktop GUI perception.
+    license_status: verified
+    license_notes: "MIT dataset card; official card describes real desktop GUI demonstrations and dense annotations. Evaluation/grounding source, not a Qwen paired-training source."
+    eval_only: true
+    note: "Retained for desktop UI evaluation and structure QA; isolated from model-data training exports."
     fetch_config:
+      download_mode: eval_reference
       file_patterns:
         - 'images/**/*.png'
         - 'images/*/*.png'
@@ -94,29 +153,45 @@ datasets:
     revision: main
     category: cross_platform_ui
     expected_record_count: 1272
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/bevaya/ScreenSpot
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/bevaya/ScreenSpot
     license_status: verified
     license_notes: 'CONFIRMED Apache-2.0 directly on the live dataset card. Multi-OS UI screenshots (macOS, Windows, iOS) with element bounding boxes and natural language instructions. Eliminates single-OS bias.
 
       '
+    eval_only: true
+    note: "Retained as cross-platform GUI grounding evaluation only; the upstream card exposes a test split, not edit pairs."
     fetch_config:
-      download_mode: hf_parquet_images
+      download_mode: eval_reference
       file_patterns:
         - '*.parquet'
       image_column: image
       caption_column: instruction
   seeclick:
+    enabled: false
     display_name: SeeClick (Web & Desktop Screens)
     source_type: huggingface
     repo_id: moondream/seeclick
     revision: main
     category: web_ui
     expected_record_count: 250000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/moondream/seeclick
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/moondream/seeclick
     license_status: verified
     license_notes: 'CONFIRMED Apache-2.0 upstream (SeeClick GUI agent foundation). Pristine 1920x1080 Full HD desktop and web application screens with structured element hierarchies. Ingested via streaming parquet reader to prevent memory blowup.
 
       '
+    note: "Quarantined: current source/schema and asset-rights receipt were not independently validated for this workspace; do not bulk fetch."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -124,17 +199,25 @@ datasets:
       image_column: image
       sample_size: 25000
   android_control:
+    enabled: false
     display_name: Android Control (Google Research)
     source_type: huggingface
     repo_id: ckg/AndroidControlParsedWithImages-20k
     revision: main
     category: mobile_ui
     expected_record_count: 20000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/ckg/AndroidControlParsedWithImages-20k
+    quality_tier: unrated
+    training_targets: []
     license_url: https://github.com/google-research/google-research/tree/master/android_control
     license_status: verified
     license_notes: 'CONFIRMED Apache-2.0 (Google Research Android Control upstream). 1080x2400 modern Android Material Design 3 screens across 833 apps, paired with natural language multi-turn task instructions. Provides modern mobile UI distributions replacing 2017 RICO styling.
 
       '
+    note: "Quarantined pending confirmation that the mirror's screenshots and app assets inherit the claimed upstream rights."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -143,17 +226,25 @@ datasets:
       caption_column: json.messages.0.content
       sample_size: 20000
   mind2web:
+    enabled: false
     display_name: Multimodal Mind2Web (Web Screens)
     source_type: huggingface
     repo_id: osunlp/Multimodal-Mind2Web
     revision: main
     category: web_ui
     expected_record_count: 15000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/osunlp/Multimodal-Mind2Web
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/osunlp/Multimodal-Mind2Web
     license_status: verified
     license_notes: 'CONFIRMED OpenRAIL license on dataset card. Web interaction screenshots with confirmed task prompts across 2,000+ domains. Uses viewport cropping (max_aspect_ratio: 2.0) to convert tall full-page scroll captures into standard above-the-fold UI screens.
 
       '
+    note: "Quarantined: the official card warns that training screenshots may be improperly rendered and the source is an action-prediction corpus, not UI polish pairs."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -164,30 +255,46 @@ datasets:
       max_aspect_ratio: 2.0
       sample_size: 10000
   showui_desktop:
+    enabled: false
     display_name: ShowUI Desktop
     source_type: huggingface
     repo_id: showlab/ShowUI-desktop
     revision: main
     category: desktop_ui
     expected_record_count: 7496
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/showlab/ShowUI-desktop
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/showlab/ShowUI-desktop
     license_status: verified
     license_notes: Fills the desktop UI domain gap. High-fidelity desktop UIs with functional spatial info.
+    note: "Quarantined: dataset contains augmented annotations and the accessible card did not provide a sufficient derivative-content rights receipt for training."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
         - '*.parquet'
       image_column: image
   wave_ui:
+    enabled: false
     display_name: Wave-UI (AgentSea)
     source_type: huggingface
     repo_id: agentsea/wave-ui
     revision: main
     category: web_ui
     expected_record_count: 25000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/agentsea/wave-ui
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/agentsea/wave-ui
     license_status: verified
     license_notes: AgentSea UI automation dataset. Highly curated for text-rich OCR and coordinate automation.
+    note: "Quarantined pending independent license, provenance, and schema validation."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -195,15 +302,23 @@ datasets:
       image_column: image
       sample_size: 10000
   websight:
+    enabled: false
     display_name: WebSight
     source_type: huggingface
     repo_id: HuggingFaceM4/WebSight
     revision: main
     category: web_ui
     expected_record_count: 2000000
+    training_eligible: false
+    synthetic: true
+    synthetic_status: synthetic
+    provenance_url: https://huggingface.co/datasets/HuggingFaceM4/WebSight
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/HuggingFaceM4/WebSight
     license_status: unverified
     license_notes: Massive synthetic web UI dataset. Pairs HTML/CSS with rendered screenshots.
+    note: "Removed from training: explicitly synthetic/LLM-generated HTML and screenshots can teach renderer artifacts and contaminate the real-data objective."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -211,34 +326,50 @@ datasets:
       image_column: image
       sample_size: 25000
   gamelabel_10k:
+    enabled: false
     display_name: GameLabel-10K
     source_type: huggingface
     repo_id: Jonathan-Zhou/GameLabel-10k
     revision: main
     category: dpo_preference_general
     expected_record_count: 9800
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
     license_status: verified
     license_notes: 'Apache 2.0, confirmed on the live dataset card. Real crowdsourced human preference votes (mobile-game players, rewarded with in-game currency â€” arXiv:2409.19830), NOT AI-judge/synthetic labeling. General T2I domain (game-style/illustrative prompts), same category as Pick-a-Pic/HPDv2 above â€” supplements Stage-1 general DPO signal, does not close the Stage-2 UI-domain gap (designsense_10k/designpref below remain unreleased for that).
 
       '
+    note: "Quarantined: general game-image preference data is deferred and irrelevant to supervised UI pair training."
     fetch_config:
       download_mode: gamelabel_csv
       parquet_revision: refs/convert/parquet
       sample_size: 20000
   uicrit:
+    enabled: false
     display_name: UICrit (UI Critique Dataset)
     source_type: github
     repo_url: https://github.com/google-research-datasets/uicrit
     branch: main
     category: ui_critique
     expected_record_count: 1000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://github.com/google-research-datasets/uicrit
+    quality_tier: silver
+    training_targets: []
     license_url: https://arxiv.org/abs/2407.08850
     license_status: unverified
     license_notes: 'CRITICAL: seeds the DPO preference pairs and trains the Tier-1 Audit Agent rubric â€” verify this one carefully before treating it as excluded_pending_review boilerplate. Per the paper, licensed CC BY-ND (Attribution-NoDerivs), which restricts redistribution of modified/derivative versions â€” flag for manual legal review even if the License Agent scores it otherwise, since NoDerivs interacts awkwardly with a pipeline that recaptions/re-annotates everything.
 
       '
     annotation_only: true
+    note: "Quarantined until a pinned, legally cleared RICO target source is configured; the join is disabled in the production pipeline."
     fetch_config:
       file_patterns:
         - '*.json'
@@ -249,12 +380,19 @@ datasets:
     repo_id: purvanshi/TASTE
     revision: main
     category: eval_design_multiaxis
-    expected_record_count: 1600
+    expected_record_count: 14500
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://github.com/purvanshi-lica/taste
+    quality_tier: gold
+    training_targets: []
     license_url: https://github.com/purvanshi-lica/taste/blob/main/LICENSE
-    license_status: unverified
+    license_status: verified
     license_notes: 'CONFIRMED real and public. Two disjoint cohorts of five professional designers each (ten total), nine criteria (typography, aesthetics, spatial, tone, ...), ranking outputs from four current T2I models â€” 1,600 ratings per criterion, both pairwise comparisons and derived 4-way rankings released. Ships with its own signal-validation framework (Kendall''s tau, majority-vote probability, Condorcet cycles against iid-uniform nulls) â€” worth adopting for this project''s own DPO ablation reporting, not just using the labels. Too small to train on but genuinely multi-dimensional and human-expert â€” used as held-out evaluation only.
 
       '
+    note: "Retained as a high-quality human-designer evaluation benchmark; never a training source."
     eval_only: true
     fetch_config:
       download_mode: eval_reference
@@ -269,68 +407,117 @@ datasets:
     revision: main
     category: eval_prompt_diversity
     expected_record_count: 1632
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/nateraw/parti-prompts
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/nateraw/parti-prompts
     license_status: unverified
     license_notes: Apache 2.0, confirmed on the dataset card. Prompts only (PartiPrompts.tsv), no images â€” used to diversify the held-out evaluation prompt set, never for training.
     eval_only: true
+    note: "Retained as prompt-diversity evaluation only; it contains text prompts, not UI targets."
     fetch_config:
       download_mode: eval_reference
       file_patterns:
         - '*.tsv'
   mobileviews:
+    enabled: false
     display_name: MobileViews (Modern Google Play Apps)
     source_type: huggingface
     repo_id: mllmTeam/MobileViews
     revision: main
     category: mobile_ui
     expected_record_count: 600000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/mllmTeam/MobileViews
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/mllmTeam/MobileViews
     license_status: verified
     license_notes: MIT License. Massive scale, modern UI screenshots.
+    note: "Quarantined: official card reports a 475 GB repository of third-party Google Play app captures; MIT metadata is not sufficient evidence for redistribution of every screenshot/app asset."
     fetch_config:
-      download_mode: hf_parquet_images
+      download_mode: mobileviews
       file_patterns:
-        - '*.parquet'
+        - 'MobileViews_Screenshots_ViewHierarchies/Parquets/*.parquet'
+      image_column: image_content
+      structure_column: json_content
+      parquet_columns:
+        - image_content
+        - json_content
+        - app_id
+        - package_name
+        - screen_id
+        - state_id
+      parquet_batch_size: 256
       sample_size: 25000
   aria_ui:
+    enabled: false
     display_name: Aria-UI
     source_type: huggingface
     repo_id: Aria-UI/Aria-UI_Data
     revision: main
     category: cross_platform_ui
     expected_record_count: 3000000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/Aria-UI/Aria-UI_Data
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/Aria-UI/Aria-UI_Data
     license_status: unverified
     license_notes: Massive UI grounding dataset. Contains detailed spatial instruction following.
+    note: "Quarantined pending archive/schema, provenance, and asset-rights verification."
     fetch_config:
       file_patterns:
         - 'desktop/*.zip'
         - 'desktop/*.json'
       sample_size: 20000
   webui:
+    enabled: false
     display_name: WebUI (biglab)
     source_type: huggingface
     repo_id: biglab/webui-350k
     revision: main
     category: web_ui
     expected_record_count: 350000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: unknown
+    provenance_url: https://huggingface.co/datasets/biglab/webui-350k
+    quality_tier: unrated
+    training_targets: []
     license_url: https://github.com/js0nwu/webui/blob/main/COPYRIGHT.txt
     license_status: unverified
     license_notes: 'biglab/webui-350k is the HF-published, explicit-content-filtered subset (biglab/webui-all is the unfiltered 550GB superset deliberately NOT used here). License terms are per the source repo''s own COPYRIGHT.txt, not a standard OSS license - review before treating as clear.'
+    note: "Removed from active fetch: nonstandard copyright terms and no configured annotation consumer."
     annotation_only: true
     fetch_config:
       file_patterns:
         - 'train_split_web350k.json'
   atomblock_webui:
+    enabled: false
     display_name: AtomBlock-WebUI
     source_type: huggingface
     repo_id: ZhihaoNan/AtomBlock-WebUI
     revision: main
     category: web_ui
     expected_record_count: 50000
+    training_eligible: false
+    synthetic: true
+    synthetic_status: synthetic
+    provenance_url: https://huggingface.co/datasets/ZhihaoNan/AtomBlock-WebUI
+    quality_tier: unrated
+    training_targets: []
     license_url: https://huggingface.co/datasets/ZhihaoNan/AtomBlock-WebUI
     license_status: unverified
     license_notes: Synthetic, pixel-perfect structural layouts.
+    note: "Removed from training: synthetic LLM-generated HTML, injected CC3M imagery, and CC BY-NC-SA restrictions create distribution and rights risks."
     fetch_config:
       download_mode: hf_parquet_images
       config_subfolder: parquet

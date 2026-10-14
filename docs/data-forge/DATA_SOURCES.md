@@ -1,6 +1,27 @@
 # The Master Dataset Registry (Source Ledger)
 
-This is the definitive list of data sources the Data-Forge is configured to ingest. This satisfies the EU AI Act / data provenance requirements.
+This is the source-audit ledger for Data-Forge. It distinguishes sources that
+remain enabled from quarantined catalog entries. A source is not training
+approved merely because it appears in this document; the runtime registry and
+immutable receipt gates are authoritative.
+
+## Current default audit state
+
+The default registry intentionally fetches only the Figma2Code candidate and
+isolated evaluation references (UI-Vision, ScreenSpot, TASTE, and
+PartiPrompts). All other entries are disabled after the negative audit and are
+not counted in storage projections. Run:
+
+```powershell
+python scripts/data-forge/audit_registry.py
+```
+
+before every fetch. The command is read-only and reports enabled/quarantined
+sources, effective counts, policy violations, and environment-independent
+source blockers. No final training launch is permitted while the receipt says
+`training_export_ready: false` or while any pair manifest lacks an immutable
+source receipt, a renderer-produced condition image, and source-disjoint
+splits.
 
 | Dataset Name | Source / Repo ID | Domain | License Status | Pipeline Usage |
 | :--- | :--- | :--- | :--- | :--- |

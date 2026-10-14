@@ -37,9 +37,10 @@ class OCREnrichmentStage(Stage):
         records = [r for r in records if r.status in ("structured", "recaptioned")]
         if not records:
             return result
+        self.require_vlm_engine(config, engine)
         from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
 
-        needs_ocr = any(
+        needs_ocr = config.strict_vlm_no_fallback or any(
             not (r.domain == "general_design" or r.source_dataset in _GENERAL_DESIGN_SOURCES)
             for r in records
         )
@@ -62,7 +63,9 @@ class OCREnrichmentStage(Stage):
         async def _process(rec):
             # Bypass OCR extraction for non-UI general visual datasets (e.g. pd12m, cc12m)
             from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
-            if rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+            if not config.strict_vlm_no_fallback and (
+                rec.domain == "general_design" or rec.source_dataset in _GENERAL_DESIGN_SOURCES
+            ):
                 from data_forge.inference.structured_output import OCROutput
                 empty_ocr = OCROutput(
                     text_regions=[],

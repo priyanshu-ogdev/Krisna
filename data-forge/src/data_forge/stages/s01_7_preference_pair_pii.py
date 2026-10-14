@@ -89,6 +89,7 @@ class PreferencePairPIIStage(Stage):
         engine: Any | None = None,
     ) -> StageResult:
         result = StageResult(stage_name=self.name)
+        self.require_vlm_engine(config, engine)
         if engine is None:
             raise RuntimeError("Preference-pair PII scrub requires the dedicated OCR engine")
 

@@ -11,6 +11,7 @@ from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
+from data_forge.stages.split_identity import source_split_identity
 from data_forge.utils.completeness import is_encoding_complete, missing_artifacts
 
 log = get_logger("stages.s09")
@@ -30,6 +31,7 @@ class HeldoutStage(Stage):
             "source_dataset" if field == "source" else field
             for field in stage_cfg.get("stratify_by", ["domain", "source_dataset"])
         ]
+        source_disjoint = bool(stage_cfg.get("source_disjoint", True))
 
         records = manifest.get_records_by_ids(record_ids)
         candidates = [r for r in records if r.status in ("encoded", "training_pool", "heldout")]
@@ -70,7 +72,12 @@ class HeldoutStage(Stage):
         if not encoded:
             return result
 
-        # Stratified sampling
+        # Source-disjoint splitting is the default for model-training data.
+        # Sampling individual records from each source would put the same
+        # upstream identity in both train and held-out sets, making leakage
+        # possible even when the random seed is fixed.  Keep the legacy
+        # record-level stratification as an explicit opt-out for experiments
+        # that do not claim a source-disjoint evaluation split.
         strata: dict[str, list] = defaultdict(list)
         for rec in encoded:
             key_parts = []
@@ -85,11 +92,29 @@ class HeldoutStage(Stage):
         seed = stage_cfg.get("random_seed", 42)
         rng = random.Random(seed)
         heldout_ids: set[str] = set()
-        for _key, stratum in strata.items():
-            n_heldout = max(1, int(len(stratum) * fraction))
-            selected = rng.sample(stratum, min(n_heldout, len(stratum)))
-            for rec in selected:
-                heldout_ids.add(rec.id)
+        heldout_source_identities: list[str] = []
+        if source_disjoint:
+            by_source: dict[str, list] = defaultdict(list)
+            for rec in encoded:
+                source_identity = source_split_identity(rec)
+                by_source[source_identity].append(rec)
+
+            source_order = sorted(by_source)
+            rng.shuffle(source_order)
+            target_count = max(1, int(len(encoded) * fraction))
+            selected_count = 0
+            for source_identity in source_order:
+                heldout_source_identities.append(source_identity)
+                selected_count += len(by_source[source_identity])
+                heldout_ids.update(rec.id for rec in by_source[source_identity])
+                if selected_count >= target_count:
+                    break
+        else:
+            for _key, stratum in strata.items():
+                n_heldout = max(1, int(len(stratum) * fraction))
+                selected = rng.sample(stratum, min(n_heldout, len(stratum)))
+                for rec in selected:
+                    heldout_ids.add(rec.id)
 
         # Update manifest via single atomic batch
         training = heldout = 0
@@ -107,7 +132,11 @@ class HeldoutStage(Stage):
 
         result.records_processed = training + heldout
         result.metadata = {"training_pool": training, "heldout": heldout,
-                           "strata_count": len(strata)}
+                           "strata_count": len(strata),
+                           "source_disjoint": source_disjoint,
+                           "heldout_source_identities": heldout_source_identities}
         log.info("heldout_complete", training=training, heldout=heldout,
-                 strata=len(strata), fraction=fraction)
+                 strata=len(strata), fraction=fraction,
+                 source_disjoint=source_disjoint,
+                 heldout_source_identities=heldout_source_identities)
         return result

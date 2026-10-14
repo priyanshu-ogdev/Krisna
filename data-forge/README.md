@@ -6,11 +6,9 @@
 > model that ships **frozen** and needs no training data from this pipeline at all.
 > There is no AI-judge/self-distillation step anywhere in this repository.
 >
-> Of the five components in the original PRD model stack, this pipeline trains
-> **two**: the Sketch Tier (from scratch) and Z-Image-Turbo (fine-tune +
-> Diffusion-DPO alignment). The Planner (Qwen3.5-9B), Qwen-Image-Edit-2511, and
-> the Gemma-4 Critic all ship frozen — see "What This Pipeline Does NOT Train"
-> below. See `../docs/data-forge/DATA_SOURCES.md` for the full source registry and
+> The current active renderer path is a Qwen-Image-2.1 paired image-conditioned
+> LoRA export. The Sketch path is research-only, while the Planner, Polish Quality
+> path, and Gemma-4 Critic ship frozen. See `../docs/data-forge/DATA_SOURCES.md` for the full source registry and
 > `../docs/data-forge/DATA_COMPLETENESS.md` / `../docs/data-forge/ARCHITECTURE.md` for the reasoning trail
 > behind this revision.
 
@@ -20,6 +18,7 @@
 |---|---|---|
 | `model_data/sketch_tier_maskgit/` | Sketch Tier, trained from scratch | RICO, CLAY, Enrico, WebUI (real UI screenshots) |
 | `model_data/polish_zimage_turbo/` | Z-Image-Turbo, LoRA/QLoRA fine-tune | PD12M, CC12M + the UI sources above |
+| `model_data/polish_qwen_image21/` | Qwen-Image-2.1 paired image-conditioned LoRA | Only policy-approved UI sources with renderer-produced condition images |
 | `model_data/dpo_alignment/general/` | Z-Image-Turbo, Diffusion-DPO Stage 1 | Pick-a-Pic v2, HPDv2 (real human preference pairs) |
 | `model_data/dpo_alignment/domain/` | Z-Image-Turbo, Diffusion-DPO Stage 2 | DesignSense-10k, DesignPref (real human-designer preference pairs — **not yet publicly released**, see below) |
 | `model_data/planner_rag_corpus/` | Product-side RAG index (not a training set) | UICrit (real human critique text) |
@@ -38,6 +37,20 @@
   feature. It is never trained by this pipeline, and its output is never used
   as training data for anything else — there is no AI-judge-labeled data
   anywhere in this repository.
+
+The checked-in dataset registry is a candidate catalog, not a realized corpus or
+legal approval. Training exports require an explicit source opt-in, a verified
+license, an immutable source revision, and a provenance receipt. The Qwen export
+never fabricates a condition from a screenshot, JSON control map, or Canny edge;
+records without a deterministic renderer artifact are written to
+`model_data/polish_qwen_image21/exclusions.jsonl`.
+
+Following the 2026-10-14 negative source audit, the default registry is
+quarantine-first: only Figma2Code remains enabled as a UI-design candidate;
+UI-Vision, ScreenSpot, TASTE, and PartiPrompts are isolated evaluation
+references. There are currently no training-approved sources and no realized
+Qwen pair corpus. Run `python scripts/data-forge/audit_registry.py` before any
+fetch and do not infer readiness from the historical source table below.
 
 If you're looking for a `s07_5_edit_pairs`, `s01_6_planner_synthesis`, or
 `s10_5_critic_preference` stage from an earlier revision: they were removed,
@@ -125,6 +138,40 @@ data-forge run --dry-run
 
 ## Usage
 
+### Local-only source preprocessing
+
+For downloaded Figma2Code or MobileViews artifacts, normalize them without
+starting vLLM, CUDA models, license-page fetches, or synthetic labeling:
+
+```powershell
+data-forge preprocess --dataset figma2code --source-path D:\datasets\Figma2Code --limit 2500
+data-forge preprocess --dataset mobileviews --source-path D:\datasets\MobileViews --limit 2500
+```
+
+The command writes canonical images, source IDs/groups/revisions, source
+metadata and source structures into the manifest with status `fetched`. It
+also writes `DATA_ROOT/audit_reports/preprocess_<dataset>.json`. It does not
+claim that the records passed PII, safety, licensing, or training-export
+gates. Missing or malformed structure is retained as an explicit incomplete
+record; it is never invented by a model.
+
+### Strict local VLM profile
+
+The local profile uses the pinned Qwen3.8-27B FP8 VLM on the 48 GiB GPU. It
+requires CUDA and vLLM before startup and rejects every VLM-stage fallback:
+
+```powershell
+# Bounded VLM contract smoke test over already-fetched records
+data-forge preprocess-vlm --dataset figma2code --status fetched --limit 100
+
+# Governed final-data pipeline using the strict local profile
+data-forge run --profile local-vlm --resume --limit 100
+```
+
+For the complete hardware allocation, stage contract, receipts, and validation
+gates, see
+[`docs/data-forge/LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md`](../docs/data-forge/LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md).
+
 ```powershell
 $env:DATA_ROOT="D:\kf_data"
 $env:HF_TOKEN="your_huggingface_token"
@@ -132,11 +179,11 @@ $env:HF_TOKEN="your_huggingface_token"
 # Smoke test (100-record micro-batch)
 data-forge run --chunk-size 100 --limit 100
 
-# Full pipeline run
-data-forge run
+# Full strict local-VLM pipeline run (the default profile)
+data-forge run --profile local-vlm
 
 # Resume from checkpoint
-data-forge run --resume
+data-forge run --profile local-vlm --resume
 
 # Run specific stages
 data-forge run --stages 0,1,2
@@ -161,7 +208,10 @@ data-forge manifest query --status excluded_pending_review
 All configuration lives in `configs/`:
 - `pipeline.yaml` — stage toggles, thresholds, paths, chunk sizes, storage estimates
 - `models.yaml` — pinned model versions, quant settings, VRAM budgets. Only `z_image_vae` remains as an encoder — no `qwen_image_vae`, no `critic` model entry (both removed; those models are frozen, data-forge never loads them), and `maskgit_vq` was removed (sync audit item #1: it never had a working implementation, and its only caller was dead code — see `docs/review/01_sketch_tier.md`)
-- `datasets.yaml` — 15 registered sources; see the table below
+- `datasets.yaml` — candidate source registry; entries are not realized counts
+  or legal approval. See the source-policy block in `pipeline.yaml` and the
+  [dataset acceptance matrix](../docs/research/DATASET_ACCEPTANCE_MATRIX.md)
+  for evidence labels and capacity profiles.
 
 Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 
@@ -192,12 +242,15 @@ Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 
 ## Source Registry Summary
 
-See `../docs/data-forge/DATA_SOURCES.md` for full detail. Fifteen registered sources:
+See `../docs/data-forge/DATA_SOURCES.md` and
+`../docs/research/DATASET_ACCEPTANCE_MATRIX.md` for the full evidence table.
+The registry includes the following source families:
 
 - **Foundation (real images, trained on directly):** PD12M, CC12M, RICO (core + semantic), CLAY, Enrico, WebUI, Screen2Words
 - **DPO alignment (real human preference pairs):** Pick-a-Pic v2, HPDv2 (general); DesignSense-10k, DesignPref (UI/design-domain — **DesignPref is confirmed not yet publicly released**; DesignSense-10k has no confirmed public repo and a confirmed CC BY-NC-ND 4.0 license that would need separate legal sign-off even once released)
 - **RAG corpus (not trained on):** UICrit
 - **Evaluation only, structurally unreachable from training:** TASTE, PartiPrompts
+- **New structure/design candidates with explicit adapters:** Figma2Code and MobileViews
 
 ## Known Issues, Fixed This Revision (v16)
 
