@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 pub const DEFAULT_HOST: &str = "127.0.0.1";
@@ -44,11 +44,27 @@ impl BackendClient {
 
     fn connect(&self) -> Result<TcpStream, String> {
         let addr_str = format!("{}:{}", self.host, self.port);
-        let socket_addr: SocketAddr = addr_str
-            .parse()
-            .map_err(|e| format!("invalid backend address {}: {}", addr_str, e))?;
-        let stream = TcpStream::connect_timeout(&socket_addr, Duration::from_secs(5))
-            .map_err(|e| format!("cannot connect to Python backend at {}: {}", addr_str, e))?;
+        let addresses = addr_str
+            .to_socket_addrs()
+            .map_err(|e| format!("cannot resolve backend address {}: {}", addr_str, e))?;
+        let mut last_error = None;
+        let mut stream = None;
+        for address in addresses {
+            match TcpStream::connect_timeout(&address, Duration::from_secs(5)) {
+                Ok(connected) => {
+                    stream = Some(connected);
+                    break;
+                }
+                Err(error) => last_error = Some(error),
+            }
+        }
+        let stream = stream.ok_or_else(|| {
+            format!(
+                "cannot connect to Python backend at {}: {}",
+                addr_str,
+                last_error.map(|e| e.to_string()).unwrap_or_else(|| "no addresses resolved".into())
+            )
+        })?;
         stream
             .set_read_timeout(Some(self.timeout))
             .map_err(|e| format!("failed setting read timeout: {}", e))?;
@@ -229,6 +245,7 @@ impl BackendClient {
     }
 
     pub fn get_session(&self, session_id: &str) -> Result<Value, String> {
+        validate_session_id(session_id)?;
         let path = format!("/session/{}", session_id);
         let (status, val) = self.request("GET", &path, None)?;
         if status == 200 {
@@ -239,6 +256,7 @@ impl BackendClient {
     }
 
     pub fn get_session_model_status(&self, session_id: &str) -> Result<Value, String> {
+        validate_session_id(session_id)?;
         let path = format!("/session/{}/model-status", session_id);
         let (status, val) = self.request("GET", &path, None)?;
         if status == 200 {
@@ -249,6 +267,7 @@ impl BackendClient {
     }
 
     pub fn send_message(&self, session_id: &str, message: &str) -> Result<Value, String> {
+        validate_session_id(session_id)?;
         let path = format!("/session/{}/message", session_id);
         let payload = serde_json::json!({ "message": message }).to_string();
         let (status, val) = self.request("POST", &path, Some(&payload))?;
@@ -260,6 +279,7 @@ impl BackendClient {
     }
 
     pub fn trigger_self_review(&self, session_id: &str) -> Result<Value, String> {
+        validate_session_id(session_id)?;
         let path = format!("/session/{}/self-review", session_id);
         let (status, val) = self.request("POST", &path, None)?;
         if status == 200 {
@@ -270,6 +290,7 @@ impl BackendClient {
     }
 
     pub fn trigger_finalize(&self, session_id: &str, quality: bool, prompt: Option<String>) -> Result<Value, String> {
+        validate_session_id(session_id)?;
         let path = format!("/session/{}/finalize", session_id);
         let payload = serde_json::json!({
             "quality": quality,
@@ -281,5 +302,28 @@ impl BackendClient {
         } else {
             Err(format!("trigger_finalize failed ({}) : {}", status, val))
         }
+    }
+}
+
+fn validate_session_id(session_id: &str) -> Result<(), String> {
+    if session_id.is_empty()
+        || !session_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("invalid session id".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_session_id;
+
+    #[test]
+    fn session_ids_are_path_safe() {
+        assert!(validate_session_id("a1b2-c3").is_ok());
+        assert!(validate_session_id("../etc/passwd").is_err());
+        assert!(validate_session_id("").is_err());
     }
 }

@@ -38,6 +38,18 @@
 
 * { box-sizing: border-box; }
 
+/* Keep the visual system expressive without forcing motion on users or
+ * low-power machines. All transitions/ambient effects below are opt-out at
+ * the platform preference boundary rather than being removed from the UI. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 body {
   margin: 0;
   background: var(--ink);

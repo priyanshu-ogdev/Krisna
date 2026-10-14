@@ -71,6 +71,7 @@ class VerifierScores(BaseModel):
     layout_iou: float | None = None
     aesthetic: float | None = None
     handoff_consistency: float | None = None
+    lock_preservation: float | None = None
 
 
 RendererUsed = Literal["qwen_image_2_1", "z_image_turbo", "qwen_image_edit_2511", None]
@@ -80,6 +81,7 @@ class FinalizeOutput(BaseModel):
     renderer_used: RendererUsed = None
     image_ref: str | None = None
     verifier_scores: VerifierScores = Field(default_factory=VerifierScores)
+    evaluation_receipt: dict[str, Any] | None = None
     prompt_used: str | None = None
 
 

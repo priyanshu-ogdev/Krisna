@@ -88,6 +88,7 @@ def test_service_ready_endpoint(client: TestClient):
     assert "ready" in data
     assert "residency_state" in data
     assert data["store_accessible"] is True
+    assert "backend_mode" in data
 
 
 def test_service_models_status_endpoint(client: TestClient):

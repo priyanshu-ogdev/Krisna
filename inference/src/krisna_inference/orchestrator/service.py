@@ -204,6 +204,8 @@ def _error_response(e: Exception) -> HTTPException:
 async def health():
     return {
         "status": "ok",
+        "ready": orchestrator.ready,
+        "backend_mode": "real" if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1" else "mock",
         "residency_state": orchestrator.state.state.value,
         "vram": orchestrator.ledger.snapshot(),
     }
@@ -212,9 +214,10 @@ async def health():
 @app.get("/ready")
 async def ready():
     """Readiness probe: checks if orchestrator is running and state store is accessible."""
-    is_ready = orchestrator.conversation_available() or orchestrator.state.state.value != "uninitialized"
+    is_ready = orchestrator.ready
     return {
         "ready": is_ready,
+        "backend_mode": "real" if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1" else "mock",
         "residency_state": orchestrator.state.state.value,
         "store_accessible": True,
     }
@@ -440,10 +443,14 @@ async def post_critique(session_id: str, req: CritiqueRequest | None = None) -> 
 
 @app.get("/preference-pairs/stats")
 async def preference_pairs_stats() -> dict:
+    planner_review_count = preference_store.count(source="planner_review")
     return {
         "total": preference_store.count(),
         "verifier_stack": preference_store.count(source="verifier_stack"),
-        "gemma_critique": preference_store.count(source="gemma_critique"),
+        # Deprecated compatibility key: older UI clients called this bucket
+        # gemma_critique. New writes are explicitly planner_review and never
+        # use frozen-Critic self-labels, but the response shape stays stable.
+        "gemma_critique": planner_review_count,
         "uicrit_seed": preference_store.count(source="uicrit_seed"),
     }
 
@@ -464,6 +471,7 @@ async def orchestrator_status() -> dict:
     return {
         "residency_state": orchestrator.state.state.value,
         "conversation_available": orchestrator.conversation_available(),
+        "ready": orchestrator.ready,
         "vram": orchestrator.ledger.snapshot(),
         # New: system-RAM ledger — always present (never None), since
         # it's a well-defined no-op snapshot in full-VRAM mode (every

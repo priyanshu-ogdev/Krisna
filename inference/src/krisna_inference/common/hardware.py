@@ -285,26 +285,22 @@ def check_inference_config(
     env_file = root / ".env.inference"
     cfg.env_inference_exists = env_file.is_file()
 
-    # Check Critic worker Python
+    # Check Critic worker Python (Legacy; retired in favor of Resident Planner Review)
     critic_py_env = os.environ.get("KRISNA_CRITIC_VENV_PYTHON")
     if critic_py_env:
         critic_path = Path(critic_py_env)
+        cfg.critic_python_path = str(critic_path)
+        cfg.critic_python_exists = critic_path.is_file()
     else:
-        candidates = [
+        # Cross-platform discovery keeps development/preflight behavior
+        # deterministic even when the installer has not written an env file.
+        candidates = (
             root / "venv-critic" / "Scripts" / "python.exe",
             root / "venv-critic" / "bin" / "python",
-        ]
-        found = next((c for c in candidates if c.is_file()), None)
-        if found:
-            critic_path = found
-        else:
-            critic_path = (
-                root / "venv-critic" / "Scripts" / "python.exe"
-                if sys.platform == "win32"
-                else root / "venv-critic" / "bin" / "python"
-            )
-    cfg.critic_python_path = str(critic_path)
-    cfg.critic_python_exists = critic_path.is_file()
+        )
+        critic_path = next((path for path in candidates if path.is_file()), None)
+        cfg.critic_python_path = str(critic_path) if critic_path else None
+        cfg.critic_python_exists = critic_path is not None
 
     # Check Sketch checkpoint if configured
     sketch_ckpt = os.environ.get("KRISNA_SKETCH_CHECKPOINT")
@@ -320,11 +316,10 @@ def check_inference_config(
 
     # Real deployment validation
     if require_real or cfg.use_real_backends:
-        if not cfg.critic_python_exists:
+        if critic_py_env and not cfg.critic_python_exists:
             cfg.warnings.append(
-                f"Critic isolated Python interpreter not found at: {cfg.critic_python_path}. "
-                "The on-demand Critic tier (Gemma-4) will not be available until created. "
-                "Run ./setup.sh critic or ensure KRISNA_CRITIC_VENV_PYTHON is set."
+                f"Legacy Critic isolated Python interpreter not found at: {cfg.critic_python_path}. "
+                "Note: Krisna now defaults to Resident Planner Review (0GB added VRAM)."
             )
         if sketch_ckpt and not cfg.sketch_checkpoint_exists:
             cfg.errors.append(f"Configured KRISNA_SKETCH_CHECKPOINT does not exist: {sketch_ckpt}")
@@ -360,8 +355,10 @@ def format_diagnostic_report(hw: HardwareStatus, cfg: ConfigStatus | None = None
     if cfg:
         lines.append("-----------------------------------------------------------------")
         lines.append(f"Real Backends Mode   : {'ENABLED' if cfg.use_real_backends else 'MOCK (Test Only)'}")
-        lines.append(f"Low-VRAM Offload     : {'ENABLED' if cfg.low_vram_mode else 'DISABLED'}")
-        lines.append(f"Critic Isolated venv : {'FOUND' if cfg.critic_python_exists else 'MISSING'} ({cfg.critic_python_path})")
+        if cfg.critic_python_path:
+            lines.append(f"Legacy Critic venv   : {'FOUND' if cfg.critic_python_exists else 'MISSING'} ({cfg.critic_python_path})")
+        else:
+            lines.append("Review Architecture  : RESIDENT PLANNER (review=True, 0GB swap overhead)")
         if cfg.sketch_checkpoint:
             lines.append(f"Sketch Checkpoint    : {'FOUND' if cfg.sketch_checkpoint_exists else 'MISSING'} ({cfg.sketch_checkpoint})")
         if cfg.polish_lora_path:

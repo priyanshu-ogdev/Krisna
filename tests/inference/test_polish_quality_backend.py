@@ -1,9 +1,12 @@
 import json
+import sys
+import types
 import pytest
 from PIL import Image
 
 from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
 from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krisna_inference.backends.polish_backend_qwen import QWEN_IMAGE_21_REVISION
 from krisna_inference.backends.blob_store_singleton import get_blob_store
 
 
@@ -15,7 +18,7 @@ async def test_polish_quality_steps_and_strength():
         vram_gb=12.0,
         quantization="bf16",
     )
-    backend = QwenImage21Backend(spec, edit_strength=0.7)
+    backend = QwenImage21Backend(spec, edit_strength=0.7, strict=False)
     await backend.load()
 
     store = get_blob_store()
@@ -44,9 +47,126 @@ async def test_polish_backend_raises_when_unloaded():
         vram_gb=12.0,
         quantization="bf16",
     )
-    backend = QwenImage21Backend(spec)
+    backend = QwenImage21Backend(spec, strict=False)
     with pytest.raises(RuntimeError, match="not loaded"):
         await backend.run(prompt="test")
+
+
+@pytest.mark.asyncio
+async def test_strict_mode_rejects_missing_condition_instead_of_synthesizing():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=True)
+    backend._loaded = True
+    with pytest.raises(ValueError, match="requires a valid image conditioning"):
+        await backend.run(handoff_image_ref=None)
+    await backend.unload()
+
+
+@pytest.mark.asyncio
+async def test_strict_mode_rejects_unavailable_pipeline():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=True)
+    backend._loaded = True
+    store = get_blob_store()
+    ref = store.save_image(Image.new("RGB", (32, 32)), prefix="test_real_mode")
+    with pytest.raises(RuntimeError, match="pipeline is unavailable"):
+        await backend.run(handoff_image_ref=ref)
+    await backend.unload()
+
+
+@pytest.mark.asyncio
+async def test_strict_load_requires_cuda(monkeypatch):
+    fake_torch = types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: False),
+    )
+    fake_diffusers = types.SimpleNamespace(QwenImagePipeline=object)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "diffusers", fake_diffusers)
+
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=True, device="cuda")
+    with pytest.raises(RuntimeError, match="requires CUDA"):
+        await backend.load()
+
+
+@pytest.mark.asyncio
+async def test_strict_load_does_not_fallback_to_compatible_pipeline(monkeypatch):
+    fake_torch = types.SimpleNamespace(
+        bfloat16=object(),
+        float16=object(),
+        float32=object(),
+        cuda=types.SimpleNamespace(is_available=lambda: True),
+    )
+    fake_diffusers = types.SimpleNamespace(QwenImagePipeline=object)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "diffusers", fake_diffusers)
+
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=True, device="cuda")
+    with pytest.raises(RuntimeError, match="QwenImage21Pipeline is required"):
+        await backend.load()
+
+
+@pytest.mark.asyncio
+async def test_strict_load_rejects_pipeline_error_without_synthetic_fallback(monkeypatch):
+    class NativePipeline:
+        @classmethod
+        def from_pretrained(cls, *args, **kwargs):
+            raise ValueError("checkpoint is unavailable")
+
+    fake_torch = types.SimpleNamespace(
+        bfloat16=object(),
+        float16=object(),
+        float32=object(),
+        cuda=types.SimpleNamespace(is_available=lambda: True),
+    )
+    fake_diffusers = types.SimpleNamespace(QwenImage21Pipeline=NativePipeline)
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "diffusers", fake_diffusers)
+
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=True, device="cuda")
+    with pytest.raises(RuntimeError, match="checkpoint is unavailable"):
+        await backend.load()
+    assert backend._pipeline is None
+    assert backend.is_loaded is False
+
+
+def test_strict_mode_rejects_unpinned_revision():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    with pytest.raises(ValueError, match="pinned model revision"):
+        QwenImage21Backend(spec, strict=True, revision="main")
+    assert QWEN_IMAGE_21_REVISION == "d26bb61231c349cf6b7896fa83353113880e1ba3"
 
 
 def test_lora_manifest_verification(tmp_path):
@@ -61,7 +181,7 @@ def test_lora_manifest_verification(tmp_path):
     manifest_file = adapter_dir / "manifest.json"
     manifest_file.write_text(json.dumps({"run_id": "exp_dreambooth_01", "base_model": "Qwen-Image-2.1"}))
 
-    backend = QwenImage21Backend(spec, lora_adapter_path=str(adapter_dir))
+    backend = QwenImage21Backend(spec, lora_adapter_path=str(adapter_dir), strict=False)
     assert backend.lora_adapter_path == str(adapter_dir)
 
 
@@ -83,14 +203,14 @@ def test_flow_ode_scheduler_timesteps_and_guidance():
 
 
 @pytest.mark.asyncio
-async def test_polish_locked_regions_feathering():
+async def test_polish_locked_regions_preserve_pixels_exactly():
     spec = ModelSpec(
         tier=Tier.POLISH_DEFAULT,
         name="Qwen-Image-2.1",
         vram_gb=12.0,
         quantization="bf16",
     )
-    backend = QwenImage21Backend(spec)
+    backend = QwenImage21Backend(spec, strict=False)
     await backend.load()
 
     store = get_blob_store()
@@ -107,4 +227,3 @@ async def test_polish_locked_regions_feathering():
     assert "timesteps" in res
     assert len(res["timesteps"]) > 0
     await backend.unload()
-
