@@ -1,5 +1,13 @@
 # Research Findings & Citations
 
+> **Canonical-state notice (2026-10-15).** Sections describing the earlier
+> two-trained-model Z-Image/Sketch design are historical reasoning. The current
+> decision is one intended trainable Qwen-Image-2.1 LoRA, a frozen Qwen3.5-9B
+> Planner, deterministic Layout IR, and a separate Qwen3.8-27B Data-Forge VLM.
+> Use [`../research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md)
+> and [`../research/SOTA_AUDIT_2026-10.md`](../research/SOTA_AUDIT_2026-10.md)
+> for the binding state and current external research scan.
+
 > [!IMPORTANT]
 > **Canonical Reference**: This document serves as the research audit trail and methodological grounding for [docs/PRD.md](../PRD.md) (the canonical Product & Research Requirements Document). Every `PRD §X` cited here references sections in that master document.
 
@@ -31,7 +39,7 @@ and source DPO alignment for the one renderer that stays trained
 (Z-Image-Turbo) from **real, human-labeled public preference datasets**
 instead of self-generated critic output.
 
-**Net effect**: of five original components, two are trained (Sketch
+**Historical net effect**: of five original components, two were proposed as trained (Sketch
 tier from scratch, Z-Image-Turbo via LoRA + Diffusion-DPO), three ship
 frozen. See `docs/architecture/DIRECTORY_LAYOUT.md` for how this maps to
 the actual package split.
@@ -467,6 +475,14 @@ Every citation below is a confirmed primary source directly grounding decisions 
     - *Role*: Rotary Position Embedding (RoPE) resolution flexibility in Diffusion Transformers, confirming safety of cross-resolution training (1024px LoRA base, 512px DPO) (§11).
 12. **Betker, J., et al. (2023)**. *Improving Image Generation with Better Captions*. Computer Science Technical Report.
     - *Role*: Empirical 95/5 mix ratio of dense VLM-generated captions vs. original concise source captions to balance prompt adherence with conversational inference (§6.2, §8.6).
+13. **Feng, Y., et al. (2023)**. *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*. IEEE Transactions on Visualization and Computer Graphics. [DOI:10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168).
+    - *Role*: Supports interactive, inspectable prompt/state refinement. Krisna applies this to artifact logging and user control without weakening hard Layout IR constraints.
+14. **Guerreiro, J. J. A., et al. (2024)**. *LayoutFlow: Flow Matching for Layout Generation*. ECCV 2024, Springer LNCS. [arXiv:2403.18187](https://arxiv.org/abs/2403.18187).
+    - *Role*: Springer-published learned-layout precedent. Used only to define a future LayoutFlow ablation gate; the production baseline remains deterministic until a complete learned checkpoint exists.
+15. **Hessel, J., et al. (2021)**. *CLIPScore: A Reference-free Evaluation Metric for Image Captioning*. EMNLP 2021. [arXiv:2104.08718](https://arxiv.org/abs/2104.08718).
+    - *Role*: Supports reference-free image/text compatibility measurement while documenting domain limitations; used as a metric-family reference, not a Krisna threshold.
+16. **Zhang, R., et al. (2018)**. *The Unreasonable Effectiveness of Deep Features as a Perceptual Metric*. CVPR 2018. [arXiv:1801.03924](https://arxiv.org/abs/1801.03924).
+    - *Role*: LPIPS/deep-feature perceptual metric precedent. Supports semantic handoff comparison rather than treating pixel distance as the sole quality measure.
 
 ---
 
@@ -498,3 +514,93 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | Qwen Team, Alibaba — Qwen3.5 Small Model Series (0.8B/2B/4B/9B) release notes, dated 2026-03-02 | Confirms Qwen3.5-9B's real release, hybrid Gated DeltaNet + Gated Attention architecture, native multimodal training |
 | Tongyi-MAI, Alibaba — Z-Image technical report (`github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`), 2025 | Primary source for Z-Image-Turbo's Decoupled-DMD/DMDR distillation and S3-DiT architecture — the Polish-Default tier's actual base model | 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
+| IEEE Xplore bibliographic record for PromptMagician | Interactive prompt-engineering design precedent; DOI `10.1109/TVCG.2023.3327168` |
+| Springer ECCV/LayoutFlow publication lineage plus arXiv primary record | Learned continuous-layout precedent; not evidence of a Krisna checkpoint |
+
+---
+
+## 8. Final architecture audit addendum (2026-10-13)
+
+The detailed final decision is in
+[`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md).
+This addendum records the corrections that must be applied when interpreting
+the earlier sections of this research trail.
+
+### 8.1 Qwen-Image-2.1 is real, but its training path is not yet validated
+
+The official `Qwen/Qwen-Image-2.1` model card is now reachable and documents a
+7B visual-generation component, image editing through the native Qwen image
+pipeline, image conditioning, CPU offload, and a Qwen Research License
+Agreement. This confirms that the model identifier is not hypothetical.
+
+It does **not** confirm the repository's proposed training path. The checkout's
+launcher delegates to
+`third_party/diffusers/examples/dreambooth/train_dreambooth_lora_qwenimage21_img2img.py`.
+That script is intentionally external, but the setup helper now pins commit
+`efe46a5b177af67c64b3666da8ddddac7ee12163` and the launcher validates its CLI
+contract before starting. The current code therefore proves pair metadata
+preparation and a pinned launcher boundary, not a working Qwen-Image-2.1
+paired image-editing run. The serving backend uses the native
+`QwenImage21Pipeline`; a target-GPU load and one-batch train/save/load/inference
+smoke test remain required.
+
+### 8.2 Qwen-VL Planner decision
+
+The primary Planner candidate is now `Qwen/Qwen3.5-9B`, frozen. Its official
+model card documents an image-text-to-text model, image-message input, and
+official Transformers/vLLM/SGLang serving paths. The exact llama.cpp
+GGUF/mmproj request remains a target-GPU compatibility gate, not an assumed
+equivalence to the official runtime.
+
+`Qwen/Qwen2.5-VL-7B-Instruct` remains a controlled historical baseline. It is
+not silently pooled with Qwen3.5 benchmark claims; both require a matched
+Planner bake-off on the Krisna task.
+
+### 8.3 Pair-count correction
+
+The often-repeated “~125K pairs” is a target estimate, not a current artifact
+count. RICO and CLAY are structure/screenshot sources. A pair corpus exists
+only after the project renders a deterministic wireframe condition, joins it to
+the source screenshot, applies source-identity splits and deduplication, and
+writes a manifest with hashes and licenses. The current workspace audit found
+no realized exported Polish pair corpus and zero preference rows in the local
+preference database.
+
+### 8.4 Research-paper evidence correction
+
+The numeric tables in `docs/RESEARCH_PAPER.md` are not currently backed by
+run receipts. Treat IoU, OCR CER, lock MSE, CLIP, VRAM, swap latency, “statistical
+parity,” and superiority claims there as provisional placeholders until each
+has a checkpoint hash, dataset/split manifest, seed, evaluator version, sample
+count, hardware receipt, and uncertainty interval. A model card or a paper's
+benchmark table cannot substitute for an end-to-end Krisna run.
+
+### 8.5 Primary-source links used by the final verdict
+
+- Qwen2.5-VL report: <https://arxiv.org/abs/2502.13923>
+- Qwen2.5-VL-7B-Instruct card: <https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct>
+- Qwen3-VL-8B-Instruct card: <https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct>
+- Qwen-Image-2.1 card: <https://huggingface.co/Qwen/Qwen-Image-2.1>
+- Qwen-Image technical report / Qwen-Image-Edit-2511 lineage:
+  <https://arxiv.org/abs/2508.02324>
+- Qwen-Image-Edit-2511 card: <https://huggingface.co/Qwen/Qwen-Image-Edit-2511>
+- Flow Matching: <https://arxiv.org/abs/2210.02747>
+- Rectified Flow: <https://arxiv.org/abs/2209.03003>
+- Diffusion-DPO: <https://arxiv.org/abs/2311.12908>
+- Muse: <https://arxiv.org/abs/2301.00704>
+- DreamBooth: <https://arxiv.org/abs/2208.12242>
+
+The final verdict deliberately does not cite community benchmark claims as
+proof of Krisna performance. Candidate upgrades must be selected by the
+project's own paired, source-disjoint evaluation protocol.
+
+### 8.6 Data-source expansion references
+
+13. **Gui et al., “Figma2Code: Automating Multimodal Design to Code in the Wild,” ICLR 2026.** [OpenReview](https://openreview.net/forum?id=CaXZB6bI31); dataset card: [xcodemind/Figma2Code](https://huggingface.co/datasets/xcodemind/Figma2Code).
+    - *Role*: released community-Figma screenshots with file/node identifiers, raw and processed metadata, and assets. Used as an explicitly parsed structure/design source; screenshots and metadata are not assumed to be Qwen edit pairs.
+14. **Gao et al., “MobileViews: A Million-scale and Diverse Mobile GUI Dataset,” 2024/2025.** [arXiv:2409.14337](https://arxiv.org/abs/2409.14337); dataset card: [mllmTeam/MobileViews](https://huggingface.co/datasets/mllmTeam/MobileViews).
+    - *Role*: released mobile screenshot/view-hierarchy pairs and app traces. Used as a candidate mobile structure source with explicit app/group provenance. The dataset-card MIT metadata and third-party Google Play capture scope are recorded separately; they do not automatically clear every embedded asset for redistribution or training.
+
+The corresponding acceptance, adapter, local-preprocessing, and synthetic-data
+decisions are recorded in
+[`docs/research/DATASET_ACCEPTANCE_MATRIX.md`](../research/DATASET_ACCEPTANCE_MATRIX.md).

@@ -18,13 +18,16 @@ docs/
 │   ├── DIRECTORY_LAYOUT.md       # Package architecture and boundary rules
 │   ├── SYNC_DESIGN.md            # Data-forge ↔ Training sync contract & manifest schemas
 │   └── TRAINING_INFERENCE_SYNC_DESIGN.md # Multi-turn context, prompt grounding & weights handoff
+│   └── INFERENCE_PRODUCTION_STACK.md # Rust/Python/Tauri runtime boundaries and fail-closed gates
+│   └── EVALUATION_PROTOCOL.md     # Unified multi-metric receipt and validation standards
 ├── data-forge/                  # Data engineering & pipeline architecture
 │   ├── ARCHITECTURE.md          # Multi-stage chunk-based processing pipeline
 │   ├── DATA_SOURCES.md          # Public datasets: licenses, schemas, and fetch modes
 │   └── DATA_COMPLETENESS.md     # Audit of data transformations, PII, and safety filters
 ├── training/                    # Model training documentation & runbooks
-│   ├── README.md                # Quick reference, loss mathematics & commands
-│   └── TRAINING_RUNBOOK.md      # Step-by-step RTX A6000 48GB execution guide
+│   ├── README.md                # Training documentation index and current status
+│   ├── ARCHITECTURE.md          # Current training design, gates, and bibliography
+│   └── TRAINING_RUNBOOK.md      # Readiness checks and current execution guide
 ├── inference/                   # Serving, orchestration & client integration
 │   └── README.md                # Swap state machine, VRAM ledgers & API reference
 └── review/                      # Formal verification audit log
@@ -39,12 +42,12 @@ docs/
 
 - **Developer Notes & Feature Retention Audit**: See [DEV_NOTES.md](DEV_NOTES.md) for engineering history, component contracts, memory ledgers, and feature audit.
 - **Scientific Research Paper Specification**: See [RESEARCH_PAPER.md](RESEARCH_PAPER.md) for formal problem formulation, mathematical models, empirical evaluation, and ablation studies.
-- **Why only two models are trained**: See [RESEARCH_AND_CITATIONS.md](architecture/RESEARCH_AND_CITATIONS.md) §1 and [PRD.md §6](PRD.md#6-model-stack-the-no-rlhf-loop-revision).
+- **Current training status and model trainability**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md).
 - **Single-GPU Swap Orchestrator**: See [inference/README.md](inference/README.md) and [PRD.md §7](PRD.md#7-inference-orchestration).
 - **Production Docker & Dual-Venv Isolation**: See [inference/README.md §5](inference/README.md#5-production-docker-containerization--dual-venv-isolation) and [PRD.md §7.7](PRD.md#77-production-docker-containerization-dual-venv-isolation).
 - **Hardware Preflight & Fail-Fast Enforcement**: See [inference/README.md §6](inference/README.md#6-fail-fast-hardware--deployment-preflight-verification) and [PRD.md §7.8](PRD.md#78-hardware--deployment-preflight-verification-fail-fast).
-- **Progressive Sketch Training (MaskGIT)**: See [training/README.md](training/README.md) and [PRD.md §6.1](PRD.md#61-progressive-resolution-training-sketch-tier).
-- **Diffusion-DPO for Flow-Matching**: See [RESEARCH_AND_CITATIONS.md](architecture/RESEARCH_AND_CITATIONS.md) §4.5 and [PRD.md §8.5](PRD.md#85-preference-pairs-a-separate-stream).
+- **Structure/Layout baseline and future learned ablations**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md#2-the-authoritative-training-pipeline).
+- **Deferred preference alignment**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md#36-flow-matching-and-preference-alignment).
 - **Hardware Runbook (RTX A6000 48GB)**: See [training/TRAINING_RUNBOOK.md](training/TRAINING_RUNBOOK.md).
 
 

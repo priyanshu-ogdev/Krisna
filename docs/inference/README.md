@@ -5,10 +5,15 @@ Comprehensive reference for consumer GPU serving, swap orchestration, and multi-
 > [!IMPORTANT]
 > **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration).
 > The modernized architecture strictly preserves a **12GB VRAM consumer target envelope** with a clear single-model-per-responsibility division:
-> - **Planner Tier**: Frozen `llama.cpp` runtime with quantized GGUF weights (~6.5GB VRAM) and versioned JSON delta (`krisna.planner.v1`).
+> - **Planner Tier**: Frozen Qwen-VL candidate selected by the bake-off, with a tested image-grounded request and versioned JSON delta (`krisna.delta.v1`).
 > - **Sketch Tier**: Structured Layout IR (`krisna.layout.v1`) and deterministic wireframe renderer (~0.2GB VRAM).
-> - **Polish Tier**: Unified `Qwen-Image-2.1` diffusion pipeline with verified DreamBooth LoRA adapter and low-VRAM CPU offload (8.0–12.0GB VRAM).
-> - **Review/Critique**: Executed directly against the resident Planner in review mode (zero swap, zero second VLM).
+> - **Polish Tier**: Qwen-Image-2.1 native pipeline; the base is frozen and the LoRA adapter remains gated until the trainer/API smoke test passes. Low-VRAM CPU offload is a target, not a measured guarantee.
+> - **Review/Critique**: Planner self-review is resident and zero-swap; pixel verification is a separate post-generation stack with an explicit safety gate.
+>
+> The 12GB figure is an admission target, not a measured guarantee. Low-VRAM
+> CPU offload defaults to a 64GB RAM envelope in the service and must be
+> benchmarked on the deployment host before being advertised as a 16GB-RAM
+> configuration.
 
 ---
 
@@ -56,7 +61,9 @@ stateDiagram-v2
     ERROR_RECOVERY --> IDLE_RESIDENT: Re-admit Baseline, Session Preserved
 ```
 
-*Note: Self-review and visual critique operate directly in `IDLE_RESIDENT` against the resident Planner without triggering GPU swap overhead.*
+*Note: self-review operates in `IDLE_RESIDENT`. Finalized pixels are scored by
+the verifier stack after generation; this is not a claim that the resident
+Planner receives an image-grounded critique request.*
 
 ---
 
@@ -85,7 +92,7 @@ Admission is deterministic and CI-tested, governed by `VRAMLedger` and `RAMLedge
    - Layout IR is persisted to `state.layout.layout_ref` (`.json`) with SVG/PNG wireframes (`.png`) saved to the blob store.
    - Finalize takes wireframe input and transforms it into polished visuals via image conditioning.
 4. **Autonomous Self-Review & Turn Budget**:
-   - `RefinementBudget` enforces a strict turn cap (default 5 turns) with monotonic turn counters and exhaustion detection.
+    - `RefinementBudget` enforces a strict turn cap (default 4 turns) with monotonic turn counters and exhaustion detection.
    - Planner self-review inspects layout hierarchy, typography, and contrast, updating constraints before final rendering.
 
 ---
@@ -96,13 +103,13 @@ FastAPI service exposed on default port `8420`:
 
 | Method | Route | Description |
 |---|---|---|
-| `GET` | `/health` / `/healthz` | Liveness & readiness probes (residency state and VRAM snapshot). |
-| `GET` | `/hardware` | Live hardware telemetry (GPU, driver, CUDA, free/total VRAM, and config status). |
+| `GET` | `/health` | Liveness plus explicit `ready` and `backend_mode` fields. |
+| `GET` | `/ready` | Readiness only after baseline Planner + Layout residency is complete. |
 | `POST` | `/session` | Initializes a new `DesignState` session with `RefinementBudget`. |
 | `GET` | `/session/{id}` | Retrieves active `DesignState` snapshot. |
 | `POST` | `/session/{id}/message` | Advances conversational turn (Planner + Layout IR pass). |
-| `POST` | `/session/{id}/review` | Runs bounded autonomous Planner self-review. |
+| `POST` | `/session/{id}/self-review` | Runs bounded autonomous Planner self-review. |
 | `POST` | `/session/{id}/finalize` | Initiates tier swap, feeds wireframe to Qwen-Image-2.1, scores verifiers. |
-| `POST` | `/session/{id}/critique` | Evaluates finalized render using resident Planner review mode. |
+| `POST` | `/session/{id}/critique` | Runs critique/verifier flow and records eligible evidence. |
 | `GET` | `/session/{id}/render` | Streams raw finalized image bytes (`image/png`). |
 | `GET` | `/orchestrator/status` | Reports residency state, declared ledgers, and live hardware probes. |

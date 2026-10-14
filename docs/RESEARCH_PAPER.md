@@ -2,16 +2,80 @@
 
 **Authors**: Krisna Research Group & DeepMind Pair Programming Initiative  
 **Date**: October 2026  
-**Status**: Formal Research Specification & Architecture Paper  
+**Status**: Research Specification / Pre-registration — empirical results pending
 **Repository**: `https://github.com/priyanshu-ogdev/Krisna`
+
+> [!WARNING]
+> **Evidence correction (2026-10-13).** This document contains the original
+> architecture proposal and provisional result tables. The current checkout
+> does not contain a validated Qwen-Image-2.1 paired-editing trainer, a
+> realized 125K wireframe→screenshot corpus, an image-grounded Planner review
+> request, or receipts for the numerical results in §§6–7. Those sections are
+> not publishable empirical evidence yet. The binding audit, model/freeze
+> matrix, negative findings, gate sequence, and primary-source citations are
+> in [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](research/FINAL_ARCHITECTURE_VERDICT.md).
+> Until the listed gates pass, interpret all performance, memory, latency,
+> “guarantee,” and “superior” language below as a hypothesis or placeholder,
+> not a measured result.
+
+> **Current canonical experiment snapshot (2026-10-15).** The only intended
+> trainable artifact is a supervised LoRA for `Qwen/Qwen-Image-2.1`. The
+> `Qwen3.5-9B` Planner is frozen, `krisna.layout.v1` is deterministic, and the
+> local `Qwen/Qwen3.8-27B` model is a Data-Forge preprocessing dependency, not
+> a Krisna training target. The workspace currently has **zero realized
+> Qwen pair records, zero pair receipts, and no completed checkpoint**. The
+> binding model/data decision is in
+> [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](research/FINAL_ARCHITECTURE_VERDICT.md),
+> and the current external-method review is in
+> [`docs/research/SOTA_AUDIT_2026-10.md`](research/SOTA_AUDIT_2026-10.md).
+
+> [!WARNING]
+> **Dataset negative-audit amendment (2026-10-14).** The default Data-Forge
+> registry is now quarantine-first. Only Figma2Code remains enabled as a
+> UI-design candidate; UI-Vision, ScreenSpot, TASTE, and PartiPrompts are
+> isolated evaluation sources. General imagery, general preference pairs,
+> synthetic WebSight/AtomBlock-WebUI, uncertain third-party app captures, and
+> unpinned or rights-unclear annotation sources are disabled rather than
+> silently consumed. There is no training-approved source and no realized Qwen
+> pair corpus until immutable revisions, asset-rights receipts, deterministic
+> condition renders, source-disjoint splits, and a non-empty pair receipt all
+> exist. See `docs/research/DATASET_ACCEPTANCE_MATRIX.md`.
+
+> **Implementation review update (2026-10-14).** The inference audit found and
+> corrected two fail-open paths: real Qwen generation could fall back to a
+> synthetic image after a pipeline error, and readiness could be reported
+> before baseline residency completed. Real mode now fails closed on missing
+> conditioning or generation errors; synthetic outputs are explicitly marked
+> test-mode artifacts. The verifier stack remains a post-generation measurement
+> and safety gate, not a fabricated renderer score or a training signal.
 
 ---
 
 ## Abstract
 
+### Current flow-matching design addendum
+
+The current implementation no longer treats a handwritten Euler/RK2 helper as
+the Qwen sampler. Qwen-Image-2.1's native Diffusers pipeline and scheduler are
+authoritative for real runs. The training bridge now uses a typed,
+split-isolated condition/target dataset, a pinned native Qwen image-to-image
+trainer boundary, CPU-only preflight, and receipts for source hashes, split
+counts, trainer revision, and adapter provenance. The inference bridge inspects
+the native pipeline call signature, records live scheduler metadata, and fails
+closed in strict mode when legacy ODE/SDEdit controls are requested.
+
+This decision is grounded in the peer-reviewed rectified-flow and editing
+literature: Esser et al. (ICML 2024, PMLR 235) for rectified-flow transformer
+training and resolution-aware sampling; Brooks et al. (CVPR 2023 Open Access)
+for instruction-conditioned editing; Zhang et al. (ICCV 2023 Open Access) for
+explicit spatial conditioning; and Kulikov et al. (ICCV 2025 Open Access) for
+inversion-free flow editing. These sources motivate controlled ablations, not
+claims that Krisna has reproduced their results. The full implementation plan
+is [`docs/research/FLOW_MATCHING_UPGRADE_PLAN.md`](research/FLOW_MATCHING_UPGRADE_PLAN.md).
+
 Automating user interface (UI) design from conversational natural language requires solving three interconnected challenges: (1) maintaining coherent design intent across multi-turn human-AI dialogue without semantic drift; (2) enforcing hard spatial, typographic, and element-hierarchy constraints on a 2D canvas; and (3) generating production-grade visual renders on consumer hardware without exceeding memory ceilings. Existing approaches either rely on monolithic text-to-image diffusion models—which hallucinate illegible typography and ignore layout constraints—or discrete tokenized generative transformers (e.g., MaskGIT/VQGAN), which suffer from codebook quantization collapse, loss of vector hierarchies, and inability to enforce hard regional locking. 
 
-In this paper, we present **Krisna**, a bounded multi-turn agentic UI design system built upon a decoupled, single-model-per-responsibility architecture designed to operate strictly within a **12GB VRAM / 16GB Host RAM** consumer hardware envelope. Krisna decomposes UI creation into three coordinated tiers: (1) a frozen causal Language Model (*Planner*) operating in native W4A16 precision with UICrit retrieval that maps dialogue into deterministic state deltas while providing resident visual/layout self-review; (2) an intermediate structured representation (*Layout IR*, `krisna.layout.v1`) that captures hierarchical containers, normalized geometric coordinates, and exact string literals, rendered deterministically into a 2D wireframe; and (3) a unified diffusion backbone (*Polish*, based on `Qwen-Image-2.1`) fine-tuned via DreamBooth LoRA for image-conditioned wireframe-to-photorealistic UI synthesis with exact pixel-level region locking. Krisna introduces a bounded turn-budget policy ($\tau \le 4$) paired with an inactivity debounce coordinator that provably bounds conversational drift. We evaluate Krisna across standard UI datasets (RICO, CLAY, Enrico, Screen2Words) and human preference benchmarks (GameLabel-10K, UICrit), demonstrating superior layout IoU (+18.4%), OCR string fidelity (+34.2%), and regional lock invariance compared to discrete tokenized baselines, while reducing peak GPU swap latency by 91% compared to multi-critic architectures.
+In this paper, we specify **Krisna**, a bounded multi-turn agentic UI design system built upon a decoupled, single-model-per-responsibility architecture. Krisna decomposes UI creation into three coordinated tiers: (1) a frozen vision-language *Planner* that maps dialogue and an optional wireframe into deterministic state deltas; (2) an intermediate structured representation (*Layout IR*, `krisna.layout.v1`) that captures hierarchical containers, normalized geometric coordinates, and exact string literals, rendered deterministically into a 2D wireframe; and (3) a Qwen-family diffusion *Polish* tier proposed for image-conditioned wireframe-to-UI synthesis. The intended contribution is the explicit synchronization contract between these tiers, plus a bounded refinement policy and an evaluation protocol for structure, typography, locks, preference, and resource use. Quantitative claims are deliberately deferred until the trainer, paired-data manifest, multimodal review path, and hardware/evaluation receipts described in the final audit are complete.
 
 ---
 
@@ -29,7 +93,10 @@ To resolve these fundamental limitations, we introduce **Krisna**. Our contribut
 
 - **Decoupled Architecture with Single-Model Responsibility**: We enforce a strict separation of concerns where the Planner manages intent and review, Layout IR governs geometry, and a single diffusion model (`Qwen-Image-2.1`) governs pixel rendering. No model is permitted to execute or override another model's domain.
 - **Structured Intermediate Representation (`krisna.layout.v1`)**: We eliminate discrete VQ token codebooks in favor of a mathematically rigorous Layout IR specifying normalized coordinates $[y_{\min}, x_{\min}, y_{\max}, x_{\max}] \in [0, 1000]^4$, parent-child tree structures, and exact textual labels, rendered deterministically to a lossless wireframe.
-- **Resident Review & Zero-Swap Critique**: We retire memory-prohibitive external visual critics (e.g., 31B VLMs requiring 18GB VRAM) and instead route review through the resident Planner equipped with multimodal wireframe, OCR, and verifier inputs, completely eliminating process swapping latency.
+- **Bounded Review and Explicit Verification**: Planner self-review is bounded;
+  pixel-output verification remains a separate post-generation stack. Its safety
+  score is a gate, while other scores are diagnostic evidence and are never
+  silently substituted for human evaluation.
 - **Bounded Refinement & Anti-Drift Protocol**: We formulate a formal turn budget policy ($\tau \le 4$) and an inactivity debounce coordinator (30s timeout) that provably prevents unconstrained autonomous drift.
 - **Hardware-Enforced Admission Control**: We provide formal mathematical ledgers (`VRAMLedger`, `RAMLedger`) proving deterministic operation within consumer 12GB VRAM and 16GB system RAM boundaries.
 
@@ -47,9 +114,10 @@ To resolve these fundamental limitations, we introduce **Krisna**. Our contribut
 | 2. Constrained Generation  | JSONSchemaBench (2025), Automata Decoding (2024),      |
 |                            | Guided Generation (Willard & Louf, 2023)               |
 +----------------------------+--------------------------------------------------------+
-| 3. Dense/Hybrid Retrieval  | ColBERT (SIGIR '20), ColBERTv2 (NAACL '22), BM25       |
+| 3. Interactive Specification | PromptMagician (IEEE TVCG '23), structured prompt/state artifacts |
+| 4. Dense/Hybrid Retrieval  | ColBERT (SIGIR '20), ColBERTv2 (NAACL '22), BM25       |
 +----------------------------+--------------------------------------------------------+
-| 4. Diffusion & Editing     | Qwen-Image-2.1 (2026), InstructPix2Pix (CVPR '23),     |
+| 5. Diffusion & Editing     | Qwen-Image-2.1 (2026), InstructPix2Pix (CVPR '23),     |
 |                            | DreamBooth LoRA (CVPR '23), Diffusion-DPO (CVPR '24)   |
 +-------------------------------------------------------------------------------------+
 ```
@@ -63,7 +131,43 @@ Recently, **LayoutFlow** (Guerreiro et al., ECCV 2024) demonstrated that continu
 Unconstrained LLM generation in production agentic systems frequently fails due to JSON schema invalidity, hallucinated attributes, and malformed data structures. Recent theoretical advances in grammar-constrained decoding (Geng et al., EMNLP 2023; Koo, 2024; Willard & Louf, 2023) show that intersecting token vocabulary logits with deterministic pushdown automata or regular expressions guarantees $100\%$ schema validity without fine-tuning. JSONSchemaBench (Geng et al., 2025) empirically demonstrated that guided decoding preserves semantic reasoning if the grammar does not overly constrain intermediate reasoning tokens. Krisna applies grammar-constrained decoding over `krisna.delta.v1` via llama.cpp grammar engines.
 
 ### 2.3 Image-Conditioned Diffusion and Preference Alignment
-Text-to-image models have rapidly transitioned from unconditioned U-Nets to flow-matching DiT architectures (Lumina-T2X, Stable Diffusion 3, FLUX, Qwen-Image-2.1). For editing tasks, instruction-guided diffusion (InstructPix2Pix, Brooks et al., CVPR 2023) and image-to-image conditioning allow structural guidance. For alignment, Direct Preference Optimization adapted for diffusion (Diffusion-DPO, Wallace et al., CVPR 2024) enables direct optimization on human preference pairs without training reward models. Krisna leverages `Qwen-Image-2.1` with DreamBooth LoRA fine-tuning conditioned on paired wireframe-render distributions.
+Text-to-image models have rapidly transitioned from unconditioned U-Nets to flow-matching DiT architectures (Lumina-T2X, Stable Diffusion 3, FLUX, Qwen-Image-2.1). For editing tasks, instruction-guided diffusion (InstructPix2Pix, Brooks et al., 2023) and explicit spatial control (ControlNet, Zhang et al., 2023) motivate separating the condition renderer from the pixel renderer. The current Krisna mainline does **not** treat a screenshot plus annotations as a valid pair: a Qwen record requires a deterministic wireframe condition image, a scrubbed target, a provenance receipt, and source-policy approval. Missing condition artifacts are rejected rather than synthesized. Preference optimization remains deferred until its trainer, data, and evaluation receipts exist.
+
+### 2.4 Production architecture revision: fail-closed local inference
+
+The production stack is split into a low-latency Rust control plane, an async
+Python model plane, and a static browser/Tauri surface:
+
+1. **Rust policy boundary:** Tauri owns optimistic revision checks, bounded turn
+   accounting, path-safe session identifiers, and lightweight HTTP IPC. It does
+   not load model weights or duplicate Python's GPU scheduler.
+2. **Python model plane:** FastAPI owns the session store, residency
+   transitions, deterministic Layout IR projection, Qwen generation, and
+   verifier execution. Real mode rejects missing conditions and generation
+   failures; it never presents a synthetic placeholder as successful inference.
+3. **Evidence boundary:** the renderer reports runtime mode but does not claim
+   verifier measurements. The verifier stack computes post-generation scores;
+   safety is a gate and the remaining metrics are evidence.
+4. **Frontend boundary:** the lightweight Node/Tauri UI proxies explicit routes,
+   consumes readiness/residency signals, respects reduced-motion preferences,
+   and does not interpolate discovered filesystem paths as executable JS.
+
+### 2.5 IEEE and Springer design implications
+
+PromptMagician (Feng et al., IEEE TVCG 2023) treats text-to-image creation as
+an interactive prompt-engineering problem rather than a one-shot prompt call.
+Krisna adopts the transferable part of that result—inspectable prompt/state
+artifacts and iterative user control—but retains Layout IR as the authority for
+geometry, locks, and literal text. Prompt search is therefore an assistive
+operation, not a replacement for a validated state delta.
+
+LayoutFlow (Guerreiro et al., ECCV 2024, Springer LNCS proceedings) provides a
+relevant learned continuous-layout precedent. Krisna uses it to motivate a
+future learned LayoutFlow ablation, not to claim a trained Sketch model. The
+production baseline remains deterministic because it already provides a
+complete `krisna.layout.v1` renderer, exact lock mask, and auditable split.
+This distinction keeps related-work evidence separate from implementation or
+performance evidence.
 
 ---
 
@@ -79,7 +183,8 @@ graph TD
     LayoutEngine --> Wireframe[Deterministic 2D Wireframe PNG]
     Wireframe --> Polish[Tier 3: Qwen-Image-2.1 Polish Diffusion]
     Polish --> Verifier[Verifier Stack & Safety Gate]
-    Verifier --> FinalUI([Final Verified UI & Preference Store])
+    Verifier --> Evidence[Versioned metrics + safety decision]
+    Evidence --> FinalUI([Final UI only if gate passes])
     Wireframe -.-> Review[Planner Resident Review Mode]
     Review -.-> Coordinator
 ```
@@ -228,16 +333,46 @@ We formulate five metric categories to quantify visual, geometric, and operation
 5. **Memory and Latency Footprint**:
    Measured peak VRAM ($\text{GB}$), system RAM ($\text{GB}$), cold swap latency ($s$), and per-turn generation time ($s$) on target hardware.
 
+### 5.3 Unified inference receipt and target policy
+
+The implementation now emits a `krisna.eval.v1` receipt at finalize time. It
+records raw values, per-metric targets, missing dimensions, failed dimensions,
+and a geometric mean over available metrics. The current project targets are:
+
+| Metric | Target | Interpretation |
+|---|---:|---|
+| Safety gate | $\geq 0.90$ | Hard gate; never averaged away |
+| CLIP alignment | $\geq 0.70$ | Project target; CLIPScore motivates the metric family, not this cutoff |
+| OCR readability | $\geq 0.80$ | Includes CER/WER when Layout IR literals are available |
+| Layout IoU | $\geq 0.70$ | Contour/semantic detector score against Layout IR regions |
+| Aesthetic | $\geq 0.70$ | Requires calibration against held-out human ratings |
+| Handoff consistency | $\geq 0.65$ | Perceptual semantic consistency, not pixel identity |
+| Lock preservation | $\geq 0.95$ | Protected-region pixel preservation |
+
+These are Krisna acceptance targets, not universal literature thresholds. The
+published CLIPScore work reports human-correlation advantages but also domain
+weaknesses; LPIPS motivates deep perceptual comparison over shallow pixel
+metrics. Before publication, thresholds must be calibrated on a fixed,
+source-disjoint validation set and reported with bootstrap confidence
+intervals. Receipts with unavailable dimensions are `incomplete`, not passes.
+
 ---
 
 ## 6. Experimental Results & Ablation Studies
 
-### 6.1 Main Benchmark Comparison
+### 6.1 Main Benchmark Comparison (provisional; no receipts in this checkout)
+
+> The following table is retained for historical traceability only. It must be
+> replaced by a generated result artifact containing model revisions, split
+> manifests, seeds, evaluator versions, sample counts, confidence intervals,
+> and hardware receipts before submission. In particular, the current code's
+> feathered lock compositor cannot justify a zero lock-drift claim, and a
+> synthetic fallback cannot be reported as real Qwen inference.
 
 We benchmark Krisna against prevailing architectural baselines:
 - **Baseline A (End-to-End Diffusion)**: Direct text-to-image prompting using SDXL and FLUX.1.
 - **Baseline B (Discrete Token Transformer)**: Two-stage MaskGIT + VQGAN with external Gemma 31B Critic (the legacy Krisna prototype).
-- **Krisna (Ours)**: Frozen Planner + Layout IR (`krisna.layout.v1`) + Unified `Qwen-Image-2.1` with Resident Review.
+- **Krisna (Ours)**: Frozen Planner + Layout IR (`krisna.layout.v1`) + Unified `Qwen-Image-2.1` with explicit verifier evidence.
 
 | Method | $\text{IoU}_{\text{geom}} \uparrow$ | OCR CER $\downarrow$ | $\Delta_{\text{lock}}$ MSE $\downarrow$ | $S_{\text{CLIP}} \uparrow$ | Peak VRAM | Swap Latency |
 |---|---|---|---|---|---|---|
@@ -291,7 +426,7 @@ While Gemma 31B achieved marginally higher raw defect recall ($+1.6\%$), its sug
 
 ---
 
-### 6.4 Ablation 3: Bounded Turn Budget ($\tau \le 4$) Policy
+### 6.4 Ablation 3: Bounded Turn Budget ($\tau \le 4$) Policy (policy bound, not semantic proof)
 
 We analyze conversational stability over 10 consecutive turns with and without the turn budget constraint:
 
@@ -310,7 +445,7 @@ Without an explicit budget, autonomous agent loops hallucinate extraneous elemen
 
 Krisna is engineered to run on commodity consumer systems equipped with a single 12GB–16GB GPU and 16GB of system RAM.
 
-### 7.1 VRAM Ledger Audit
+### 7.1 VRAM Ledger Audit (design estimates until hardware receipts exist)
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -331,22 +466,60 @@ Krisna is engineered to run on commodity consumer systems equipped with a single
 ```
 
 - **Admission Determinism**: The system never sums the baseline and polish tiers simultaneously. The `SwapOrchestrator` unloads the baseline prior to admitting `Qwen-Image-2.1`, keeping peak memory at $10.2\text{GB}$, well under the $12.0\text{GB}$ ceiling.
-- **Host RAM Safety**: Total host RAM utilization peaks at $7.8\text{GB}$, guaranteeing safe execution on standard 16GB Windows and Linux machines without swap thrashing.
+- **Host RAM Safety (provisional estimate)**: The design target is $7.8\text{GB}$ peak host RAM, but this number is not a measured hardware receipt and must not be used to guarantee safe execution until a target-hardware run is recorded.
 
 ---
 
 ## 8. Discussion, Limitations & Future Work
 
-While Krisna establishes a new Pareto frontier for consumer-hardware agentic UI design, several limitations remain open for future investigation:
+The proposed Krisna decomposition is intended to make consumer-hardware agentic UI design measurable, but it has not established a Pareto frontier in the current checkout. Several limitations remain open for future investigation:
 1. **Component Interactivity**: Layout IR represents static 2D vector geometry and styling. Extending the IR to emit reactive React/Vue code with dynamic state bindings is an active engineering direction.
-2. **Multimodal Planner Projection**: Currently, the Planner consumes OCR transcripts and bounding box trees during review. Upgrading to a native vision-language model (`Qwen3-VL-7B`) will allow spatial reasoning directly over rendered pixel textures.
+2. **Multimodal Planner Projection**: The current audited Planner request is text-only. The primary experiment will first validate an image-grounded `Qwen2.5-VL-7B-Instruct` request; `Qwen3-VL-8B-Instruct` remains a gated comparison.
 3. **Continuous Flow-Matching Layout Training**: While the Layout IR schema is production-ready, training an end-to-end continuous flow-matching generator directly on the CLAY/RICO hierarchical tree distributions will replace template heuristics.
 
 ---
 
-## 9. Conclusion
+## 9. Final audit and approved architecture (2026-10-13)
 
-We have presented **Krisna**, an agentic multi-turn UI generation system operating within a strict 12GB consumer GPU envelope. By replacing brittle discrete token codebooks with structured Layout IR, retiring memory-prohibitive external critics in favor of resident planner review, and enforcing a bounded 4-turn refinement policy, Krisna resolves the trilemma of intent drift, typographic distortion, and memory exhaustion. Quantitative evaluations across standard UI benchmarks confirm significant gains in layout precision, OCR readability, and execution efficiency, validating single-model-per-responsibility architecture as a foundational blueprint for agentic visual design.
+The architecture is approved in a narrower, evidence-disciplined form:
+
+1. **Planner:** use frozen `Qwen/Qwen2.5-VL-7B-Instruct` as the primary
+   image-grounded Planner candidate. Keep `Qwen3-VL-8B-Instruct` as a gated
+   bake-off candidate; do not select it solely because it is newer. The
+   Planner-to-renderer interface is `krisna.delta.v1` plus Layout IR and
+   verifier receipts, not hidden-state sharing.
+2. **Structure:** use deterministic Layout IR and wireframe rendering as the
+   main geometry baseline. A learned LayoutFlow/HART route is a future
+   ablation, not an already-trained Sketch tier.
+3. **Polish:** use `Qwen/Qwen-Image-2.1` with a frozen base and a trainable
+   LoRA only after the native pipeline, external trainer revision, pair
+   manifest, trainability report, and one-batch save/load/inference test pass.
+   The official model card documents image editing and a Qwen Research License
+   Agreement; record the exact license before any release or product claim.
+4. **Quality reference:** run Qwen-Image-2.1 without an adapter as the frozen
+   reference. Keep Qwen-Image-Edit-2511 as a separately identified comparison;
+   it is a different 20B model and must not be conflated with Qwen-Image-2.1.
+5. **Preference alignment:** defer Diffusion-DPO/KTO until supervised LoRA is
+   reproducible and use only eligible human preference data. Do not use a
+   Critic's self-generated labels as a training target.
+6. **Locks and review:** implement exact protected-pixel copying and attach an
+   image to visual review. Until then, report feathered compositing and
+   text-grounded review honestly as ablations.
+
+The full training schedule is therefore gated rather than calendar-driven:
+freeze manifests → build source-disjoint pairs → validate native Qwen
+conditioning/trainer → supervised LoRA sweep → matched evaluation → optional
+preference alignment. The “125K pairs in week 1” and “five-week SOTA upgrade”
+claims are removed from the final plan because neither the pair count nor the
+trainer path is currently evidenced.
+
+See [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](research/FINAL_ARCHITECTURE_VERDICT.md)
+for the complete model matrix, negative-point audit, evaluation protocol,
+primary sources, and completion criteria.
+
+## 10. Conclusion
+
+We have specified **Krisna**, an agentic multi-turn UI generation system organized around a frozen vision-language Planner, deterministic Layout IR, and a gated Qwen-Image-2.1 Polish LoRA experiment. The current repository supports the structural decomposition and parts of the data/adapter plumbing, but it does not yet provide the paired-data, native trainer, multimodal-review, exact-lock, or result receipts needed for empirical superiority claims. The next research milestone is therefore reproducible validation—not another unmeasured model swap.
 
 ---
 
@@ -354,25 +527,51 @@ We have presented **Krisna**, an agentic multi-turn UI generation system operati
 
 1. Besnier, V., & Chen, M. (2023). *A PyTorch Reproduction of Masked Generative Image Transformer*. arXiv:2310.14400.
 2. Betker, J., et al. (2023). *Improving Image Generation with Better Captions*. OpenAI Technical Report.
-3. Brooks, T., Holynski, A., & Efros, A. A. (2023). *InstructPix2Pix: Learning to Follow Image Editing Instructions*. CVPR 2023.
-4. Chai, S., et al. (2023). *LayoutDM: Transformer-based Diffusion Model for Layout Generation*. CVPR 2023.
-5. Chang, H., et al. (2022). *MaskGIT: Masked Generative Image Transformer*. CVPR 2022.
-6. Chang, H., et al. (2023). *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023.
-7. Deka, B., et al. (2017). *Rico: A Mobile App Dataset for Integrated Design and Code Search*. ACM UIST 2017.
-8. Frantar, E., et al. (2022). *GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers*. arXiv:2210.17323.
-9. Geng, S., et al. (2023). *Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning*. EMNLP 2023.
-10. Geng, S., et al. (2025). *Generating Structured Outputs from Language Models: Benchmark and Studies*. arXiv:2501.10868.
-11. Guerreiro, J., et al. (2024). *LayoutFlow: Flow Matching for Layout Generation*. ECCV 2024.
-12. Ho, J., & Salimans, T. (2022). *Classifier-Free Diffusion Guidance*. NeurIPS Workshop 2022.
-13. Khattab, O., & Zaharia, M. (2020). *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT*. ACM SIGIR 2020.
-14. Koo, H. (2024). *Automata-based constraints for language model decoding*. arXiv:2407.08103.
-15. Leiva, L. A., et al. (2020). *Enrico: A Dataset for Topic Modeling of Mobile GUI Designs*. ACM MobileHCI 2020.
-16. Li, G., et al. (2022). *CLAY: A Controllable Large-scale UI Layout Dataset with Visual and Semantic Annotations*. ACM CHI 2022.
-17. Lin, J., et al. (2024). *AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration*. MLSys 2024.
-18. Liu, H., et al. (2026). *UniLayDiff: A Unified Diffusion Transformer for Content-Aware Layout Generation*. CVPR 2026.
-19. Qwen Team, Alibaba (2026). *Qwen3.5 Small Model Series Technical Report & Qwen-Image-2.1 Model Specifications*.
-20. Santhanam, K., et al. (2022). *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction*. NAACL 2022.
-21. Wallace, B., et al. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024.
-22. Wang, B., et al. (2021). *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. ACM UIST 2021.
-23. Willard, B. T., & Louf, R. (2023). *Efficient Guided Generation for Large Language Models*. arXiv:2307.09702.
-24. Zhang, J., et al. (2023). *LayoutDiffusion: Improving Graphic Layout Generation by Discrete Diffusion Probabilistic Models*. ICCV 2023.
+3. Bin, Y., et al. (2025). *MotionFlux: Aligning Rectified Flow Motion Generation via Direct Preference Optimization*. arXiv:2508.19527.
+   - *Role*: Velocity-prediction DPO substitution adapting DDPM epsilon formulation to rectified flow-matching models, and flow-matching anchor regularization term. Grounds `training/polish/dpo_loss.py`.
+4. Brooks, T., Holynski, A., & Efros, A. A. (2023). *InstructPix2Pix: Learning to Follow Image Editing Instructions*. CVPR 2023.
+5. Chai, S., et al. (2023). *LayoutDM: Transformer-based Diffusion Model for Layout Generation*. CVPR 2023.
+6. Chang, H., et al. (2022). *MaskGIT: Masked Generative Image Transformer*. CVPR 2022.
+7. Chang, H., et al. (2023). *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. arXiv:2301.00704.
+   - *Role*: Classifier-free guidance formula for masked generative models, 10% conditioning dropout, linear guidance schedule.
+8. Deka, B., et al. (2017). *Rico: A Mobile App Dataset for Integrated Design and Code Search*. ACM UIST 2017.
+9. Esser, P., et al. (2024). *Scaling Rectified Flow Transformers for High-Resolution Image Synthesis*. ICML 2024. arXiv:2403.03206.
+   - *Role*: Multimodal Diffusion Transformer (MMDiT) architecture specification. Primary architectural reference for `Qwen-Image-2.1`'s 32-block single-stream MMDiT backbone and logit-normal timestep sampling used in DPO training.
+10. Frantar, E., et al. (2022). *GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers*. arXiv:2210.17323.
+11. Geng, S., et al. (2023). *Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning*. EMNLP 2023. arXiv:2305.13971.
+12. Geng, S., et al. (2025). *Generating Structured Outputs from Language Models: Benchmark and Studies*. arXiv:2501.10868.
+13. Guerreiro, J., et al. (2024). *LayoutFlow: Flow Matching for Layout Generation*. ECCV 2024.
+14. Ho, J., & Salimans, T. (2022). *Classifier-Free Diffusion Guidance*. NeurIPS Workshop 2022.
+15. Khattab, O., & Zaharia, M. (2020). *ColBERT: Efficient and Effective Passage Search via Contextualized Late Interaction over BERT*. ACM SIGIR 2020.
+16. Koo, H. (2024). *Automata-based constraints for language model decoding*. arXiv:2407.08103.
+17. Leiva, L. A., et al. (2020). *Enrico: A Dataset for Topic Modeling of Mobile GUI Designs*. ACM MobileHCI 2020.
+18. Li, G., et al. (2022). *CLAY: A Controllable Large-scale UI Layout Dataset with Visual and Semantic Annotations*. ACM CHI 2022.
+19. Lin, J., et al. (2024). *AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration*. MLSys 2024.
+20. Lipman, Y., et al. (2023). *Flow Matching for Generative Modeling*. ICLR 2023. arXiv:2210.02747.
+    - *Role*: Foundational continuous normalizing flow (CNF) formulation establishing the probability path $p_t$ interpolating between noise $q$ and data $p_{\text{data}}$. Theoretical basis for the ODE integration in Tier 3 Polish rendering.
+21. Liu, X., et al. (2023). *Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow*. ICLR 2023. arXiv:2209.03003.
+    - *Role*: Rectified flow velocity field formulation $\mathbf{v}_\theta(x_t, t) = x_1 - x_0$ and the linear interpolation trajectory grounding `FlowODEIntegrator`'s Euler and Midpoint solvers.
+22. Liu, H., et al. (2026). *UniLayDiff: A Unified Diffusion Transformer for Content-Aware Layout Generation*. CVPR 2026.
+23. Qwen Team, Alibaba (2026). *Qwen3.5 Small Model Series Technical Report & Qwen-Image-2.1 Model Specifications*.
+24. Qwen2.5-VL Team, Alibaba (2025). *Qwen2.5-VL Technical Report*. arXiv:2502.13923.
+    - *Role*: Multimodal Rotary Position Embedding (M-RoPE) for 2D spatial coordinate grounding in GUI agent tasks. Grounds the Stage 2 Planner upgrade from text-only Qwen3.5-9B to vision-language Qwen2.5-VL-7B (discussed in §8 Future Work).
+25. Ruiz, N., et al. (2023). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. CVPR 2023. arXiv:2208.12242.
+    - *Role*: DreamBooth LoRA fine-tuning methodology. Grounds the Tier 3 Polish training pipeline's image-conditioned wireframe-to-UI synthesis (§3.3, `training/configs/polish_qwen_image21_lora.yaml`).
+26. Santhanam, K., et al. (2022). *ColBERTv2: Effective and Efficient Retrieval via Lightweight Late Interaction*. NAACL 2022.
+27. Tang, H., et al. (2025). *HART: Efficient Visual Generation with Hybrid Autoregressive Transformer*. ICLR 2025. [mit-han-lab/hart](https://github.com/mit-han-lab/hart).
+    - *Role*: Hybrid discrete AR + 37M-param residual diffusion head architecture. Cited as the current SOTA in the masked-generative model family (Baseline C in §6.1 ablations). FID 5.38 (MJHQ-30K), reconstruction FID 0.30, 4.5-7.7x throughput advantage. Demonstrates why Layout IR is preferred over any pixel-token approach for UI.
+28. Wallace, B., et al. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024. arXiv:2311.12908.
+    - *Role*: Foundational Diffusion-DPO formulation for aligning generative models without RLHF. Beta parameter range and implicit reward margin metric. Grounded by velocity-prediction adaptation in `dpo_loss.py` (MotionFlux, ref 3).
+29. Wang, B., et al. (2021). *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. ACM UIST 2021.
+30. Willard, B. T., & Louf, R. (2023). *Efficient Guided Generation for Large Language Models*. arXiv:2307.09702.
+31. Zhang, J., et al. (2023). *LayoutDiffusion: Improving Graphic Layout Generation by Discrete Diffusion Probabilistic Models*. ICCV 2023.
+32. Zhu, Y., et al. (2026). *TASTE: A Benchmark for Human Aesthetic Evaluation of Text-to-Image Generation*. arXiv:2605.20731.
+     - *Role*: Held-out evaluation benchmark (§5.1). 10 professional designers, 9 rating criteria, signal-validation via Kendall's tau. Used for end-to-end agentic pipeline evaluation.
+33. Zhang, L., Rao, A., & Agrawala, M. (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. arXiv:2302.05543. https://arxiv.org/abs/2302.05543
+     - *Role*: ControlNet's spatial-conditioning design motivates the explicit deterministic wireframe condition boundary. Krisna does not claim to implement a ControlNet branch; the citation supports the separation of structural control from pixel synthesis.
+34. Brooks, T., Holynski, A., & Efros, A. A. (2023). *InstructPix2Pix: Learning to Follow Image Editing Instructions*. arXiv:2211.09800. https://arxiv.org/abs/2211.09800
+     - *Source note*: Verified against the official arXiv record during the 2026-10-14 architecture review. It supports instruction-guided image editing as related work, not evidence that Krisna's current Qwen path is trained or benchmarked.
+35. Feng, Y., Wang, X., Wong, K. K., Wang, S., Lu, Y., Zhu, M., Wang, B., & Chen, W. (2023). *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*. IEEE Transactions on Visualization and Computer Graphics. https://doi.org/10.1109/TVCG.2023.3327168
+     - *Role*: Verified against the IEEE bibliographic record during the architecture review. Supports keeping prompt/state refinement interactive and inspectable; it does not justify replacing Krisna's hard Layout IR constraints with prompt search.
+36. Guerreiro, J. J. A., et al. (2024). *LayoutFlow: Flow Matching for Layout Generation*. ECCV 2024, Springer Lecture Notes in Computer Science. https://arxiv.org/abs/2403.18187
+     - *Role*: Springer-published learned-layout precedent. Supports a future learned ablation, not the current deterministic production baseline or any unmeasured SOTA claim.
