@@ -12,7 +12,7 @@ from krisna_inference.verifiers.layout_iou import LayoutIoUVerifier
 
 def test_locked_regions_bbox_handling_in_polish_backend():
     spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="test", vram_gb=12.0, quantization="bf16")
-    backend = QwenImage21Backend(spec)
+    backend = QwenImage21Backend(spec, strict=False)
 
     src = Image.new("RGB", (100, 100), color=(255, 0, 0))
     dst = Image.new("RGB", (100, 100), color=(0, 255, 0))
@@ -25,6 +25,9 @@ def test_locked_regions_bbox_handling_in_polish_backend():
     r, g, b = blended.getpixel((50, 50))
     assert r > 200
     assert g < 50
+    # The boundary pixel inside the protected rectangle is also exact; no
+    # Gaussian feathering may alter locked pixels.
+    assert blended.getpixel((20, 20)) == src.getpixel((20, 20))
 
     # Test with flat x, y, w, h format
     locked_flat = [{"x": 0.2, "y": 0.2, "w": 0.6, "h": 0.6}]
@@ -32,6 +35,7 @@ def test_locked_regions_bbox_handling_in_polish_backend():
     r2, g2, b2 = blended_flat.getpixel((50, 50))
     assert r2 > 200
     assert g2 < 50
+    assert blended_flat.getpixel((20, 20)) == src.getpixel((20, 20))
 
 
 def test_layout_iou_verifier_handles_both_bbox_and_flat_formats():

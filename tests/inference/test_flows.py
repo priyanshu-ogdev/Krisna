@@ -213,7 +213,7 @@ async def test_critique_flow_builds_preference_pair_when_given_comparison(
             compare_against={"image_ref": "blob://previous_candidate.png", "score": 0.2},
         )
         assert len(result.preference_pair_refs) == 1
-        pairs = pref_store.list(source="gemma_critique")
+        pairs = pref_store.list(source="planner_review")
         assert len(pairs) == 1
         assert pairs[0].session_id == finalized_state.session_id
     finally:
@@ -392,4 +392,3 @@ async def test_finalize_synthesizes_prompt_from_history_and_constraints(
     assert "style: minimalist dark" in prompt_used
     assert "palette: #000000, #00ffcc" in prompt_used
     assert "layout: vertical card stack" in prompt_used
-

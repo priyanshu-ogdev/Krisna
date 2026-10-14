@@ -116,6 +116,11 @@ class SwapOrchestrator:
     which would trade a real problem for a worse one. Operators running
     close to the edge on real hardware should raise this explicitly, not
     rely on it being safe by default."""
+    # Product preserves the historical quality -> default fallback. Set
+    # reproducible_experiment for experiments where a tier change would make
+    # results incomparable; allow_tier_fallback is an explicit direct override.
+    allow_tier_fallback: bool = True
+    reproducible_experiment: bool = False
 
     state: StateMachine = field(init=False)
     registry: dict[Tier, Any] = field(init=False)
@@ -142,6 +147,16 @@ class SwapOrchestrator:
             "loaded_tiers": [],
             "resident": [],
         }
+
+    @property
+    def _fallback_enabled(self) -> bool:
+        """Product keeps its historical fallback; experiments can opt out.
+
+        A reproducible experiment must not silently change the requested model
+        tier after an OOM.  The explicit flag leaves product behavior intact
+        while making the research policy selectable and testable.
+        """
+        return self.allow_tier_fallback and not self.reproducible_experiment
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -243,6 +258,11 @@ class SwapOrchestrator:
     def conversation_available(self) -> bool:
         return self.state.is_conversation_eligible() and not self._swap_lock.locked()
 
+    @property
+    def ready(self) -> bool:
+        """Whether the baseline models have completed startup successfully."""
+        return self._started and self.state.state == ResidencyState.IDLE_RESIDENT
+
     async def run_conversational_turn(self, **kwargs) -> Any:
         if self._warm_task and not self._warm_task.done():
             try:
@@ -321,7 +341,7 @@ class SwapOrchestrator:
                 output = await self.backends[active_tier].run(**run_kwargs)
             except Exception as e:
                 fallback = self.registry[active_tier].fallback_tier if active_tier else None
-                if _is_oom_error(e) and fallback is not None:
+                if _is_oom_error(e) and fallback is not None and self._fallback_enabled:
                     log.warning(
                         "tier_run_oom_fallback",
                         extra={
@@ -499,7 +519,7 @@ class SwapOrchestrator:
         """Implements the OOM policy documented in this module's docstring."""
         candidates = [requested_tier]
         fallback = self.registry[requested_tier].fallback_tier
-        if fallback is not None and fallback != requested_tier:
+        if self._fallback_enabled and fallback is not None and fallback != requested_tier:
             candidates.append(fallback)
 
         total_attempts = 0

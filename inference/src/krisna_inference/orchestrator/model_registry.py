@@ -4,7 +4,7 @@ This module defines *what* tiers exist and *how much VRAM they claim*, plus
 a pluggable `ModelBackend` protocol for actually loading/unloading weights.
 `MockBackend` lets the orchestrator and its state machine be fully tested
 without a GPU or any downloaded weights. Real backends (Qwen3.5-9B,
-Z-Image-Turbo, Qwen-Image-Edit-2511, Gemma 4) are implemented in
+the structured Layout IR renderer, and Qwen-Image-2.1) are implemented in
 `inference/` (`planner_backend_llama.py`, `polish_default_backend.py`,
 `polish_quality_backend.py`) and wired in via
 `inference/factory.py::real_backend_factory` — not stubs, real loading
@@ -35,8 +35,8 @@ from enum import Enum
 class Tier(str, Enum):
     PLANNER = "planner"                  # frozen Qwen3.5-9B GGUF via llama.cpp
     SKETCH = "sketch"                    # structured Layout IR + wireframe
-    POLISH_DEFAULT = "polish_default"     # Z-Image-Turbo
-    POLISH_QUALITY = "polish_quality"     # Qwen-Image-Edit-2511
+    POLISH_DEFAULT = "polish_default"     # Qwen-Image-2.1 + optional LoRA
+    POLISH_QUALITY = "polish_quality"     # Qwen-Image-2.1 frozen base
 
 
 @dataclass(frozen=True)

@@ -162,9 +162,13 @@ function scanCheckpoints() {
 
 app.get("/api/checkpoints/scan", (_req, res) => res.json(scanCheckpoints()));
 app.get("/api/system/info", (_req, res) => res.json({
-  targetGpu: "NVIDIA RTX A6000 (48GB VRAM)",
-  targetRam: "128GB System RAM",
-  lowVramTarget: "12-16GB Envelope",
+  targetGpu: process.env.KRISNA_TARGET_GPU || "NVIDIA RTX A6000 (48GB VRAM)",
+  targetRam: process.env.KRISNA_TARGET_RAM || "128GB System RAM",
+  lowVramTarget: process.env.KRISNA_VRAM_ENVELOPE_GB
+    ? `${process.env.KRISNA_VRAM_ENVELOPE_GB}GB envelope`
+    : "12-16GB envelope",
+  backendUrl: BACKEND_URL,
+  backendMode: process.env.KRISNA_USE_REAL_BACKENDS === "1" ? "real" : "mock",
   os: process.platform,
   arch: process.arch,
 }));
@@ -636,4 +640,3 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
     process.exit(0);
   });
 }
-

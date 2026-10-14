@@ -94,7 +94,7 @@ function renderCheckpoints(data) {
             </div>
             <span class="ckpt-path">${escapeHtml(s.path)}</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-xs" onclick="useSketchPath('${escapeHtml(s.path)}')" title="Auto-populate Sketch path in form">
+          <button type="button" class="btn btn-ghost btn-xs" onclick='useSketchPath(${escapeHtml(JSON.stringify(s.path))})' title="Auto-populate Sketch path in form">
             <svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 14 14" fill="none" stroke="currentColor">
               <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -129,7 +129,7 @@ function renderCheckpoints(data) {
             </div>
             <span class="ckpt-path">${escapeHtml(p.path)}</span>
           </div>
-          <button type="button" class="btn btn-ghost btn-xs" onclick="usePolishPath('${escapeHtml(p.path)}')" title="Auto-populate Polish LoRA path in form">
+          <button type="button" class="btn btn-ghost btn-xs" onclick='usePolishPath(${escapeHtml(JSON.stringify(p.path))})' title="Auto-populate Polish LoRA path in form">
             <svg class="ui-icon ui-icon-xs ui-icon-amber" viewBox="0 0 14 14" fill="none" stroke="currentColor">
               <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -742,8 +742,8 @@ const STAGES = ["conversing", "sketching", "finalizing", "finalized", "critiquin
 let sessionState = null;
 
 // ==================================================================== //
-// Generation pipeline — phase nodes (Planner -> Sketch -> Polish ->
-// Critic), mirroring DesignState.stage transitions in
+// Generation pipeline — phase nodes (Planner -> Layout IR -> Polish ->
+// Verification), mirroring DesignState.stage transitions in
 // orchestrator/flows.py, not an invented decoration. "finalizing" maps
 // to Polish being active; "finalized" means Polish has already produced
 // a result (shown as its done state, ready for Critique next).
@@ -751,9 +751,9 @@ let sessionState = null;
 
 const PHASE_NODES = [
   { key: "planner", label: "PLANNER", sub: "Qwen3.5-9B", x: 10 },
-  { key: "sketch", label: "SKETCH", sub: "VQ tokens", x: 145 },
-  { key: "polish", label: "POLISH", sub: "Z-Image-Turbo", x: 280 },
-  { key: "critic", label: "CRITIC", sub: "Gemma 4", x: 415 },
+  { key: "sketch", label: "LAYOUT IR", sub: "deterministic", x: 145 },
+  { key: "polish", label: "POLISH", sub: "Qwen-Image-2.1", x: 280 },
+  { key: "critic", label: "VERIFY", sub: "safety + evidence", x: 415 },
 ];
 const NODE_W = 110, NODE_H = 40;
 
@@ -2205,5 +2205,3 @@ function exportDesignStateJson() {
 $("#btn-download-render")?.addEventListener("click", downloadRenderPng);
 $("#lightbox-download")?.addEventListener("click", downloadRenderPng);
 $("#btn-export-json")?.addEventListener("click", exportDesignStateJson);
-
-

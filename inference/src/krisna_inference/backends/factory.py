@@ -46,11 +46,11 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
 
         model_id = os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
         lora_path = os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH") if spec.tier == Tier.POLISH_DEFAULT else None
-        strength = float(
-            os.environ.get("KRISNA_POLISH_QUALITY_EDIT_STRENGTH", "0.65")
-            if spec.tier == Tier.POLISH_QUALITY
-            else os.environ.get("KRISNA_POLISH_DEFAULT_STRENGTH", "0.6")
-        )
+        # Qwen-Image-2.1's native pipeline is not SDEdit: do not configure
+        # legacy strength/guidance or custom Euler/RK2 controls on a real
+        # backend.  Synthetic compatibility callers may still pass those
+        # controls directly to QwenImage21Backend with strict=False.
+        strength = 1.0
         steps = 40 if spec.tier == Tier.POLISH_QUALITY else 28
 
         return QwenImage21Backend(
@@ -59,7 +59,13 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
             lora_adapter_path=lora_path,
             edit_strength=strength,
             num_inference_steps=steps,
+            guidance_scale=1.0,
+            image_guidance_scale=1.0,
+            guidance_schedule="constant",
+            solver_type="native",
             enable_cpu_offload=_LOW_VRAM,
+            device="cuda",
+            strict=True,
         )
 
     raise ValueError(f"No real backend wired for tier: {spec.tier}")

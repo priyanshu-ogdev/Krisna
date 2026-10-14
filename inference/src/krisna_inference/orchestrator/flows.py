@@ -9,6 +9,8 @@ nothing about DesignState — it only knows about ModelBackend/Tier/VRAM).
 from __future__ import annotations
 
 import logging
+import json
+from pathlib import Path
 from typing import Any
 
 from krisna_inference.orchestrator.design_state import (
@@ -149,6 +151,8 @@ async def planner_self_review(
         constraints=state.constraints.model_dump(),
         conversation_history=history,
         prior_critique=prior_critique,
+        review=True,
+        wireframe_ref=state.layout.wireframe_ref,
     )
 
     planner_out = result.get("planner", {})
@@ -288,6 +292,7 @@ async def finalize(
     state.finalize_output.prompt_used = effective_prompt
     verifier_scores = dict(output.get("verifier_scores", {}))
 
+    safety_score: float | None = None
     if verifier_stack is not None and state.finalize_output.image_ref.startswith("blob://"):
         passed, safety_score = _check_safety_gate(
             verifier_stack, image_ref=state.finalize_output.image_ref, min_safety_score=min_safety_score
@@ -314,15 +319,17 @@ async def finalize(
                 f"(score={safety_score:.3f} < {min_safety_score})"
             )
 
-        verifier_scores.update(
-            _run_verifier_stack(
+        verifier_result = _run_verifier_stack(
                 verifier_stack,
                 state=state,
                 image_ref=state.finalize_output.image_ref,
                 sketch_pixel_ref=pixel_ref if isinstance(pixel_ref, str) else None,
                 prompt=effective_prompt,
+                safety_score=safety_score,
             )
-        )
+        if "evaluation_receipt" in verifier_result:
+            state.finalize_output.evaluation_receipt = verifier_result.pop("evaluation_receipt")
+        verifier_scores.update(verifier_result)
 
     for k, v in verifier_scores.items():
         if v is not None and hasattr(state.finalize_output.verifier_scores, k):
@@ -341,8 +348,10 @@ async def enhance_photo(
     prompt: str,
     quality: bool = True,
 ) -> DesignState:
-    """Bypass Planner & Sketch to directly enhance a general-purpose image using the Polish Tier.
-    Unlocks Z-Image-Turbo and Qwen-Image-Edit's foundational img2img capabilities for non-UI tasks.
+    """Bypass Planner and Sketch to enhance an image with Qwen-Image-2.1.
+
+    This route is intentionally separate from the UI wireframe path, but still
+    uses the same fail-closed real backend and verifier contracts.
     """
     state = store.get(session_id)
     expected_rev = state.revision
@@ -390,7 +399,12 @@ def _check_safety_gate(
 
 
 def _run_verifier_stack(
-    verifier_stack: Any, state: DesignState, image_ref: str, sketch_pixel_ref: str | None, prompt: str | None
+    verifier_stack: Any,
+    state: DesignState,
+    image_ref: str,
+    sketch_pixel_ref: str | None,
+    prompt: str | None,
+    safety_score: float | None = None,
 ) -> dict:
     from krisna_inference.backends.blob_store_singleton import get_blob_store
 
@@ -420,9 +434,38 @@ def _run_verifier_stack(
             sketch_image = None
 
     effective_prompt = prompt or state.constraints.style or "UI design"
-    expected_regions = [r.model_dump() for r in state.constraints.locked_regions]
+    locked_regions = [r.model_dump() for r in state.constraints.locked_regions]
+    expected_regions = list(locked_regions)
+    expected_texts: list[str] = []
+    if state.layout.layout_ref:
+        try:
+            layout_payload = json.loads(Path(state.layout.layout_ref).read_text(encoding="utf-8"))
+            for node in layout_payload.get("nodes", []):
+                bbox = node.get("bbox", {})
+                if {"x1", "y1", "x2", "y2"}.issubset(bbox):
+                    expected_regions.append({
+                        "bbox": [bbox["x1"], bbox["y1"], bbox["x2"] - bbox["x1"], bbox["y2"] - bbox["y1"]]
+                    })
+                if node.get("text"):
+                    expected_texts.append(str(node["text"]))
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+            log.warning("layout_evaluation_reference_unavailable", extra={"error": str(error)})
+    if hasattr(verifier_stack, "evaluate_finalize_output"):
+        receipt = verifier_stack.evaluate_finalize_output(
+            polished_image,
+            prompt=effective_prompt,
+            sketch_image=sketch_image,
+            expected_regions=expected_regions,
+            expected_texts=expected_texts,
+            locked_regions=locked_regions,
+            safety_score=safety_score,
+        )
+        return {**receipt.get("metrics", {}), "evaluation_receipt": receipt}
     return verifier_stack.score_finalize_output(
-        polished_image, prompt=effective_prompt, sketch_image=sketch_image, expected_regions=expected_regions
+        polished_image,
+        prompt=effective_prompt,
+        sketch_image=sketch_image,
+        expected_regions=expected_regions,
     )
 
 
@@ -563,7 +606,10 @@ async def critique_pass(
                 },
                 compare_against,
             ],
-            source="gemma_critique",
+            # The active critique path is Planner/verifier-backed; the frozen
+            # Critic is not a training-label authority. Keep this source in
+            # the explicit PreferenceStore allowlist.
+            source="planner_review",
             session_id=session_id,
         )
         if pair is not None:
@@ -602,7 +648,8 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
     # Sketch). Bound is DELIBERATELY much more generous than Sketch's
     # 160-character cap, not copy-pasted from it — researched this
     # tier's actual text encoder rather than assuming the same CLIP-
-    # driven caution applies: Z-Image-Turbo's text encoder is Qwen3-4B
+    # The Qwen-Image-2.1 path keeps the generation-time prompt as the single
+    # source of truth for any later evidence or preference record.
     # (confirmed via its own text_encoder/config.json on HuggingFace),
     # with diffusers/DiffSynth enforcing max_sequence_length=512 tokens
     # — roughly 6-7x CLIP's ~77-token practical limit, not the ~50-60

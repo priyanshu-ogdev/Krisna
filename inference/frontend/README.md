@@ -7,7 +7,7 @@ ever drives the real inference stack:
 
 1. **Setup & Install tab** — drives `scripts/inference/download_weights.py`
    (spawned as a child process, streamed to the browser over Server-Sent
-   Events) to download the four frozen HF-hosted models and locate this
+   Events) to download the configured model artifacts and locate this
    repo's own trained artifacts, then writes `.env.inference` at the repo
    root with `KRISNA_USE_REAL_BACKENDS=1`.
 2. **Backend management** — starts/stops the real FastAPI/uvicorn service
@@ -60,14 +60,13 @@ and go.
 
 ## Studio Features
 
-- **Canvas2D Multi-Pass Generalization Visualizer**: High-performance HTML5 Canvas rendering
-  that visualizes generation dynamics — simulating progressive MaskGIT token unmasking
-  during Sketch passes, dynamic flow-matching velocity particle trajectories during Polish,
-  and rendering final high-fidelity pixels.
+- **Canvas2D Pipeline Visualizer**: Lightweight HTML5 Canvas rendering that shows
+  deterministic Layout IR construction, flow-matching telemetry, and the final
+  verified pixel artifact without claiming that the visualizer is a model trace.
 - **Active Constraints Bar**: Interactive chips dynamically displaying conversational intent,
   target device (`mobile_ios`, `desktop_web`), theme (`dark`, `light`), color palettes,
   and locked bounding box regions ($[x, y, w, h]$).
-- **Closed Critic Iteration Loop**: Formatted critique display with severity badges and
+- **Bounded review loop**: Formatted verifier/Planner-review display with severity badges and
   bounding box tags, equipped with a 1-click **"✨ Iterate with Critic Edits"** button
   that automatically feeds structured critique recommendations back into the Planner's
   conversational history for seamless multi-turn refinement (PRD §5.1–§5.3).
@@ -94,13 +93,13 @@ citation trail:
 
 | Artifact | Real on-disk location | Produced by |
 |---|---|---|
-| Sketch checkpoint | `checkpoints/sketch_stage2_512/checkpoint_final.pt` (or `sketch_stage1_256`) | `sketch/checkpoint_io.py`'s `save_checkpoint()`, called from `sketch/train.py` via `scripts/training/train_sketch_stage{1,2}.sh` |
-| Polish LoRA (DPO-refined) | `models/dpo_checkpoints/<run>/final/` | `polish/train_dpo.py` via `scripts/training/train_polish_dpo.sh` |
-| Polish LoRA (base fine-tune only) | `checkpoints/polish_default_lora/` | diffusers' `train_dreambooth_lora_z_image.py` via `scripts/training/train_polish_default_lora.sh` |
+| Sketch checkpoint | research-only path under `checkpoints/` | learned Sketch training is not currently present; Layout IR is the active deterministic baseline |
+| Polish LoRA | `checkpoints/polish_default_lora/` when realized | Qwen-Image-2.1 paired LoRA path, gated on the native trainer and pair manifest |
 
-The installer auto-discovers both Polish LoRA shapes and prefers whichever
-was modified most recently — normally the DPO-refined one, since DPO runs
-on top of the base fine-tune.
+The installer may discover historical adapter directories for operator
+visibility, but the active contract is Qwen-Image-2.1 supervised LoRA.
+Preference alignment is deferred and must not be inferred from a directory
+name alone.
 
 ## Why Node, and why this shape
 

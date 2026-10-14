@@ -17,6 +17,20 @@ import re
 _ALPHANUMERIC_RE = re.compile(r"[A-Za-z0-9]")
 
 
+def _edit_distance(left: str, right: str) -> int:
+    previous = list(range(len(right) + 1))
+    for i, left_char in enumerate(left, 1):
+        current = [i]
+        for j, right_char in enumerate(right, 1):
+            current.append(min(
+                current[-1] + 1,
+                previous[j] + 1,
+                previous[j - 1] + (left_char != right_char),
+            ))
+        previous = current
+    return previous[-1]
+
+
 class OCRReadabilityVerifier:
     def __init__(self, min_confidence: float = 0.3) -> None:
         self.min_confidence = min_confidence
@@ -29,7 +43,7 @@ class OCRReadabilityVerifier:
 
         self._reader = easyocr.Reader(["en"], gpu=_cuda_available())
 
-    def score(self, image) -> dict:
+    def score(self, image, expected_texts: list[str] | None = None) -> dict:
         """Returns {"score": float, "text_regions": [...]} — the
         text_regions list is what gets stored back into
         DesignState.finalize_output / a future OCR-derived structure field,
@@ -41,6 +55,8 @@ class OCRReadabilityVerifier:
         results = self._reader.readtext(arr)  # [(bbox, text, confidence), ...]
 
         if not results:
+            if expected_texts:
+                return {"score": 0.0, "text_regions": [], "cer": 1.0, "wer": 1.0}
             return {"score": 1.0, "text_regions": []}
 
         legible_scores = []
@@ -56,7 +72,19 @@ class OCRReadabilityVerifier:
             )
 
         score = sum(legible_scores) / len(legible_scores)
-        return {"score": score, "text_regions": text_regions}
+        receipt = {"score": score, "text_regions": text_regions}
+        if expected_texts:
+            expected = [str(text).strip() for text in expected_texts if str(text).strip()]
+            recognized = [str(region["text"]).strip() for region in text_regions if str(region["text"]).strip()]
+            expected_text = " ".join(expected).lower()
+            recognized_text = " ".join(recognized).lower()
+            cer = _edit_distance(expected_text, recognized_text) / max(1, len(expected_text))
+            expected_words = expected_text.split()
+            recognized_words = recognized_text.split()
+            wer = _edit_distance(" ".join(expected_words), " ".join(recognized_words)) / max(1, len(expected_words))
+            receipt.update({"cer": min(1.0, cer), "wer": min(1.0, wer)})
+            receipt["score"] = max(0.0, min(1.0, 1.0 - cer)) * score
+        return receipt
 
 
 def _cuda_available() -> bool:

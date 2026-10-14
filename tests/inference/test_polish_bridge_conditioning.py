@@ -14,7 +14,7 @@ async def test_qwen_image_21_backend_conditioning_synthetic(tmp_path):
         vram_gb=12.0,
         quantization="bf16",
     )
-    backend = QwenImage21Backend(spec, edit_strength=0.65)
+    backend = QwenImage21Backend(spec, edit_strength=0.65, strict=False)
     await backend.load()
 
     store = get_blob_store()

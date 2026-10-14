@@ -23,6 +23,10 @@ def test_factory_returns_correct_class_per_tier():
         backend = real_backend_factory(REGISTRY[tier])
         assert isinstance(backend, cls)
         assert backend.spec.tier == tier
+        if tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY):
+            assert backend.strict is True
+            assert backend.device == "cuda"
+            assert backend.revision == "d26bb61231c349cf6b7896fa83353113880e1ba3"
 
 
 class TestFrozenModelsHaveNoLoraWiring:
@@ -36,6 +40,11 @@ class TestFrozenModelsHaveNoLoraWiring:
         assert not hasattr(backend, "lora_adapter_path")
 
     def test_polish_quality_backend_has_no_lora_param(self):
+        backend = real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
+        assert backend.lora_adapter_path is None
+
+    def test_polish_quality_does_not_inherit_default_lora_env(self, monkeypatch):
+        monkeypatch.setenv("KRISNA_POLISH_LORA_PATH", "should-not-load")
         backend = real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
         assert backend.lora_adapter_path is None
 
