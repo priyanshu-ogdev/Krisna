@@ -13,13 +13,17 @@ primary-source evidence, and pending validation.
 data-forge/       governed data ingestion and export package
 training/         training contracts, adapters, and receipts
 inference/        Python model plane and API
-inference-runtime CLI smoke/session harness
-inference-frontend Node/Tauri product surface
+inference/runtime CLI smoke/session harness
+inference/frontend Node/Tauri product surface
 scripts/          thin operational wrappers
 tests/            subsystem and integration tests
 docs/             canonical product, research, architecture, and runbooks
 .github/          CI/repository automation
 ```
+
+The runtime and frontend are intentionally nested under `inference/`; the
+older `inference-runtime/` and `inference-frontend/` names are historical and
+must not be used in new documentation or scripts.
 
 ## Artifact policy
 

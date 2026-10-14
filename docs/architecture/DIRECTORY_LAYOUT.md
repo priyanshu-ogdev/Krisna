@@ -20,9 +20,10 @@ krisna/
 ├── data-forge/              # data pipeline package (data_forge/)
 ├── training/                # training package (krisna_training/)
 ├── inference/                # serving package (krisna_inference/)
-├── inference-runtime/        # CLI harness: run a real agentic session
-│                              # against models/ for manual testing
-├── src/                      # frontend — scaffolded, design deferred
+├── inference/
+│   ├── runtime/               # CLI harness: run a real agentic session
+│   │                           # against models/ for manual testing
+│   └── frontend/              # Node/Tauri control plane
 └── pytest.ini                # root-level: asyncio_mode + testpaths, so
                                # `pytest tests/` works from repo root
                                # regardless of which package a test covers

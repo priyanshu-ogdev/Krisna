@@ -9,7 +9,7 @@ Krisna is a monorepo with explicit subsystem ownership:
 | `data-forge/` | Source governance, preprocessing, receipts, and model-data export |
 | `training/` | Dataset bridges, native trainer contracts, adapter manifests |
 | `inference/` | Model plane, orchestrator, native backends, verifiers, API |
-| `inference-frontend/` | Node/Tauri control panel and local IPC client |
+| `inference/frontend/` | Node/Tauri control panel and local IPC client |
 | `scripts/` | Operational entry points; scripts must call package APIs rather than duplicate logic |
 | `tests/` | Contract and behavior tests grouped by subsystem |
 | `docs/` | Binding product, architecture, research, and runbook documentation |
