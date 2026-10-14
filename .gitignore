@@ -1,72 +1,131 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+# -----------------------------------------------------------------------------
+# Krisna repository ignore policy
+# Generated state, secrets, downloaded dependencies, model artifacts, datasets,
+# local databases, and build products must never enter a commit.
+# -----------------------------------------------------------------------------
 
-# Environments
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+.secrets/
+
+# Python environments, caches, coverage, and packaging
 .venv/
 venv/
 env/
 venv-*/
-.env
-.env.*
-!.env.example
-
-# Node
-node_modules/
-npm-debug.log*
-
-# Testing & Cache
-.pytest_cache/
-.coverage
-htmlcov/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
 .eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 dist/
 build/
+site/
 
-# Databases & local state
+# JavaScript / frontend dependencies and outputs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.parcel-cache/
+.next/
+.nuxt/
+out/
+
+# Rust / Tauri build products
+target/
+
+# Model weights, checkpoints, adapters, and downloaded third-party code
+third_party/
+models/*
+!models/README.md
+checkpoints/
+weights/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
+*.ggml
+*.sft
+
+# Dataset roots, generated model data, and preprocessing outputs
+/data/
+data-forge/raw/
+data-forge/scrubbed/
+data-forge/processed/
+data-forge/training_pool/
+data-forge/heldout/
+data-forge/manifests/
+data-forge/.checkpoints/
+data-forge/logs/
+data-forge/registry_reports/
+data-forge/audit_reports/
+data_krisna/
+custom_data_root/
+data_*/
+datasets/
+dataset_cache/
+scratch/
+
+# Local runtime state
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
+krisna_blobs/
+logs/
+run_logs/
+tmp/
+temp/
+.cache/
+.huggingface/
+vllm_outputs/
 
-# Large model artifacts & weights
-*.safetensors
-*.ckpt
-*.pt
-*.bin
-weights/*
-!weights/.gitkeep
+# Generated reports and receipts (source-controlled fixtures remain safe)
+data-forge/audit_reports/
+data-forge/registry_reports/
+data-forge/**/*.jsonl
+data-forge/**/*.parquet
+data-forge/**/*.arrow
+data-forge/**/*.tfrecord
+data-forge/**/*.npz
+reports/generated/
+*.safetensors.index.json
 
-# Data-Forge DATA_ROOT default output directory (and defensive guard
-# against a platform-mismatched literal "D:\data_krisna" folder name
-# ever getting created/committed — see docs/review/26_data_root_path_consistency.md)
-data_krisna/
-D:*data_krisna*
-
-# OS generated files & IDE configs
+# OS, IDE, and local runner files
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
+.fleet/
 .chatledger/
-
-# Archives
-*.zip
-*.tar.gz
-
-# Local runner harness
 powershell.cmd
 
-# Local runtime data & caches
-checkpoints/
-/data/
-logs/
-krisna_blobs/
-scratch/
-third_party/
-models/*
-!models/README.md
-*.egg-info/
+# Archives and patch exports
+*.zip
+*.tar
+*.tar.gz
+*.7z
