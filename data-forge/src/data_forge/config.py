@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar
 
 import yaml
+
+_IMMUTABLE_REVISION_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 
 
 def _default_data_root() -> Path:
@@ -74,6 +77,18 @@ class VLLMServerConfig:
 
 
 @dataclass
+class LocalVLMConfig:
+    """Resource contract for the strict single-GPU preprocessing profile."""
+
+    model_key: str = "tier1"
+    concurrency: int = 48
+    max_image_dimension: int = 2048
+    host_ram_budget_gb: int = 96
+    gpu_memory_budget_gb: int = 44
+    require_cuda: bool = True
+
+
+@dataclass
 class ModelSpec:
     model_id: str
     revision: str = "main"
@@ -87,6 +102,8 @@ class ModelSpec:
     capabilities: list[str] = field(default_factory=list)
     vram_estimate_gb: float = 0.0
     device: str = "cuda"
+    reasoning_parser: str | None = None
+    chat_template_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -110,6 +127,19 @@ class DatasetSpec:
     license_url: str | None = None
     license_notes: str | None = None
     expected_record_count: int = 0
+    # A disabled entry remains in the audit catalog but is never fetched or
+    # counted toward storage. This makes negative source decisions explicit.
+    enabled: bool = True
+    # Explicit source-governance metadata.  The defaults are deliberately
+    # conservative: a source must opt in to training eligibility, while a
+    # missing provenance URL, quality tier, or target list remains visible to
+    # callers instead of being inferred from fetch settings.
+    training_eligible: bool = False
+    synthetic: bool = False
+    synthetic_status: str = "unknown"
+    provenance_url: str | None = None
+    quality_tier: str = "unrated"
+    training_targets: list[str] = field(default_factory=list)
     # HuggingFace-specific
     repo_id: str | None = None
     revision: str | None = "main"
@@ -192,7 +222,7 @@ class DatasetSpec:
         path doesn't produce a standalone image record at all (see
         `_ZERO_IMAGE_STORAGE_MODES` and `annotation_only` above).
         """
-        if self.annotation_only:
+        if not self.enabled or self.annotation_only:
             return 0
         download_mode = self.fetch_config.get("download_mode")
         if download_mode in self._ZERO_IMAGE_STORAGE_MODES:
@@ -214,12 +244,95 @@ class DatasetSpec:
         into one count would either under- or over-project depending on
         which per-record constant got applied to it.
         """
-        if self.fetch_config.get("download_mode") not in self.PREFERENCE_PAIR_DOWNLOAD_MODES:
+        if not self.enabled or self.fetch_config.get("download_mode") not in self.PREFERENCE_PAIR_DOWNLOAD_MODES:
             return 0
         sample_size = self.fetch_config.get("sample_size")
         if sample_size is not None:
             return min(self.expected_record_count, int(sample_size))
         return self.expected_record_count
+
+    @property
+    def is_synthetic(self) -> bool:
+        """Whether this source is synthetic according to its explicit metadata."""
+        return self.synthetic or self.synthetic_status.lower() in {
+            "synthetic",
+            "generated",
+            "model_generated",
+        }
+
+    def immutable_revision(self) -> str | None:
+        """Return the pinned source revision, when it is an immutable SHA.
+
+        GitHub adapters keep their commit pin in ``fetch_config.commit_sha``;
+        Hugging Face sources use the normal ``revision`` field.  Branch names,
+        tags, and missing revisions intentionally return ``None``.
+        """
+        candidate = self.fetch_config.get("commit_sha") if self.source_type == "github" else self.revision
+        if isinstance(candidate, str) and _IMMUTABLE_REVISION_RE.fullmatch(candidate):
+            return candidate
+        return None
+
+    def policy_violations(self, policy: SourceEligibilityPolicy) -> list[str]:
+        """Return source-policy violations for a training-approved dataset.
+
+        Non-eligible, evaluation-only, and annotation-only datasets are
+        intentionally ignored.  Evaluation references and annotation joins
+        have isolated fetch/consumer paths and must not be mistaken for
+        standalone model-training sources merely because they have a source
+        revision or a license field in the registry.
+        """
+        if not self.enabled or not self.training_eligible or self.eval_only or self.annotation_only:
+            return []
+
+        violations: list[str] = []
+        if not isinstance(self.provenance_url, str) or not self.provenance_url.strip():
+            violations.append("provenance_url must be configured")
+        if self.synthetic_status.lower() in {"", "unknown", "unverified"}:
+            violations.append("synthetic_status must be explicit")
+        if not policy.allow_synthetic and self.is_synthetic:
+            violations.append("synthetic source is not allowed")
+        if policy.require_verified_license and self.license_status.lower() != "verified":
+            violations.append("license_status must be 'verified'")
+        if policy.require_immutable_revisions and self.immutable_revision() is None:
+            violations.append("source revision must be a full immutable commit SHA")
+        if not self.training_targets:
+            violations.append("training_targets must assign the source to an export")
+        return violations
+
+
+@dataclass(frozen=True)
+class SourceEligibilityPolicy:
+    """Policy applied to datasets approved for model-training exports."""
+
+    approved_model_training_exports: bool = True
+    allow_synthetic: bool = False
+    require_verified_license: bool = True
+    require_immutable_revisions: bool = True
+
+    @property
+    def disallow_synthetic(self) -> bool:
+        """Compatibility/readability alias for the deny-by-default setting."""
+        return not self.allow_synthetic
+
+    @property
+    def allow_synthetic_records(self) -> bool:
+        """Alias matching the record-oriented wording used by callers."""
+        return self.allow_synthetic
+
+    @property
+    def approved_training_exports(self) -> bool:
+        """Alias for the policy's approved model-training export switch."""
+        return self.approved_model_training_exports
+
+    @property
+    def require_immutable_revision(self) -> bool:
+        """Singular alias useful to callers validating one source."""
+        return self.require_immutable_revisions
+
+
+# A short name keeps call sites readable while retaining the descriptive
+# public class name for configuration and documentation consumers.
+SourcePolicy = SourceEligibilityPolicy
 
 
 @dataclass
@@ -297,14 +410,19 @@ class PipelineConfig:
     fail_fast: bool = False
     checkpoint_enabled: bool = True
     dry_run: bool = False
+    # Opt-in for local VLM profiles: inference stages must have an engine and
+    # may not replace VLM results with source annotations or synthetic output.
+    strict_vlm_no_fallback: bool = False
 
     # Models
     models: dict[str, ModelSpec] = field(default_factory=dict)
     encoders: dict[str, EncoderSpec] = field(default_factory=dict)
     vllm_server: VLLMServerConfig = field(default_factory=VLLMServerConfig)
+    local_vlm: LocalVLMConfig = field(default_factory=LocalVLMConfig)
 
     # Datasets
     datasets: dict[str, DatasetSpec] = field(default_factory=dict)
+    source_policy: SourceEligibilityPolicy = field(default_factory=SourceEligibilityPolicy)
 
     # Stages
     stages: dict[str, StageConfig] = field(default_factory=dict)
@@ -318,6 +436,20 @@ class PipelineConfig:
 
     _prompt_cache: dict[str, str] = field(default_factory=dict, init=False)
 
+    def __post_init__(self) -> None:
+        self.validate_vlm_policy()
+
+    def validate_vlm_policy(self) -> None:
+        """Reject ambiguous strict-policy values (e.g. the string 'false')."""
+        if type(self.strict_vlm_no_fallback) is not bool:
+            raise ValueError("pipeline.strict_vlm_no_fallback must be a boolean")
+        if self.local_vlm.concurrency < 1:
+            raise ValueError("pipeline.local_vlm.concurrency must be positive")
+        if self.local_vlm.gpu_memory_budget_gb <= 0 or self.local_vlm.host_ram_budget_gb <= 0:
+            raise ValueError("pipeline.local_vlm memory budgets must be positive")
+        if self.local_vlm.max_image_dimension < 256:
+            raise ValueError("pipeline.local_vlm.max_image_dimension must be at least 256")
+
     def get_prompt(self, name: str) -> str:
         """Load a prompt template by name (without extension)."""
         if name not in self._prompt_cache:
@@ -330,6 +462,40 @@ class PipelineConfig:
     def get_stage(self, stage_name: str) -> StageConfig:
         """Get stage config, returning a disabled default if not configured."""
         return self.stages.get(stage_name, StageConfig(enabled=False))
+
+    @property
+    def training_export_policy(self) -> SourceEligibilityPolicy:
+        """Alias for integrations that call the source policy an export policy."""
+        return self.source_policy
+
+    @property
+    def dataset_policy(self) -> SourceEligibilityPolicy:
+        """Alias for integrations that call source governance a dataset policy."""
+        return self.source_policy
+
+    def training_policy_violations(self) -> dict[str, list[str]]:
+        """Return policy violations keyed by approved dataset name.
+
+        Policy checks are exposed on configuration rather than embedded in the
+        exporter, so preflight and other consumers can make the same decision
+        without duplicating source-governance rules.
+        """
+        if not self.source_policy.approved_model_training_exports:
+            return {}
+        return {
+            key: violations
+            for key, spec in self.datasets.items()
+            if (violations := spec.policy_violations(self.source_policy))
+        }
+
+    def validate_training_policy(self) -> None:
+        """Raise a clear error when an approved source cannot be exported."""
+        violations = self.training_policy_violations()
+        if violations:
+            details = "; ".join(
+                f"{key}: {', '.join(reasons)}" for key, reasons in violations.items()
+            )
+            raise ValueError(f"Training source policy failed: {details}")
 
 
 def _parse_model_spec(data: dict[str, Any]) -> ModelSpec:
@@ -346,6 +512,8 @@ def _parse_model_spec(data: dict[str, Any]) -> ModelSpec:
         capabilities=data.get("capabilities", []),
         vram_estimate_gb=data.get("vram_estimate_gb", 0.0),
         device=data.get("device", "cuda"),
+        reasoning_parser=data.get("reasoning_parser"),
+        chat_template_kwargs=dict(data.get("chat_template_kwargs") or {}),
     )
 
 
@@ -363,6 +531,17 @@ def _parse_encoder_spec(data: dict[str, Any]) -> EncoderSpec:
 
 
 def _parse_dataset_spec(key: str, data: dict[str, Any]) -> DatasetSpec:
+    synthetic = data.get("synthetic", False)
+    synthetic_status = data.get("synthetic_status")
+    if synthetic_status is None:
+        synthetic_status = "synthetic" if synthetic else "unknown"
+    raw_targets = data.get("training_targets", [])
+    if raw_targets is None:
+        training_targets: list[str] = []
+    elif isinstance(raw_targets, str):
+        training_targets = [raw_targets]
+    else:
+        training_targets = list(raw_targets)
     return DatasetSpec(
         display_name=data.get("display_name", key),
         source_type=data.get("source_type", "huggingface"),
@@ -371,6 +550,13 @@ def _parse_dataset_spec(key: str, data: dict[str, Any]) -> DatasetSpec:
         license_url=data.get("license_url"),
         license_notes=data.get("license_notes"),
         expected_record_count=data.get("expected_record_count", 0),
+        enabled=data.get("enabled", True),
+        training_eligible=data.get("training_eligible", False),
+        synthetic=synthetic,
+        synthetic_status=synthetic_status,
+        provenance_url=data.get("provenance_url"),
+        quality_tier=data.get("quality_tier", "unrated"),
+        training_targets=training_targets,
         repo_id=data.get("repo_id"),
         revision=data.get("revision", "main"),
         subset=data.get("subset"),
@@ -454,6 +640,61 @@ def load_config(
         config.dataset_version_prefix = top.get(
             "dataset_version_prefix", config.dataset_version_prefix
         )
+        config.strict_vlm_no_fallback = top.get(
+            "strict_vlm_no_fallback", config.strict_vlm_no_fallback
+        )
+        local_vlm_data = top.get("local_vlm", {})
+        if isinstance(local_vlm_data, dict):
+            config.local_vlm = LocalVLMConfig(
+                model_key=local_vlm_data.get("model_key", config.local_vlm.model_key),
+                concurrency=int(local_vlm_data.get("concurrency", config.local_vlm.concurrency)),
+                max_image_dimension=int(
+                    local_vlm_data.get("max_image_dimension", config.local_vlm.max_image_dimension)
+                ),
+                host_ram_budget_gb=int(
+                    local_vlm_data.get("host_ram_budget_gb", config.local_vlm.host_ram_budget_gb)
+                ),
+                gpu_memory_budget_gb=int(
+                    local_vlm_data.get("gpu_memory_budget_gb", config.local_vlm.gpu_memory_budget_gb)
+                ),
+                require_cuda=bool(local_vlm_data.get("require_cuda", config.local_vlm.require_cuda)),
+            )
+        config.validate_vlm_policy()
+
+        # Source policy is intentionally top-level and independently parsed
+        # from stages.  Accept the two older/convenient spellings as input so
+        # callers can migrate without silently dropping the policy.
+        policy_data = (
+            top.get("source_policy")
+            or top.get("policy")
+            or pdata.get("source_policy")
+            or pdata.get("policy")
+            or pdata.get("training_export_policy")
+            or {}
+        )
+        if isinstance(policy_data, dict):
+            # Also accept a nested ``approved_model_training_exports`` block;
+            # the canonical file uses a flat block, but both forms describe
+            # the same policy and should not silently lose requirements.
+            export_data = policy_data.get("approved_model_training_exports")
+            if not isinstance(export_data, dict):
+                export_data = policy_data
+            approved_exports = policy_data.get("approved_model_training_exports", True)
+            if isinstance(approved_exports, dict):
+                approved_exports = True
+            else:
+                approved_exports = policy_data.get("approved_training_exports", approved_exports)
+            config.source_policy = SourceEligibilityPolicy(
+                approved_model_training_exports=approved_exports,
+                allow_synthetic=export_data.get(
+                    "allow_synthetic", not export_data.get("disallow_synthetic", True)
+                ),
+                require_verified_license=export_data.get("require_verified_license", True),
+                require_immutable_revisions=export_data.get(
+                    "require_immutable_revisions",
+                    export_data.get("require_immutable_revision", True),
+                ),
+            )
 
         if "paths" in pdata:
             config.paths = _parse_paths(pdata["paths"])

@@ -45,8 +45,9 @@ class ImagePayloadCache:
         self._lock = threading.Lock()
         self._cache: OrderedDict[str, tuple[int, int, str, str]] = OrderedDict()
 
-    def get_or_encode(self, image_path: Path) -> tuple[str, str]:
+    def get_or_encode(self, image_path: Path, *, max_dimension: int = 2048) -> tuple[str, str]:
         path_str = str(image_path)
+        cache_key = f"{path_str}::{max_dimension}"
         try:
             stat = image_path.stat()
             mtime_ns = stat.st_mtime_ns
@@ -55,18 +56,18 @@ class ImagePayloadCache:
             return self._encode_file(image_path)
 
         with self._lock:
-            cached = self._cache.get(path_str)
+            cached = self._cache.get(cache_key)
             if cached is not None:
                 c_mtime, c_size, mime, b64_str = cached
                 if c_mtime == mtime_ns and c_size == size_bytes:
-                    self._cache.move_to_end(path_str)
+                    self._cache.move_to_end(cache_key)
                     return mime, b64_str
 
-        mime, b64_str = self._encode_file(image_path)
+        mime, b64_str = self._encode_file(image_path, max_dimension=max_dimension)
 
         with self._lock:
-            self._cache[path_str] = (mtime_ns, size_bytes, mime, b64_str)
-            self._cache.move_to_end(path_str)
+            self._cache[cache_key] = (mtime_ns, size_bytes, mime, b64_str)
+            self._cache.move_to_end(cache_key)
             while len(self._cache) > self._max_size:
                 self._cache.popitem(last=False)
 
@@ -269,12 +270,14 @@ class InferenceClient:
         http_client: httpx.AsyncClient,
         model_id: str,
         max_concurrent: int = _DEFAULT_CONCURRENCY,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be at least 1")
         self._client = http_client
         self._model_id = model_id
         self._max_concurrent = max_concurrent
+        self._extra_body = dict(extra_body or {})
         self._semaphore = asyncio.Semaphore(max_concurrent)
 
     async def _probe_multimodal_support(self, sample_image: Path | None) -> bool:
@@ -360,6 +363,8 @@ class InferenceClient:
         # DISABLE GUIDED DECODING FSM COMPILATION
         if schema is not None:
             body["response_format"] = {"type": "json_object"}
+        if self._extra_body:
+            body["extra_body"] = dict(self._extra_body)
             
         async with self._semaphore:
             response_data = await self._request_with_retry(body)
@@ -518,9 +523,9 @@ class InferenceClient:
         return [{"role": "user", "content": content}]
 
     @staticmethod
-    def _encode_image(image_path: Path) -> tuple[str, str]:
+    def _encode_image(image_path: Path, max_dimension: int = 2048) -> tuple[str, str]:
         """Read and base64-encode image with thread-safe LRU caching."""
-        return _GLOBAL_IMAGE_CACHE.get_or_encode(image_path)
+        return _GLOBAL_IMAGE_CACHE.get_or_encode(image_path, max_dimension=max_dimension)
 
     async def _request_with_retry(self, body: dict[str, Any]) -> dict[str, Any]:
         """Send request with exponential backoff retry on transient errors."""

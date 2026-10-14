@@ -26,6 +26,12 @@ exports the frozen models and the paper's evaluation actually need:
                                        actually consumes
         captions.jsonl             <- same {record_id, caption, image_filename} shape as above
         manifest_summary.json
+      polish_qwen_image21/
+        conditions/                 <- deterministic wireframe images only
+        targets/                    <- scrubbed UI screenshots only
+        manifest.jsonl              <- strict condition/target pair manifest
+        exclusions.jsonl            <- records rejected by the pair gate
+        manifest_summary.json
       dpo_alignment/
         general/{pickapic_v2,hpdv2}/       <- Stage-1 DPO (broad aesthetic)
         domain/{designsense_10k,designpref}/  <- Stage-2 DPO (UI/design-specific)
@@ -56,17 +62,22 @@ import multiprocessing
 from pathlib import Path
 from typing import Any, ClassVar
 
+from PIL import Image, UnidentifiedImageError
+
 from data_forge.config import PipelineConfig
+from data_forge.data.domain_tagger import _GENERAL_DESIGN_SOURCES
 from data_forge.logging_setup import get_logger
 from data_forge.manifest import Manifest, ManifestRecord
 from data_forge.orchestrator import register_stage
 from data_forge.stages.base import Stage, StageResult
+from data_forge.stages.split_identity import source_split_identity
 from data_forge.utils.audit_gate import (
     eligible_training_records,
     pipeline_config_fingerprint,
     training_pool_fingerprint,
 )
 from data_forge.utils.completeness import is_encoding_complete
+from data_forge.utils.hashing import sha256_file
 from data_forge.utils.link_or_copy import link_or_copy
 from data_forge.utils.path_safety import resolve_data_path
 
@@ -108,7 +119,7 @@ class ModelDataExportStage(Stage):
                     f"(pass_rate={audit.get('pass_rate')}, threshold={audit.get('threshold')})"
                 )
         root = config.resolved_paths["model_data_root"]
-        summary: dict[str, dict[str, int]] = {}
+        summary: dict[str, dict[str, Any]] = {}
 
         if audit is not None:
             training_pool = eligible_training_records(manifest, config.data_root)
@@ -131,6 +142,9 @@ class ModelDataExportStage(Stage):
         loop = asyncio.get_running_loop()
         summary["sketch_tier_maskgit"] = await loop.run_in_executor(None, self._export_sketch_tier, training_pool, config, root)
         summary["polish_zimage_turbo"] = await loop.run_in_executor(None, self._export_zimage, training_pool, config, root)
+        summary["polish_qwen_image21"] = await loop.run_in_executor(
+            None, self._export_qwen_image21, training_pool, config, root
+        )
         summary["dpo_alignment"] = await loop.run_in_executor(None, self._export_dpo_pairs, config, root)
         summary["planner_rag_corpus"] = await loop.run_in_executor(None, self._export_planner_rag, critique_records, config, root)
         summary["eval_external"] = await loop.run_in_executor(None, self._export_eval_external, config, root)
@@ -165,7 +179,7 @@ class ModelDataExportStage(Stage):
                     link_or_copy(src, model_dir / "images" / src.name)
                     linked = 1
                     image_filename = src.name
-            
+
             caption_data = {
                 "record_id": rec.id, "caption": rec.caption,
                 "image_filename": image_filename,
@@ -176,7 +190,7 @@ class ModelDataExportStage(Stage):
             return linked, caption_data
 
         max_workers = min(64, max(4, multiprocessing.cpu_count() * 2))
-        
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             for linked_count, caption_data in executor.map(_process_sketch, records):
                 images_linked += linked_count
@@ -217,20 +231,20 @@ class ModelDataExportStage(Stage):
             local_linked = 0
             local_images_linked = 0
             image_filename = None
-            
+
             if "z_image_latent" in (rec.encoding_paths or {}):
                 src = resolve_data_path(config.data_root, rec.encoding_paths["z_image_latent"])
                 if src.is_file():
                     link_or_copy(src, model_dir / "latents" / src.name)
                     local_linked += 1
-            
+
             if rec.scrubbed_image_path:
                 src = resolve_data_path(config.data_root, rec.scrubbed_image_path)
                 if src.is_file():
                     link_or_copy(src, model_dir / "images" / src.name)
                     local_images_linked += 1
                     image_filename = src.name
-                    
+
             caption_data = {
                 "record_id": rec.id, "caption": rec.caption,
                 "image_filename": image_filename,
@@ -241,7 +255,7 @@ class ModelDataExportStage(Stage):
             return local_linked, local_images_linked, caption_data
 
         max_workers = min(64, max(4, multiprocessing.cpu_count() * 2))
-        
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             for l_linked, i_linked, c_data in executor.map(_process_zimage, records):
                 linked += l_linked
@@ -276,6 +290,285 @@ class ModelDataExportStage(Stage):
                     "latents directly, but has no consumer yet.",
         })
         return {"linked": linked, "records": len(records), "unique_captions": unique_captions}
+
+    def _export_qwen_image21(
+        self,
+        manifest_or_pool: Manifest | list[ManifestRecord],
+        config: PipelineConfig,
+        root: Path,
+    ) -> dict[str, Any]:
+        """Export materialized pairs for the Qwen-Image-2.1 LoRA contract.
+
+        A screenshot and its structure annotations are not an image-conditioned
+        pair by themselves.  The condition must be an explicitly materialized
+        image produced by a deterministic wireframe renderer.  ``s08`` currently
+        produces a JSON control map (and sometimes Canny edges), so neither is
+        accepted here as a condition image.  A future renderer can opt in by
+        storing its output under ``encoding_paths["condition_image"]``.
+
+        This deliberate boundary is important: using the target screenshot or
+        its Canny edges as the condition would create identity-copy training
+        examples while making general visual records look like UI pairs.
+        """
+        model_dir = root / "polish_qwen_image21"
+        conditions_dir = model_dir / "conditions"
+        targets_dir = model_dir / "targets"
+        model_dir.mkdir(parents=True, exist_ok=True)
+        conditions_dir.mkdir(parents=True, exist_ok=True)
+        targets_dir.mkdir(parents=True, exist_ok=True)
+
+        pool = (
+            manifest_or_pool.get_training_pool()
+            if isinstance(manifest_or_pool, Manifest)
+            else manifest_or_pool
+        )
+        records = sorted(pool, key=lambda record: record.id)
+        entries: list[dict[str, Any]] = []
+        exclusions: list[dict[str, str]] = []
+
+        # Stage 9's source-disjoint mode is the only accepted split receipt
+        # for an active Qwen training export.  Status alone is not enough: a
+        # caller can construct a training_pool list by hand, bypassing the
+        # held-out carve entirely.
+        split_stage = config.get_stage("s09_heldout")
+        source_disjoint = split_stage.enabled and bool(split_stage.get("source_disjoint", False))
+        source_splits: dict[str, set[str]] = {}
+        for rec in records:
+            if rec.status in ("training_pool", "audited"):
+                split = "train"
+            elif rec.status == "heldout":
+                split = "validation"
+            else:
+                continue
+            source_splits.setdefault(source_split_identity(rec), set()).add(split)
+        split_conflicts = {
+            source for source, splits in source_splits.items() if len(splits) > 1
+        }
+
+        for rec in records:
+            if not source_disjoint:
+                exclusions.append({
+                    "record_id": rec.id,
+                    "reason": "source_disjoint_split_not_configured",
+                })
+                continue
+            if source_split_identity(rec) in split_conflicts:
+                exclusions.append({
+                    "record_id": rec.id,
+                    "reason": "source_disjoint_split_violation",
+                })
+                continue
+            reason = self._qwen_pair_exclusion_reason(rec, config)
+            if reason is not None:
+                exclusions.append({"record_id": rec.id, "reason": reason})
+                continue
+
+            target = resolve_data_path(config.data_root, rec.scrubbed_image_path or "")
+            condition_rel = (rec.encoding_paths or {}).get("condition_image")
+            # _qwen_pair_exclusion_reason verifies this is present, but keep the
+            # guard local so this method cannot ever fabricate a pair if its
+            # eligibility predicate changes later.
+            if not condition_rel:
+                exclusions.append({"record_id": rec.id, "reason": "condition_renderer_unavailable"})
+                continue
+            condition = resolve_data_path(config.data_root, condition_rel)
+
+            target_name = f"{rec.id}{target.suffix.lower() or '.png'}"
+            condition_name = f"{rec.id}{condition.suffix.lower() or '.png'}"
+            target_dest = targets_dir / target_name
+            condition_dest = conditions_dir / condition_name
+            try:
+                link_or_copy(target, target_dest)
+                link_or_copy(condition, condition_dest)
+                target_sha = sha256_file(target)
+                condition_sha = sha256_file(condition)
+            except (OSError, ValueError) as exc:
+                exclusions.append({
+                    "record_id": rec.id,
+                    "reason": f"pair_materialization_failed:{type(exc).__name__}",
+                })
+                continue
+
+            provenance = self._qwen_source_provenance(rec, config)
+            caption = (rec.caption or "").strip()
+            entry = {
+                "record_id": rec.id,
+                "source_record_id": rec.source_record_id,
+                "source_group_id": rec.source_group_id,
+                "condition_image": str(condition_dest.relative_to(model_dir)).replace("\\", "/"),
+                "target_image": str(target_dest.relative_to(model_dir)).replace("\\", "/"),
+                # The trainer's active column is named ``image``; retain the
+                # descriptive ``target_image`` field for the audit manifest.
+                "image": str(target_dest.relative_to(model_dir)).replace("\\", "/"),
+                # Keep both names: ``caption`` is the training column while
+                # ``prompt`` makes the instruction role explicit to consumers.
+                "caption": caption,
+                "prompt": caption,
+                # Stage 9's status is the persisted split receipt.  Do not
+                # infer a split from record order or randomly re-split here.
+                "split": "validation" if rec.status == "heldout" else "train",
+                "source_dataset": rec.source_dataset,
+                "source_revision": (
+                    provenance.get("revision")
+                    or provenance.get("source_revision")
+                    or provenance.get("commit")
+                ),
+                "source_provenance": provenance,
+                "condition_sha256": condition_sha,
+                "target_sha256": target_sha,
+                "content_hashes": {
+                    "condition_image": condition_sha,
+                    "target_image": target_sha,
+                },
+            }
+            entries.append(entry)
+
+        manifest_path = model_dir / "manifest.jsonl"
+        with manifest_path.open("w", encoding="utf-8") as handle:
+            for entry in entries:
+                handle.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+
+        exclusions_path = model_dir / "exclusions.jsonl"
+        with exclusions_path.open("w", encoding="utf-8") as handle:
+            for exclusion in exclusions:
+                handle.write(json.dumps(exclusion, ensure_ascii=False, sort_keys=True) + "\n")
+
+        reason_counts: dict[str, int] = {}
+        for exclusion in exclusions:
+            reason = exclusion["reason"]
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+        renderer_available = any(
+            (rec.encoding_paths or {}).get("condition_image") for rec in records
+        )
+        summary = {
+            "records_considered": len(records),
+            "pairs_exported": len(entries),
+            "conditions_linked": len(entries),
+            "targets_linked": len(entries),
+            "excluded_records": len(exclusions),
+            "exclusions_by_reason": reason_counts,
+            "source_disjoint": source_disjoint,
+            "condition_renderer": {
+                "available": renderer_available,
+                "artifact_key": "encoding_paths.condition_image",
+                "required": "deterministic_wireframe_image",
+            },
+            "note": (
+                "Only UI records with policy-approved metadata, a valid scrubbed "
+                "target, schema-valid non-freeform structure_output, and an "
+                "explicit deterministic condition_image artifact are exported. "
+                "The JSON control_map and Canny edges are not condition images. "
+                "Records without a safe renderer output are listed in exclusions.jsonl."
+                " The training-side manifest preparer rejects unassigned splits;"
+                " source-identity splitting is a required pre-training step."
+            ),
+        }
+        self._write_summary(model_dir, summary)
+        return {"linked": len(entries), "records": len(records), **summary}
+
+    @staticmethod
+    def _qwen_pair_exclusion_reason(
+        rec: ManifestRecord, config: PipelineConfig
+    ) -> str | None:
+        """Return a stable exclusion reason for a Qwen pair candidate."""
+        if rec.status not in ("training_pool", "audited"):
+            return "record_not_in_training_pool"
+        if rec.domain != "ui_first" or rec.source_dataset in _GENERAL_DESIGN_SOURCES:
+            return "not_explicit_ui_source"
+        source_spec = getattr(config, "datasets", {}).get(rec.source_dataset)
+        if source_spec is not None and source_spec.category in {
+            "general_visual",
+            "dpo_preference_general",
+            "dpo_preference_domain",
+        }:
+            return "not_explicit_ui_source"
+        if source_spec is None:
+            return "source_not_registered"
+        if source_spec.eval_only or source_spec.annotation_only:
+            return "source_not_training_images"
+        if not source_spec.training_eligible:
+            return "source_not_training_approved"
+        if "polish_qwen_image21" not in source_spec.training_targets:
+            return "source_not_approved_for_qwen"
+        if not source_spec.provenance_url:
+            return "source_provenance_missing"
+        if source_spec.policy_violations(config.source_policy):
+            return "source_policy_failed"
+        # Registry pins alone do not prove which revision produced this record.
+        if (rec.license_output or {}).get("source_revision") != source_spec.immutable_revision():
+            return "source_revision_receipt_mismatch"
+        if rec.license_verified is not True:
+            return "source_license_not_approved"
+        if rec.pii_scrubbed is not True:
+            return "target_not_pii_scrubbed"
+        if rec.safety_tier != "safe":
+            return "source_safety_not_approved"
+        if not (rec.caption or "").strip():
+            return "caption_missing"
+        if not rec.scrubbed_image_path:
+            return "scrubbed_target_missing"
+        try:
+            target = resolve_data_path(config.data_root, rec.scrubbed_image_path)
+            with Image.open(target) as image:
+                image.verify()
+            if not target.is_file():
+                return "scrubbed_target_missing"
+        except (OSError, UnidentifiedImageError, ValueError):
+            return "scrubbed_target_invalid"
+
+        structure = rec.structure_output
+        if not isinstance(structure, dict):
+            return "structure_output_missing"
+        # A valid empty/freeform structure is intentionally the representation
+        # used for general visual records.  It cannot deterministically produce
+        # a UI wireframe condition.
+        if structure.get("layout_type") == "freeform" or not structure.get("elements"):
+            return "structure_not_suitable_for_condition"
+        try:
+            from data_forge.data.schema_validator import SchemaValidator
+
+            valid, _errors = SchemaValidator(config.schemas_dir).validate_structure(structure)
+        except (OSError, ValueError, FileNotFoundError):
+            return "structure_schema_unavailable"
+        if not valid:
+            return "structure_output_invalid"
+
+        condition_rel = (rec.encoding_paths or {}).get("condition_image")
+        if not condition_rel:
+            return "condition_renderer_unavailable"
+        try:
+            condition = resolve_data_path(config.data_root, condition_rel)
+            with Image.open(condition) as image:
+                image.verify()
+            if not condition.is_file():
+                return "condition_image_missing"
+            if (
+                condition.resolve() == target.resolve()
+                or sha256_file(condition) == sha256_file(target)
+            ):
+                return "condition_equals_target"
+        except (OSError, UnidentifiedImageError, ValueError):
+            return "condition_image_invalid"
+        return None
+
+    @staticmethod
+    def _qwen_source_provenance(
+        rec: ManifestRecord, config: PipelineConfig
+    ) -> dict[str, Any]:
+        """Return non-sensitive source revision/license provenance."""
+        provenance: dict[str, Any] = {"source_file": rec.source_file}
+        spec = getattr(config, "datasets", {}).get(rec.source_dataset)
+        if spec is not None:
+            for field in (
+                "source_type", "repo_id", "revision", "subset",
+                "license_url", "license_status", "provenance_url",
+                "synthetic_status", "quality_tier",
+            ):
+                value = getattr(spec, field, None)
+                if value is not None:
+                    provenance[field] = value
+            provenance["revision"] = spec.immutable_revision()
+        return provenance
 
     def _export_dpo_pairs(self, config: PipelineConfig, root: Path) -> dict[str, int]:
         """Export Diffusion-DPO training data — Z-Image-Turbo's only

@@ -10,6 +10,7 @@ datasets:
   # PD12M — General Visual Backbone (1% Sample: 2,000 images)
   # -------------------------------------------------------------------------
   pd12m:
+    enabled: false
     display_name: "PD12M (Public Domain 12M - 1% Sample)"
     source_type: "huggingface"
     repo_id: "Spawning/PD12M"
@@ -32,6 +33,7 @@ datasets:
   # CC12M — Supplementary Visual Diversity (1% Sample: 100 images)
   # -------------------------------------------------------------------------
   cc12m:
+    enabled: false
     display_name: "CC12M (Conceptual 12M - 1% Sample)"
     source_type: "huggingface"
     repo_id: "google-research-datasets/conceptual_12m"
@@ -54,6 +56,7 @@ datasets:
   # RICO — Mobile App UI Screenshots (1% Sample: 663 screens)
   # -------------------------------------------------------------------------
   rico_core:
+    enabled: false
     display_name: "RICO (Core UI Screenshots - 1% Sample)"
     source_type: "huggingface"
     repo_id: "creative-graphic-design/Rico"
@@ -71,6 +74,7 @@ datasets:
       sample_size: 663
 
   rico_semantic:
+    enabled: false
     display_name: "RICO Semantic Annotations (1% Sample: 663 screens)"
     source_type: "huggingface"
     repo_id: "creative-graphic-design/Rico"
@@ -91,6 +95,7 @@ datasets:
   # CLAY — Mobile UI Layouts (Google Research)
   # -------------------------------------------------------------------------
   clay:
+    enabled: false
     display_name: "CLAY (Mobile UI Layouts)"
     source_type: "github"
     repo_url: "https://github.com/google-research-datasets/clay"
@@ -108,6 +113,7 @@ datasets:
   # Enrico — Curated RICO Topic Subset (1,460 screens)
   # -------------------------------------------------------------------------
   enrico:
+    enabled: false
     display_name: "Enrico (Enhanced RICO)"
     source_type: "github"
     repo_url: "https://github.com/luileito/enrico"
@@ -125,6 +131,7 @@ datasets:
   # WebUI — Web Interface Metadata
   # -------------------------------------------------------------------------
   webui:
+    enabled: false
     display_name: "WebUI (biglab)"
     source_type: "huggingface"
     repo_id: "biglab/webui-350k"
@@ -142,6 +149,7 @@ datasets:
   # Screen2Words — Dense Caption Training Pairs (1% Sample: 100 pairs)
   # -------------------------------------------------------------------------
   screen2words:
+    enabled: false
     display_name: "Screen2Words (RICO Screen Summaries - 1% Sample)"
     source_type: "huggingface"
     repo_id: "bevaya/RICO-Screen2Words"
@@ -162,6 +170,7 @@ datasets:
   # UICrit — UI Critique / DPO Preference Seed Data
   # -------------------------------------------------------------------------
   uicrit:
+    enabled: false
     display_name: "UICrit (UI Critique Dataset)"
     source_type: "github"
     repo_url: "https://github.com/google-research-datasets/uicrit"
@@ -179,6 +188,7 @@ datasets:
   # DPO Preference Pairs (1% Targets)
   # -------------------------------------------------------------------------
   gamelabel_10k:
+    enabled: false
     display_name: "GameLabel-10K (1% Sample: 96 pairs)"
     source_type: "huggingface"
     repo_id: "Jonathan-Zhou/GameLabel-10k"
@@ -194,6 +204,7 @@ datasets:
       sample_size: 96
 
   hpdv2:
+    enabled: false
     display_name: "HPDv2 (Human Preference Dataset v2 - 1% Sample: 369 pairs)"
     source_type: "huggingface"
     repo_id: "ymhao/HPDv2"

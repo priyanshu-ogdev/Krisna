@@ -121,6 +121,7 @@ class PreferencePairsStage(Stage):
             log.info("no_preference_pair_sources_configured")
             return result
 
+        self.require_vlm_engine(config, engine)
         if engine is None:
             log.error(
                 "preference_pairs_no_engine",

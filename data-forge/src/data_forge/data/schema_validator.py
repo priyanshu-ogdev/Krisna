@@ -35,8 +35,13 @@ class SchemaValidator:
                         break
                 else:
                     raise FileNotFoundError(f"Schema not found: {schema_path}")
+            schema_path = schema_path.resolve()
             schema_dict = json.loads(schema_path.read_text(encoding="utf-8"))
-            self._cache[name] = jsonschema.Draft7Validator(schema_dict)
+            resolver = jsonschema.RefResolver(
+                base_uri=f"{schema_path.parent.as_uri()}/",
+                referrer=schema_dict,
+            )
+            self._cache[name] = jsonschema.Draft7Validator(schema_dict, resolver=resolver)
         return self._cache[name]
 
     def validate(
@@ -85,6 +90,10 @@ class SchemaValidator:
 
     def validate_critique(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
         return self.validate(data, "critique_output")
+
+    def validate_manifest_record(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
+        """Validate a manifest record with local relative ``$ref`` files."""
+        return self.validate(data, "manifest_record")
 
     def validate_synthesized_conversation(self, data: dict[str, Any]) -> tuple[bool, list[str]]:
         return self.validate(data, "synthesized_conversation")

@@ -52,6 +52,15 @@
       "type": ["string", "null"],
       "description": "SHA-256 hash of raw image bytes"
     },
+    "provenance_url": { "type": ["string", "null"] },
+    "source_revision": { "type": ["string", "null"] },
+    "source_record_id": { "type": ["string", "null"] },
+    "source_group_id": { "type": ["string", "null"] },
+    "group_id": { "type": ["string", "null"] },
+    "canonical_id": { "type": ["string", "null"] },
+    "source_provenance": { "type": ["object", "null"] },
+    "source_metadata": { "type": ["object", "null"] },
+    "source_structure": { "type": ["object", "array", "string", "number", "boolean", "null"] },
     "perceptual_hash": {
       "type": ["string", "null"],
       "description": "Perceptual hash for near-duplicate detection"

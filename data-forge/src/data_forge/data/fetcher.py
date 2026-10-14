@@ -6,24 +6,30 @@ and progress tracking via manifest updates.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
-from itertools import islice
 import json
+import ntpath
 import os
+import shutil
+import stat
+import tarfile
+import zipfile
+from itertools import islice
 from pathlib import Path
 from typing import Any
-
-import asyncio  # noqa: F401 — BUG FIX: this was previously only imported
-# locally, aliased, and after its first use in _fetch_huggingface_url_list
-# (asyncio.Semaphore(...) is constructed before that local import line
-# executes) — a real NameError waiting to happen the first time this method
-# ran. Hoisted to module level like every other stdlib import here.
+from urllib.parse import urlsplit
 
 from data_forge.config import DatasetSpec, PipelineConfig
+from data_forge.data.source_adapters import ADAPTER_MODES, build_local_adapter, iter_parquet_rows
 from data_forge.logging_setup import get_logger
 
 log = get_logger("data.fetcher")
+
+
+class FetchSafetyError(RuntimeError):
+    """Raised when a fetched artifact cannot be safely committed."""
 
 
 def _decode_gamelabel_image(raw: Any) -> bytes | None:
@@ -126,6 +132,51 @@ class DatasetFetcher:
 
         dataset_dir = self._raw_dir / key
         dataset_dir.mkdir(parents=True, exist_ok=True)
+
+        # Explicit local artifact adapters run before the generic image scan.
+        # This preserves source structure/metadata and gives Figma2Code and
+        # MobileViews deterministic identities without changing any remote
+        # source's default fetch behavior.
+        adapter = build_local_adapter(
+            key=key,
+            spec=spec,
+            output_root=dataset_dir,
+            data_root=self._config.data_root,
+        )
+        if adapter is not None:
+            return await asyncio.to_thread(adapter.fetch)
+
+        # Remote adapter modes use Hugging Face only as an acquisition layer;
+        # parsing, identity assignment, structure retention, and image hashing
+        # remain the same local adapter code used by `data-forge preprocess`.
+        # This keeps remote and offline runs combinable without two parsers.
+        if (
+            spec.fetch_config.get("download_mode") in ADAPTER_MODES
+            and spec.source_type == "huggingface"
+            and spec.repo_id
+        ):
+            from huggingface_hub import snapshot_download
+
+            source_dir = dataset_dir / "_source"
+            allow_patterns = spec.fetch_config.get("file_patterns")
+            await asyncio.to_thread(
+                snapshot_download,
+                repo_id=spec.repo_id,
+                repo_type="dataset",
+                revision=spec.revision or "main",
+                local_dir=str(source_dir),
+                allow_patterns=allow_patterns,
+                token=self._hf_token,
+            )
+            adapter = build_local_adapter(
+                key=key,
+                spec=spec,
+                output_root=dataset_dir,
+                data_root=self._config.data_root,
+                source_root=source_dir,
+            )
+            if adapter is not None:
+                return await asyncio.to_thread(adapter.fetch)
 
         # Fast paths: if dataset is already present locally (e.g. 1% test slice),
         # reuse directly instead of re-downloading over the network.
@@ -323,7 +374,6 @@ class DatasetFetcher:
         """
         import io
 
-        import pandas as pd
         from huggingface_hub import snapshot_download
         from PIL import Image
 
@@ -376,24 +426,23 @@ class DatasetFetcher:
                 or hasattr(val, "save")
             )
 
-        # Inspect first readable parquet file to resolve columns
-        sample_df = None
-        for pf in parquet_files:
-            try:
-                import asyncio
-                sample_df = await asyncio.to_thread(pd.read_parquet, pf)
-                break
-            except Exception as e:
-                log.warning("hf_parquet_images_first_file_failed", file=str(pf), error=str(e))
-        if sample_df is None:
+        # Inspect one bounded row to resolve columns; never materialize a
+        # complete parquet file into a pandas frame.
+        batch_size = max(1, int(spec.fetch_config.get("parquet_batch_size", 512)))
+        try:
+            sample_row = next(iter_parquet_rows(parquet_files, batch_size=batch_size, limit=1), None)
+        except Exception as e:
+            log.warning("hf_parquet_images_first_file_failed", error=str(e))
+            sample_row = None
+        if sample_row is None:
             log.error("hf_parquet_images_no_readable_parquet", dataset=key)
             return []
 
-        columns = list(sample_df.columns)
+        columns = list(sample_row.keys())
         image_col = spec.fetch_config.get("image_column")
         if not image_col:
             for col in columns:
-                sample = sample_df[col].dropna().iloc[0] if sample_df[col].notna().any() else None
+                sample = sample_row.get(col)
                 if _is_image_like(sample):
                     image_col = col
                     break
@@ -428,30 +477,19 @@ class DatasetFetcher:
         decode_failures = 0
         global_idx = 0
 
-        # Memory-safe file-by-file processing: avoid loading all files into RAM simultaneously
-        for pf_idx, pf in enumerate(parquet_files):
+        # Memory-safe file-by-file/batch processing: at most one bounded row
+        # batch is held by the parquet reader and worker pool at a time.
+        for pf in parquet_files:
             if sample_size and len(records) >= sample_size:
                 break
             try:
-                import asyncio
-                df = sample_df if pf_idx == 0 else await asyncio.to_thread(pd.read_parquet, pf)
+                row_iter = iter_parquet_rows(
+                    [pf], batch_size=batch_size,
+                    limit=(sample_size - len(records)) if sample_size else None,
+                )
             except Exception as e:
                 log.warning("hf_parquet_images_read_failed", file=str(pf), error=str(e))
                 continue
-
-            if sample_size:
-                needed = sample_size - len(records)
-                if len(parquet_files) == 1 and len(df) > sample_size:
-                    df = df.sample(n=sample_size, random_state=42)
-                elif len(df) > needed:
-                    df = df.head(needed)
-
-            row_items = []
-            for row in df.itertuples(index=False):
-                row_items.append((global_idx, dict(zip(df.columns, row))))
-                global_idx += 1
-                if sample_size and (len(records) + len(row_items)) >= sample_size:
-                    break
 
             def _decode_and_save(item: tuple[int, dict[str, Any]]) -> tuple[dict[str, Any] | None, bool]:
                 curr_idx, row_dict = item
@@ -510,7 +548,10 @@ class DatasetFetcher:
                     rec_dict: dict[str, Any] = {
                         "source_file": file_name,
                         "image_path": rel_path,
-                        "content_hash_sha256": self._compute_bytes_sha256(blob if blob else out_path.read_bytes()),
+                        # Hash the canonical bytes that were actually saved;
+                        # source bytes may differ after crop/compositing/RGB
+                        # normalization.
+                        "content_hash_sha256": self._compute_bytes_sha256(out_path.read_bytes()),
                         "image_width": img.width,
                         "image_height": img.height,
                         "file_size_bytes": file_size,
@@ -525,13 +566,21 @@ class DatasetFetcher:
             import concurrent.futures
             max_workers = min(32, max(4, os.cpu_count() or 4))
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for rec_res, failed in executor.map(_decode_and_save, row_items):
-                    if failed or rec_res is None:
-                        decode_failures += 1
-                    else:
-                        records.append(rec_res)
-
-            del df
+                while True:
+                    # Consume only one bounded parquet batch before decoding;
+                    # this prevents a large shard from becoming a giant list.
+                    batch = list(islice(row_iter, batch_size))
+                    if not batch:
+                        break
+                    row_items = [(global_idx + idx, row) for idx, row in enumerate(batch)]
+                    global_idx += len(row_items)
+                    for rec_res, failed in executor.map(_decode_and_save, row_items):
+                        if failed or rec_res is None:
+                            decode_failures += 1
+                        else:
+                            records.append(rec_res)
+                    if sample_size and len(records) >= sample_size:
+                        break
 
         log.info(
             "hf_parquet_images_complete", dataset=key,
@@ -576,6 +625,7 @@ class DatasetFetcher:
             return []
 
         import fnmatch
+
         from huggingface_hub import HfApi, hf_hub_download
 
         api = HfApi(token=self._hf_token)
@@ -1193,6 +1243,7 @@ class DatasetFetcher:
         allow_patterns = spec.fetch_config.get("file_patterns", ["*.parquet"])
 
         import fnmatch
+
         from huggingface_hub import HfApi, hf_hub_download
 
         api = HfApi(token=self._hf_token)
@@ -1325,6 +1376,8 @@ class DatasetFetcher:
 
             file_path = images_dir / f"{key}_{idx:08d}.png"
             img.save(file_path, "PNG")
+            # This is the canonical saved artifact, so its hash—not an
+            # upstream/source representation—is the manifest identity input.
             sha256 = self._compute_sha256(file_path)
             try:
                 rel_path = str(file_path.relative_to(self._config.data_root))
@@ -1434,6 +1487,7 @@ class DatasetFetcher:
         target_dir.mkdir(parents=True, exist_ok=True)
 
         import fnmatch
+
         from huggingface_hub import HfApi, hf_hub_download, snapshot_download
 
         api = HfApi(token=self._hf_token)
@@ -1544,6 +1598,7 @@ class DatasetFetcher:
         records: list[dict[str, Any]] = []
 
         import io
+
         from PIL import Image
 
         limits = httpx.Limits(max_keepalive_connections=concurrency, max_connections=concurrency * 2)
@@ -1691,105 +1746,175 @@ class DatasetFetcher:
         }
         return content_type_map.get(content_type.split(";")[0].strip().lower())
 
-    def _unpack_archives(self, directory: Path):
-        import zipfile
-        import tarfile
-        import shutil
+    @staticmethod
+    def _safe_archive_target(root: Path, member_name: str) -> Path:
+        """Resolve an archive member and reject traversal/absolute paths."""
+        # Archive names use POSIX separators even on Windows.  Treat a
+        # backslash as a separator too so a crafted archive cannot use a
+        # platform-specific spelling to escape the extraction directory.
+        normalized = member_name.replace("\\", "/")
+        if not normalized or normalized.startswith("/") or ntpath.splitdrive(normalized)[0]:
+            raise FetchSafetyError(f"unsafe archive member path: {member_name!r}")
+        parts = [part for part in normalized.split("/") if part not in ("", ".")]
+        if any(part == ".." for part in parts):
+            raise FetchSafetyError(f"archive member traverses outside destination: {member_name!r}")
 
-        # Handle split zips first (e.g. file.zip.001, file.zip.002 or file.z01, file.z02, file.zip)
-        split_bases = set()
-        for f in directory.rglob("*.zip.001"):
-            split_bases.add(str(f)[:-4])  # base without .001
-        for f in directory.rglob("*.z01"):
-            split_bases.add(str(f)[:-4] + ".zip")
-        
+        root_resolved = root.resolve()
+        target = (root_resolved / Path(*parts)).resolve(strict=False)
+        if target != root_resolved and root_resolved not in target.parents:
+            raise FetchSafetyError(f"archive member escapes destination: {member_name!r}")
+        return target
+
+    @classmethod
+    def _validate_archive_members(
+        cls,
+        root: Path,
+        members: list[tuple[str, int, bool]],
+        *,
+        max_members: int,
+        max_unpacked_bytes: int,
+    ) -> list[tuple[Path, int, bool]]:
+        """Validate names, links, member count, and expansion size before writes."""
+        if len(members) > max_members:
+            raise FetchSafetyError(
+                f"archive contains {len(members)} members; limit is {max_members}"
+            )
+        total_size = 0
+        validated: list[tuple[Path, int, bool]] = []
+        for name, size, is_dir in members:
+            target = cls._safe_archive_target(root, name)
+            if size < 0 or size > max_unpacked_bytes - total_size:
+                raise FetchSafetyError(
+                    f"archive expands beyond {max_unpacked_bytes} bytes"
+                )
+            total_size += size
+            validated.append((target, size, is_dir))
+        return validated
+
+    @classmethod
+    def _extract_zip_safely(
+        cls, archive: Path, *, max_members: int, max_unpacked_bytes: int
+    ) -> None:
+        root = archive.parent
+        with zipfile.ZipFile(archive, "r") as archive_file:
+            infos = archive_file.infolist()
+            members: list[tuple[str, int, bool]] = []
+            for info in infos:
+                mode = (info.external_attr >> 16) & 0o170000
+                if stat.S_ISLNK(mode):
+                    raise FetchSafetyError(f"archive contains symlink: {info.filename!r}")
+                members.append((info.filename, info.file_size, info.is_dir()))
+            targets = cls._validate_archive_members(
+                root, members, max_members=max_members, max_unpacked_bytes=max_unpacked_bytes
+            )
+            for info, (target, _size, is_dir) in zip(infos, targets, strict=True):
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive_file.open(info, "r") as source, target.open("wb") as dest:
+                    shutil.copyfileobj(source, dest, length=1024 * 1024)
+
+    @classmethod
+    def _extract_tar_safely(
+        cls, archive: Path, *, max_members: int, max_unpacked_bytes: int
+    ) -> None:
+        root = archive.parent
+        with tarfile.open(archive, "r:*") as archive_file:
+            members = archive_file.getmembers()
+            validated_members: list[tuple[str, int, bool]] = []
+            for member in members:
+                if member.issym() or member.islnk() or member.isdev():
+                    raise FetchSafetyError(f"archive contains unsupported link/device: {member.name!r}")
+                validated_members.append((member.name, member.size if member.isfile() else 0, member.isdir()))
+            targets = cls._validate_archive_members(
+                root,
+                validated_members,
+                max_members=max_members,
+                max_unpacked_bytes=max_unpacked_bytes,
+            )
+            for member, (target, _size, is_dir) in zip(members, targets, strict=True):
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not member.isfile():
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                source = archive_file.extractfile(member)
+                if source is None:
+                    raise FetchSafetyError(f"could not read archive member: {member.name!r}")
+                with source, target.open("wb") as dest:
+                    shutil.copyfileobj(source, dest, length=1024 * 1024)
+
+    def _unpack_archives(
+        self,
+        directory: Path,
+        *,
+        max_members: int = 100_000,
+        max_unpacked_bytes: int = 50 * 1024**3,
+    ) -> None:
+        """Extract archives without traversal, link, or decompression-bomb hazards."""
+        # Handle split zips first (file.zip.001/.002 and file.z01/.z02/file.zip).
+        split_bases: set[str] = set()
+        for part in directory.rglob("*.zip.001"):
+            split_bases.add(str(part)[:-4])
+        for part in directory.rglob("*.z01"):
+            split_bases.add(str(part)[:-4] + ".zip")
         for base in split_bases:
             combined_zip = Path(base if not base.endswith(".zip") else base[:-4] + "_combined.zip")
             if combined_zip.exists():
                 continue
-            
-            # Find all parts
-            parts = []
-            # Style 1: .zip.001, .zip.002
-            i = 1
-            while True:
-                p = Path(f"{base}.{i:03d}")
-                if p.exists():
-                    parts.append(p)
-                    i += 1
-                else:
-                    break
-            
-            # Style 2: .z01, .z02 ... .zip
+            parts: list[Path] = []
+            index = 1
+            while (part := Path(f"{base}.{index:03d}")).exists():
+                parts.append(part)
+                index += 1
             if not parts:
-                i = 1
-                while True:
-                    p = Path(f"{base[:-4]}.z{i:02d}")
-                    if p.exists():
-                        parts.append(p)
-                        i += 1
-                    else:
-                        break
-                p_final = Path(base)
-                if p_final.exists():
-                    parts.append(p_final)
-            
+                index = 1
+                while (part := Path(f"{base[:-4]}.z{index:02d}")).exists():
+                    parts.append(part)
+                    index += 1
+                if Path(base).exists():
+                    parts.append(Path(base))
             if parts:
                 log.info("concatenating_split_zip", base=str(combined_zip), parts=len(parts))
-                try:
-                    with open(combined_zip, 'wb') as outfile:
-                        for p in parts:
-                            with open(p, 'rb') as infile:
-                                shutil.copyfileobj(infile, outfile)
-                except Exception as e:
-                    log.error("split_zip_concat_failed", base=str(combined_zip), error=str(e))
-                    continue
+                with combined_zip.open("wb") as outfile:
+                    for part in parts:
+                        with part.open("rb") as infile:
+                            shutil.copyfileobj(infile, outfile, length=1024 * 1024)
 
-        for f in list(directory.rglob("*.zip")):
-            if not f.exists():
+        archive_paths = [
+            path
+            for path in directory.rglob("*")
+            if path.is_file()
+            and path.suffix.lower() in {".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz"}
+            and not path.name.endswith((".tar.gz", ".tar.bz2", ".tar.xz"))
+        ]
+        archive_paths.extend(
+            path
+            for pattern in ("*.tar.gz", "*.tgz", "*.tar.bz2", "*.tbz2", "*.tar.xz", "*.txz")
+            for path in directory.rglob(pattern)
+            if path.is_file() and path not in archive_paths
+        )
+        for archive in archive_paths:
+            # A .zip with a neighboring .z01 is the final split part, not a
+            # complete archive on its own.
+            if archive.suffix.lower() == ".zip" and archive.with_suffix(".z01").exists():
                 continue
-            # If this is the last chunk of an uncombined .z01 split zip, skip extracting it directly
-            if list(directory.rglob(f.name.replace(".zip", ".z01"))):
-                continue
-            
-            log.info("extracting_zip", file=str(f))
             try:
-                with zipfile.ZipFile(f, 'r') as z:
-                    z.extractall(f.parent)
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-            except Exception as e:
-                log.warning("zip_extract_failed", file=str(f), error=str(e))
-
-        for f in list(directory.rglob("*.tar.gz")):
-            if not f.exists():
+                log.info("extracting_archive", file=str(archive))
+                if archive.suffix.lower() == ".zip":
+                    self._extract_zip_safely(
+                        archive, max_members=max_members, max_unpacked_bytes=max_unpacked_bytes
+                    )
+                else:
+                    self._extract_tar_safely(
+                        archive, max_members=max_members, max_unpacked_bytes=max_unpacked_bytes
+                    )
+            except (FetchSafetyError, OSError, tarfile.TarError, zipfile.BadZipFile) as error:
+                log.warning("archive_extract_failed", file=str(archive), error=str(error))
                 continue
-            log.info("extracting_tar", file=str(f))
-            try:
-                with tarfile.open(f, 'r:gz') as t:
-                    t.extractall(f.parent)
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-            except Exception as e:
-                log.warning("tar_extract_failed", file=str(f), error=str(e))
-
-        for f in list(directory.rglob("*.tgz")):
-            if not f.exists():
-                continue
-            log.info("extracting_tgz", file=str(f))
-            try:
-                with tarfile.open(f, 'r:gz') as t:
-                    t.extractall(f.parent)
-                try:
-                    f.unlink()
-                except Exception:
-                    pass
-            except Exception as e:
-                log.warning("tgz_extract_failed", file=str(f), error=str(e))
+            archive.unlink()
 
     async def _fetch_huggingface(
         self, key: str, spec: DatasetSpec, dest: Path
@@ -1817,7 +1942,13 @@ class DatasetFetcher:
             token=self._hf_token,
         )
 
-        self._unpack_archives(Path(snapshot_dir))
+        self._unpack_archives(
+            Path(snapshot_dir),
+            max_members=int(spec.fetch_config.get("max_archive_members", 100_000)),
+            max_unpacked_bytes=int(
+                spec.fetch_config.get("max_unpacked_bytes", 50 * 1024**3)
+            ),
+        )
 
         if spec.annotation_only:
             log.info(
@@ -1838,8 +1969,8 @@ class DatasetFetcher:
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
         """Clone or download a GitHub repository."""
-        import subprocess
         import os
+        import subprocess
 
         if not spec.repo_url:
             log.error("missing_repo_url", dataset=key)
@@ -1882,27 +2013,180 @@ class DatasetFetcher:
     async def _fetch_url(
         self, key: str, spec: DatasetSpec, dest: Path
     ) -> list[dict[str, Any]]:
-        """Download from a direct URL."""
-        import httpx
-
+        """Download from a direct URL using a validated, resumable commit."""
         url = spec.fetch_config.get("url")
         if not url:
             log.error("missing_url", dataset=key)
             return []
 
-        filename = url.rsplit("/", 1)[-1]
+        filename = Path(urlsplit(url).path).name or f"{key}.download"
         file_path = dest / filename
 
+        expected_sha256 = self._expected_sha256(spec)
+        expected_size = spec.fetch_config.get("expected_size_bytes")
+        expected_size = int(expected_size) if expected_size is not None else None
         if file_path.exists():
-            log.info("url_file_exists", path=str(file_path))
-        else:
+            try:
+                self._validate_downloaded_file(
+                    file_path, expected_sha256=expected_sha256, expected_size=expected_size
+                )
+                log.info("url_file_validated_exists", path=str(file_path))
+            except (OSError, FetchSafetyError) as error:
+                log.warning("url_existing_file_invalid", path=str(file_path), error=str(error))
+                file_path.unlink(missing_ok=True)
+
+        if not file_path.exists():
             log.info("url_downloading", url=url)
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                response = await client.get(url, timeout=3600)
-                response.raise_for_status()
-                file_path.write_bytes(response.content)
+            await self._download_url_resumable(
+                url,
+                file_path,
+                expected_sha256=expected_sha256,
+                expected_size=expected_size,
+                max_download_bytes=spec.fetch_config.get("max_download_bytes"),
+                resume=bool(spec.fetch_config.get("resume", True)),
+                timeout_seconds=float(spec.fetch_config.get("download_timeout_seconds", 3600)),
+            )
 
         return self._scan_downloaded_files(key, dest)
+
+    @staticmethod
+    def _expected_sha256(spec: DatasetSpec) -> str | None:
+        """Read the supported checksum spellings from a dataset fetch config."""
+        raw = (
+            spec.fetch_config.get("sha256")
+            or spec.fetch_config.get("sha256_checksum")
+            or spec.fetch_config.get("checksum_sha256")
+        )
+        if raw is None:
+            return None
+        value = str(raw).strip().lower()
+        if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+            raise FetchSafetyError("fetch checksum must be a 64-character SHA-256 hex digest")
+        return value
+
+    @staticmethod
+    def _validate_downloaded_file(
+        file_path: Path,
+        *,
+        expected_sha256: str | None,
+        expected_size: int | None,
+    ) -> None:
+        if not file_path.is_file() or file_path.stat().st_size == 0:
+            raise FetchSafetyError(f"downloaded file is missing or empty: {file_path}")
+        if expected_size is not None and file_path.stat().st_size != expected_size:
+            raise FetchSafetyError(
+                f"downloaded file size {file_path.stat().st_size} does not match expected {expected_size}"
+            )
+        if expected_sha256 is not None:
+            actual = DatasetFetcher._compute_sha256(file_path)
+            if actual != expected_sha256:
+                raise FetchSafetyError(
+                    f"SHA-256 mismatch for {file_path}: expected {expected_sha256}, got {actual}"
+                )
+
+    @staticmethod
+    def _check_download_budget(
+        directory: Path, required_bytes: int, *, safety_margin: float = 0.10
+    ) -> None:
+        """Fail before writing when a known response cannot fit safely."""
+        if required_bytes < 0:
+            raise FetchSafetyError("download size cannot be negative")
+        free_bytes = shutil.disk_usage(str(directory)).free
+        safe_bytes = int(free_bytes * max(0.0, min(safety_margin, 0.99)))
+        if required_bytes > free_bytes - safe_bytes:
+            raise FetchSafetyError(
+                f"download requires {required_bytes} bytes but only "
+                f"{max(free_bytes - safe_bytes, 0)} bytes remain after safety margin"
+            )
+
+    async def _download_url_resumable(
+        self,
+        url: str,
+        file_path: Path,
+        *,
+        expected_sha256: str | None,
+        expected_size: int | None,
+        max_download_bytes: int | None,
+        resume: bool,
+        timeout_seconds: float,
+    ) -> None:
+        """Stream a URL to ``.part`` and atomically commit only valid bytes."""
+        import httpx
+
+        max_bytes = int(max_download_bytes) if max_download_bytes is not None else None
+        if max_bytes is not None and max_bytes <= 0:
+            raise FetchSafetyError("max_download_bytes must be positive")
+        if expected_size is not None and expected_size <= 0:
+            raise FetchSafetyError("expected_size_bytes must be positive")
+        if max_bytes is not None and expected_size is not None and expected_size > max_bytes:
+            raise FetchSafetyError("expected_size_bytes exceeds max_download_bytes")
+
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        part_path = file_path.with_name(f".{file_path.name}.part")
+        offset = part_path.stat().st_size if resume and part_path.exists() else 0
+        if expected_size is not None and offset > expected_size:
+            part_path.unlink(missing_ok=True)
+            offset = 0
+
+        headers = {"Range": f"bytes={offset}-"} if offset else {}
+        timeout = httpx.Timeout(timeout_seconds)
+        async with (
+            httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client,
+            client.stream("GET", url, headers=headers) as response,
+        ):
+            if response.status_code == 416 and offset:
+                raise FetchSafetyError("server rejected resume range; remove the partial file and retry")
+            response.raise_for_status()
+            append = bool(offset and response.status_code == 206)
+            content_range = response.headers.get("content-range")
+            if append and content_range:
+                range_start = content_range.removeprefix("bytes ").split("-", 1)[0]
+                if range_start.isdigit() and int(range_start) != offset:
+                    raise FetchSafetyError("server returned a resume range different from the partial file")
+            if offset and not append:
+                # A server that ignores Range returned a complete body; restart
+                # rather than corrupting it by appending to the partial file.
+                offset = 0
+            content_length = response.headers.get("content-length")
+            try:
+                announced = int(content_length) if content_length is not None else None
+            except ValueError:
+                announced = None
+            if announced is not None:
+                total_announced = offset + announced
+                if max_bytes is not None and total_announced > max_bytes:
+                    raise FetchSafetyError("server-announced download exceeds max_download_bytes")
+                if expected_size is not None and total_announced > expected_size:
+                    raise FetchSafetyError("server-announced download exceeds expected_size_bytes")
+                self._check_download_budget(file_path.parent, announced)
+
+            bytes_written = offset
+            mode = "ab" if append else "wb"
+            with part_path.open(mode) as output:
+                async for chunk in response.aiter_bytes():
+                    if not chunk:
+                        continue
+                    bytes_written += len(chunk)
+                    if max_bytes is not None and bytes_written > max_bytes:
+                        raise FetchSafetyError("download exceeds max_download_bytes")
+                    if expected_size is not None and bytes_written > expected_size:
+                        raise FetchSafetyError("download exceeds expected_size_bytes")
+                    output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+
+        if expected_size is not None and bytes_written != expected_size:
+            raise FetchSafetyError(
+                f"download ended at {bytes_written} bytes; expected {expected_size}"
+            )
+        try:
+            self._validate_downloaded_file(
+                part_path, expected_sha256=expected_sha256, expected_size=expected_size
+            )
+        except (OSError, FetchSafetyError):
+            part_path.unlink(missing_ok=True)
+            raise
+        os.replace(part_path, file_path)
 
     def _scan_downloaded_files(
         self, dataset_key: str, directory: Path
@@ -2006,4 +2290,3 @@ class DatasetFetcher:
                 return w, h
         except Exception:
             return None, None
-

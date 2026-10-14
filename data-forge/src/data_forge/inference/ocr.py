@@ -28,6 +28,7 @@ class OCREngine:
             http_client=engine.vllm_client,
             model_id=config.models["ocr"].model_id,
             max_concurrent=config.vllm_server.max_num_seqs,
+            extra_body=config.models["ocr"].chat_template_kwargs,
         )
 
     async def extract_text(

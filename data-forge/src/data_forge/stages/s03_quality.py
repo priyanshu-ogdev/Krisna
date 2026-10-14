@@ -41,7 +41,10 @@ class QualityStage(Stage):
 
         records = manifest.get_records_by_ids(record_ids)
         records = [r for r in records if r.status == "deduped"]
-        if not records or engine is None:
+        if not records:
+            return result
+        self.require_vlm_engine(config, engine)
+        if engine is None:
             return result
 
         tier1 = Tier1Engine(engine, config)

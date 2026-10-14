@@ -52,6 +52,7 @@ class AuditStage(Stage):
             result.metadata = stats
             self._write_report(config, manifest, stats, "")
             return result
+        self.require_vlm_engine(config, engine)
         if engine is None:
             result.records_failed = len(training_records)
             stats = {

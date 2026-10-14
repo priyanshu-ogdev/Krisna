@@ -27,6 +27,17 @@ def _production_preflight(config: PipelineConfig) -> list[str]:
         blockers.append("vLLM max_num_seqs must be at least 1")
 
     for key, spec in config.datasets.items():
+        if not spec.enabled:
+            continue
+        # Evaluation references and annotation repositories have isolated
+        # fetch/consumer paths.  Their registry metadata is not a model-data
+        # export receipt, so do not apply standalone training-source gates to
+        # them here.  The isolated fetcher remains responsible for its own
+        # download errors and the UICrit join has explicit prerequisites below.
+        if not spec.training_eligible or spec.eval_only or spec.annotation_only:
+            continue
+        if not isinstance(spec.provenance_url, str) or not spec.provenance_url.strip():
+            blockers.append(f"dataset {key}: provenance_url is missing")
         if spec.license_status != "verified":
             blockers.append(f"dataset {key}: license_status is {spec.license_status!r}, not 'verified'")
         if spec.source_type == "huggingface" and (
@@ -43,13 +54,47 @@ def _production_preflight(config: PipelineConfig) -> list[str]:
             or not immutable_revision.fullmatch(parquet_revision)
         ):
             blockers.append(f"dataset {key}: generated parquet mirror revision is not an immutable commit SHA")
-        if spec.annotation_only and key != "uicrit":
-            blockers.append(f"dataset {key}: annotation-only source has no configured join/consumer stage")
+    # Keep the stricter model-export policy visible during planning as well as
+    # in Stage 12.  This is deliberately limited to explicitly opted-in
+    # training sources; evaluation and annotation-only sources use their
+    # isolated fetch/consumer paths and must not block because they are not
+    # training exports.
+    for key, violations in config.training_policy_violations().items():
+        blockers.extend(f"dataset {key}: training policy: {reason}" for reason in violations)
 
-    if config.get_stage("s01_5_uicrit_join").enabled:
-        rico_sources = {"rico_core", "rico_semantic"} & config.datasets.keys()
-        if not rico_sources:
-            blockers.append("UICrit join is enabled but no RICO image dataset is configured")
+    uicrit_join = config.get_stage("s01_5_uicrit_join")
+    if uicrit_join.enabled:
+        # Keep the join contract explicit at the planning boundary.  Without
+        # these checks the stage can be enabled while silently doing no work
+        # (or reading a repository that cannot be joined to any image source).
+        params = uicrit_join.params
+        annotation_key = params.get("annotation_dataset", "uicrit")
+        target_keys = params.get("target_datasets", ("rico_core", "rico_semantic"))
+        target_keys = (
+            (target_keys,)
+            if isinstance(target_keys, str)
+            else tuple(target_keys or ())
+        )
+        annotation_spec = config.datasets.get(annotation_key)
+        if annotation_spec is None:
+            blockers.append(
+                f"UICrit join requires configured annotation dataset {annotation_key!r}"
+            )
+        elif not annotation_spec.annotation_only:
+            blockers.append(
+                f"UICrit join annotation dataset {annotation_key!r} must be annotation_only"
+            )
+        if not target_keys:
+            blockers.append("UICrit join requires at least one target image dataset")
+        else:
+            missing_targets = [key for key in target_keys if key not in config.datasets]
+            if missing_targets:
+                blockers.append(
+                    "UICrit join target image datasets are not configured: "
+                    + ", ".join(missing_targets)
+                )
+        if not config.get_stage("s01_fetch").enabled:
+            blockers.append("UICrit join requires s01_fetch to be enabled")
 
     active_model_keys = set()
     if config.get_stage("s04_safety").enabled or config.get_stage("s05_recaption").enabled or config.get_stage("s06_structure").enabled or config.get_stage("s10_audit").enabled:
@@ -143,9 +188,13 @@ class ManifestPlanningStage(Stage):
         result = StageResult(stage_name=self.name)
         blockers = _production_preflight(config)
         if blockers:
-            message = "Production preflight blocked:\n- " + "\n- ".join(blockers)
             if getattr(config, "dry_run", False):
                 log.warning("production_preflight_blockers", blockers=blockers)
+            elif config.strict_vlm_no_fallback:
+                raise RuntimeError(
+                    "Strict local-VLM preflight failed; refusing to continue without "
+                    "the required pinned GPU/VLM runtime: " + "; ".join(blockers)
+                )
             else:
                 log.warning("production_preflight_bypassed_for_testing", blockers=blockers)
                 # raise RuntimeError(message)

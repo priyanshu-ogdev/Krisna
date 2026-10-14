@@ -11,8 +11,11 @@ Commands:
 from __future__ import annotations
 
 import asyncio
+import copy
 import os
+import re
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 if sys.platform == 'win32':
@@ -21,19 +24,17 @@ if sys.platform == 'win32':
         warnings.simplefilter("ignore", DeprecationWarning)
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     if hasattr(sys.stdout, "reconfigure"):
-        try:
+        with suppress(Exception):
             sys.stdout.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
     if hasattr(sys.stderr, "reconfigure"):
-        try:
+        with suppress(Exception):
             sys.stderr.reconfigure(encoding="utf-8")
-        except Exception:
-            pass
 
 import click
 from rich.console import Console
 from rich.table import Table
+
+from data_forge.config import PipelineConfig
 
 console = Console(legacy_windows=False if sys.platform == "win32" else None)
 
@@ -105,17 +106,85 @@ def _find_configs_dir() -> Path:
     return Path.cwd() / "configs"
 
 
-def _load_pipeline_config() -> "PipelineConfig":
-    from data_forge.config import PipelineConfig, load_config
+def _load_pipeline_config(
+    profile: str = "default",
+    *,
+    pipeline_yaml: str | Path | None = None,
+    models_yaml: str | Path | None = None,
+    datasets_yaml: str | Path | None = None,
+) -> PipelineConfig:
+    from data_forge.config import load_config
 
     configs_dir = _find_configs_dir()
-    datasets_yaml_path = os.environ.get("KRISNA_DATASETS_YAML") or (configs_dir / "datasets.yaml")
+    if profile == "local-vlm":
+        default_pipeline = configs_dir / "pipeline_local.yaml"
+        default_models = configs_dir / "models_local.yaml"
+        default_datasets = configs_dir / "datasets.yaml"
+    elif profile == "default":
+        default_pipeline = configs_dir / "pipeline.yaml"
+        default_models = configs_dir / "models.yaml"
+        default_datasets = configs_dir / "datasets.yaml"
+    else:
+        raise click.ClickException(f"Unknown config profile: {profile}")
+
+    pipeline_path = pipeline_yaml or os.environ.get("KRISNA_PIPELINE_YAML") or default_pipeline
+    models_path = models_yaml or os.environ.get("KRISNA_MODELS_YAML") or default_models
+    datasets_yaml_path = datasets_yaml or os.environ.get("KRISNA_DATASETS_YAML") or default_datasets
     config = load_config(
-        pipeline_yaml=configs_dir / "pipeline.yaml",
-        models_yaml=configs_dir / "models.yaml",
+        pipeline_yaml=pipeline_path,
+        models_yaml=models_path,
         datasets_yaml=datasets_yaml_path,
     )
     return config
+
+
+def _require_local_vlm_hardware(config: PipelineConfig) -> None:
+    """Fail before model startup when the strict local contract is impossible."""
+    import importlib.util
+
+    if importlib.util.find_spec("vllm") is None:
+        raise click.ClickException(
+            "Strict local-VLM preprocessing requires vLLM; install the GPU runtime before starting."
+        )
+    if not config.strict_vlm_no_fallback:
+        raise click.ClickException(
+            "The selected profile is not strict_vlm_no_fallback=True; refusing to run a fallback-capable preprocessing path."
+        )
+    model = config.models.get(config.local_vlm.model_key)
+    if model is None or "vision" not in {str(cap).lower() for cap in model.capabilities}:
+        raise click.ClickException(
+            f"Configured local VLM '{config.local_vlm.model_key}' is missing or has no vision capability."
+        )
+    if not isinstance(model.revision, str) or re.fullmatch(r"[0-9a-fA-F]{40}", model.revision) is None:
+        raise click.ClickException(
+            f"Strict local-VLM model revision must be an immutable 40-character SHA, got {model.revision!r}."
+        )
+    try:
+        import torch
+    except ImportError as exc:
+        raise click.ClickException("Strict local-VLM preprocessing requires a CUDA-enabled PyTorch install.") from exc
+    if config.local_vlm.require_cuda and not torch.cuda.is_available():
+        raise click.ClickException(
+            "Strict local-VLM preprocessing requires CUDA; CPU execution and model fallback are disabled."
+        )
+    if torch.cuda.is_available():
+        total_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        if total_gb < config.local_vlm.gpu_memory_budget_gb:
+            raise click.ClickException(
+                f"GPU has {total_gb:.1f} GiB, below the configured strict local-VLM budget "
+                f"of {config.local_vlm.gpu_memory_budget_gb} GiB."
+            )
+    try:
+        import psutil
+
+        host_ram_gb = psutil.virtual_memory().total / (1024**3)
+        if host_ram_gb < config.local_vlm.host_ram_budget_gb:
+            raise click.ClickException(
+                f"Host has {host_ram_gb:.1f} GiB RAM, below the configured strict local-VLM "
+                f"budget of {config.local_vlm.host_ram_budget_gb} GiB."
+            )
+    except ImportError as exc:
+        raise click.ClickException("Strict local-VLM preprocessing requires psutil for host-memory validation.") from exc
 
 
 @click.group()
@@ -131,6 +200,8 @@ def main() -> None:
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Validate config and walk stages without inference")
 @click.option("--resume/--no-resume", default=True, help="Resume from checkpoints")
+@click.option("--profile", type=click.Choice(["local-vlm", "default"]), default="local-vlm", show_default=True,
+              help="Configuration profile; default is the strict Qwen3.8-27B GPU profile")
 @click.option("--stages", default=None, help="Comma-separated stage numbers to run (e.g., '0,1,2')")
 @click.option("--chunk-size", default=None, type=int, help="Override chunk size from config")
 @click.option("--limit", default=None, type=int, help="Cap total records processed this run (smoke tests)")
@@ -138,6 +209,7 @@ def main() -> None:
 def run(
     dry_run: bool,
     resume: bool,
+    profile: str,
     stages: str | None,
     chunk_size: int | None,
     limit: int | None,
@@ -146,7 +218,7 @@ def run(
     """Execute the data pipeline."""
     from data_forge.logging_setup import setup_logging
 
-    config = _load_pipeline_config()
+    config = _load_pipeline_config(profile)
     config.dry_run = dry_run
 
     if chunk_size:
@@ -240,6 +312,142 @@ def run(
         _print_stats(stats)
     finally:
         manifest.close()
+
+
+@main.command()
+@click.option("--dataset", "dataset_key", required=True, help="Registry key to preprocess")
+@click.option("--source-path", type=click.Path(path_type=Path, exists=True, file_okay=False), required=True,
+              help="Local directory containing the downloaded source artifacts")
+@click.option("--limit", type=int, default=None, help="Optional deterministic record cap")
+@click.option("--adapter", type=click.Choice(["figma2code", "mobileviews"]), default=None,
+              help="Override the registry adapter mode")
+def preprocess(dataset_key: str, source_path: Path, limit: int | None, adapter: str | None) -> None:
+    """Normalize local UI artifacts without models, network, or synthetic labels.
+
+    This command intentionally stops at manifest status ``fetched``. It does
+    not claim license approval, safety, PII clearance, structure-model
+    completion, or training eligibility. Run the normal pipeline stages after
+    reviewing the generated provenance and source-structure receipt.
+    """
+    import json
+
+    from data_forge.data.fetcher import DatasetFetcher
+    from data_forge.manifest import Manifest
+
+    config = _load_pipeline_config()
+    spec = config.datasets.get(dataset_key)
+    if spec is None:
+        raise click.ClickException(f"Unknown dataset registry key: {dataset_key}")
+    if not source_path.is_dir():
+        raise click.ClickException(f"Source path is not a directory: {source_path}")
+
+    local_spec = copy.deepcopy(spec)
+    local_spec.source_type = "local"
+    local_spec.fetch_config = dict(local_spec.fetch_config)
+    local_spec.fetch_config["download_mode"] = adapter or (
+        "figma2code_local" if dataset_key == "figma2code" else "mobileviews_local"
+    )
+    local_spec.fetch_config["local_path"] = str(source_path.resolve())
+    if limit is not None:
+        if limit < 0:
+            raise click.ClickException("--limit must be non-negative")
+        local_spec.fetch_config["sample_size"] = limit
+
+    fetcher = DatasetFetcher(config)
+    records = asyncio.run(fetcher.fetch_dataset(dataset_key, local_spec))
+    manifest = Manifest(config.resolved_paths["manifests"] / "manifest.db")
+    try:
+        inserted = manifest.bulk_create_records(records, source_dataset=dataset_key, license_verified=None)
+    finally:
+        manifest.close()
+
+    receipt = {
+        "command": "data-forge preprocess",
+        "dataset": dataset_key,
+        "adapter": local_spec.fetch_config["download_mode"],
+        "source_path": str(source_path.resolve()),
+        "records_seen": len(records),
+        "records_inserted": inserted,
+        "status_after_preprocess": "fetched",
+        "models_loaded": False,
+        "network_used": False,
+        "synthetic_labels_created": False,
+        "note": "Run the governed pipeline stages separately after reviewing this receipt.",
+    }
+    receipt_path = config.resolved_paths["audit_reports"] / f"preprocess_{dataset_key}.json"
+    receipt_path.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
+    console.print(json.dumps({**receipt, "receipt_path": str(receipt_path)}, indent=2))
+
+
+@main.command("preprocess-vlm")
+@click.option("--profile", type=click.Choice(["local-vlm"]), default="local-vlm", show_default=True)
+@click.option("--dataset", "dataset_key", default=None, help="Optional source dataset filter")
+@click.option("--status", "record_status", default="fetched", show_default=True,
+              help="Manifest status to enrich with the strict VLM bundle")
+@click.option("--limit", type=int, default=None, help="Optional deterministic record cap")
+@click.option("--concurrency", type=int, default=None,
+              help="Override local VLM concurrency; default comes from pipeline.local_vlm")
+@click.option("--receipt", type=click.Path(path_type=Path), default=None,
+              help="Optional output path for the atomic VLM preprocessing receipt")
+def preprocess_vlm(
+    profile: str,
+    dataset_key: str | None,
+    record_status: str,
+    limit: int | None,
+    concurrency: int | None,
+    receipt: Path | None,
+) -> None:
+    """Run the mandatory local VLM bundle over manifest records.
+
+    This command is intentionally separate from model-free normalization. It
+    starts the configured local Qwen VLM, requires CUDA/vLLM, validates every
+    caption/structure/OCR/quality/safety response, and excludes failures. It
+    never substitutes source metadata, a text-only model, CPU inference, or
+    empty/freeform output.
+    """
+    import json
+
+    from data_forge.inference.preprocessor import preprocess_fetched_records
+    from data_forge.manifest import Manifest
+
+    config = _load_pipeline_config(profile)
+    config.strict_vlm_no_fallback = True
+    config.validate_vlm_policy()
+    _require_local_vlm_hardware(config)
+    if limit is not None and limit < 0:
+        raise click.ClickException("--limit must be non-negative")
+    if concurrency is not None and concurrency < 1:
+        raise click.ClickException("--concurrency must be positive")
+
+    manifest = Manifest(config.resolved_paths["manifests"] / "manifest.db")
+    try:
+        records = manifest.query_by_status(record_status)
+        if dataset_key is not None:
+            records = [record for record in records if record.source_dataset == dataset_key]
+        if limit is not None:
+            records = records[:limit]
+        result = asyncio.run(
+            preprocess_fetched_records(
+                config,
+                manifest,
+                records,
+                concurrency=concurrency or config.local_vlm.concurrency,
+                receipt_path=receipt,
+            )
+        )
+    finally:
+        manifest.close()
+
+    console.print(json.dumps({
+        "command": "data-forge preprocess-vlm",
+        "profile": profile,
+        "model": config.models[config.local_vlm.model_key].model_id,
+        "records_considered": result.processed + result.excluded,
+        "processed": result.processed,
+        "excluded": result.excluded,
+        "receipt_path": str(result.receipt_path),
+        "fallbacks_allowed": False,
+    }, indent=2))
 
 
 @main.command()

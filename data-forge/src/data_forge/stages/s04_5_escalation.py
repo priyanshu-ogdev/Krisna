@@ -25,7 +25,10 @@ class EscalationStage(Stage):
                   record_ids: list[str], engine: Any | None = None) -> StageResult:
         result = StageResult(stage_name=self.name)
         borderline_ids = manifest.get_borderline_ids(record_ids)
-        if not borderline_ids or engine is None:
+        if not borderline_ids:
+            return result
+        self.require_vlm_engine(config, engine)
+        if engine is None:
             return result
 
         records = manifest.get_records_by_ids(borderline_ids)

@@ -38,6 +38,13 @@ class FetchStage(Stage):
         total_excluded = 0
 
         for ds_key, ds_spec in config.datasets.items():
+            if not ds_spec.enabled:
+                log.info(
+                    "dataset_disabled_after_audit",
+                    dataset=ds_key,
+                    note=ds_spec.note or "disabled registry entry is quarantined and will not be fetched",
+                )
+                continue
             log.info("fetching_dataset", dataset=ds_key, source=ds_spec.source_type)
 
             # Skip if this image dataset has already been ingested into the manifest
