@@ -1,5 +1,12 @@
 # data-forge ↔ training Sync Design
 
+> **Scope correction (2026-10-13).** This file documents data-field and
+> directory contracts; it does not establish that the workspace currently
+> contains a nonzero paired wireframe→screenshot corpus. RICO/CLAY structure
+> records and Polish image pairs are separate products. The pair manifest,
+> source-disjoint split, hashes, and count receipt required before training
+> are specified in [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md).
+
 This is the verified contract between `data-forge`'s export stage
 (`data_forge.stages.s12_model_data_export.ModelDataExportStage`) and
 `krisna_training.data_forge_bridge`'s three sync scripts. Every field and

@@ -1,5 +1,19 @@
 # Krisna: Complete Agentic Architecture Audit & SOTA Upgrade Report
 
+> **Audit status (2026-10-13): superseded for final model selection.** This
+> document contains candidate SOTA upgrades and several estimates. It is not
+> the final architecture decision and must not be read as evidence that HART,
+> FLUX, Qwen3-VL, Gemma 3/4, or the reported VLM gains have been implemented
+> or measured in this checkout. The binding decision is
+> [`docs/research/FINAL_ARCHITECTURE_VERDICT.md`](../research/FINAL_ARCHITECTURE_VERDICT.md).
+> In particular, the current executable mainline is a deterministic Layout IR
+> baseline plus a partially wired Qwen-Image-2.1 LoRA path; it is not a
+> validated HART/FLUX training system.
+>
+> The current replacement scan is [`docs/research/SOTA_AUDIT_2026-10.md`](../research/SOTA_AUDIT_2026-10.md).
+> The candidate recommendations and estimated gains in this historical file
+> are not approved claims and must not be copied into the paper as results.
+
 > **Platform**: NVIDIA RTX A6000 (48GB VRAM / 102GB shared) | Intel Core i9-14900K | 128GB RAM | Python 3.12
 
 ---
@@ -156,13 +170,18 @@ Phase 2 (512px progressive, 30k steps):
 - Fine-tune: Dreambooth-LoRA r=32 (Stage 1, 1024px) + Flow-DPO (Stage 2, 512px)
 - **Gap**: Step-distilled Turbo sacrifices quality for speed. Z-Image ranks below FLUX.2 on compositional fidelity and typography in community benchmarks. DPO Stage 2 at 512px is below FLUX's native resolution.
 
-**SOTA Finding: FLUX.2 [dev] (Black Forest Labs, late 2025)**
+**Historical candidate claim: FLUX.2 [dev] (Black Forest Labs)**
 
-FLUX.2 is the current open-weight benchmark leader for design-domain generation:
+The earlier audit described FLUX.2 as a current open-weight design leader, but
+that claim was not backed by a matched Krisna benchmark. The current model card
+does establish a 32B rectified-flow image-generation/editing model with
+multi-reference support, but its license and footprint make it a comparison
+candidate rather than an automatic replacement:
 - Native 2K resolution support
 - Superior typography and layout coherence (the exact UI capabilities needed)
 - Multi-reference conditioning without specialized fine-tuning
-- +25-35% over Z-Image-Turbo on compositional + typography benchmarks (community-verified 2026)
+- No Krisna-specific percentage gain is established; remove the former
+  community-benchmark estimate from paper claims.
 
 **Architecture: FLUX Dual-Stream vs Z-Image Single-Stream**
 

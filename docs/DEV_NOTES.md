@@ -132,7 +132,8 @@ The following components were intentionally removed based on empirical findings 
     - `text`: Exact text string label (e.g., `"Get Started"`).
     - `locked`: Boolean flag for user-pinned regions.
 - **Deterministic Renderer**: Renders Layout IR directly to a lossless 2D PNG wireframe using deterministic SVG/Pillow rendering. Guarantees 100% geometric repeatability.
-- **Generative Backbone**: Backed by the LayoutFlow flow-matching architecture adapted for hierarchical, parent-conditioned UI generation.
+  > **Implementation Note (Oct 2026 audit)**: The inference pipeline uses the *deterministic* SVG/Pillow renderer — not a trained neural model. The `training/src/krisna_training/layout/` package implements a LayoutFlow-style 4-layer TransformerEncoder flow model as a research candidate for future trained layout generation. It has no production checkpoint and is not loaded at inference time. This distinction is material for paper claims: the Layout IR contribution is the deterministic schema and rendering system, not a claim that LayoutFlow is trained.
+- **Generative Backbone (Research/Future)**: The `training/layout/model.py` LayoutFlow TransformerEncoder architecture is the candidate for learning UI layout distributions from RICO+CLAY in a future training pass. Not yet trained; not yet used in inference.
 
 ### 3.3 Tier 3: Unified Diffusion Polish Renderer
 

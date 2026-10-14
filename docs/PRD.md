@@ -149,11 +149,11 @@ was abandoned in favor of the following, final split:
 
 | Tier | Model | Trained? | Why |
 |---|---|---|---|
-| **Planner** | Qwen3.5-9B | **No — frozen** | RAG retrieval over real human critique data (UICrit) at inference time; no fine-tuning, no judge-labeled data |
-| **Sketch** | From-scratch, MaskGIT-style transformer | **Yes** | The one tier with no suitable pretrained equivalent; trained on real public UI datasets (RICO, CLAY, Enrico, Screen2Words, WebUI) |
-| **Polish (Default)** | Z-Image-Turbo | **Yes** | LoRA fine-tune + Diffusion-DPO, trained on real human preference-pair datasets (Pick-a-Pic v2, HPDv2, GameLabel-10K; DesignSense-10k/DesignPref pending public release) |
-| **Polish (Quality)** | Qwen-Image-Edit-2511 | **No — frozen** | Zero-shot in-context learning + SDEdit-style conditioning; no paired edit-task data needed |
-| **Critic** | Gemma 4 31B Dense | **No — frozen** | Zero-shot VLM-as-judge, an on-demand product feature, not a training-data source for anything else |
+| **Planner** | Qwen2.5-VL-7B-Instruct (Qwen3-VL-8B as gated candidate) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
+| **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No for the main experiment** | Makes geometry, hierarchy, literals, and lock regions auditable; learned LayoutFlow/HART remains an ablation |
+| **Polish (Default)** | Qwen-Image-2.1 | **Base frozen; LoRA gated and trainable** | Supervised wireframe→screenshot adapter only after a real pair manifest and native trainer smoke test; preference alignment is optional later |
+| **Polish (Quality)** | Qwen-Image-2.1 without adapter | **Frozen** | Same-model no-adapter reference/ablation; must not inherit the Default LoRA through a global fallback |
+| **Critic / Review** | Deterministic verifiers plus optional frozen VLM evaluation | **No** | Review is not a training-label source; image-grounded Planner review must be proven before claiming visual self-review |
 
 **The rule this enforces, everywhere in the codebase**: there is no
 AI-judge-labeled training data anywhere in this project. Every training

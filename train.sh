@@ -1,19 +1,14 @@
 #!/usr/bin/env bash
-# Root-level training dispatcher. Routes to the existing tier-specific
-# scripts/training/train_*.sh — kept as the source of truth for actual
-# invocation args (they translate each tier's real YAML config into the
-# correct CLI flags; see training/configs/*.yaml for what those flags
-# actually are and docs/review/18_training_memory_audit.md for the
-# A6000 48GB/128GB-RAM sizing behind each tier's current settings).
+# Root-level training dispatcher. The current active intended path is the
+# Qwen-Image-2.1 paired image-edit LoRA launcher. Historical Sketch/DPO paths
+# are deliberately rejected rather than pretending their missing trainers are
+# active. See docs/training/ARCHITECTURE.md.
 #
 # Usage:
 #   ./train.sh --list
-#   ./train.sh sketch-stage1
-#   ./train.sh sketch-stage2
+#   ./train.sh audit
 #   ./train.sh polish-default [config.yaml]
-#   ./train.sh polish-dpo [config.yaml]
-#   ./train.sh planner        # DEPRECATED — see below, will prompt to confirm
-#   ./train.sh critic         # DEPRECATED — see below, will prompt to confirm
+#   ./train.sh polish-dpo    # deferred; exits without launching
 #
 # Prerequisites this script does NOT run for you (deployment-specific
 # paths, run once per machine):
@@ -28,55 +23,15 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 list_tiers() {
     cat <<'EOF'
-Tier            Status       Design intent (per docs/review/)
+Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   ACTIVE       MaskGIT transformer, from scratch, 256px/16x16
-                              grid. batch=32, lr=3e-4, 1000-step warmup,
-                              caption_mix_ratio=0.95 (Betker et al. 2023 —
-                              5% short-caption exposure prevents overfitting
-                              to dense VLM caption style), cfg_dropout=0.1
-                              (Muse/Chang et al. 2023 — enables real CFG at
-                              inference, see docs/review/17). No gradient
-                              checkpointing needed at this sequence length.
-
-sketch-stage2   ACTIVE       Same architecture, continued from stage1 via
-                              init_from, 512px/32x32 grid. batch=16,
-                              lr=1.5e-4 (lower, continuation-style),
-                              use_gradient_checkpointing=true — REQUIRED
-                              safeguard at 1024 tokens/seq, see
-                              docs/review/18 for the real activation-memory
-                              math behind this.
-
-polish-default  ACTIVE       Z-Image-Turbo LoRA (rank=32; no separate alpha
-                              field — diffusers' own dreambooth-LoRA
-                              scripts default alpha=rank, confirmed as a
-                              deliberate ecosystem-wide convention across
-                              SDXL/SD3/vanilla dreambooth, see
-                              docs/review/18) via diffusers' own
-                              dreambooth-LoRA script, THEN refined further
-                              by polish-dpo. Base fine-tune step.
-
-polish-dpo      ACTIVE       Flow-matching-adapted Diffusion-DPO (Wallace
-                              et al. 2024 + MotionFlux's velocity-prediction
-                              adaptation), beta=2000 (Wallace et al.'s own
-                              SD1.5 setting — but see dpo_loss.py's docstring
-                              for newer, flow-matching-specific evidence
-                              suggesting lower values, e.g. 500, may work
-                              better here; no Z-Image-Turbo-specific sweep
-                              has been run). Reference-model CPU-offloaded
-                              (docs/review/18) to fit 48GB alongside the
-                              trainable policy copy.
-
-planner         DEPRECATED   Frozen at inference under the final no-RLHF-
-                              loop PRD revision (RAG over UICrit corpus
-                              instead) — training this produces an adapter
-                              inference/planner_backend.py cannot load.
-                              Kept as reference code only.
-
-critic          DEPRECATED   Frozen, zero-shot at inference under the same
-                              PRD revision. Same situation as planner —
-                              training this produces an unused adapter.
-                              Kept as reference code only.
+sketch-stage1   RESEARCH     Deterministic Layout IR baseline; no complete learned trainer.
+sketch-stage2   RESEARCH     Future LayoutFlow/MaskGIT ablation only.
+polish-default  PENDING      Qwen/Qwen-Image-2.1 paired image-conditioned LoRA;
+                               external trainer must be pinned and smoke-tested.
+polish-dpo      DEFERRED     Historical path, not part of the active pipeline.
+planner         FROZEN       Qwen3.5-9B GGUF + UICrit RAG; no Planner LoRA.
+critic          FROZEN       No Critic training in the active pipeline.
 EOF
 }
 
@@ -93,17 +48,23 @@ case "${1:-}" in
     --list|"")
         list_tiers
         ;;
+    audit)
+        exec python3 scripts/training/audit_training_pipeline.py
+        ;;
     sketch-stage1)
-        exec ./scripts/training/train_sketch_stage1.sh
+        echo "Sketch training is research-only; no source-backed trainer exists in this checkout." >&2
+        exit 2
         ;;
     sketch-stage2)
-        exec ./scripts/training/train_sketch_stage2.sh
+        echo "Sketch training is research-only; no source-backed trainer exists in this checkout." >&2
+        exit 2
         ;;
     polish-default)
         exec ./scripts/training/train_polish_default_lora.sh "${2:-}"
         ;;
     polish-dpo)
-        exec ./scripts/training/train_polish_dpo.sh "${2:-}"
+        echo "polish-dpo is deferred and is not part of the active Qwen-Image-2.1 pipeline." >&2
+        exit 2
         ;;
     planner)
         confirm_deprecated planner

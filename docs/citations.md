@@ -187,4 +187,12 @@ Krisna behavior than a generic MaskGIT description; see
 - **Formal Research Paper**: [`docs/RESEARCH_PAPER.md`](RESEARCH_PAPER.md) — *Krisna: Bounded Multi-Turn Agentic UI Design via Structured Layout IR and Unified Diffusion Rendering*.
 - **Developer Notes & Feature Audit**: [`docs/DEV_NOTES.md`](DEV_NOTES.md) — Engineering history, component specifications, memory ledgers, and feature retention audit.
 
+## October 2026 SOTA scan
+
+The current external-method audit and upgrade decisions are maintained in
+[`docs/research/SOTA_AUDIT_2026-10.md`](research/SOTA_AUDIT_2026-10.md). Its
+primary links include Qwen3.5-9B, Qwen-Image-2.1, LayoutCoT, UniLayDiff,
+MaskFlow, ReAL, Mage-Flow, FLUX.2-dev, SwitchMem, ConClick, and Seg2Click.
+Those sources support candidate ablations and design hypotheses only; they do
+not transfer benchmark numbers into Krisna.
 
