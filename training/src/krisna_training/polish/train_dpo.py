@@ -75,7 +75,26 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--preference-db", required=True, help="Path to the PreferenceStore sqlite db (see scripts/training/sync_from_data_forge_dpo.sh).")
     p.add_argument("--blob-root", default="krisna_blobs", help="Root dir chosen_ref/rejected_ref blob:// paths resolve against.")
-    p.add_argument("--pretrained-model-name-or-path", default="Tongyi-MAI/Z-Image-Turbo")
+    p.add_argument("--pretrained-model-name-or-path",
+                   default="Qwen/Qwen-Image-2.1",
+                   help=(
+                       "UPDATED (training pipeline audit, Oct 2026): default changed "
+                       "from Tongyi-MAI/Z-Image-Turbo (retired Polish path) to "
+                       "Qwen/Qwen-Image-2.1 (active Polish path). "
+                       "IMPORTANT — UNVERIFIED MODULE NAMES: this loop uses "
+                       "--lora-target-modules (default: to_q,to_k,to_v,to_out.0) "
+                       "and encode_prompt() which were originally calibrated for "
+                       "Z-Image-Turbo's specific pipeline class. Qwen-Image-2.1 is "
+                       "also a single-stream MMDiT but its exact attention module "
+                       "names and encode_prompt() return shape MUST be verified "
+                       "against the real model on actual hardware before a production "
+                       "run. To inspect: load AutoPipelineForText2Image.from_pretrained("
+                       "'Qwen/Qwen-Image-2.1') and print([name for name, _ in "
+                       "pipe.transformer.named_modules()]) to confirm the target "
+                       "module names. The velocity-prediction DPO loss math "
+                       "(flow_matching_dpo_loss) is architecture-agnostic and "
+                       "transfers directly once the API surface is confirmed."
+                   ))
     p.add_argument("--lora-adapter-path", default=None, help="Existing LoRA adapter to continue from (e.g. the base fine-tune's output). If unset, DPO trains a fresh adapter on top of the base pretrained weights.")
     p.add_argument("--output-dir", required=True)
     p.add_argument("--source", action="append", default=None, help="Restrict to specific preference sources (e.g. pickapic_v2). Repeatable. Default: all sources in the db.")

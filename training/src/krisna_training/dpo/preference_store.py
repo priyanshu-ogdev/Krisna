@@ -28,18 +28,23 @@ CREATE INDEX IF NOT EXISTS idx_pref_pairs_source ON preference_pairs(source);
 CREATE INDEX IF NOT EXISTS idx_pref_pairs_session ON preference_pairs(session_id);
 """
 
-# Original three: pairs this project builds itself (verifier ranking,
-# Gemma critique comparison, imported UICrit ratings — see
-# dpo/uicrit_importer.py). The four data-forge-sourced keys were added for
-# training/data_forge_bridge/sync_dpo_pairs.py — real, human-labeled
-# external preference datasets data-forge fetches/dedupes/PII-scrubs
-# (Pick-a-Pic v2, HPDv2 = general aesthetic; DesignSense-10k, DesignPref =
-# UI/design-domain). Kept as exact source keys (not collapsed into one
-# generic "external" value) so a later export/analysis can still tell
-# Pick-a-Pic pairs from DesignPref pairs without re-deriving it from
-# somewhere else.
+# Sources this project writes into the store:
+#   verifier_stack  — verifier ranking from the automated pipeline
+#   planner_review  — structured critique from the resident Planner review pass
+#   uicrit_seed     — imported UICrit human critique ratings (uicrit_importer.py)
+# Sources sourced from data-forge's real, human-labeled external datasets:
+#   pickapic_v2, hpdv2 — general aesthetic preference pairs
+#   gamelabel_10k      — mobile UI preference pairs (human crowdsource)
+#   designsense_10k, designpref — UI-domain DPO pairs (not yet publicly released)
+#
+# REMOVED: "gemma_critique" was present in v10 when the frozen Critic
+# generated its own preference labels (AI-judge self-distillation). Under
+# the no-RLHF-loop PRD revision, no AI-generated labels may enter the
+# PreferenceStore. Nothing currently writes "gemma_critique"; this removal
+# is a principled enforcement of that architectural constraint, not a
+# behavioral change.
 VALID_SOURCES = frozenset({
-    "verifier_stack", "planner_review", "gemma_critique", "uicrit_seed",
+    "verifier_stack", "planner_review", "uicrit_seed",
     "pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref",
 })
 
