@@ -31,17 +31,21 @@ This directory holds the research records, architectural audits, and workflow de
     - Publisher-backed flow/editing rationale, upgraded native training and
       inference contracts, receipts, ablations, and hardware gates.
 
-7. **[Strict Local VLM Preprocessing Architecture](../data-forge/LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md)**:
+7. **[Research-paper Artifact Map](RESEARCH_ARTIFACT_MAP.md)**:
+    - Section-by-section mapping from paper claims to implementation modules,
+      required receipts, and publication status.
+
+8. **[Strict Local VLM Preprocessing Architecture](../data-forge/LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md)**:
     - Pinned Qwen3.8-27B local runtime, 48 GiB VRAM/128 GiB RAM allocation, no-fallback policy, commands, and final training-data gates.
 
-8. **[Developer Notes & Engineering Record](../DEV_NOTES.md)**:
+9. **[Developer Notes & Engineering Record](../DEV_NOTES.md)**:
    - System overview, component specifications, feature retention audit, memory ledgers (12GB VRAM / 16GB host RAM), and testing runbooks.
 
-9. **[Agentic Pipeline Architecture Review](agentic_pipeline_architecture_review.md)**:
+10. **[Agentic Pipeline Architecture Review](agentic_pipeline_architecture_review.md)**:
    - Audit of turn budget policy, inactivity debounce coordinator, session context limits, and finalization gating.
 
-10. **[Phase 5: Agentic Workflow Design](phase5_agentic_workflow_design.md)**:
+11. **[Phase 5: Agentic Workflow Design](phase5_agentic_workflow_design.md)**:
    - Single-model-per-responsibility rules, Qwen-Image-2.1 DreamBooth LoRA training contracts, adapter manifests, and failure recovery policies.
 
-11. **[Research Citations & Bibliography](../citations.md)**:
+12. **[Research Citations & Bibliography](../citations.md)**:
    - Comprehensive citations for layout flow matching, grammar-guided generation, hybrid retrieval, and diffusion alignment.

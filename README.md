@@ -34,14 +34,14 @@ Canonical decisions and evidence:
 .
 ├── data-forge/              Governed ingestion, provenance, VLM stages, exports
 ├── inference/               Python model plane, orchestrator, verifiers, API
-├── inference-runtime/       CLI session/runtime harness
-├── inference-frontend/      Node/Tauri control panel
+├── inference/runtime/       CLI session/runtime harness
+├── inference/frontend/      Node/Tauri control panel
 ├── training/                Dataset bridges, native trainer contracts, adapters
 ├── scripts/                 Operational entry points grouped by subsystem
 ├── tests/                   Cross-package tests grouped by subsystem
 ├── docs/                    Product, architecture, research, operations, review
 ├── .github/                 CI and repository automation
-├── pyproject.toml           Root tooling configuration, when present
+├── pytest.ini               Root test discovery and import-path configuration
 ├── setup.sh                 Environment setup entry point
 ├── run_data_forge.sh        Data-Forge entry point
 ├── train.sh                 Training entry point
