@@ -40,11 +40,11 @@
 | `[28]` | [28_classifier_free_guidance_ho2022.pdf](28_classifier_free_guidance_ho2022.pdf) | **Classifier-Free Diffusion Guidance** | J. Ho and T. Salimans | NeurIPS Workshop 2022 (2022) | [https://openreview.net/forum?id=qw8AKxfYbI](https://openreview.net/forum?id=qw8AKxfYbI) | 3685.1 KB | Verified PDF |
 | `[29]` | [29_gptq_frantar2023.pdf](29_gptq_frantar2023.pdf) | **GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers** | E. Frantar, S. Ashkboos, T. Hoefler, and D. Alistarh | ICLR 2023 (2023) | [https://openreview.net/forum?id=tAvYSZA5OsCU](https://openreview.net/forum?id=tAvYSZA5OsCU) | 509.6 KB | Verified PDF |
 | `[30]` | [30_qwen_image_spec2026.pdf](30_qwen_image_spec2026.pdf) | **Qwen-Image-2.1: Visual Foundation Models with Image Conditioning & Flow Matching** | Qwen Team | Alibaba Technical Report & Official Specification (2026) | [https://github.com/QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) | 33176.9 KB | Verified PDF |
-| `[31]` | [31_diffusion_dpo_wallace2024.pdf](31_diffusion_dpo_wallace2024.pdf) | **Diffusion Model Alignment Using Direct Preference Optimization (Loss Formulation)** | B. Wallace, M. Dang, R. Rafailov, et al. | IEEE/CVF CVPR 2024 (2024) | [https://doi.org/10.1109/CVPR52733.2024.00784](https://doi.org/10.1109/CVPR52733.2024.00784) | 9073.4 KB | Verified PDF |
-| `[32]` | [32_hart_tang2025.pdf](32_hart_tang2025.pdf) | **HART: Efficient Visual Generation with Hybrid Autoregressive Transformer** | H. Tang, et al. | ICLR 2025 (2025) | [https://openreview.net/forum?id=1V7xXpB6gZ](https://openreview.net/forum?id=1V7xXpB6gZ) | 23764.7 KB | Verified PDF |
+| `[31]` | [31_diffusion_dpo_wallace2024.pdf](31_diffusion_dpo_wallace2024.pdf) | **Diffusion Model Alignment Using Direct Preference Optimization (Loss Formulation)** | B. Wallace, M. Dang, R. Rafailov, L. Zhou, M. Kiehl, and S. Ermon | IEEE/CVF CVPR 2024 (2024) | [https://doi.org/10.1109/CVPR52733.2024.00784](https://doi.org/10.1109/CVPR52733.2024.00784) | 9073.4 KB | Verified PDF |
+| `[32]` | [32_hart_tang2025.pdf](32_hart_tang2025.pdf) | **HART: Efficient Visual Generation with Hybrid Autoregressive Transformer** | H. Tang, Y.-C. Wu, S. Yang, E.-Z. Xie, J.-S. Chen, J.-Y. Chen, Z. Zhang, H. Cai, Y. Lu, and S. Han | ICLR 2025 (2025) | [https://openreview.net/forum?id=1V7xXpB6gZ](https://openreview.net/forum?id=1V7xXpB6gZ) | 23764.7 KB | Verified PDF |
 | `[33]` | [33_colpali_faysse2024.pdf](33_colpali_faysse2024.pdf) | **ColPali: Efficient Document Retrieval with Vision Language Models** | M. Faysse, H. Abou-Chakra, A. Sautier, C. R. de Sainte Marie, A. Parcollet, and V. Guigue | Springer ECCV 2024 (2024) | [https://doi.org/10.1007/978-3-031-72995-9_24](https://doi.org/10.1007/978-3-031-72995-9_24) | 8066.7 KB | Verified PDF |
 | `[34]` | [34_showui_lin2025.pdf](34_showui_lin2025.pdf) | **ShowUI: One Vision-Language-Action Model for GUI Visual Agent** | K. Q. Lin, L. Li, D. Gao, Z. Yang, S. Wu, Z. Bai, S. W. Lei, L. Wang, and M. Z. Shou | IEEE/CVF CVPR 2025 (2025) | [https://doi.org/10.1109/CVPR52734.2025.01816](https://doi.org/10.1109/CVPR52734.2025.01816) | 19668.8 KB | Verified PDF |
-| `[35]` | [35_instructlayout_tpami2025.pdf](35_instructlayout_tpami2025.pdf) | **InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior** | IEEE TPAMI Authors | IEEE TPAMI 2025 (2025) | [https://doi.org/10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880) | 9662.9 KB | Verified PDF |
+| `[35]` | [35_instructlayout_tpami2025.pdf](35_instructlayout_tpami2025.pdf) | **InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior** | C. Lin, Y. Lin, P. Pan, X. Zhang, and Y. Mu | IEEE TPAMI 2025 (2025) | [https://doi.org/10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880) | 9662.9 KB | Verified PDF |
 | `[36]` | [36_flowedit_kulikov2025.pdf](36_flowedit_kulikov2025.pdf) | **FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models** | V. Kulikov, M. Kleiner, I. Huberman-Spiegelglas, and T. Michaeli | IEEE/CVF ICCV 2025 (2025) | [https://openaccess.thecvf.com/ICCV2025](https://openaccess.thecvf.com/ICCV2025) | 13414.1 KB | Verified PDF |
 | `[37]` | [37_qlora_dettmers2023.pdf](37_qlora_dettmers2023.pdf) | **QLoRA: Efficient Finetuning of Quantized LLMs** | T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer | NeurIPS 2023 (2023) | [https://proceedings.neurips.cc/paper_files/paper/2023/hash/1feb87871436031bdc0f2beaa62a049b-Abstract-Conference.html](https://proceedings.neurips.cc/paper_files/paper/2023/hash/1feb87871436031bdc0f2beaa62a049b-Abstract-Conference.html) | 1040.5 KB | Verified PDF |
 | `[38]` | [38_dora_liu2024.pdf](38_dora_liu2024.pdf) | **DoRA: Weight-Decomposed Low-Rank Adaptation** | S. Y. Liu, C. Y. Wang, H. Yin, P. Molchanov, Y. C. F. Wang, K. T. Cheng, and M. H. Chen | ICML 2024 (2024) | [https://proceedings.mlr.press/v235/liu24ba.html](https://proceedings.mlr.press/v235/liu24ba.html) | 7647.1 KB | Verified PDF |
@@ -52,7 +52,7 @@
 | `[40]` | [40_textdiffuser2_chen2024.pdf](40_textdiffuser2_chen2024.pdf) | **TextDiffuser-2: Unleashing the Power of Language Models for Text Rendering** | J. Chen, Y. Song, L. Jia, H. Zhao, et al. | Springer ECCV 2024 (2024) | [https://doi.org/10.1007/978-3-031-72761-0_1](https://doi.org/10.1007/978-3-031-72761-0_1) | 1990.8 KB | Verified PDF |
 | `[41]` | [41_anytext_tuo2024.pdf](41_anytext_tuo2024.pdf) | **AnyText: Multilingual Visual Text Generation And Editing** | Y. Tuo, W. Xiang, J.-Y. He, Y. Geng, and X. Xie | ICLR 2024 (2024) | [https://openreview.net/forum?id=5iTq0n0fG7](https://openreview.net/forum?id=5iTq0n0fG7) | 15426.0 KB | Verified PDF |
 | `[42]` | [42_osworld_xie2024.pdf](42_osworld_xie2024.pdf) | **OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments** | T. Xie, D. Zhang, J. Chen, et al. | NeurIPS 2024 (2024) | [https://proceedings.neurips.cc/paper_files/paper/2024/hash/b6bfb578c7c988a649ef2cf13f8aa312-Abstract-Conference.html](https://proceedings.neurips.cc/paper_files/paper/2024/hash/b6bfb578c7c988a649ef2cf13f8aa312-Abstract-Conference.html) | 35999.8 KB | Verified PDF |
-| `[43]` | [43_figma2code_gui2026.pdf](43_figma2code_gui2026.pdf) | **Figma2Code: Automating Multimodal Design to Code in the Wild** | Y. Gui, et al. | ICLR 2026 (2026) | [https://openreview.net/forum?id=figma2code2026](https://openreview.net/forum?id=figma2code2026) | 845.3 KB | Verified PDF |
+| `[43]` | [43_figma2code_gui2026.pdf](43_figma2code_gui2026.pdf) | **Figma2Code: Automating Multimodal Design to Code in the Wild** | Y. Gui, J. Zhang, Y. Wang, T. Ma, Y. Wan, S. He, D. Chen, Z. Zhao, W. Jiang, X. Shi, H. Jin, and P. S. Yu | ICLR 2026 (2026) | [https://openreview.net/forum?id=figma2code2026](https://openreview.net/forum?id=figma2code2026) | 845.3 KB | Verified PDF |
 | `[44]` | [44_lcm_lora_luo2024.pdf](44_lcm_lora_luo2024.pdf) | **Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference** | S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao | Springer ECCV 2024 (2024) | [https://doi.org/10.1007/978-3-031-72995-9_7](https://doi.org/10.1007/978-3-031-72995-9_7) | 1742.9 KB | Verified PDF |
 | `[45]` | [45_pfm_kim2024.pdf](45_pfm_kim2024.pdf) | **Preference Alignment with Flow Matching** | M. Kim, Y. Lee, S. Kang, J. Oh, S. Chong, and S.-Y. Yun | NeurIPS 2024 (2024) | [https://proceedings.neurips.cc/paper_files/paper/2024/hash/8575a6c1171ff76ba54414b2cf6ee2a6-Abstract-Conference.html](https://proceedings.neurips.cc/paper_files/paper/2024/hash/8575a6c1171ff76ba54414b2cf6ee2a6-Abstract-Conference.html) | 1433.4 KB | Verified PDF |
 | `[46]` | [46_curriculum_dpo_croitoru2025.pdf](46_curriculum_dpo_croitoru2025.pdf) | **Curriculum Direct Preference Optimization for Diffusion and Consistency Models** | F. A. Croitoru, V. Hondru, R. T. Ionescu, N. Sebe, and M. Shah | IEEE/CVF CVPR 2025 (2025) | [https://openaccess.thecvf.com/CVPR2025](https://openaccess.thecvf.com/CVPR2025) | 236.5 KB | Verified PDF |
@@ -286,14 +286,14 @@
 - **Role in Krisna**: Official model architecture specification for the 7B MMDiT Polish generation backbone
 
 ### `[31]` Diffusion Model Alignment Using Direct Preference Optimization (Loss Formulation)
-- **Authors**: B. Wallace, M. Dang, R. Rafailov, et al.
+- **Authors**: B. Wallace, M. Dang, R. Rafailov, L. Zhou, M. Kiehl, and S. Ermon
 - **Accredited Venue**: IEEE/CVF CVPR 2024 (2024)
 - **Official Link**: [https://doi.org/10.1109/CVPR52733.2024.00784](https://doi.org/10.1109/CVPR52733.2024.00784)
 - **Local PDF File**: [`docs/papers/31_diffusion_dpo_wallace2024.pdf`](file:///D:/Krisna/docs/papers/31_diffusion_dpo_wallace2024.pdf)
-- **Role in Krisna**: Mathematical formulation for direct pairwise preference optimization on continuous flows
+- **Role in Krisna**: Mathematical formulation for direct pairwise preference optimization on continuous flows (adapting Rafailov et al. NeurIPS 2023)
 
 ### `[32]` HART: Efficient Visual Generation with Hybrid Autoregressive Transformer
-- **Authors**: H. Tang, et al.
+- **Authors**: H. Tang, Y.-C. Wu, S. Yang, E.-Z. Xie, J.-S. Chen, J.-Y. Chen, Z. Zhang, H. Cai, Y. Lu, and S. Han
 - **Accredited Venue**: ICLR 2025 (2025)
 - **Official Link**: [https://openreview.net/forum?id=1V7xXpB6gZ](https://openreview.net/forum?id=1V7xXpB6gZ)
 - **Local PDF File**: [`docs/papers/32_hart_tang2025.pdf`](file:///D:/Krisna/docs/papers/32_hart_tang2025.pdf)
@@ -314,7 +314,7 @@
 - **Role in Krisna**: Vision-language-action modeling and UI-guided visual token pruning for GUI agents
 
 ### `[35]` InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior
-- **Authors**: IEEE TPAMI Authors
+- **Authors**: C. Lin, Y. Lin, P. Pan, X. Zhang, and Y. Mu
 - **Accredited Venue**: IEEE TPAMI 2025 (2025)
 - **Official Link**: [https://doi.org/10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880)
 - **Local PDF File**: [`docs/papers/35_instructlayout_tpami2025.pdf`](file:///D:/Krisna/docs/papers/35_instructlayout_tpami2025.pdf)
@@ -370,7 +370,7 @@
 - **Role in Krisna**: Multimodal GUI agent benchmark across desktop and operating system interfaces
 
 ### `[43]` Figma2Code: Automating Multimodal Design to Code in the Wild
-- **Authors**: Y. Gui, et al.
+- **Authors**: Y. Gui, J. Zhang, Y. Wang, T. Ma, Y. Wan, S. He, D. Chen, Z. Zhao, W. Jiang, X. Shi, H. Jin, and P. S. Yu
 - **Accredited Venue**: ICLR 2026 (2026)
 - **Official Link**: [https://openreview.net/forum?id=figma2code2026](https://openreview.net/forum?id=figma2code2026)
 - **Local PDF File**: [`docs/papers/43_figma2code_gui2026.pdf`](file:///D:/Krisna/docs/papers/43_figma2code_gui2026.pdf)
