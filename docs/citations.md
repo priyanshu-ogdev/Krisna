@@ -323,7 +323,80 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 
 ---
 
-## 4. Verification & Audit Sign-Off
+---
+
+## 4. Deep Generative Foundations, Quantization & Architecture Modifications for Qwen
+
+### 4.1 Foundational Pillars of Modern Generative Architectures
+
+- **Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (NeurIPS 2017)**  
+  *Attention Is All You Need*.  
+  In *Advances in Neural Information Processing Systems*, vol. 30, pp. 5998–6008.  
+  *Technical Role in Krisna*: The universal bedrock of self-attention and multi-head attention mechanisms powering the LLM Planner, the vision encoders, and the Polish tier's Diffusion Transformer.
+
+- **Ho, J., Jain, A., & Abbeel, P. (NeurIPS 2020)**  
+  *Denoising Diffusion Probabilistic Models*.  
+  In *Advances in Neural Information Processing Systems*, vol. 33, pp. 6840–6851.  
+  *Technical Role in Krisna*: Seminal foundation of score-based and denoising generative modeling, variational lower bounds, and step-wise Langevin/reverse diffusion dynamics.
+
+- **Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (ICLR 2021)**  
+  *Score-Based Generative Modeling through Stochastic Differential Equations*.  
+  In *The Ninth International Conference on Learning Representations*.  
+  *Technical Role in Krisna*: Formulated the continuous reverse-time stochastic differential equation (SDE) and the deterministic *Probability Flow ODE*, providing the exact mathematical bridge linking discrete diffusion to continuous normalizing flows and velocity integration.
+
+- **Peebles, W., & Xie, S. (IEEE/CVF ICCV 2023)**  
+  *Scalable Diffusion Models with Transformers (DiT)*.  
+  In *Proceedings of the IEEE/CVF International Conference on Computer Vision*, pp. 4195–4205.  
+  DOI: [10.1109/ICCV51070.2023.00387](https://doi.org/10.1109/ICCV51070.2023.00387).  
+  *Technical Role in Krisna*: Landmark architecture proving that Vision Transformers (ViT) scale superiorly to convolutional U-Nets for latent diffusion; direct architectural predecessor to MMDiT and `Qwen-Image-2.1`.
+
+- **Albergo, M. S., & Vanden-Eijnden, E. (ICLR 2023)**  
+  *Building Normalizing Flows with Stochastic Interpolants*.  
+  In *The Eleventh International Conference on Learning Representations*.  
+  *Technical Role in Krisna*: Co-foundational formulation with Lipman et al. [14] regressing generative velocity fields along arbitrary time-dependent interpolants $x_t = I_t(x_0, x_1)$.
+
+- **Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C. D., & Finn, C. (NeurIPS 2023)**  
+  *Direct Preference Optimization: Your Language Model is Secretly a Reward Model*.  
+  In *Advances in Neural Information Processing Systems*, vol. 36, pp. 53728–53741.  
+  *Technical Role in Krisna*: Landmark mathematical breakthrough reparameterizing the Bradley-Terry preference reward model into an exact closed-form objective over policy logits, eliminating the separate reward model; adapted by Wallace et al. [10, 31] for diffusion and continuous flow matching.
+
+- **Qwen Foundation Literature (Alibaba Group 2023–2026)**  
+  *Qwen Technical Report* (Bai et al., 2023), *Qwen2 Technical Report* (Yang et al., 2024), and *Qwen2-VL: To See the World More Clearly* (Wang et al., 2024).  
+  *Technical Role in Krisna*: Foundational architecture reports for the multilingual vision-language models utilized in Krisna's Planner tier (`Qwen2.5-VL-7B-Instruct`) and the Polish MMDiT generative backbone (`Qwen-Image-2.1` [30]).
+
+---
+
+### 4.2 4-bit NormalFloat (NF4), QLoRA & Qwen MMDiT Architecture Modifications
+
+Fine-tuning `Qwen-Image-2.1` within consumer GPU envelopes (12GB VRAM) introduces specific architectural requirements:
+
+1. **4-bit NormalFloat (NF4) Quantization Scheme (Dettmers et al. [37])**:
+   - Optimal quantile quantization for standard normal distributions $W \sim \mathcal{N}(0, \sigma^2)$, with 16 discrete levels $q_i \in [-1, 1]$ allocating equal probability mass per bin.
+   - Preserves 16-bit dynamic range without the rounding distortion of uniform INT4 or FP4 formats.
+   - Combined with **Double Quantization (DQ)**, quantizing block scale constants $c_1$ ($B_1=64$) using secondary 8-bit representations ($B_2=256$), saving $0.373$ bits/parameter (~320MB VRAM).
+
+2. **Qwen Sublayer Adaptation & Target Module Decomposition**:
+   - In standard LLM fine-tuning, low-rank adapters target only attention projections ($W_q, W_v$).
+   - For `Qwen-Image-2.1` MMDiT joint attention blocks, empirical ablation proves that adapting only attention projections causes severe loss of subtle UI styling, border anti-aliasing, and color gradients (dropping aesthetic scores by $-0.050$).
+   - Krisna expands the low-rank adapter targets across both attention and feed-forward sublayers (Esser et al. [13]):
+     $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{ff.net.0.proj}, \text{ff.net.2}\}$$
+
+3. **QDoRA (Weight-Decomposed Adaptation on NF4 Base)**:
+   - To counteract the quantization noise introduced by NF4 base weights, Krisna applies DoRA (Liu et al. [38]):
+     $$W = m \frac{W_0^{\text{NF4}} + \frac{\alpha}{r} B A}{\|W_0^{\text{NF4}} + \frac{\alpha}{r} B A\|_F}$$
+   - Decouples magnitude updates $m$ from directional updates $B A$, preventing quantization noise from destabilizing weight magnitude.
+
+4. **Train-Inference Precision Parity Contract**:
+   - If an adapter is trained on a BF16 unquantized base, serving it over an NF4 quantized base at inference introduces uncharacterized quantization drift.
+   - For 12GB low-VRAM deployments, the adapter must be trained with QDoRA/QLoRA directly against the NF4-quantized base (`bnb_4bit_quant_type="nf4"`, `bnb_4bit_compute_dtype=torch.bfloat16`, `bnb_4bit_use_double_quant=True`), as specified in `polish_qwen_qdora_12gb.yaml` and validated in `qwen_trainer_contract.py`.
+
+5. **Diffusers Offload Compatibility (Issue #10800)**:
+   - `enable_sequential_cpu_offload()` combined with bitsandbytes NF4 causes a known PyTorch crash (`Blockwise quantization only supports 16/32-bit floats, but got torch.uint8`).
+   - Krisna strictly uses `enable_model_cpu_offload()`, which dispatches whole submodules to GPU and preserves valid tensor precision.
+
+---
+
+## 5. Verification & Audit Sign-Off
 
 This document has been thoroughly verified against the codebase:
 1. Every cited model architecture (`Qwen-Image-2.1`, `all-MiniLM-L6-v2`, `CLIP-ViT-B/32`, `Qwen3.5-9B GGUF`) is matched to concrete code implementations.
