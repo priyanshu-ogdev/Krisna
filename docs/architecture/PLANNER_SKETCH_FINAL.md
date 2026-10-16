@@ -58,12 +58,11 @@ protocol. The current MaskGIT route remains the rollback baseline.
 
 ## Research basis
 
-- LayoutFlow, Guerreiro et al., ECCV 2024: https://arxiv.org/abs/2403.18187
+- LayoutFlow, Guerreiro et al., ECCV 2024: https://doi.org/10.1007/978-3-031-72764-1_4
 - LayoutDiffusion, Zhang et al., ICCV 2023: https://openaccess.thecvf.com/content/ICCV2023/papers/Zhang_LayoutDiffusion_Improving_Graphic_Layout_Generation_by_Discrete_Diffusion_Probabilistic_Models_ICCV2023_paper.pdf
-- LayoutDM, Chai et al., CVPR 2023: https://arxiv.org/abs/2305.02567
-- UniLayDiff, Liu et al., CVPR 2026: https://arxiv.org/abs/2512.08897
-- LayoutCoT: https://arxiv.org/abs/2504.10829
-- TA-TiTok/MaskGen, Kim et al., ICCV 2025: https://arxiv.org/abs/2501.07730
+- LayoutDM, Chai et al., CVPR 2023: https://openaccess.thecvf.com/content/CVPR2023/papers/Chai_LayoutDM_Discrete_Diffusion_Model_for_Controllable_Layout_Generation_CVPR_2023_paper.pdf
+- InstructLayout, IEEE TPAMI 2025: https://doi.org/10.1109/TPAMI.2025.3595880
+- ColPali, Faysse et al., ECCV 2024: https://doi.org/10.1007/978-3-031-72995-9_24
 - Grammar-constrained decoding, Geng et al., EMNLP 2023: https://aclanthology.org/2023.emnlp-main.674/
 - AWQ, Lin et al., MLSys 2024: https://proceedings.mlsys.org/paper_files/paper/2024/file/42a452cbafa9dd64e9ba4aa95cc1ef21-Paper-Conference.pdf
 

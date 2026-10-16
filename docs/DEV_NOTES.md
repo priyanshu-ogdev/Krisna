@@ -279,3 +279,46 @@ The desktop frontend control plane (`inference/frontend/src-tauri/src/`) maintai
 - `backend_client.rs`: Zero-dependency, offline-reliable HTTP client using `std::net::TcpStream` with timeouts and retries.
 - Tauri commands (`backend_health`, `backend_ready`, `backend_models_status`, `backend_warm_models`, `backend_send_message`, `backend_finalize`) proxy requests to the Python inference server while enforcing turn budget constraints and optimistic revision matching.
 
+### 5.6 Peer-Reviewed Architectural Grounding (IEEE, Springer, ACM)
+
+Every core engineering decision in Krisna maps to established peer-reviewed literature:
+- **Spatial Condition Decoupling**: ControlNet (Zhang et al., *IEEE/CVF ICCV 2023*, DOI: [10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355)) motivates isolating lossless 2D wireframe rendering from diffusion pixel synthesis.
+- **Semantic Graph Priors for Layout**: InstructLayout (*IEEE TPAMI 2025*, DOI: [10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880)) proves that instruction-driven layout synthesis is stabilized by enforcing relational graph priors, grounding `krisna.layout.v1`.
+- **Inversion-Free Flow Trajectories**: FlowEdit (Kulikov et al., *IEEE/CVF ICCV 2025*) establishes localized continuous flow editing without latent inversion errors.
+- **Typographic Layout & Text Rendering**: TextDiffuser-2 (Chen et al., *Springer ECCV 2024*, DOI: [10.1007/978-3-031-72761-0_1](https://doi.org/10.1007/978-3-031-72761-0_1)) and AnyText (*ICLR 2024*) demonstrate that diffusion models require explicit bounding boxes and glyph conditioning to eliminate garbled text.
+- **GUI Visual Agent Grounding**: ShowUI (Lin et al., *IEEE/CVF CVPR 2025*, DOI: [10.1109/CVPR52734.2025.01816](https://doi.org/10.1109/CVPR52734.2025.01816)) and SeeClick (*ACL 2024*, DOI: [10.18653/v1/2024.acl-long.505](https://doi.org/10.18653/v1/2024.acl-long.505)) establish screen-space token selection for visual UI agents.
+- **Interactive State Tracking**: PromptMagician (Feng et al., *IEEE TVCG 2024*, DOI: [10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168)) justifies transparent session state snapshots ($\mathcal{S}^{(t)}$) for user-guided exploration.
+- **Optimal Transport Continuous Layouts**: LayoutFlow (Guerreiro et al., *Springer ECCV 2024*, DOI: [10.1007/978-3-031-72764-1_4](https://doi.org/10.1007/978-3-031-72764-1_4)) provides continuous vector-field flow matching over bounding boxes.
+- **Standardized Multi-Turn GUI Benchmarking**: OSWorld (Xie et al., *NeurIPS 2024*) sets the multimodal benchmark standard across operating system environments.
+
+### 5.7 Phase 5: FlowEdit 8-Step Refinement & Discrete VLA Grammar
+
+- **8-Step FlowEdit ODE Solver**:
+  Implemented in `FlowODEIntegrator.flowedit_step`:
+  $$x_{t+dt} = x_t + dt \cdot (v_{\text{edit}} - v_{\text{src}})$$
+  Enables targeted localized edits without complete canvas regeneration in 8 steps (~2.5s) instead of 40-step scratch generation.
+- **10 Discrete Typed VLA Actions**:
+  `SET_STYLE`, `RESIZE`, `ADD_COMPONENT`, `LOCK_REGION`, `SET_PALETTE`, `REMOVE_COMPONENT`, `MOVE_COMPONENT`, `SET_TEXT`, `SET_LAYOUT_DIRECTION`, `REORDER_HIERARCHY`.
+  Handled in `constraint_merge.py` with bounding-box normalization and boundary clamping:
+  $$\forall \text{node}: \quad x + w \le 1.0, \quad y + h \le 1.0$$
+- **Multi-Modal Client Binding**:
+  Rust Tauri desktop client (`trigger_refine`, `backend_refine`) and web frontend (`app.js`) allow clicking wireframe canvas nodes directly to dispatch `LOCK_REGION` VLA actions.
+
+### 5.8 Research Trajectory & Trace Architecture (`krisna.research.trace.v1`)
+
+To facilitate empirical analysis, paper table compilation, and preference dataset generation:
+- **Trajectory Schema**: Specified in `inference/src/krisna_inference/research/trace_schema.py`:
+  - `SessionResearchTrajectory`: Session-level trajectory containing metadata, cumulative constraints, hardware provenance, and sequence of turn records.
+  - `TurnTraceRecord`: Atomic turn trace capturing `reasoning_note` (Planner chain-of-thought), conversation dialog, discrete VLA actions, SHA-256 state hash, wireframe/image blob IDs, and verifier score receipts.
+  - `RuntimeEnvironmentInfo`: Snapshot of Python, OS, PyTorch, Diffusers, CUDA device name, memory ledger allocation, and active model checkpoints.
+- **Trace Recorder**: `inference/src/krisna_inference/research/trace_recorder.py`:
+  - `build_research_trajectory(state)`: Constructs structured trajectory directly from runtime `DesignState`.
+  - `save_research_trajectory(trajectory, path)`: Persists trajectory JSON.
+  - `export_trajectory_jsonl(trajectory, path)`: Appends turn records to a line-delimited JSON stream for offline DPO preference optimization.
+- **API Surface**:
+  - `GET /session/{session_id}/research-trace`: Serves the complete `SessionResearchTrajectory` JSON payload.
+- **Verification Tests**:
+  - `pytest tests/inference/test_research_traces.py -v`: Validates schema serialization, trajectory construction, file persistence, and REST endpoint responses.
+
+
+

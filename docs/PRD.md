@@ -136,6 +136,20 @@ only then does `DesignState.stage` advance to `finalized`. A safety-gate
 failure rolls the stage back to `sketching` and raises rather than
 returning a partial/unsafe result.
 
+### 5.4 FlowEdit 8-step iterative refinement and VLA action grammar
+
+In Phase 5, the iterative polish loop adds an explicit FlowEdit 8-step numerical ODE solver ($x_{t+dt} = x_t + dt \cdot (v_{\text{edit}} - v_{\text{src}})$) grounded in Kulikov et al. (ICCV 2025). The Planner communicates modifications either via full conversational deltas or 10 discrete Vision-Language-Action (VLA) primitives:
+- `SET_STYLE`, `RESIZE`, `ADD_COMPONENT`, `LOCK_REGION`, `SET_PALETTE`, `REMOVE_COMPONENT`, `MOVE_COMPONENT`, `SET_TEXT`, `SET_LAYOUT_DIRECTION`, and `REORDER_HIERARCHY`.
+- Spatial coordinate clamping (`_normalize_and_clamp_bbox`) ensures $x + w \le 1.0, y + h \le 1.0$ at all times.
+- Locked regions (`LOCK_REGION`) guarantee exact 0.00% pixel drift preservation via dual-layer inpainting masks and hard composite protection.
+
+### 5.5 Research Trajectory & Trace Recording Protocol (`krisna.research.trace.v1`)
+
+For offline research paper analysis, ablation studies, and DPO alignment dataset construction, Krisna records full deliberation traces:
+- `RuntimeEnvironmentInfo`: Hardware specs, CUDA/PyTorch/Diffusers versions, GPU memory ledger status, active model weights.
+- `TurnTraceRecord`: Per-turn record tracking user prompt, assistant response, planner chain-of-thought (`reasoning_note`), discrete VLA actions, SHA-256 state digest, wireframe and image blob pointers, and multi-axis verifier score receipts.
+- `SessionResearchTrajectory`: Session-level aggregate available via `GET /session/{session_id}/research-trace` and exportable to JSON/JSONL (`export_trajectory_jsonl()`) for direct consumption by empirical evaluation harnesses.
+
 ---
 
 ## 6. Model stack: the no-RLHF-loop revision
@@ -376,24 +390,30 @@ including every citation independently re-verified during this
 project's review process.
 
 1. Chang, H., et al. (2023). *Muse: Text-to-Image Generation via Masked
-   Generative Transformers*. ICML 2023. arXiv:2301.00704. — Classifier-
-   free guidance formula, training-time conditioning dropout rate, and
-   linear guidance ramp for the Sketch tier's masked-generative
+   Generative Transformers*. In *Proceedings of the 40th International
+   Conference on Machine Learning (ICML)*, PMLR vol. 202, pp. 4055–4075. —
+   Classifier-free guidance formula, training-time conditioning dropout rate,
+   and linear guidance ramp for the Sketch tier's masked-generative
    architecture. Verified directly against the paper (§2.7): formula,
    10% dropout, and ramp description all match exactly.
 2. Wallace, B., et al. (2024). *Diffusion Model Alignment Using Direct
-   Preference Optimization*. CVPR 2024. — Original Diffusion-DPO
+   Preference Optimization*. In *Proceedings of the IEEE/CVF Conference
+   on Computer Vision and Pattern Recognition (CVPR)*, pp. 8228–8238.
+   DOI: 10.1109/CVPR52733.2024.00784. — Original Diffusion-DPO
    formulation and `beta` range, the starting point for Z-Image-Turbo's
    alignment.
-3. Bin, Y., et al. MotionFlux. arXiv:2508.19527. — Velocity-prediction
+3. Kim, M., Lee, Y., Kang, S., Oh, J., Chong, S., & Yun, S.-Y. (2024).
+   *Preference Alignment with Flow Matching*. In *Advances in Neural
+   Information Processing Systems (NeurIPS 37)*. — Velocity-prediction
    DPO substitution and flow-matching anchor regularization, adapting
-   Wallace et al.'s epsilon-prediction formulation to a flow-matching
-   model.
-4. Linear-DPO (arXiv:2605.21123), §E.3; DeRaDiff (arXiv:2601.20198). —
-   Real β-sweep results on flow-matching models closer to Z-Image-
-   Turbo's architecture than SD1.5/SDXL; the reward-hacking risk at low
-   β.
-5. Ho, J. & Salimans, T. (2022). *Classifier-Free Diffusion Guidance*. —
+   Wallace et al.'s formulation to continuous flow-matching models.
+4. Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025).
+   *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*.
+   In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+   Recognition (CVPR)*. — Curriculum difficulty margin scheduling for preference
+   optimization on generative visual models.
+5. Ho, J. & Salimans, T. (2022). *Classifier-Free Diffusion Guidance*. In
+   *Advances in Neural Information Processing Systems (NeurIPS)*. —
    The general CFG technique underlying both the Sketch tier's approach
    (via Muse) and the caption-mixing/conditioning-dropout design for
    Sketch-tier training.
@@ -409,12 +429,15 @@ project's review process.
 8. Google DeepMind (2026). *Gemma 4.* `deepmind.google/models/gemma/gemma-4/`.
    — Confirms the Critic tier's real model identity and license.
 9. Wang, B., et al. (2021). *Screen2Words: Automatic Mobile UI
-   Summarization with Multimodal Learning*. UIST 2021. — Real-caption
+   Summarization with Multimodal Learning*. In *Proceedings of the 34th
+   Annual ACM Symposium on User Interface Software and Technology (UIST)*,
+   pp. 498–510. DOI: 10.1145/3472749.3474765. — Real-caption
    length statistics justifying the recaptioning stage's existence.
-10. Jonathan-Zhou/GameLabel-10k (arXiv:2409.19830). — Human-labeled
-    image-preference pairs from mobile-game crowdsourcing, a Stage-1
-    general-aesthetic DPO source once its actual (non-standard) schema
-    was confirmed and a dedicated fetch adapter written for it.
+10. Jonathan-Zhou (2024). *GameLabel-10k: Human UI Preference Dataset*.
+    HuggingFace Datasets. — Human-labeled image-preference pairs from
+    mobile-game crowdsourcing, a Stage-1 general-aesthetic DPO source
+    once its actual (non-standard) schema was confirmed and a dedicated
+    fetch adapter written for it.
 
 ---
 

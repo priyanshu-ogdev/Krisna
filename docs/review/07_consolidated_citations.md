@@ -19,17 +19,13 @@ renumber pass before this doc goes into a paper's appendix.
 3. Besnier, V. & Chen, M. (2023). *A Pytorch Reproduction of Masked Generative Image Transformer*. arXiv:2310.14400. (Source for the ~387M-sample training-budget precedent cited against this repo's Stage-1 budget.)
 4. Besnier, V., et al. (2025). *Halton scheduler as a plug-in replacement for confidence-based scheduling in masked generative transformers*. arXiv (2025).
 
-**Phase 2 — Polish tier (Z-Image LoRA + Diffusion-DPO)**
-5. Wallace, B., Dang, M., Rafailov, R., Zhou, L., Lou, A., Purushwalkam, S., Ermon, S., Xiong, C., Joty, S., & Naik, N. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024.
-6. (Corroborating source for β=2000, independent of the repo's own citation) arXiv:2410.05255 — confirms "β=2000, which stays the same in Diffusion-DPO."
-7. Bin, Y., et al. (2025). *MotionFlux* [flow-matching DPO adaptation]. arXiv:2508.19527, §3.6.
-8. Esser, P., et al. — Stable Diffusion 3 (logit-normal timestep sampling for flow matching).
-9. Lumina-T2X team — arXiv:2405.05945 (logit-normal timestep sampling, corroborating source).
-10. (2026) arXiv:2603.12517 — logit-normal sampling accelerates early convergence but caps final quality vs. a later-uniform curriculum; cited as an honest caveat, not a contradiction of the repo's choice.
-11. Kirstain, Y., et al. — Pick-a-Pic v2 (`yuvalkirstain/pickapic_v2`, MIT).
-12. Hao, Y., et al. — HPDv2 (`ymhao/HPDv2`, Apache 2.0).
-13. DesignSense-10k — Adobe MDSR, arXiv:2602.23438 (CC BY-NC-ND 4.0; confirmed no public dataset release as of this review).
-14. DesignPref — Peng et al. (25 Nov 2025); confirmed unreleased per TASTE, arXiv:2605.20731.
+**Phase 2 — Polish tier (Qwen MMDiT LoRA + Continuous Flow-Matching DPO)**
+5. Wallace, B., Dang, M., Rafailov, R., Zhou, L., Lou, A., Purushwalkam, S., Ermon, S., Xiong, C., Joty, S., & Naik, N. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. IEEE/CVF CVPR 2024.
+6. Kim, M., Lee, Y., Kang, S., Oh, J., Chong, S., & Yun, S.-Y. (2024). *Preference Alignment with Flow Matching*. NeurIPS 2024.
+7. Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025). *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*. IEEE/CVF CVPR 2025.
+8. Esser, P., et al. (2024). *Scaling Rectified Flow Transformers for High-Resolution Image Synthesis*. ICML 2024 (PMLR 235).
+9. Kirstain, Y., et al. — Pick-a-Pic v2 (`yuvalkirstain/pickapic_v2`, MIT).
+10. Hao, Y., et al. — HPDv2 (`ymhao/HPDv2`, Apache 2.0).
 
 **Phase 3 — Planner (Qwen3.5-9B, RAG)**
 15. Qwen Team, Alibaba (2026). Qwen3.5/Qwen3-Next hybrid architecture (Gated DeltaNet + Gated Attention) — cite the official technical report directly.

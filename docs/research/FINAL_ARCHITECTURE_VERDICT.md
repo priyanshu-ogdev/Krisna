@@ -362,6 +362,9 @@ These are the sources that support the decision, not claims that a future experi
 9. **Zhang et al., “Adding Conditional Control to Text-to-Image Diffusion Models,” ICCV 2023.** [CVF Open Access](https://openaccess.thecvf.com/content/ICCV2023/html/Zhang_Adding_Conditional_Control_to_Text-to-Image_Diffusion_Models_ICCV_2023_paper.html). Supports a future explicit spatial-control ablation while keeping the base generator frozen.
 10. **Kulikov et al., “FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models,” ICCV 2025.** [CVF Open Access](https://openaccess.thecvf.com/content/ICCV2025/html/Kulikov_FlowEdit_Inversion-Free_Text-Based_Editing_Using_Pre-Trained_Flow_Models_ICCV_2025_paper.html). Supports a future inversion-free flow-editing comparison, not a Qwen result.
 11. **Feng et al., “PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation,” IEEE TVCG 2023.** [IEEE DOI](https://doi.org/10.1109/TVCG.2023.3327168). Supports inspectable prompt/state artifacts, not a replacement for Layout IR constraints.
+12. **Moran et al., “Machine Learning-Based Prototyping of Graphical User Interfaces for Mobile Apps,” IEEE TSE 2020.** [IEEE DOI](https://doi.org/10.1109/TSE.2018.2838547). Foundational IEEE journal precedent for ML-based UI component recognition and prototyping.
+13. **Wei et al., “Boosting GUI Prototyping with Diffusion Models,” IEEE RE 2023.** [IEEE DOI](https://doi.org/10.1109/RE57278.2023.00035). Peer-reviewed IEEE study exposing text and layout degradation in naive UI diffusion models.
+14. **Guerreiro et al., “LayoutFlow: Flow Matching for Layout Generation,” ECCV 2024 (Springer LNCS).** [Springer DOI](https://doi.org/10.1007/978-3-031-72764-1_4). Springer-published continuous flow matching over bounding-box coordinates with optimal transport vector fields.
 
 ## 10. Completion criteria
 
