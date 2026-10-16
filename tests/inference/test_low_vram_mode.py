@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from krisna_inference.orchestrator.model_registry import (
+    HIGH_VRAM_REGISTRY,
     LOW_VRAM_REGISTRY,
     REGISTRY,
     MockBackend,
@@ -24,9 +25,24 @@ class TestGetRegistry:
     def test_low_vram_true_returns_low_vram_registry(self):
         assert get_registry(low_vram=True) is LOW_VRAM_REGISTRY
 
+    def test_high_vram_true_returns_high_vram_registry(self):
+        assert get_registry(high_vram=True) is HIGH_VRAM_REGISTRY
+
+    def test_low_and_high_vram_both_true_raises(self):
+        with pytest.raises(ValueError):
+            get_registry(low_vram=True, high_vram=True)
+
     def test_full_registry_has_zero_ram_gb_everywhere(self):
         for spec in REGISTRY.values():
             assert spec.ram_gb == 0.0
+
+    def test_high_vram_registry_has_zero_ram_gb_everywhere(self):
+        for spec in HIGH_VRAM_REGISTRY.values():
+            assert spec.ram_gb == 0.0
+
+    def test_high_vram_registry_has_all_tiers_always_resident(self):
+        for spec in HIGH_VRAM_REGISTRY.values():
+            assert spec.always_resident is True
 
     def test_low_vram_registry_reduces_the_offloadable_tiers(self):
         assert LOW_VRAM_REGISTRY[Tier.POLISH_DEFAULT].vram_gb < REGISTRY[Tier.POLISH_DEFAULT].vram_gb

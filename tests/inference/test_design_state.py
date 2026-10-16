@@ -60,3 +60,30 @@ def test_locked_regions_roundtrip():
     )
     wire = state.to_wire()
     assert wire["constraints"]["locked_regions"][0]["reason"] == "logo must not move"
+
+
+def test_refine_eligibility():
+    state = DesignState()
+    assert not state.is_refine_eligible()
+    state.stage = SessionStage.FINALIZED
+    assert not state.is_refine_eligible()  # no render yet
+    state.finalize_output.image_ref = "render://x/final.png"
+    assert state.is_refine_eligible()
+    state.stage = SessionStage.SKETCHING
+    assert not state.is_refine_eligible()
+
+
+def test_instructlayout_formatting():
+    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+
+    layout_tree = {
+        "nodes": [
+            {"id": "nav_1", "type": "navbar", "bbox": [0.0, 0.0, 1.0, 0.08], "locked": True},
+            {"id": "hero_cta", "type": "button", "bbox": [0.4, 0.6, 0.2, 0.08], "text": "Get Started"},
+        ]
+    }
+    prefix = PlannerBackendLlama._format_layout_graph_prefix(layout_tree)
+    assert "[Structured Layout IR Graph (InstructLayout/TPAMI 2025)]:" in prefix
+    assert "id=nav_1, type=navbar" in prefix
+    assert "locked=True" in prefix
+    assert "text='Get Started'" in prefix

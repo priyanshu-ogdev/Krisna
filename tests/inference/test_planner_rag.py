@@ -314,3 +314,72 @@ class TestResolveEmbedFnFromEnv:
         monkeypatch.setattr(planner_rag, "load_default_embedder", raises)
         with pytest.raises(RuntimeError, match="simulated load failure"):
             planner_rag.resolve_embed_fn_from_env()
+
+
+class TestMultimodalRAGMechanism:
+    def test_multimodal_late_fusion_ranks_jointly_relevant_document(self, tmp_path):
+        corpus = tmp_path / "corpus.jsonl"
+        img1 = tmp_path / "img1.png"
+        img2 = tmp_path / "img2.png"
+        img1.write_bytes(b"dummy_png_1")
+        img2.write_bytes(b"dummy_png_2")
+
+        _write_corpus(corpus, [
+            ("rec1", str(img1), "Cramped form fields with poor spacing", 0.4),
+            ("rec2", str(img2), "Modern clean card layout with airy whitespace", 0.9),
+        ])
+
+        # Text embedder: 2-dim (dim 0 = cramped, dim 1 = airy)
+        def mock_text_embed(text: str):
+            t = text.lower()
+            return [1.0 if "cramp" in t or "tight" in t else 0.0, 1.0 if "air" in t or "clean" in t else 0.0]
+
+        # Visual embedder: 2-dim (dim 0 = dark/dense, dim 1 = light/airy)
+        def mock_vis_embed(img_input):
+            return [1.0, 0.0] if "img1" in str(img_input) else [0.0, 1.0]
+
+        idx = UICritRAGIndex.from_jsonl(
+            corpus,
+            embed_fn=mock_text_embed,
+            visual_embed_fn=mock_vis_embed,
+            data_root=tmp_path,
+        )
+        assert len(idx) == 2
+
+        # Query with text + visual query matching rec1
+        results = idx.retrieve(query="make it less tight", visual_query="img1.png", k=2, alpha=0.5)
+        assert len(results) == 2
+        assert results[0].record_id == "rec1"
+        assert results[0].score > results[1].score
+
+    def test_pure_visual_retrieval_without_text(self, tmp_path):
+        corpus = tmp_path / "corpus.jsonl"
+        img1 = tmp_path / "img1.png"
+        img2 = tmp_path / "img2.png"
+        img1.write_bytes(b"dummy_png_1")
+        img2.write_bytes(b"dummy_png_2")
+
+        _write_corpus(corpus, [
+            ("rec1", str(img1), "Design A", 0.5),
+            ("rec2", str(img2), "Design B", 0.8),
+        ])
+
+        def mock_vis_embed(img_input):
+            return [0.0, 1.0] if "img2" in str(img_input) else [1.0, 0.0]
+
+        idx = UICritRAGIndex.from_jsonl(corpus, visual_embed_fn=mock_vis_embed, data_root=tmp_path)
+        results = idx.retrieve(visual_query="img2.png", k=1)
+        assert len(results) == 1
+        assert results[0].record_id == "rec2"
+
+    def test_resolve_visual_embed_fn_from_env(self, monkeypatch):
+        from krisna_inference.backends import planner_rag
+
+        monkeypatch.delenv("KRISNA_PLANNER_RAG_VISUAL", raising=False)
+        assert planner_rag.resolve_visual_embed_fn_from_env() is None
+
+        monkeypatch.setenv("KRISNA_PLANNER_RAG_VISUAL", "1")
+        monkeypatch.setattr(planner_rag, "load_default_visual_embedder", lambda: (lambda img: [0.1, 0.2]))
+        fn = planner_rag.resolve_visual_embed_fn_from_env()
+        assert fn is not None
+        assert fn("test.png") == [0.1, 0.2]

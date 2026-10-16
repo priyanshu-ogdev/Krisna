@@ -96,3 +96,25 @@ def test_checked_in_config_is_accepted_by_trainer_boundary() -> None:
     prepared = prepare_trainer_config(cfg)
     assert prepared["revision"] == MODEL_REVISION
     assert prepared["cond_image_column"] == "condition_image"
+
+
+def test_qlora_consumer_config_accepted_and_validated() -> None:
+    cfg = _config()
+    cfg["load_in_4bit"] = True
+    cfg["bnb_4bit_quant_type"] = "nf4"
+    cfg["bnb_4bit_compute_dtype"] = "bfloat16"
+    cfg["bnb_4bit_use_double_quant"] = True
+    cfg["rank"] = 32
+
+    prepared = prepare_trainer_config(cfg)
+    assert prepared["revision"] == MODEL_REVISION
+    assert "load_in_4bit" not in prepared
+    assert "bnb_4bit_quant_type" not in prepared
+
+
+def test_qlora_rejects_invalid_quant_type() -> None:
+    cfg = _config()
+    cfg["load_in_4bit"] = True
+    cfg["bnb_4bit_quant_type"] = "invalid_quant"
+    with pytest.raises(ValueError, match="unsupported bnb_4bit_quant_type"):
+        prepare_trainer_config(cfg)

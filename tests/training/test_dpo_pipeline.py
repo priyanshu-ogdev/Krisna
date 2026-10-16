@@ -146,7 +146,7 @@ def test_build_pair_from_candidates_raises_on_mismatched_prompt_used(pref_store:
     ]
     with pytest.raises(MismatchedPromptError):
         build_pair_from_candidates(
-            pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+            pref_store, prompt="dark dashboard", candidates=candidates, source="planner_review"
         )
     assert pref_store.count() == 0
 
@@ -159,7 +159,7 @@ def test_build_pair_from_candidates_allows_matching_prompt_used(pref_store: Pref
         {"image_ref": "blob://b.png", "score": 0.3, "prompt_used": "dark dashboard"},
     ]
     pair = build_pair_from_candidates(
-        pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+        pref_store, prompt="dark dashboard", candidates=candidates, source="planner_review"
     )
     assert pair is not None
     assert pref_store.count() == 1
@@ -174,6 +174,6 @@ def test_build_pair_from_candidates_ignores_missing_prompt_used(pref_store: Pref
         {"image_ref": "blob://b.png", "score": 0.3, "prompt_used": "dark dashboard"},
     ]
     pair = build_pair_from_candidates(
-        pref_store, prompt="dark dashboard", candidates=candidates, source="gemma_critique"
+        pref_store, prompt="dark dashboard", candidates=candidates, source="planner_review"
     )
     assert pair is not None

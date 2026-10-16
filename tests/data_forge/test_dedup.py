@@ -112,6 +112,12 @@ class MockClipModel:
     def parameters(self):
         yield self._param
 
+    def to(self, *args, **kwargs):
+        return self
+
+    def eval(self):
+        return self
+
     def get_image_features(self, **kwargs):
         pixel_values = kwargs["pixel_values"]
         batch_size = pixel_values.shape[0]
@@ -415,15 +421,11 @@ class TestDedupStage:
         norms = np.linalg.norm(embeddings, axis=1)
         np.testing.assert_allclose(norms, 1.0, atol=1e-5)
 
-    def test_production_clip_fails_fast_without_mock_flag(self, monkeypatch):
-        """Ensure load_clip raises RuntimeError rather than silently faking embeddings in production."""
+    def test_production_clip_fails_fast_when_weights_unresolvable(self):
+        """Ensure load_clip raises RuntimeError immediately if model weights cannot be loaded."""
         from unittest.mock import patch
         from data_forge.inference.engine import ModelEngine
         from data_forge.config import PipelineConfig, ModelSpec
-
-        monkeypatch.delenv("KRISNA_MOCK_CLIP", raising=False)
-        monkeypatch.delenv("KRISNA_MOCK_VLLM", raising=False)
-        monkeypatch.delenv("KRISNA_ALLOW_MOCK_FALLBACK", raising=False)
 
         config = PipelineConfig()
         config.models["embeddings"] = ModelSpec(
@@ -436,12 +438,11 @@ class TestDedupStage:
             with pytest.raises(RuntimeError, match="Failed to load production CLIP model"):
                 engine.load_clip(config)
 
-    def test_mock_clip_engine_compliance(self, monkeypatch, tmp_path: Path):
-        """Ensure MockCLIPModel conforms to all PyTorch module contracts and generates embeddings."""
+    def test_clip_engine_loading_and_dedup_integration(self, tmp_path: Path):
+        """Ensure ModelEngine.load_clip properly initializes models and DedupEngine generates embeddings."""
+        from unittest.mock import patch
         from data_forge.inference.engine import ModelEngine
         from data_forge.config import PipelineConfig, ModelSpec
-
-        monkeypatch.setenv("KRISNA_MOCK_CLIP", "1")
 
         config = PipelineConfig()
         config.models["embeddings"] = ModelSpec(
@@ -449,30 +450,35 @@ class TestDedupStage:
             device="cpu",
         )
 
+        test_clip = MockClipModel(dim=32)
+        test_proc = MockClipProcessor()
+
         engine = ModelEngine()
-        engine.load_clip(config)
+        with patch("transformers.CLIPProcessor.from_pretrained", return_value=test_proc), \
+             patch("transformers.CLIPModel.from_pretrained", return_value=test_clip):
+            engine.load_clip(config)
 
-        # Check model compliance
-        assert hasattr(engine.clip_model, "device")
-        assert hasattr(engine.clip_model, "parameters")
-        assert hasattr(engine.clip_model, "config")
-        assert engine.clip_model.config.projection_dim == 768
+            # Check model compliance
+            assert hasattr(engine.clip_model, "device")
+            assert hasattr(engine.clip_model, "parameters")
+            assert hasattr(engine.clip_model, "config")
+            assert engine.clip_model.config.projection_dim == 32
 
-        # Create dummy image
-        img_p = tmp_path / "mock_test.png"
-        Image.new("RGB", (64, 64), color="green").save(img_p)
+            # Create dummy image
+            img_p = tmp_path / "test_image.png"
+            Image.new("RGB", (64, 64), color="green").save(img_p)
 
-        embeddings, valid_idx, failed_idx = DedupEngine.generate_embeddings(
-            image_paths=[img_p],
-            clip_model=engine.clip_model,
-            clip_processor=engine.clip_processor,
-            batch_size=4,
-        )
+            embeddings, valid_idx, failed_idx = DedupEngine.generate_embeddings(
+                image_paths=[img_p],
+                clip_model=engine.clip_model,
+                clip_processor=engine.clip_processor,
+                batch_size=4,
+            )
 
-        assert len(valid_idx) == 1
-        assert len(failed_idx) == 0
-        assert embeddings.shape == (1, 768)
-        engine.unload_clip()
+            assert len(valid_idx) == 1
+            assert len(failed_idx) == 0
+            assert embeddings.shape == (1, 32)
+            engine.unload_clip()
 
     @pytest.mark.asyncio
     async def test_stage2_to_stage3_pipeline_chaining(self, dedup_env, tmp_path: Path):
