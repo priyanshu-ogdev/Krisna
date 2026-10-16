@@ -613,8 +613,12 @@ app.post("/api/session/:id/message", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/message`, req.body));
 app.post("/api/session/:id/self-review", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/self-review`));
+app.post("/api/session/:id/preview", (req, res) =>
+  proxyJson(res, "POST", `/session/${req.params.id}/preview`, req.body || {}));
 app.post("/api/session/:id/finalize", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/finalize`, req.body));
+app.post("/api/session/:id/refine", (req, res) =>
+  proxyJson(res, "POST", `/session/${req.params.id}/refine`, req.body));
 app.post("/api/session/:id/enhance", (req, res) =>
   proxyJson(res, "POST", `/session/${req.params.id}/enhance`, req.body));
 app.post("/api/session/:id/critique", (req, res) =>

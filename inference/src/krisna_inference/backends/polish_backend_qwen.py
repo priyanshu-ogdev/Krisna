@@ -120,6 +120,15 @@ class FlowODEIntegrator:
         k2 = v_fn(x_mid, t + 0.5 * dt)
         return x + dt * k2
 
+    @staticmethod
+    def flowedit_step(x: Any, v_edit: Any, v_src: Any, dt: float) -> Any:
+        """FlowEdit ODE step (Kulikov et al., IEEE/CVF ICCV 2025, Eq. 4).
+
+        dx/dt = v_theta(x_t, t, c_edit) - v_theta(x_t, t, c_src)
+        x_{t+dt} = x_t + dt * (v_edit - v_src)
+        """
+        return x + dt * (v_edit - v_src)
+
 
 class QwenImage21Backend(ModelBackend):
     """Unified Polish Tier backend powered by Qwen-Image-2.1 with Flow-Matching mechanics."""
@@ -158,8 +167,17 @@ class QwenImage21Backend(ModelBackend):
             raise ValueError("Qwen Polish Quality is frozen and cannot load a LoRA adapter")
         if lora_adapter_path is not None:
             self.lora_adapter_path = lora_adapter_path
+        elif spec.tier == Tier.POLISH_FAST:
+            self.lora_adapter_path = (
+                os.environ.get("KRISNA_POLISH_FAST_LORA_PATH")
+                or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+            )
         elif spec.tier == Tier.POLISH_DEFAULT:
-            self.lora_adapter_path = os.environ.get("KRISNA_POLISH_LORA_PATH")
+            self.lora_adapter_path = (
+                os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+            )
         else:
             self.lora_adapter_path = None
         self.edit_strength = edit_strength
@@ -342,13 +360,22 @@ class QwenImage21Backend(ModelBackend):
         constraints = kwargs.get("constraints") or {}
         locked_regions = kwargs.get("locked_regions") or []
         is_quality = self.spec.tier == Tier.POLISH_QUALITY or bool(kwargs.get("quality"))
-        requested_steps = kwargs.get("num_inference_steps", self.num_inference_steps)
+        is_fast = self.spec.tier == Tier.POLISH_FAST or bool(kwargs.get("fast"))
+        mode = kwargs.get("mode", "generate")
+        is_refine = mode == "refine" or bool(kwargs.get("refine", False))
+        requested_steps = kwargs.get("num_inference_steps")
         if requested_steps is None:
-            requested_steps = self.num_inference_steps
+            # FlowEdit (ICCV 2025): 8-step flow edit for fast refinement; CFM: 6 steps for fast preview
+            if is_refine:
+                requested_steps = 8
+            elif is_fast:
+                requested_steps = 6
+            else:
+                requested_steps = self.num_inference_steps
         requested_steps = int(requested_steps)
         if requested_steps <= 0:
             raise ValueError("num_inference_steps must be a positive integer")
-        steps = 40 if is_quality else requested_steps
+        steps = (16 if is_refine else 40) if is_quality else requested_steps
         strength = float(kwargs.get("strength", self.edit_strength))
         guidance = float(kwargs.get("guidance_scale", self.guidance_scale))
         true_cfg = float(kwargs.get("true_cfg_scale", guidance))
@@ -411,6 +438,15 @@ class QwenImage21Backend(ModelBackend):
                             raise RuntimeError("cannot inspect native Qwen pipeline call signature") from exc
                     supported = self._native_call_parameters
                     call = {"prompt": prompt, "image": source_img, "num_inference_steps": steps}
+                    # Soft inpainting mask conditioning (Zhang et al., ICCV 2023)
+                    if locked_regions:
+                        inpaint_mask = self._build_inpaint_mask(source_img.size, locked_regions)
+                        if "mask_image" in supported:
+                            call["mask_image"] = inpaint_mask
+                        elif "inpainting_mask" in supported:
+                            call["inpainting_mask"] = inpaint_mask
+                        elif "masked_image" in supported:
+                            call["masked_image"] = inpaint_mask
                     if "generator" in supported and seed is not None:
                         import torch
                         generator = torch.Generator(device=self.device).manual_seed(int(seed))
@@ -537,6 +573,8 @@ class QwenImage21Backend(ModelBackend):
                 bbox = region
             elif isinstance(region, dict) and all(key in region for key in ("x", "y", "w", "h")):
                 bbox = (region["x"], region["y"], region["w"], region["h"])
+            elif isinstance(region, dict) and all(key in region for key in ("x1", "y1", "x2", "y2")):
+                bbox = (region["x1"], region["y1"], region["x2"] - region["x1"], region["y2"] - region["y1"])
             else:
                 raise ValueError("locked region must contain exactly one valid bbox representation")
             if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
@@ -572,6 +610,46 @@ class QwenImage21Backend(ModelBackend):
         # protected region and violate the lock contract.
         blended = Image.composite(src, dst, mask)
         return blended.convert("RGB")
+
+    def _build_inpaint_mask(self, size: tuple[int, int], locked_regions: list[Any]) -> Any:
+        """Constructs an inverted binary inpaint mask (L-mode PIL Image).
+
+        Pixels that should be generated/edited are 255 (white).
+        Pixels in locked regions that must be preserved are 0 (black).
+        Provides soft boundary-aware inpainting conditioning (Zhang et al. ICCV 2023),
+        while _apply_locked_regions guarantees bitwise invariant composite afterward.
+        """
+        from PIL import Image
+        w, h = size
+        mask = Image.new("L", (w, h), color=255)
+        for region in locked_regions:
+            if isinstance(region, dict) and "bbox" in region:
+                bbox = region["bbox"]
+            elif isinstance(region, (list, tuple)):
+                bbox = region
+            elif isinstance(region, dict) and all(k in region for k in ("x", "y", "w", "h")):
+                bbox = (region["x"], region["y"], region["w"], region["h"])
+            elif isinstance(region, dict) and all(k in region for k in ("x1", "y1", "x2", "y2")):
+                bbox = (region["x1"], region["y1"], region["x2"] - region["x1"], region["y2"] - region["y1"])
+            else:
+                continue
+            if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+                continue
+            try:
+                bx, by, bw, bh = (float(v) for v in bbox)
+                if all(0.0 <= v <= 1.0 for v in (bx, by, bw, bh)):
+                    x0, y0 = round(bx * w), round(by * h)
+                    x1, y1 = round((bx + bw) * w), round((by + bh) * h)
+                else:
+                    x0, y0 = round(bx), round(by)
+                    x1, y1 = round(bx + bw), round(by + bh)
+                x0, y0 = max(0, x0), max(0, y0)
+                x1, y1 = min(w, x1), min(h, y1)
+                if x1 > x0 and y1 > y0:
+                    mask.paste(0, (x0, y0, x1, y1))
+            except (ValueError, TypeError):
+                continue
+        return mask
 
     def _synthesize_render(
         self,

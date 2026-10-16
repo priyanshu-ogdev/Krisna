@@ -37,6 +37,7 @@ class SessionStage(str, Enum):
     SKETCHING = "sketching"
     FINALIZING = "finalizing"
     FINALIZED = "finalized"
+    REFINING = "refining"
     CRITIQUING = "critiquing"
 
 
@@ -83,6 +84,15 @@ class FinalizeOutput(BaseModel):
     verifier_scores: VerifierScores = Field(default_factory=VerifierScores)
     evaluation_receipt: dict[str, Any] | None = None
     prompt_used: str | None = None
+
+
+class PreviewOutput(BaseModel):
+    renderer_used: RendererUsed = None
+    image_ref: str | None = None
+    step_count: int = 6
+    latency_seconds: float | None = None
+    prompt_used: str | None = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class CritiqueDimensionScore(BaseModel):
@@ -153,6 +163,7 @@ class DesignState(BaseModel):
     critique: Critique = Field(default_factory=Critique)
     preference_pair_refs: list[str] = Field(default_factory=list)
     refinement: RefinementBudget = Field(default_factory=RefinementBudget)
+    preview_output: PreviewOutput | None = None
 
     # Not in the §5.1 JSON literally, but required for optimistic
     # concurrency and audit — kept out of the model's own `dict()` export
@@ -173,6 +184,7 @@ class DesignState(BaseModel):
         d.pop("updated_at", None)
         d.pop("last_planner_reasoning_note", None)
         d.pop("refinement", None)
+        d.pop("preview_output", None)
         return d
 
     def touch(self) -> None:
@@ -190,6 +202,13 @@ class DesignState(BaseModel):
         """Finalize requires an active sketch to hand off from."""
         return self.stage in (SessionStage.CONVERSING, SessionStage.SKETCHING) and bool(
             self.layout.layout_ref
+        )
+
+    def is_refine_eligible(self) -> bool:
+        """Refinement requires an already-finalized render image to edit from."""
+        return (
+            self.stage in (SessionStage.FINALIZED, SessionStage.CRITIQUING, SessionStage.REFINING)
+            and bool(self.finalize_output.image_ref)
         )
 
     def is_critique_eligible(self) -> bool:

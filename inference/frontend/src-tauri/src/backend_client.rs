@@ -303,6 +303,57 @@ impl BackendClient {
             Err(format!("trigger_finalize failed ({}) : {}", status, val))
         }
     }
+
+    pub fn trigger_refine(
+        &self,
+        session_id: &str,
+        instruction: &str,
+        quality: bool,
+        num_inference_steps: Option<u32>,
+        actions: Option<Vec<Value>>,
+    ) -> Result<Value, String> {
+        validate_session_id(session_id)?;
+        let path = format!("/session/{}/refine", session_id);
+        let mut map = serde_json::Map::new();
+        map.insert("instruction".into(), serde_json::Value::String(instruction.into()));
+        map.insert("quality".into(), serde_json::Value::Bool(quality));
+        map.insert("num_inference_steps".into(), serde_json::json!(num_inference_steps.unwrap_or(8)));
+        if let Some(acts) = actions {
+            map.insert("actions".into(), serde_json::Value::Array(acts));
+        }
+        let payload = serde_json::Value::Object(map).to_string();
+        let (status, val) = self.request("POST", &path, Some(&payload))?;
+        if status == 200 {
+            Ok(val)
+        } else {
+            Err(format!("trigger_refine failed ({}) : {}", status, val))
+        }
+    }
+
+    pub fn trigger_preview(&self, session_id: &str, prompt: Option<String>) -> Result<Value, String> {
+        validate_session_id(session_id)?;
+        let path = format!("/session/{}/preview", session_id);
+        let payload = serde_json::json!({
+            "prompt": prompt,
+        }).to_string();
+        let (status, val) = self.request("POST", &path, Some(&payload))?;
+        if status == 200 {
+            Ok(val)
+        } else {
+            Err(format!("trigger_preview failed ({}) : {}", status, val))
+        }
+    }
+
+    pub fn get_research_trace(&self, session_id: &str) -> Result<Value, String> {
+        validate_session_id(session_id)?;
+        let path = format!("/session/{}/research-trace", session_id);
+        let (status, val) = self.request("GET", &path, None)?;
+        if status == 200 {
+            Ok(val)
+        } else {
+            Err(format!("get_research_trace failed ({}) : {}", status, val))
+        }
+    }
 }
 
 fn validate_session_id(session_id: &str) -> Result<(), String> {

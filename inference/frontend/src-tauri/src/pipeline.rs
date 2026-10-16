@@ -346,6 +346,66 @@ pub fn backend_finalize(
     })
 }
 
+#[tauri::command]
+pub fn backend_refine(
+    state: State<'_, PipelineState>,
+    session_id: String,
+    command: CommandEnvelope,
+    instruction: String,
+    quality: Option<bool>,
+    num_inference_steps: Option<u32>,
+    actions: Option<Vec<serde_json::Value>>,
+) -> Result<BackendTurnAck, String> {
+    let mut snapshot = state.0.lock().map_err(|_| "pipeline state poisoned")?;
+    begin_command(&snapshot, &command)?;
+    let client = BackendClient::default();
+    let backend_res = client.trigger_refine(
+        &session_id,
+        &instruction,
+        quality.unwrap_or(false),
+        num_inference_steps,
+        actions,
+    )?;
+    snapshot.stage = "finalized".into();
+    snapshot.revision += 1;
+    snapshot.last_activity_secs = current_epoch_secs();
+    snapshot.self_review_due = false;
+    append_event(&mut snapshot, "refine", "user", Some(instruction));
+    let ack_data = ack(&snapshot, &command);
+    Ok(BackendTurnAck {
+        ack: ack_data,
+        backend_state: backend_res,
+    })
+}
+
+#[tauri::command]
+pub fn backend_preview(
+    state: State<'_, PipelineState>,
+    session_id: String,
+    command: CommandEnvelope,
+    prompt: Option<String>,
+) -> Result<BackendTurnAck, String> {
+    let mut snapshot = state.0.lock().map_err(|_| "pipeline state poisoned")?;
+    begin_command(&snapshot, &command)?;
+    let client = BackendClient::default();
+    let backend_res = client.trigger_preview(&session_id, prompt)?;
+    snapshot.stage = "finalized".into();
+    snapshot.revision += 1;
+    snapshot.last_activity_secs = current_epoch_secs();
+    snapshot.self_review_due = false;
+    append_event(&mut snapshot, "preview", "user", command.detail.clone());
+    let ack_data = ack(&snapshot, &command);
+    Ok(BackendTurnAck {
+        ack: ack_data,
+        backend_state: backend_res,
+    })
+}
+
+#[tauri::command]
+pub fn backend_get_research_trace(session_id: String) -> Result<serde_json::Value, String> {
+    BackendClient::default().get_research_trace(&session_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

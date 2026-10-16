@@ -101,6 +101,9 @@ class SwapOrchestrator:
                                       # real backend (registry numbers alone are
                                       # just bookkeeping — they don't make
                                       # offload happen on their own)
+    high_vram: bool = False         # True -> use model_registry.get_registry
+                                      # (high_vram=True): workstation 48GB profile
+                                      # where all models are fully resident in VRAM.
     max_retries: int = 2
     load_timeout_s: float = 30.0
     baseline_restore_retries: int = 5   # extra attempts, per policy note (5) above
@@ -134,7 +137,7 @@ class SwapOrchestrator:
 
     def __post_init__(self) -> None:
         self.state = StateMachine(ResidencyState.IDLE_RESIDENT)
-        self.registry = get_registry(low_vram=self.low_vram)
+        self.registry = get_registry(low_vram=self.low_vram, high_vram=self.high_vram)
         self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry, safety_margin_gb=self.vram_safety_margin_gb)
         self.ram_ledger = RAMLedger(envelope_gb=self.ram_envelope_gb, registry=self.registry)
         self.backends = {tier: self.backend_factory(spec) for tier, spec in self.registry.items()}
@@ -297,7 +300,9 @@ class SwapOrchestrator:
         from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
 
         delta = planner_out.get("design_state_delta") or {}
-        constraint_updates = delta.get("constraint_updates") or {}
+        constraint_updates = dict(delta.get("constraint_updates") or {})
+        if "actions" in delta and "actions" not in constraint_updates:
+            constraint_updates["actions"] = delta.get("actions")
         sketch_kwargs = dict(kwargs)
         if constraint_updates and isinstance(kwargs.get("constraints"), dict):
             sketch_kwargs["constraints"] = apply_constraint_updates(

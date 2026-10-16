@@ -804,7 +804,7 @@ table td:last-child { font-family: var(--font-mono); word-break: break-all; colo
 
 .session-header-title { display: flex; align-items: center; gap: 0.6rem; }
 .session-actions-top { display: flex; align-items: center; gap: 0.4rem; }
-.studio-action-row { justify-content: space-between; }
+.studio-action-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 
 /* ------------------------------------------------------------------ *
  * Verifier Breakdown Cards
