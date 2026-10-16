@@ -286,6 +286,8 @@ PAPERS: list[PaperEntry] = [
         doi_url="https://doi.org/10.1145/3379503.3403544",
         role_in_krisna="Topic modeling and visual stylistic motif categorization across mobile user interfaces",
         urls=[
+            "https://userinterfaces.aalto.fi/enrico/resources/enrico.pdf",
+            "https://arxiv.org/pdf/2009.07187.pdf",
             "https://luisleiva.org/papers/mobilehci20-enrico.pdf",
         ],
     ),
