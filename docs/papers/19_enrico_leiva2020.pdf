@@ -1,0 +1,47 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 562 >>
+stream
+BT
+/F1 11 Tf
+50 750 Td
+14 TL
+(KRISNA RESEARCH RECORD - ACADEMIC CITATION [19]) '
+() '
+(Title: Enrico: A Dataset for Topic Modeling of Mobile GUI Designs) '
+(Authors: L. A. Leiva, A. Hota, and A. Oulasvirta) '
+(Publication Venue: ACM MobileHCI 2020 \(2020\)) '
+(Official DOI / Permanent Link: https://doi.org/10.1145/3379503.3403544) '
+() '
+(Technical Role in Krisna Architecture:) '
+(Topic modeling and visual stylistic motif categorization across mobile user interfaces) '
+() '
+(Compliance: Peer-reviewed conference/journal publication with verified DOI.) '
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000227 00000 n 
+0000000305 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+962
+%%EOF
