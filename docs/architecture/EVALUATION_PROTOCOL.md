@@ -12,11 +12,11 @@ pass/fail claim.
 | Dimension | Current implementation | Standard / research basis | Current target |
 |---|---|---|---:|
 | Safety | Safety verifier gate | Product safety requirement | ≥ 0.90 |
-| Text/image compatibility | CLIP alignment | CLIPScore shows reference-free CLIP metrics can correlate with human judgments, but warns of domain weaknesses ([arXiv:2104.08718](https://arxiv.org/abs/2104.08718)) | ≥ 0.70 |
+| Text/image compatibility | CLIP alignment | CLIPScore shows reference-free CLIP metrics can correlate with human judgments, but warns of domain weaknesses (EMNLP 2021, [DOI:10.18653/v1/2021.emnlp-main.595](https://doi.org/10.18653/v1/2021.emnlp-main.595)) | ≥ 0.70 |
 | OCR readability | OCR confidence + alphanumeric heuristic; optional CER/WER against Layout IR literals | CER/WER are interpretable text fidelity metrics; fixed OCR engine and preprocessing are required | ≥ 0.80 score; CER/WER recorded when references exist |
 | Layout adherence | Contour-detected region IoU against Layout IR and lock regions | IoU is a structural metric, not an aesthetic metric; future semantic detector can replace contours | ≥ 0.70 |
 | Aesthetic quality | Existing aesthetic verifier | Must be calibrated against held-out human ratings; no universal threshold is assumed | ≥ 0.70 |
-| Handoff consistency | CLIP image-image similarity | Deep perceptual features outperform shallow pixel metrics in human similarity judgments (LPIPS, [arXiv:1801.03924](https://arxiv.org/abs/1801.03924)) | ≥ 0.65 |
+| Handoff consistency | CLIP image-image similarity | Deep perceptual features outperform shallow pixel metrics in human similarity judgments (LPIPS, IEEE/CVF CVPR 2018, [DOI:10.1109/CVPR.2018.00068](https://doi.org/10.1109/CVPR.2018.00068)) | ≥ 0.65 |
 | Lock preservation | Normalized mean absolute error complement inside protected regions | Exact protected-pixel requirement is a Krisna product constraint | ≥ 0.95 |
 
 ## Aggregation

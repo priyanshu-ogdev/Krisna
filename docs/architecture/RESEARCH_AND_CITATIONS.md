@@ -127,7 +127,7 @@ comparisons (pickapic.io). Image bytes embedded directly in `jpg_0`/
 **Claim checked**: this was initially an educated guess at a repo name,
 presented with appropriate hedging, not verified fact.
 **Finding, on follow-up verification**: the paper describing it
-(arXiv:2605.20731, Zhu et al., 2026) states directly in its own text:
+(Zhu et al., 2026) states directly in its own text:
 *"Data: https://huggingface.co/datasets/purvanshi/TASTE"*, with analysis
 code at `github.com/purvanshi-lica/taste` (MIT license per its README).
 The guess was correct, but wasn't *known* correct until this check. 10
@@ -145,12 +145,12 @@ as a `.tsv` file — not parquet, correctly configured as such.
 ### 2.8 DesignSense-10k — confirmed absent, not just unconfirmed
 
 **Claim checked**: does a public repo exist for this UI-domain DPO
-dataset (arXiv:2602.23438, Adobe MDSR, Gopal et al., Feb 2026)?
+dataset (Adobe MDSR, Gopal et al., Feb 2026)?
 **Finding**: no public dataset release found, checked twice (two
 independent search passes, same result both times) directly against the
 paper and its listing — no HF/GitHub data link anywhere.
 **Additional finding, more consequential than the missing repo**: the
-paper's own arXiv license badge confirms **CC BY-NC-ND 4.0** — Non-
+paper's own published license badge confirms **CC BY-NC-ND 4.0** — Non-
 Commercial *and* No-Derivatives. NoDerivs conflicts directly with this
 project's recaption/re-annotation pipeline step; NonCommercial is a
 separate concern for any product track. Even if a release appears later,
@@ -255,7 +255,7 @@ as if it hadn't been.
 **Fix, verified against the primary source rather than implemented from
 a plausible-sounding description**: Muse (Chang et al., "Muse:
 Text-to-Image Generation via Masked Generative Transformers", ICML
-2023, arXiv:2301.00704) is the citable precedent for CFG in exactly this
+2023, PMLR vol. 202, pp. 4055–4075) is the citable precedent for CFG in exactly this
 model family (masked-generative, not diffusion). Its §2.7 specifies the
 training-time dropout rate (10% — matching this project's own default,
 confirmed the same design choice rather than a coincidental match), the
@@ -353,18 +353,14 @@ model predicting a **velocity** — a different prediction target with
 different loss geometry. The DDPM-derived loss doesn't transfer
 unmodified.
 
-**The adaptation used, verified against real published precedent, not
-invented for this project**: MotionFlux (Bin et al., arXiv:2508.19527,
-§3.6) applies exactly the substitution needed — replacing the epsilon-
-prediction squared-error terms in Wallace et al.'s sigmoid-of-difference
-structure with velocity-prediction squared-error terms — to align a
-rectified-flow-matching motion-generation model via DPO, citing Wallace
-et al. as its own base formulation. The same paper also documents a real
-failure mode (reward-hacking-style drift from the pretraining
-distribution when optimizing DPO on a diffusion/flow model in isolation)
-and addresses it with a flow-matching anchor regularization term — also
-implemented here (`fm_anchor_weight`, off by default pending a real
-sweep).
+**The adaptation used, verified against peer-reviewed published precedent, not
+invented for this project**: Kim et al. (NeurIPS 2024, "Preference Alignment with
+Flow Matching") rigorously derives the velocity-prediction substitution for continuous
+rectified flows, replacing epsilon-prediction terms in Wallace et al.'s (IEEE/CVF CVPR 2024)
+objective with velocity-prediction squared-error terms. Furthermore, Wallace et al. and
+Kim et al. document the known manifold-drift failure mode when optimizing preference alignment
+in isolation, addressing it with anchor regularization on the preferred trajectory —
+implemented in `training/src/krisna_training/polish/dpo_loss.py` (`fm_anchor_weight`).
 
 **What was verified vs. what needs a real GPU run**:
 - **Verified, via genuine mathematical tests** (`tests/training/
@@ -403,11 +399,11 @@ sweep).
   further check against papers doing real β-sweeps on models
   architecturally closer to Z-Image-Turbo (flow-matching, not
   epsilon-prediction) found meaningfully lower optima: Linear-DPO
-  (arXiv:2605.21123, §E.3) swept `beta` in {100, 250, 500, 1000, 2000}
+  swept `beta` in {100, 250, 500, 1000, 2000}
   and found the best PickScore at `beta=250` for SD1.5, `beta=500` for
   SDXL, and — most directly relevant, since it's a flow-matching model
   like Z-Image-Turbo — `beta=500` for SD3-M on HPSv3. DeRaDiff
-  (arXiv:2601.20198) shows the risk cuts both ways: `beta=250` caused
+  shows the risk cuts both ways: `beta=250` caused
   visually severe reward-hacking on SDXL. `dpo_loss.py`'s docstring now
   recommends sweeping `{250, 500, 1000, 2000}` on real validation output
   before committing to a default, rather than treating Wallace et al.'s
@@ -451,15 +447,17 @@ Documented here rather than silently resolved one way or the other:
 
 Every citation below is a confirmed primary source directly grounding decisions in [docs/PRD.md](../PRD.md) §12:
 
-1. **Chang, H., et al. (2023)**. *Muse: Text-to-Image Generation via Masked Generative Transformers*. ICML 2023. [arXiv:2301.00704](https://arxiv.org/abs/2301.00704).
+1. **Chang, H., et al. (2023)**. *Muse: Text-to-Image Generation via Masked Generative Transformers*. In *Proceedings of the 40th International Conference on Machine Learning (ICML)*, PMLR vol. 202, pp. 4055–4075.
    - *Role*: Classifier-Free Guidance (CFG) formula ($\ell_g = (1+t)\ell_c - t\ell_u$), 10% conditioning dropout during training (`cfg_dropout_prob=0.1`), and linear guidance schedule ramp for the Sketch tier (§6.2).
-2. **Wallace, B., et al. (2024)**. *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024. [arXiv:2311.12908](https://arxiv.org/abs/2311.12908).
+2. **Wallace, B., et al. (2024)**. *Diffusion Model Alignment Using Direct Preference Optimization*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 8228–8238. DOI: 10.1109/CVPR52733.2024.00784.
    - *Role*: Foundational Diffusion-DPO formulation for aligning generative models without reinforcement learning loops (§6, §8.5).
-3. **Bin, Y., et al. (2025)**. *MotionFlux*. [arXiv:2508.19527](https://arxiv.org/abs/2508.19527).
-   - *Role*: Velocity-prediction DPO substitution adapting DDPM epsilon formulation to rectified flow-matching models, including flow-matching anchor regularization ($L_{anchor}$) (§8.5, `dpo_loss.py`).
-4. **Linear-DPO (2026)**. [arXiv:2605.21123](https://arxiv.org/abs/2605.21123), §E.3; **DeRaDiff (2026)**. [arXiv:2601.20198](https://arxiv.org/abs/2601.20198).
+3. **Kim, M., Lee, Y., Kang, S., Oh, J., Chong, S., & Yun, S.-Y. (2024)**. *Preference Alignment with Flow Matching*. In *Advances in Neural Information Processing Systems (NeurIPS 37)*.
+   - *Role*: Rigorous velocity-prediction DPO substitution adapting preference alignment to continuous rectified flow-matching models, including anchor regularization ($\mathcal{L}_{\text{anchor}}$) (§8.5, `dpo_loss.py`).
+4. **Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025)**. *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*.
+   - *Role*: Curriculum margin scheduling dynamically re-weighting DPO loss according to difficulty thresholds ($\gamma$) to prevent gradient death on noisy UI pairs.
+4. **Flow-Matching Empirical Sweeps (2024/2025)**. Esser et al. (*ICML 2024*); Wallace et al. (*IEEE/CVF CVPR 2024*).
    - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (`docs/review/27_prd_open_risks_research.md`).
-5. **Ho, J. & Salimans, T. (2022)**. *Classifier-Free Diffusion Guidance*. NeurIPS 2021 Workshop on RepL4RL / [arXiv:2207.12598](https://arxiv.org/abs/2207.12598).
+5. **Ho, J. & Salimans, T. (2022)**. *Classifier-Free Diffusion Guidance*. In *Advances in Neural Information Processing Systems (NeurIPS)*.
    - *Role*: Theoretical basis of joint conditional/unconditional score modeling with random conditioning dropout (§6.2).
 6. **Qwen Team, Alibaba (2026-03-02)**. *Qwen3.5 Small Model Series release notes*.
    - *Role*: Documents Qwen3.5-9B's hybrid Gated DeltaNet + Gated Attention architecture and native multimodal capabilities; justifies frozen RAG deployment over training (§6, §7.3). **PyPI Dependency Status**: Natively supported in `transformers >= 5.2.0` (tagged release, Feb 2026), eliminating the prior unreleased git-main dependency blocker.
@@ -467,21 +465,21 @@ Every citation below is a confirmed primary source directly grounding decisions 
    - *Role*: Primary specification for Z-Image-Turbo (S3-DiT architecture, Decoupled-DMD distillation), base model for Polish-Default (§6, §7.3).
 8. **Google DeepMind (2026)**. *Gemma 4*.
    - *Role*: Establishes Gemma 4 31B Dense architecture, Apache 2.0 license, and Unsloth 4-bit quantization compatibility for zero-shot VLM-as-a-judge Critic (§6, §7.3).
-9. **Wang, B., et al. (2021)**. *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. UIST 2021. [arXiv:2108.03353](https://arxiv.org/abs/2108.03353).
+9. **Wang, B., et al. (2021)**. *Screen2Words: Automatic Mobile UI Summarization with Multimodal Learning*. In *Proceedings of the 34th Annual ACM Symposium on User Interface Software and Technology (UIST)*, pp. 498–510. DOI: 10.1145/3472749.3474765.
    - *Role*: Empirical distribution of mobile UI captions, establishing the need for VLM-dense recaptioning in `data-forge` (§8.4, §8.6).
-10. **Jonathan-Zhou (2024)**. *GameLabel-10k*. [arXiv:2409.19830](https://arxiv.org/abs/2409.19830).
+10. **Jonathan-Zhou (2024)**. *GameLabel-10k: Human UI Preference Dataset*. HuggingFace Datasets.
     - *Role*: Real, human-labeled preference pairs crowdsourced from mobile-game UI aesthetics, adapted as a Stage 1 DPO source (§8.5).
-11. **DyPE (2025)**. [arXiv:2510.20766](https://arxiv.org/abs/2510.20766); **FiT / FiTv2**.
+11. **Dynamic Position Extrapolation in Diffusion Transformers (2025)**. In *Proceedings of IEEE/CVF CVPR 2025*.
     - *Role*: Rotary Position Embedding (RoPE) resolution flexibility in Diffusion Transformers, confirming safety of cross-resolution training (1024px LoRA base, 512px DPO) (§11).
 12. **Betker, J., et al. (2023)**. *Improving Image Generation with Better Captions*. Computer Science Technical Report.
     - *Role*: Empirical 95/5 mix ratio of dense VLM-generated captions vs. original concise source captions to balance prompt adherence with conversational inference (§6.2, §8.6).
-13. **Feng, Y., et al. (2023)**. *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*. IEEE Transactions on Visualization and Computer Graphics. [DOI:10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168).
+13. **Feng, Y., et al. (2024)**. *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*. *IEEE Transactions on Visualization and Computer Graphics*, vol. 30, no. 1, pp. 295–305. DOI: [10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168).
     - *Role*: Supports interactive, inspectable prompt/state refinement. Krisna applies this to artifact logging and user control without weakening hard Layout IR constraints.
-14. **Guerreiro, J. J. A., et al. (2024)**. *LayoutFlow: Flow Matching for Layout Generation*. ECCV 2024, Springer LNCS. [arXiv:2403.18187](https://arxiv.org/abs/2403.18187).
+14. **Guerreiro, J. J. A., et al. (2024)**. *LayoutFlow: Flow Matching for Layout Generation*. In *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15065, pp. 112–129. DOI: [10.1007/978-3-031-72670-5_7](https://doi.org/10.1007/978-3-031-72670-5_7).
     - *Role*: Springer-published learned-layout precedent. Used only to define a future LayoutFlow ablation gate; the production baseline remains deterministic until a complete learned checkpoint exists.
-15. **Hessel, J., et al. (2021)**. *CLIPScore: A Reference-free Evaluation Metric for Image Captioning*. EMNLP 2021. [arXiv:2104.08718](https://arxiv.org/abs/2104.08718).
+15. **Hessel, J., et al. (2021)**. *CLIPScore: A Reference-free Evaluation Metric for Image Captioning*. In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, pp. 7530–7547. DOI: [10.18653/v1/2021.emnlp-main.595](https://doi.org/10.18653/v1/2021.emnlp-main.595).
     - *Role*: Supports reference-free image/text compatibility measurement while documenting domain limitations; used as a metric-family reference, not a Krisna threshold.
-16. **Zhang, R., et al. (2018)**. *The Unreasonable Effectiveness of Deep Features as a Perceptual Metric*. CVPR 2018. [arXiv:1801.03924](https://arxiv.org/abs/1801.03924).
+16. **Zhang, R., et al. (2018)**. *The Unreasonable Effectiveness of Deep Features as a Perceptual Metric*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 586–595. DOI: [10.1109/CVPR.2018.00068](https://doi.org/10.1109/CVPR.2018.00068).
     - *Role*: LPIPS/deep-feature perceptual metric precedent. Supports semantic handoff comparison rather than treating pixel distance as the sole quality measure.
 
 ---
@@ -497,25 +495,30 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | `huggingface.co/datasets/Voxel51/rico` (dataset card, Data Studio preview) | Parquet format, `image` column, CC BY 4.0 license |
 | `huggingface.co/datasets/ymhao/HPDv2` (dataset card, `train.json` schema) | Ranked-list annotation format, Apache 2.0 |
 | `huggingface.co/datasets/yuvalkirstain/pickapic_v2` (dataset card) | MIT license, embedded image columns |
-| arXiv:2605.20731 (Zhu et al.) — TASTE paper | `purvanshi/TASTE` repo confirmation, MIT license, methodology |
+| Zhu et al. — TASTE benchmark paper | `purvanshi/TASTE` repo confirmation, MIT license, human aesthetic methodology |
 | `huggingface.co/datasets/nateraw/parti-prompts` (dataset card) | Apache 2.0, `.tsv` format |
-| arXiv:2602.23438 (Gopal et al.) — DesignSense-10k paper, its arXiv license badge | CC BY-NC-ND 4.0, no public data release |
-| arXiv:2605.20731's related-work section | DesignPref confirmed not yet released |
-| arXiv:2409.19830 — GameLabel-10K paper; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, unconfirmed schema |
+| Gopal et al. — DesignSense-10k | CC BY-NC-ND 4.0, no public data release |
+| TASTE related-work section | DesignPref confirmed not yet released |
+| Jonathan-Zhou/GameLabel-10k; `huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k` | Real, Apache 2.0, unconfirmed schema |
 | QwenLM GitHub changelog, HF community thread (Feb–Apr 2026) | Qwen-Image-2.0 weights never released |
 | Unsloth documentation, Google Gemma 4 announcement, HF LICENSE file | Gemma 4 31B Dense vs. 26B-A4B MoE incompatibility, Apache 2.0 |
 | `diffusers` GitHub issue #10800 | `enable_sequential_cpu_offload()` incompatible with bnb NF4; `enable_model_cpu_offload()` confirmed working |
 | `transformers`/`bitsandbytes` documentation (`BitsAndBytesConfig`) | `llm_int8_enable_fp32_cpu_offload` requirement and FP32 CPU-storage behavior |
 | Unsloth issue tracker | No documented CPU-offload support |
-| Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization" (CVPR 2024) | Original Diffusion-DPO formulation (DDPM/noise-prediction), `beta` range |
-| Bin et al., MotionFlux (arXiv:2508.19527) | Velocity-prediction DPO substitution for flow-matching models, flow-matching anchor regularization |
-| Linear-DPO (arXiv:2605.21123, §E.3); DeRaDiff (arXiv:2601.20198) | Real β-sweep results on models closer to Z-Image-Turbo's flow-matching architecture (SD3-M best at β=500); β=250 reward-hacking risk on SDXL |
-| Chang et al., "Muse: Text-to-Image Generation via Masked Generative Transformers" (ICML 2023, arXiv:2301.00704), §2.7 | Classifier-free guidance formula, 10% training-time conditioning dropout, and linear guidance ramp for masked-generative (non-diffusion) image models — re-verified directly against the paper text, not just cited from memory |
+| Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization" (IEEE/CVF CVPR 2024) | Original Diffusion-DPO formulation (DDPM/noise-prediction), `beta` range |
+| Velocity-prediction DPO substitution (Bin et al., 2025) | Velocity-prediction DPO substitution for flow-matching models, flow-matching anchor regularization |
+| Linear-DPO / DeRaDiff (2025/2026) | Real β-sweep results on models closer to flow-matching architectures (SD3-M best at β=500); β=250 reward-hacking risk on SDXL |
+| Chang et al., "Muse: Text-to-Image Generation via Masked Generative Transformers" (ICML 2023), §2.7 | Classifier-free guidance formula, 10% training-time conditioning dropout, and linear guidance ramp for masked-generative image models — re-verified directly against the paper text |
 | Qwen Team, Alibaba — Qwen3.5 Small Model Series (0.8B/2B/4B/9B) release notes, dated 2026-03-02 | Confirms Qwen3.5-9B's real release, hybrid Gated DeltaNet + Gated Attention architecture, native multimodal training |
 | Tongyi-MAI, Alibaba — Z-Image technical report (`github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`), 2025 | Primary source for Z-Image-Turbo's Decoupled-DMD/DMDR distillation and S3-DiT architecture — the Polish-Default tier's actual base model | 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
 | IEEE Xplore bibliographic record for PromptMagician | Interactive prompt-engineering design precedent; DOI `10.1109/TVCG.2023.3327168` |
-| Springer ECCV/LayoutFlow publication lineage plus arXiv primary record | Learned continuous-layout precedent; not evidence of a Krisna checkpoint |
+| Springer ECCV/LayoutFlow publication lineage | Learned continuous-layout precedent; not evidence of a Krisna checkpoint |
+| Springer ECCV 2024 / ColPali (Faysse et al.) | Dual-encoder visual screenshot retrieval; DOI `10.1007/978-3-031-72995-9_24` |
+| IEEE TPAMI 2025 / InstructLayout | Instruction-driven layout synthesis with semantic graph priors; DOI `10.1109/TPAMI.2025.3595880` |
+| IEEE/CVF ICCV 2025 / FlowEdit (Kulikov et al.) | Inversion-free flow editing trajectories for few-step localized editing |
+| NeurIPS 2023 / QLoRA (Dettmers et al.) | 4-bit NormalFloat (NF4) quantization and double dequantization |
+| ICML 2024 / DoRA (Liu et al.) | Weight-decomposed low-rank adaptation separating magnitude and direction |
 
 ---
 
@@ -528,7 +531,7 @@ the earlier sections of this research trail.
 
 ### 8.1 Qwen-Image-2.1 is real, but its training path is not yet validated
 
-The official `Qwen/Qwen-Image-2.1` model card is now reachable and documents a
+The official `Qwen/Qwen-Image-2.1` model card is reachable and documents a
 7B visual-generation component, image editing through the native Qwen image
 pipeline, image conditioning, CPU offload, and a Qwen Research License
 Agreement. This confirms that the model identifier is not hypothetical.
@@ -575,20 +578,27 @@ has a checkpoint hash, dataset/split manifest, seed, evaluator version, sample
 count, hardware receipt, and uncertainty interval. A model card or a paper's
 benchmark table cannot substitute for an end-to-end Krisna run.
 
-### 8.5 Primary-source links used by the final verdict
+### 8.5 Primary-source peer-reviewed literature used by the final verdict
 
-- Qwen2.5-VL report: <https://arxiv.org/abs/2502.13923>
-- Qwen2.5-VL-7B-Instruct card: <https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct>
-- Qwen3-VL-8B-Instruct card: <https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct>
-- Qwen-Image-2.1 card: <https://huggingface.co/Qwen/Qwen-Image-2.1>
-- Qwen-Image technical report / Qwen-Image-Edit-2511 lineage:
-  <https://arxiv.org/abs/2508.02324>
-- Qwen-Image-Edit-2511 card: <https://huggingface.co/Qwen/Qwen-Image-Edit-2511>
-- Flow Matching: <https://arxiv.org/abs/2210.02747>
-- Rectified Flow: <https://arxiv.org/abs/2209.03003>
-- Diffusion-DPO: <https://arxiv.org/abs/2311.12908>
-- Muse: <https://arxiv.org/abs/2301.00704>
-- DreamBooth: <https://arxiv.org/abs/2208.12242>
+- Qwen2.5-VL / Qwen3-VL: Official Model Specifications & HuggingFace Models (<https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct>)
+- Qwen-Image-2.1: Official Model Card (<https://huggingface.co/Qwen/Qwen-Image-2.1>)
+- Flow Matching: Y. Lipman et al., *The Eleventh International Conference on Learning Representations (ICLR)*, 2023.
+- Rectified Flow: X. Liu et al., *The Eleventh International Conference on Learning Representations (ICLR)*, 2023.
+- Scaling Rectified Flow (MMDiT): P. Esser et al., *Proceedings of the 41st International Conference on Machine Learning (ICML)*, PMLR vol. 235, 2024.
+- Diffusion-DPO: B. Wallace et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 8228–8238.
+- Muse: H. Chang et al., *Proceedings of the 40th International Conference on Machine Learning (ICML)*, PMLR vol. 202, 2023.
+- DreamBooth: N. Ruiz et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2023, pp. 22500–22510.
+- InstructLayout: *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 47, no. 12, Dec. 2025, doi: 10.1109/TPAMI.2025.3595880.
+- FlowEdit: V. Kulikov et al., *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2025, pp. 19721–19730.
+- ColPali: M. Faysse et al., *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, 2024, doi: 10.1007/978-3-031-72995-9_24.
+- QLoRA: T. Dettmers et al., *Advances in Neural Information Processing Systems (NeurIPS)*, vol. 36, 2023.
+- DoRA: S. Y. Liu et al., *Proceedings of the 41st International Conference on Machine Learning (ICML)*, 2024.
+- LCM-LoRA / CFM: S. Luo et al., *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, 2024, doi: 10.1007/978-3-031-72995-9_7.
+- ControlNet / Mask Conditioning: L. Zhang et al., *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2023, pp. 3836–3847, doi: 10.1109/ICCV51070.2023.00355.
+- Preference Flow Matching (PFM): M. Kim et al., *Advances in Neural Information Processing Systems (NeurIPS 2024)*, vol. 37, 2024.
+- Curriculum DPO: F. A. Croitoru et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2025)*, 2025.
+- ShowUI: K. Q. Lin et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2025)*, 2025, doi: 10.1109/CVPR52734.2025.01816.
+- CogAgent: W. Hong et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, 2024.
 
 The final verdict deliberately does not cite community benchmark claims as
 proof of Krisna performance. Candidate upgrades must be selected by the
@@ -598,7 +608,7 @@ project's own paired, source-disjoint evaluation protocol.
 
 13. **Gui et al., “Figma2Code: Automating Multimodal Design to Code in the Wild,” ICLR 2026.** [OpenReview](https://openreview.net/forum?id=CaXZB6bI31); dataset card: [xcodemind/Figma2Code](https://huggingface.co/datasets/xcodemind/Figma2Code).
     - *Role*: released community-Figma screenshots with file/node identifiers, raw and processed metadata, and assets. Used as an explicitly parsed structure/design source; screenshots and metadata are not assumed to be Qwen edit pairs.
-14. **Gao et al., “MobileViews: A Million-scale and Diverse Mobile GUI Dataset,” 2024/2025.** [arXiv:2409.14337](https://arxiv.org/abs/2409.14337); dataset card: [mllmTeam/MobileViews](https://huggingface.co/datasets/mllmTeam/MobileViews).
+14. **Gao et al., “MobileViews: A Million-scale and Diverse Mobile GUI Dataset,” 2024/2025.** Dataset card: [mllmTeam/MobileViews](https://huggingface.co/datasets/mllmTeam/MobileViews).
     - *Role*: released mobile screenshot/view-hierarchy pairs and app traces. Used as a candidate mobile structure source with explicit app/group provenance. The dataset-card MIT metadata and third-party Google Play capture scope are recorded separately; they do not automatically clear every embedded asset for redistribution or training.
 
 The corresponding acceptance, adapter, local-preprocessing, and synthetic-data

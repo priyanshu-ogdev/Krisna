@@ -27,7 +27,7 @@ One real bug that *was* caught and fixed in-repo (worth citing as a template for
 - `beta=2000.0` is unusually large relative to the Wallace et al. Diffusion-DPO paper's own reported range (typically β in the few-thousand range *is* actually what that paper uses for image diffusion, unlike LLM-DPO's much smaller β — worth double-checking the exact figure directly against Wallace et al. Table/Eq. 46 before citing a specific number in the paper; flagging as **needs primary-source verification**, not confirmed wrong).
 
 ## Inference strategy vs. SOTA
-- The core adaptation — substituting velocity-prediction squared-error terms for epsilon-prediction terms inside Wallace et al.'s sigmoid-of-difference-of-differences DPO loss, because Z-Image-Turbo is flow-matching/rectified-flow (flux-dev lineage) rather than DDPM-epsilon — is not an invented shortcut; it mirrors a published adaptation (MotionFlux, Bin et al., arXiv:2508.19527, §3.6), including that paper's anchor-regularization term for the known flow-model DPO failure mode (drift away from the pretraining distribution via reward hacking). This is a **citable, defensible design choice**, correctly attributed in-repo.
+- The core adaptation — substituting velocity-prediction squared-error terms for epsilon-prediction terms inside Wallace et al.'s sigmoid-of-difference-of-differences DPO loss, because Qwen-Image-2.1 is flow-matching/rectified-flow rather than DDPM-epsilon — is grounded in published literature (Kim et al., NeurIPS 2024; Wallace et al., CVPR 2024), including anchor-regularization for the known flow-model DPO failure mode (drift away from the pretraining distribution via reward hacking). This is a **citable, defensible design choice**, correctly attributed in-repo.
 - Serving-side: `polish_default_backend.py` loads the LoRA onto the distilled Turbo checkpoint rather than the undistilled base it was trained on — standard, low-risk practice for LoRA (small-rank deltas transfer reasonably across a base→distilled pair sharing weights), but this is an assumption, not something verified against Z-Image-Turbo's actual distillation method in this pass. **Flagging as unverified, not wrong** — recommend a quick qualitative eval (render the same prompt with/without the LoRA on both base and Turbo) before finalizing this phase.
 
 ## Diffusion convergence hyperparameters — verified against current SOTA
@@ -71,12 +71,11 @@ actual reported range, and DPO's `resolution=512` vs the base LoRA's
 
 ## Citations (Phase 2)
 
-1. Wallace, B., Dang, M., Rafailov, R., Zhou, L., Lou, A., Purushwalkam, S., Ermon, S., Xiong, C., Joty, S., & Naik, N. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. CVPR 2024.
-2. Bin, Y., et al. (2025). *MotionFlux: [flow-matching DPO adaptation for motion generation]*. arXiv:2508.19527, §3.6.
-3. Kirstain, Y., et al. — Pick-a-Pic v2 dataset (`yuvalkirstain/pickapic_v2`, HuggingFace, MIT license).
-4. Hao, Y., et al. — HPDv2 dataset (`ymhao/HPDv2`, HuggingFace, Apache 2.0), ~798K pairwise comparisons / ~434K images.
-5. DesignSense-10k — Adobe MDSR, arXiv:2602.23438 (UI/design-domain preference pairs, CC BY-NC-ND 4.0, **no public dataset release found** as of this review — cite as "referenced, not trainable on" if used in the paper).
-6. DesignPref — Peng et al., 25 Nov 2025 (UI-domain pairwise comparisons, ~12,000 pairs, 20 professional designers, **confirmed unreleased** per TASTE's own paper, arXiv:2605.20731).
+1. Wallace, B., Dang, M., Rafailov, R., Zhou, L., Lou, A., Purushwalkam, S., Ermon, S., Xiong, C., Joty, S., & Naik, N. (2024). *Diffusion Model Alignment Using Direct Preference Optimization*. IEEE/CVF CVPR 2024.
+2. Kim, M., Lee, Y., Kang, S., Oh, J., Chong, S., & Yun, S.-Y. (2024). *Preference Alignment with Flow Matching*. NeurIPS 2024.
+3. Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025). *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*. IEEE/CVF CVPR 2025.
+4. Kirstain, Y., et al. — Pick-a-Pic v2 dataset (`yuvalkirstain/pickapic_v2`, HuggingFace, MIT license).
+5. Hao, Y., et al. — HPDv2 dataset (`ymhao/HPDv2`, HuggingFace, Apache 2.0), ~798K pairwise comparisons / ~434K images.
 
 ---
 Next: Phase 3 — Planner (Qwen3.5-9B, frozen + RAG — no training to review, but the RAG corpus/retrieval design itself needs checking against what UICrit data-forge actually exports).

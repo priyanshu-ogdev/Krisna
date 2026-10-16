@@ -31,7 +31,7 @@ is legally or training eligible.
 
 - Dataset: `mllmTeam/MobileViews`
 - Card: <https://huggingface.co/datasets/mllmTeam/MobileViews>
-- Paper: Gao et al., <https://arxiv.org/abs/2409.14337>
+- Paper: Gao et al., *MobileViews: A Million-scale and Diverse Mobile GUI Dataset* (2024/2025)
 - Card-reported core fields: `image_content` and `json_content`.
 - Card-reported app-trace fields: package-named app folders, state screenshots,
   view hierarchies, actions, and transitions.

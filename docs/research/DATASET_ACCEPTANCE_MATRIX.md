@@ -123,7 +123,7 @@ combined in one local manifest without losing upstream identity:
 | Source | Primary evidence | Adapter | Data retained | Training status |
 |---|---|---|---|---|
 | Figma2Code | [HF card](https://huggingface.co/datasets/xcodemind/Figma2Code), [ICLR 2026 paper](https://openreview.net/forum?id=CaXZB6bI31) | `figma2code` / `figma2code_local` | `root` screenshot, `filekey`, `node_id`, raw/processed metadata, source split, assets as metadata only | Structure candidate; no Qwen pair until a deterministic renderer is run |
-| MobileViews | [HF card](https://huggingface.co/datasets/mllmTeam/MobileViews), [paper](https://arxiv.org/abs/2409.14337) | `mobileviews` / `mobileviews_local` | `image_content`, `json_content`, package/app group when present, parquet shard, source revision | Disabled by default pending third-party app-asset rights review |
+| MobileViews | [HF card](https://huggingface.co/datasets/mllmTeam/MobileViews), [Gao et al. 2024/2025](https://huggingface.co/datasets/mllmTeam/MobileViews) | `mobileviews` / `mobileviews_local` | `image_content`, `json_content`, package/app group when present, parquet shard, source revision | Disabled by default pending third-party app-asset rights review |
 
 Figma2Code's card describes `root`, `filekey`, `node_id`, `raw_metadata`,
 `processed_metadata`, and separate `data_test`/`data_rest` parquet splits.
