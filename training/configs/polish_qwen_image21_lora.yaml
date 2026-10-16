@@ -1,8 +1,11 @@
-# Qwen-Image-2.1 image-conditioned LoRA training.
+# Qwen-Image-2.1 image-conditioned LoRA/DoRA training.
 # Dataset must expose condition_image, image, and caption columns.
 #
-# FIXED (training pipeline audit, Oct 2026):
+# FIXED & UPGRADED (Phase 0 audit, 48GB A6000 Ada profile):
 #   rank: 32 -> 64  (7B single-stream MMDiT benefits from higher capacity; 32 was a sketch-tier default)
+#   use_dora: true  (Weight-Decomposed Low-Rank Adaptation, Liu et al. ICML 2024; separates magnitude & direction)
+#   train_batch_size: 1 -> 4  (48GB VRAM envelope allows batch 4 with gradient_accumulation_steps 4 -> effective batch 16)
+#   lora_layers: attention (to_k,to_q,to_v,to_out.0) + feedforward projections (ff.net.0.proj,ff.net.2)
 #   lr_scheduler: constant -> cosine  (the pinned trainer has no cosine_with_warmup option)
 #   lr_warmup_steps: 0 -> 200  (protection against gradient spikes on randomly-initialized LoRA weights)
 #   max_train_steps: 1000 -> 5000  (1000 steps on a 125K corpus = 0.008% coverage; smoke-test, not training)
@@ -27,7 +30,7 @@ resolution: 1024
 use_aspect_ratio_buckets: true
 aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
 random_flip: false
-train_batch_size: 1
+train_batch_size: 4
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
 learning_rate: 1.0e-4
@@ -38,6 +41,7 @@ mixed_precision: "bf16"
 seed: 0
 rank: 64
 lora_alpha: 32
+use_dora: true
 # The official trainer requires a real condition image for validation. Set both
 # fields before a validation run; the launcher refuses to silently fabricate it.
 validation_prompt: null
@@ -48,4 +52,17 @@ val_every: null
 pipeline_class: "QwenImage21Pipeline"
 conditioning_contract: "image_conditioned_edit"
 base_weights_frozen: true
-lora_layers: "to_k,to_q,to_v,to_out.0"
+lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+
+# ---------------------------------------------------------------------------
+# CONSUMER GPU PROFILE (8–12GB VRAM e.g. RTX 3060/4060/4070):
+# To run QLoRA (Dettmers et al., NeurIPS 2023) on consumer hardware:
+#   load_in_4bit: true
+#   bnb_4bit_quant_type: "nf4"
+#   bnb_4bit_compute_dtype: "bfloat16"
+#   bnb_4bit_use_double_quant: true
+#   train_batch_size: 1
+#   gradient_accumulation_steps: 16
+#   rank: 32
+#   lora_alpha: 16
+# ---------------------------------------------------------------------------

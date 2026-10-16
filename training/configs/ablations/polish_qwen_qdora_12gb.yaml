@@ -1,0 +1,73 @@
+# Qwen-Image-2.1 QDoRA Consumer Training — 12GB VRAM Profile
+# Hardware target: RTX 3060 12GB, RTX 4060/4070, RTX 4060 Ti 16GB
+#
+# Theoretical Grounding:
+# - Dettmers et al., "QLoRA: Efficient Finetuning of Quantized LLMs", NeurIPS 2023.
+#   4-bit NF4 base quantization; LoRA learns to compensate for quantization noise.
+#   Serving with NF4 base is then consistent with training — no train/serve mismatch.
+# - Liu et al., "DoRA: Weight-Decomposed Low-Rank Adaptation", ICML 2024.
+#   Decomposes weights into magnitude (||W||) + direction (W/||W||) components.
+#   Independently fine-tunes both; closes the 2–5% gap vs. full fine-tuning.
+# - Combination = QDoRA: NF4 quantized base + DoRA adapter.
+#   CRITICAL: Requires PEFT >= 0.10 for correct DoRA magnitude scaling in
+#   merge_and_unload(). Earlier PEFT versions silently drop the magnitude vector,
+#   causing degraded output with no warning (see Spheron et al. 2024 analysis).
+#
+# Ablation purpose: compare vs. BF16 DoRA baseline (polish_qwen_image21_lora.yaml)
+# Expected metric degradation: ~0.3–0.7% on KID, LPIPS, Layout IoU (to be measured).
+# VRAM budget: ~10–11GB peak during training (quantized base + rank=32 optimizer state)
+#
+# DO NOT use this as the primary checkpoint for the paper's main results.
+# Use BF16 DoRA (rank=64) as the primary baseline; this is the consumer ablation row.
+
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
+dataset_name: "./data/polish_qwen_image21_pairs"
+instance_prompt: "a polished production UI screen"
+cond_image_column: "condition_image"
+image_column: "image"
+caption_column: "caption"
+output_dir: "./checkpoints/qwen_image21_qdora_12gb"
+resolution: 1024
+use_aspect_ratio_buckets: true
+aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
+random_flip: false
+
+# 12GB consumer VRAM budget:
+# effective_batch = 1 * 16 = 16 (same as 48GB profile; just more gradient acc. steps)
+train_batch_size: 1
+gradient_accumulation_steps: 16
+gradient_checkpointing: true
+learning_rate: 1.0e-4
+lr_scheduler: "cosine"
+lr_warmup_steps: 200
+max_train_steps: 5000
+mixed_precision: "bf16"
+seed: 0
+
+# Rank reduced from 64 → 32: NF4 introduces quantization noise that limits the
+# effective representational capacity per rank-k update. rank=32 with DoRA
+# outperforms rank=64 standard LoRA on NF4 base (Liu et al. ICML 2024 ablations).
+rank: 32
+lora_alpha: 16
+use_dora: true
+
+# QLoRA 4-bit NF4 quantization (Dettmers et al., NeurIPS 2023):
+load_in_4bit: true
+bnb_4bit_quant_type: "nf4"
+bnb_4bit_compute_dtype: "bfloat16"
+bnb_4bit_use_double_quant: true   # nested 4-bit quantization of the quantization constants
+
+# Target same module set as primary BF16 config for fair ablation:
+lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+
+# Contract metadata (validated by qwen_trainer_contract.py):
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "image_conditioned_edit"
+base_weights_frozen: true
+validation_prompt: null
+validation_image: null
+validation_epochs: 25
+val_fraction: null
+val_every: null

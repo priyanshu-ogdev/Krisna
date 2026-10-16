@@ -32,6 +32,19 @@ def sync(
     caller of THIS function can override it without needing to know
     prepare() exists underneath.
     """
+    # Active Qwen-Image-2.1 path: check for polish_qwen_image21 manifest first
+    qwen_dir = Path(data_forge_model_data_dir) / "polish_qwen_image21"
+    qwen_manifest = qwen_dir / "manifest.jsonl"
+    if qwen_manifest.is_file():
+        from krisna_training.polish.prepare_dataset import prepare_qwen_pairs_from_manifest
+        log.info("sync_polish_qwen_image21_start", extra={"manifest": str(qwen_manifest)})
+        return prepare_qwen_pairs_from_manifest(
+            manifest_path=qwen_manifest,
+            output_dir=output_dir,
+            source_root=qwen_dir,
+        )
+
+    # Legacy fallback: polish_zimage_turbo
     zimage_dir = Path(data_forge_model_data_dir) / "polish_zimage_turbo"
     images_dir = zimage_dir / "images"
     captions_path = zimage_dir / "captions.jsonl"
@@ -39,7 +52,7 @@ def sync(
     if not images_dir.exists():
         raise FileNotFoundError(
             f"{images_dir} not found — this needs data-forge's s12_model_data_export "
-            "fix that links raw images (not just latents/) into polish_zimage_turbo/. "
+            "fix that links raw images (not just latents/) into polish_qwen_image21/ or polish_zimage_turbo/. "
             "If you're on an older data-forge export, re-run stage s12."
         )
 

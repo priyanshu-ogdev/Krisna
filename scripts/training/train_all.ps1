@@ -70,12 +70,15 @@ sketch-stage1   RESEARCH     Deterministic Layout IR is the current baseline; no
 
 sketch-stage2   RESEARCH     Same: keep as a future LayoutFlow/MaskGIT ablation only.
 
-polish-default  PENDING      Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
+polish-default  ACTIVE       Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
                               local code prepares pairs and delegates to an external
                               trainer that must be pinned and one-batch validated.
 
-polish-dpo      DEFERRED     Historical path. It is not part of the active Qwen training
-                              pipeline and must not be launched by -All.
+polish-dpo      ACTIVE       Phase 3: Flow-Matching DPO preference alignment
+                              (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024).
+
+polish-cfm      ACTIVE       Phase 4: Consistency Flow Matching fast preview distillation
+                              (Luo et al., ECCV 2024; Song et al., ICML 2023).
 
 planner         FROZEN       Qwen3.5-9B GGUF + UICrit RAG. No Planner LoRA training.
 
@@ -183,12 +186,25 @@ function Test-Preflight {
         }
         "polish-dpo" {
             $db = "$RepoRoot\krisna_preference_pairs.db"
+            $cfg = if ($ConfigPath) { $ConfigPath } else { "$RepoRoot\training\configs\polish_qwen_image21_dpo.yaml" }
             if (-not (Test-Path $db)) {
                 Write-Host "  [PRE-FLIGHT FAILED] Preference pairs DB not found: $db" -ForegroundColor Red
                 Write-Host "    Run data sync first: .\scripts\training\train_all.ps1 -Sync -DataRoot <DATA_ROOT>" -ForegroundColor Yellow
                 $failed = $true
+            } elseif (-not (Test-Path $cfg)) {
+                Write-Host "  [PRE-FLIGHT FAILED] DPO config not found: $cfg" -ForegroundColor Red
+                $failed = $true
             } else {
-                Write-Host "  [PRE-FLIGHT OK] Preference pairs DB found: $db" -ForegroundColor Green
+                Write-Host "  [PRE-FLIGHT OK] Preference pairs DB and DPO config verified." -ForegroundColor Green
+            }
+        }
+        "polish-cfm" {
+            $cfg = if ($ConfigPath) { $ConfigPath } else { "$RepoRoot\training\configs\cfm_distill_qwen_image21.yaml" }
+            if (-not (Test-Path $cfg)) {
+                Write-Host "  [PRE-FLIGHT FAILED] CFM config not found: $cfg" -ForegroundColor Red
+                $failed = $true
+            } else {
+                Write-Host "  [PRE-FLIGHT OK] CFM distillation config verified: $cfg" -ForegroundColor Green
             }
         }
     }
@@ -281,20 +297,12 @@ function Execute-Tier {
             $pyScript = @'
 import subprocess, sys, yaml
 from pathlib import Path
+from krisna_training.polish.qwen_trainer_contract import build_accelerate_command, format_command
 config_path = sys.argv[1]
 cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
-diffusers_dir = Path(cfg.pop('diffusers_dir'))
-script = diffusers_dir / 'examples' / 'dreambooth' / 'train_dreambooth_lora_qwenimage21_img2img.py'
-if not script.exists():
-    raise SystemExit(f'Qwen image-edit trainer not found: {script}. Pin/provide the trainer before launching.')
-args = [sys.executable, '-m', 'accelerate.commands.launch', str(script)]
-for k, v in cfg.items():
-    if v is None: continue
-    if isinstance(v, bool):
-        if v: args.append(f'--{k}')
-        continue
-    args.append(f'--{k}={v}')
-print('Running:', ' '.join(args))
+diffusers_dir = Path(cfg.get('diffusers_dir', './third_party/diffusers'))
+args = build_accelerate_command(cfg, diffusers_dir)
+print('Running:', format_command(args))
 subprocess.run(args, check=True)
 '@
             if ($DryRun) {
@@ -304,10 +312,22 @@ subprocess.run(args, check=True)
             & $Python -c $pyScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
         }
         "polish-dpo" {
-            Write-Host "  [DEFERRED] polish-dpo is not part of the active Qwen-Image-2.1 pipeline." -ForegroundColor Yellow
-            Write-Host "  Build and validate supervised Polish first; see docs/training/ARCHITECTURE.md." -ForegroundColor Yellow
-            if (-not $DryRun) { exit 2 }
-            return
+            $defaultCfg = "training/configs/polish_qwen_image21_dpo.yaml"
+            $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
+            if ($DryRun) {
+                Write-Host "  [DRY RUN] Would launch Flow-Matching DPO training using $cfg" -ForegroundColor Magenta
+                return
+            }
+            & $Python scripts/training/compare_dpo_betas.py --config $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+        }
+        "polish-cfm" {
+            $defaultCfg = "training/configs/cfm_distill_qwen_image21.yaml"
+            $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
+            if ($DryRun) {
+                Write-Host "  [DRY RUN] Would launch Consistency Flow Matching distillation using $cfg" -ForegroundColor Magenta
+                return
+            }
+            & $Python scripts/training/compare_cfm_steps.py --config $cfg --selected-steps 6 2>&1 | Tee-Object -FilePath $Log -Append
         }
         default {
             Write-Host "Unknown tier: $StageName" -ForegroundColor Red

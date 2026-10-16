@@ -1,0 +1,36 @@
+# Phase 2 Ablation D: DoRA Without Visual Layout RAG Grounding
+# Evaluates generation using ungrounded generic user prompts vs. ColPali/SigLIP retrieved layout context.
+# Isolates: Multimodal Visual RAG's contribution to aesthetic style consistency and component appropriateness.
+
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
+dataset_name: "./data/polish_qwen_image21_pairs"
+instance_prompt: "a polished production UI screen"
+cond_image_column: "condition_image"
+image_column: "image"
+caption_column: "raw_caption_unaugmented"  # UNGROUNDED (no Visual RAG layout critique expansion)
+output_dir: "./checkpoints/ablations/ablation_d_dora_no_rag"
+resolution: 1024
+use_aspect_ratio_buckets: true
+aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
+random_flip: false
+train_batch_size: 4
+gradient_accumulation_steps: 4
+gradient_checkpointing: true
+learning_rate: 1.0e-4
+lr_scheduler: "cosine"
+lr_warmup_steps: 200
+max_train_steps: 5000
+mixed_precision: "bf16"
+seed: 42
+rank: 64
+lora_alpha: 32
+use_dora: true
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "image_conditioned_edit"
+base_weights_frozen: true
+lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+validation_epochs: 25
+ablation_id: "D_NO_VISUAL_RAG_GROUNDING"
+ablation_hypothesis: "Removing multimodal RAG guidance results in generic, low-specificity UI styling and lower user satisfaction ratings."

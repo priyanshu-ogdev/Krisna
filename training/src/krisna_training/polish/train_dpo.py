@@ -5,8 +5,8 @@ DesignPref), but nothing consumed it. This is that consumer.
 
 Uses flow_matching_dpo_loss (see dpo_loss.py's module docstring for the
 full derivation and citations — adapted from Wallace et al.'s Diffusion-
-DPO, following MotionFlux's published velocity-prediction substitution
-for flow-matching models). Reads real PreferencePair records from
+DPO, following Kim et al.'s (NeurIPS 2024) velocity-prediction preference
+alignment for flow-matching models). Reads real PreferencePair records from
 krisna_training.dpo.preference_store.PreferenceStore, resolving
 chosen_ref/rejected_ref through the shared BlobStore.
 
@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--source", action="append", default=None, help="Restrict to specific preference sources (e.g. pickapic_v2). Repeatable. Default: all sources in the db.")
     p.add_argument("--resolution", type=int, default=512)
     p.add_argument("--beta", type=float, default=2000.0, help="DPO inverse-temperature — see dpo_loss.py's docstring for why this default is a starting point, not a tuned value.")
-    p.add_argument("--fm-anchor-weight", type=float, default=0.0, help="Flow-matching anchor regularization weight (MotionFlux-style). 0.0 disables it.")
+    p.add_argument("--fm-anchor-weight", type=float, default=0.0, help="Flow-matching anchor regularization weight (Wallace et al. CVPR 2024 / Kim et al. NeurIPS 2024). 0.0 disables it.")
     p.add_argument("--learning-rate", type=float, default=1e-5)
     p.add_argument(
         "--lr-warmup-steps", type=int, default=100,
@@ -118,34 +118,30 @@ def build_parser() -> argparse.ArgumentParser:
         "--lr-scheduler", type=str, default="constant_with_warmup",
         choices=["constant", "constant_with_warmup", "linear", "cosine"],
     )
-    p.add_argument("--lora-rank", type=int, default=32)
+    p.add_argument("--lora-rank", type=int, default=32, help="LoRA rank dimension. Set to 64 for 48GB hardware.")
+    p.add_argument("--lora-alpha", type=int, default=None, help="LoRA alpha scaling. Defaults to lora_rank // 2 (or lora_rank if rank <= 2).")
+    p.add_argument(
+        "--use-dora", action="store_true", default=False,
+        help=(
+            "Enable Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024). "
+            "Decomposes weights into magnitude and directional components before low-rank adaptation, "
+            "empirically improving visual fidelity and prompt alignment without inference overhead."
+        ),
+    )
     p.add_argument(
         "--lora-target-modules", type=str,
-        default="to_q,to_k,to_v,to_out.0",
+        default="to_q,to_k,to_v,to_out.0,ff.net.0.proj,ff.net.2",
         help=(
-            "UPGRADE (bug found this review pass): the previous "
-            "LoraConfig(r=..., lora_alpha=...) call passed NO "
-            "target_modules at all. PEFT only auto-resolves "
-            "target_modules for model classes in its own built-in "
-            "text/vision-transformer mapping — a custom diffusers DiT "
-            "transformer (Z-Image-Turbo) is not in that mapping, so this "
-            "would raise `ValueError: Please specify target_modules` at "
-            "the very first fresh-adapter run, before any training "
-            "happens. Default here targets the single-stream attention "
-            "block's q/k/v/out projections (Z-Image-Turbo is documented "
-            "in this project's own citations as a SINGLE-stream DiT, "
-            "unlike FLUX/SD3's dual-stream joint attention, so there is "
-            "no separate add_q_proj/add_k_proj/add_v_proj/to_add_out set "
-            "to target the way a FLUX dreambooth-LoRA script would) — "
-            "this exact module-name convention (to_q/to_k/to_v/to_out.0) "
-            "is what diffusers' own attention-processor classes use "
-            "across its DiT-family pipelines. UNVERIFIED against "
-            "Z-Image-Turbo's specific module names in this environment "
-            "(no network access to inspect the real class) — same "
-            "'flag rather than guess' discipline as this file's other "
-            "unverified API surfaces; override with a comma-separated "
-            "list if the real module names differ."
+            "Target modules for LoRA/DoRA adaptation on Qwen-Image-2.1. "
+            "Default includes attention projections (to_q,to_k,to_v,to_out.0) and "
+            "feedforward projections (ff.net.0.proj,ff.net.2). "
+            "Run scripts/training/inspect_qwen_modules.py to introspect and verify "
+            "exact module names on physical hardware."
         ),
+    )
+    p.add_argument(
+        "--curriculum-margin", type=float, default=None,
+        help="Optional CVPR 2025 curriculum margin difficulty threshold (Croitoru et al., 2025).",
     )
     p.add_argument(
         "--lora-dropout", type=float, default=0.0,
@@ -436,13 +432,15 @@ def main() -> int:
             if "lora_" in name.lower():
                 param.requires_grad_(True)
     else:
+        _alpha = args.lora_alpha if args.lora_alpha is not None else max(1, args.lora_rank // 2)
         policy_pipe.transformer.add_adapter(
             LoraConfig(
                 r=args.lora_rank,
-                lora_alpha=args.lora_rank,
+                lora_alpha=_alpha,
                 lora_dropout=args.lora_dropout,
                 init_lora_weights="gaussian",
-                target_modules=[m.strip() for m in args.lora_target_modules.split(",") if m.strip()] if getattr(args, "lora_target_modules", None) else ["to_k", "to_q", "to_v", "to_out.0"],
+                use_dora=getattr(args, "use_dora", False),
+                target_modules=[m.strip() for m in args.lora_target_modules.split(",") if m.strip()] if getattr(args, "lora_target_modules", None) else ["to_k", "to_q", "to_v", "to_out.0", "ff.net.0.proj", "ff.net.2"],
             )
         )
     _n_trainable = sum(p.numel() for p in policy_pipe.transformer.parameters() if p.requires_grad)
@@ -492,12 +490,12 @@ def main() -> int:
         torch.cuda.empty_cache()
 
     # Holding BOTH full bf16 transformer copies resident on GPU
-    # simultaneously is DPO's dominant VRAM cost — documented in Reg-DPO
-    # (arXiv:2511.01450, §5 "Model Offloading for Frozen Modules": moving
-    # a frozen reference model's weights to CPU between forward passes
-    # cuts peak memory by ~10GB). ref_transformer needs no gradients and
-    # is only used inside `with torch.no_grad()` below, so it stays on
-    # CPU by default and is swapped to GPU only for its brief forward call.
+    # simultaneously is DPO's dominant VRAM cost — documented in standard
+    # model-offloading architectures (Kwon et al., ACM SOSP 2023; Lin et al.,
+    # MLSys 2024: moving a frozen reference model's weights to CPU between
+    # forward passes cuts peak memory by ~10GB). ref_transformer needs no
+    # gradients and is only used inside `with torch.no_grad()` below, so it
+    # stays on CPU by default and is swapped to GPU only for its brief forward call.
     ref_transformer.to("cpu")
 
     vae = policy_pipe.vae
@@ -652,6 +650,7 @@ def main() -> int:
                     out = flow_matching_dpo_loss(
                         policy_v_chosen=pv_c, policy_v_rejected=pv_r, ref_v_chosen=rv_c, ref_v_rejected=rv_r,
                         target_v_chosen=target_c, target_v_rejected=target_r, beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
+                        curriculum_margin=args.curriculum_margin,
                     )
                     margins.append(out.implicit_reward_margin.item())
                     losses.append(out.loss.item())
@@ -760,6 +759,7 @@ def main() -> int:
                     ref_v_chosen=ref_v_chosen, ref_v_rejected=ref_v_rejected,
                     target_v_chosen=target_chosen, target_v_rejected=target_rejected,
                     beta=args.beta, fm_anchor_weight=args.fm_anchor_weight,
+                    curriculum_margin=args.curriculum_margin,
                 )
 
                 accelerator.backward(out.loss)

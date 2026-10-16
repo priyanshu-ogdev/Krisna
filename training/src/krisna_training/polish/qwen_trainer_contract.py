@@ -107,6 +107,11 @@ METADATA_ONLY_KEYS = {
     "base_weights_frozen",
     "val_fraction",
     "val_every",
+    "use_dora",
+    "load_in_4bit",
+    "bnb_4bit_quant_type",
+    "bnb_4bit_compute_dtype",
+    "bnb_4bit_use_double_quant",
 }
 
 SUPPORTED_SCHEDULERS = {
@@ -136,6 +141,26 @@ def prepare_trainer_config(raw: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"expected conditioning_contract={CONDITIONING_CONTRACT!r}")
     if cfg.pop("base_weights_frozen", None) is not True:
         raise ValueError("base_weights_frozen must be true")
+    if "use_dora" in cfg:
+        if not isinstance(cfg["use_dora"], bool):
+            raise ValueError("use_dora must be a boolean")
+        cfg.pop("use_dora")
+    if "load_in_4bit" in cfg:
+        if not isinstance(cfg["load_in_4bit"], bool):
+            raise ValueError("load_in_4bit must be a boolean")
+        if cfg["load_in_4bit"]:
+            quant_type = cfg.get("bnb_4bit_quant_type", "nf4")
+            if quant_type not in ("nf4", "fp4"):
+                raise ValueError(f"unsupported bnb_4bit_quant_type {quant_type!r}; choose 'nf4' or 'fp4'")
+            compute_dtype = cfg.get("bnb_4bit_compute_dtype", "bfloat16")
+            if compute_dtype not in ("bfloat16", "float16"):
+                raise ValueError(f"unsupported bnb_4bit_compute_dtype {compute_dtype!r}; choose 'bfloat16' or 'float16'")
+            if "bnb_4bit_use_double_quant" in cfg and not isinstance(cfg["bnb_4bit_use_double_quant"], bool):
+                raise ValueError("bnb_4bit_use_double_quant must be a boolean")
+        cfg.pop("load_in_4bit", None)
+        cfg.pop("bnb_4bit_quant_type", None)
+        cfg.pop("bnb_4bit_compute_dtype", None)
+        cfg.pop("bnb_4bit_use_double_quant", None)
     for unsupported in ("val_fraction", "val_every"):
         if unsupported in cfg and cfg[unsupported] is not None:
             raise ValueError(
