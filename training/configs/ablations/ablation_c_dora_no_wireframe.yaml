@@ -1,0 +1,36 @@
+# Phase 2 Ablation C: DoRA Without Layout IR Wireframe Conditioning
+# Evaluates text-to-image generation vs. deterministic Layout IR conditioning.
+# Isolates: Layout IR's contribution to bounding-box IoU, component containment, and spatial alignment.
+
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
+dataset_name: "./data/polish_qwen_image21_pairs"
+instance_prompt: "a polished production UI screen"
+cond_image_column: null  # NO WIREFRAME CONDITIONING (Text-only generation)
+image_column: "image"
+caption_column: "caption"
+output_dir: "./checkpoints/ablations/ablation_c_dora_no_wireframe"
+resolution: 1024
+use_aspect_ratio_buckets: true
+aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
+random_flip: false
+train_batch_size: 4
+gradient_accumulation_steps: 4
+gradient_checkpointing: true
+learning_rate: 1.0e-4
+lr_scheduler: "cosine"
+lr_warmup_steps: 200
+max_train_steps: 5000
+mixed_precision: "bf16"
+seed: 42
+rank: 64
+lora_alpha: 32
+use_dora: true
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "text_to_image"  # Unconditioned text-to-image baseline
+base_weights_frozen: true
+lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+validation_epochs: 25
+ablation_id: "C_NO_WIREFRAME_CONDITION"
+ablation_hypothesis: "Removing Layout IR spatial wireframes causes severe bounding box drift (>35% IoU drop) and unaligned UI elements."

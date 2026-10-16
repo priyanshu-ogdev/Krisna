@@ -1,0 +1,41 @@
+# Phase 2: Consistency Flow Matching (CFM) Distillation Configuration
+# Targets: Tier.POLISH_FAST (4-8 ODE steps, latency ~0.9s on A6000, ~2.5s on consumer GPU)
+# Foundation: Luo et al. (ECCV 2024, LCM-LoRA) & Continuous Flow Matching (Lipman et al., ICLR 2023)
+# Distills the 30-step Phase 1 DoRA teacher into a rapid multi-step ODE student.
+
+diffusers_dir: "./third_party/diffusers"
+teacher_model_name_or_path: "Qwen/Qwen-Image-2.1"
+teacher_lora_path: "./checkpoints/qwen_image21_lora"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
+dataset_name: "./data/polish_qwen_image21_pairs"
+output_dir: "./checkpoints/qwen_image21_cfm_fast"
+
+# Distillation parameters
+distillation_type: "consistency_flow_matching"
+student_target_steps: [4, 6, 8]
+loss_type: "huber"
+huber_c: 0.001
+ema_decay: 0.999
+guidance_scale_range: [1.0, 3.0]
+
+# Optimizer & Hardware budget (A6000 48GB / Consumer 8-12GB offload)
+train_batch_size: 4
+gradient_accumulation_steps: 4
+gradient_checkpointing: true
+learning_rate: 5.0e-5
+lr_scheduler: "cosine"
+lr_warmup_steps: 200
+max_train_steps: 4000
+mixed_precision: "bf16"
+seed: 42
+rank: 32
+lora_alpha: 16
+use_dora: true
+
+# Verification gate targets
+target_metrics:
+  max_latency_seconds_a6000: 1.0
+  max_latency_seconds_consumer: 3.0
+  min_layout_iou: 0.85
+  min_ocr_readability: 0.90
+  min_aesthetic: 0.80

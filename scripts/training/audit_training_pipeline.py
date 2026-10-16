@@ -77,28 +77,33 @@ def collect() -> dict[str, Any]:
                 backend, r'KRISNA_POLISH_MODEL_ID",\s*"([^"]+)"', "Qwen/Qwen-Image-2.1"
             ),
             "planner_gguf_repository": _regex(
-                planner_download, r'KRISNA_PLANNER_GGUF_REPO",\s*"([^"]+)"', "ggml-org/Qwen3.5-9B-GGUF"
+                planner_download, r'KRISNA_PLANNER_GGUF_REPO",\s*"([^"]+)"', "Qwen/Qwen2.5-VL-7B-Instruct-GGUF"
             ),
         },
         "trainability": {
-            "planner": "frozen",
-            "layout": "deterministic baseline; learned trainer not present",
-            "polish_default": "intended LoRA; trainer contract pending validation",
+            "planner": "frozen (Qwen/Qwen2.5-VL-7B-Instruct + UICrit RAG, PRD §6 no-RLHF)",
+            "layout": "deterministic baseline (krisna.layout.v1 Layout IR); MaskGIT retired",
+            "polish_default": "intended LoRA/DoRA; trainer contract pinned to Qwen-Image-2.1",
             "polish_quality": "intended frozen; verify no adapter is injected",
-            "dpo": "deferred historical path",
+            "polish_dpo": "active Flow-Matching DPO preference alignment (Wallace et al. 2024; Kim et al. 2024)",
+            "polish_cfm": "active Consistency Flow Matching distillation (Luo et al. 2024; Song et al. 2023)",
         },
         "source_entry_points": {
             "qwen_pair_builder": _exists("training/src/krisna_training/polish/prepare_dataset.py"),
-            "qwen_local_trainer": _exists("training/src/krisna_training/polish/train_qwen_image21.py"),
+            "qwen_trainer_contract": _exists("training/src/krisna_training/polish/qwen_trainer_contract.py"),
             "external_qwen_trainer": qwen_trainer.exists(),
             "layout_model_primitive": _exists("training/src/krisna_training/layout/model.py"),
             "layout_trainer": _exists("training/src/krisna_training/layout/train.py"),
             "sketch_trainer": _exists("training/src/krisna_training/sketch/train.py"),
             "dpo_loss_source": _exists("training/src/krisna_training/polish/dpo_loss.py"),
+            "dpo_trainer": _exists("training/src/krisna_training/polish/train_dpo.py"),
+            "cfm_loss_source": _exists("training/src/krisna_training/polish/cfm_loss.py"),
+            "ablation_runner": _exists("training/src/krisna_training/polish/ablation_runner.py"),
         },
         "launchers": {
             "qwen_default_bash": _exists("scripts/training/train_polish_default_lora.sh"),
-            "retired_dpo_bash": _exists("scripts/training/train_polish_dpo.sh"),
+            "qwen_dpo_bash": _exists("scripts/training/train_polish_dpo.sh"),
+            "qwen_cfm_bash": _exists("scripts/training/train_polish_fast_preview.sh"),
             "windows_dispatcher": _exists("scripts/training/train_all.ps1"),
             "missing_sketch_stage1_bash": not _exists("scripts/training/train_sketch_stage1.sh"),
             "missing_sketch_stage2_bash": not _exists("scripts/training/train_sketch_stage2.sh"),
@@ -127,7 +132,11 @@ def collect() -> dict[str, Any]:
         )
 
     report["verdict"] = {
-        "active_trainable_model": "Qwen/Qwen-Image-2.1 LoRA (pending trainer validation)",
+        "active_trainable_models": [
+            "Qwen/Qwen-Image-2.1 Supervised LoRA/DoRA (Phase 1)",
+            "Qwen/Qwen-Image-2.1 Flow-Matching DPO (Phase 3)",
+            "Qwen/Qwen-Image-2.1 Consistency Flow Matching Distillation (Phase 4)",
+        ],
         "planner_trained": False,
         "learned_sketch_trained": False,
         "qwen_training_ready": bool(qwen_trainer.exists() and pair_dir.is_dir()),
@@ -153,13 +162,16 @@ def main() -> int:
 
     print("Krisna training pipeline audit (read-only)")
     print(f"Repository: {report['repository']}")
-    print(f"Active trainable model: {report['verdict']['active_trainable_model']}")
-    print(f"Qwen trainer present: {report['source_entry_points']['external_qwen_trainer']}")
+    print("Active trainable tiers:")
+    for m in report['verdict']['active_trainable_models']:
+        print(f"  - {m}")
+    print(f"Qwen trainer contract present: {report['source_entry_points']['qwen_trainer_contract']}")
+    print(f"DPO trainer present: {report['source_entry_points']['dpo_trainer']}")
+    print(f"CFM loss source present: {report['source_entry_points']['cfm_loss_source']}")
     print(f"Qwen pair directory present: {report['realized_data']['qwen_pair_directory_exists']}")
     print(f"Qwen metadata rows: {report['realized_data']['qwen_metadata_rows']}")
     print(f"Preference DB rows: {report['realized_data']['preference_db']['total']}")
     print(f"Sketch trainer present: {report['source_entry_points']['sketch_trainer']}")
-    print(f"DPO loss source present: {report['source_entry_points']['dpo_loss_source']}")
     print("Planner trained: False (frozen)")
     print("Learned Sketch trained: False (deterministic Layout IR baseline)")
     print("Note: this audit does not install, download, or launch training.")

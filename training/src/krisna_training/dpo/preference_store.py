@@ -1,130 +1,22 @@
-"""SQLite store for DPO preference pairs. Same threading/locking pattern as
-store.DesignStateStore — this is a local single-GPU service, not a
-distributed system.
+"""Backward-compatibility wrapper.
+
+Redirects to `krisna_training.preference.preference_store`.
+Enforces single canonical PreferenceStore implementation with idempotent
+INSERT OR IGNORE and PRD §6 no-AI-judge constraints.
 """
 
 from __future__ import annotations
 
-import sqlite3
-import threading
-import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from pathlib import Path
+from krisna_training.preference.preference_store import (
+    SCHEMA,
+    VALID_SOURCES,
+    PreferencePair,
+    PreferenceStore,
+)
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS preference_pairs (
-    id              TEXT PRIMARY KEY,
-    session_id      TEXT,
-    prompt          TEXT NOT NULL,
-    chosen_ref      TEXT NOT NULL,
-    rejected_ref    TEXT NOT NULL,
-    chosen_score    REAL,
-    rejected_score  REAL,
-    source          TEXT NOT NULL,
-    created_at      TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_pref_pairs_source ON preference_pairs(source);
-CREATE INDEX IF NOT EXISTS idx_pref_pairs_session ON preference_pairs(session_id);
-"""
-
-# Sources this project writes into the store:
-#   verifier_stack  — verifier ranking from the automated pipeline
-#   planner_review  — structured critique from the resident Planner review pass
-#   uicrit_seed     — imported UICrit human critique ratings (uicrit_importer.py)
-# Sources sourced from data-forge's real, human-labeled external datasets:
-#   pickapic_v2, hpdv2 — general aesthetic preference pairs
-#   gamelabel_10k      — mobile UI preference pairs (human crowdsource)
-#   designsense_10k, designpref — UI-domain DPO pairs (not yet publicly released)
-#
-# REMOVED: "gemma_critique" was present in v10 when the frozen Critic
-# generated its own preference labels (AI-judge self-distillation). Under
-# the no-RLHF-loop PRD revision, no AI-generated labels may enter the
-# PreferenceStore. Nothing currently writes "gemma_critique"; this removal
-# is a principled enforcement of that architectural constraint, not a
-# behavioral change.
-VALID_SOURCES = frozenset({
-    "verifier_stack", "planner_review", "uicrit_seed",
-    "pickapic_v2", "hpdv2", "gamelabel_10k", "designsense_10k", "designpref",
-})
-
-
-@dataclass
-class PreferencePair:
-    prompt: str
-    chosen_ref: str
-    rejected_ref: str
-    source: str
-    session_id: str | None = None
-    chosen_score: float | None = None
-    rejected_score: float | None = None
-    id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-
-    def __post_init__(self) -> None:
-        if self.source not in VALID_SOURCES:
-            raise ValueError(f"Unknown preference-pair source: {self.source!r}")
-        if self.chosen_ref == self.rejected_ref:
-            raise ValueError("chosen_ref and rejected_ref must differ")
-
-
-class PreferenceStore:
-    def __init__(self, db_path: str | Path = "krisna_preference_pairs.db") -> None:
-        self.db_path = str(db_path)
-        self._lock = threading.Lock()
-        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        with self._lock:
-            self._conn.executescript(SCHEMA)
-            self._conn.commit()
-
-    def add(self, pair: PreferencePair) -> PreferencePair:
-        with self._lock:
-            self._conn.execute(
-                "INSERT INTO preference_pairs "
-                "(id, session_id, prompt, chosen_ref, rejected_ref, chosen_score, rejected_score, source, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    pair.id, pair.session_id, pair.prompt, pair.chosen_ref, pair.rejected_ref,
-                    pair.chosen_score, pair.rejected_score, pair.source, pair.created_at,
-                ),
-            )
-            self._conn.commit()
-        return pair
-
-    def list(self, source: str | None = None, session_id: str | None = None) -> list[PreferencePair]:
-        query = "SELECT * FROM preference_pairs"
-        clauses, params = [], []
-        if source:
-            clauses.append("source = ?")
-            params.append(source)
-        if session_id:
-            clauses.append("session_id = ?")
-            params.append(session_id)
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
-        with self._lock:
-            rows = self._conn.execute(query, params).fetchall()
-        return [
-            PreferencePair(
-                id=r["id"], session_id=r["session_id"], prompt=r["prompt"],
-                chosen_ref=r["chosen_ref"], rejected_ref=r["rejected_ref"],
-                chosen_score=r["chosen_score"], rejected_score=r["rejected_score"],
-                source=r["source"], created_at=r["created_at"],
-            )
-            for r in rows
-        ]
-
-    def count(self, source: str | None = None) -> int:
-        return len(self.list(source=source))
-
-    def exists(self, pair_id: str) -> bool:
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT 1 FROM preference_pairs WHERE id = ? LIMIT 1", (pair_id,)
-            ).fetchone()
-        return row is not None
-
-    def close(self) -> None:
-        with self._lock:
-            self._conn.close()
+__all__ = [
+    "SCHEMA",
+    "VALID_SOURCES",
+    "PreferencePair",
+    "PreferenceStore",
+]

@@ -1,0 +1,49 @@
+# Qwen-Image-2.1 Flow-Matching Direct Preference Optimization (DPO).
+# Theoretical Grounding:
+# - Wallace et al., "Diffusion Model Alignment Using Direct Preference Optimization", IEEE/CVF CVPR 2024.
+# - Kim et al., "Preference Alignment with Flow Matching", NeurIPS 2024.
+# - Croitoru et al., "Curriculum Direct Preference Optimization for Diffusion and Consistency Models", IEEE/CVF CVPR 2025.
+# - Esser et al., "Scaling Rectified Flow Transformers for High-Resolution Image Synthesis", ICML 2024.
+
+preference_db: "./krisna_preference_pairs.db"
+blob_root: "krisna_blobs"
+pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+output_dir: "./checkpoints/polish_qwen_image21_dpo"
+lora_adapter_path: null  # Auto-continues from ./checkpoints/polish_default_lora via launcher
+
+# High-fidelity single-stream MMDiT resolution
+resolution: 1024
+
+# Flow-Matching DPO Invariants:
+# Inverse-temperature beta: 2000.0 (Wallace et al. baseline; swept in [500, 2000, 5000])
+beta: 2000.0
+# Anchor regularization weight (Kim et al. NeurIPS 2024 / Wallace et al. CVPR 2024): keeps chosen path anchored to UI manifold
+fm_anchor_weight: 0.1
+
+# Optimization & Architecture:
+learning_rate: 1.0e-5
+lr_scheduler: "cosine"
+lr_warmup_steps: 100
+lora_rank: 64
+lora_alpha: 32
+use_dora: true
+lora_target_modules: "to_q,to_k,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+
+# Batching & Memory Profile (A6000 48GB / Consumer 12GB offload):
+train_batch_size: 1
+gradient_accumulation_steps: 4
+max_train_steps: 2000
+checkpointing_steps: 500
+mixed_precision: "bf16"
+seed: 42
+max_grad_norm: 1.0
+ema_decay: 0.9995
+
+# Stratified Validation Monitoring:
+val_fraction: 0.05
+val_every: 100
+val_batches: 20
+
+# Pipeline metadata
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "image_conditioned_edit"
