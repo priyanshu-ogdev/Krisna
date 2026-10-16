@@ -144,22 +144,43 @@ def main() -> int:
 
     results = {}
 
-    # 1. Polish Tier (Z-Image-Turbo LoRA)
+    # 1. Polish Tier (Active: Qwen-Image-2.1; Legacy: Z-Image-Turbo)
+    qwen_export = model_data_dir / "polish_qwen_image21"
+    qwen_manifest = qwen_export / "manifest.jsonl"
+    qwen_target = target_dir / "polish_qwen_image21_pairs"
     zimage_export = model_data_dir / "polish_zimage_turbo"
     polish_target = target_dir / "polish_default_train"
+
     if not args.polish:
-        if polish_target.exists():
+        if qwen_target.exists():
+            results["polish"] = f"Skipped sync (existing Qwen pairs in {qwen_target})"
+        elif polish_target.exists():
             synced_count = len([p for p in polish_target.iterdir() if p.is_file() and p.name != "metadata.jsonl"])
             results["polish"] = f"Skipped sync ({synced_count} existing images in {polish_target})"
         else:
             results["polish"] = "Skipped sync"
+    elif qwen_manifest.is_file():
+        # Active Qwen-Image-2.1 pair manifest sync
+        if args.check_only:
+            print(f"\n[OK] Polish Tier (Qwen-Image-2.1): Found pair manifest at {qwen_manifest}")
+            results["polish"] = f"Ready (Qwen manifest at {qwen_manifest})"
+        else:
+            print(f"\n[*] Syncing Polish Tier (Qwen-Image-2.1): {qwen_export} -> {qwen_target}...")
+            try:
+                from krisna_training.data_forge_bridge.sync_polish_default import sync as sync_polish
+                out = sync_polish(model_data_dir, qwen_target)
+                print(f"    [SUCCESS] Qwen Polish dataset synced to {out}")
+                results["polish"] = f"Synced (Qwen pairs in {out}) -> ready for training"
+            except Exception as e:
+                print(f"    [ERROR] Qwen Polish sync failed: {e}")
+                results["polish"] = f"Failed: {e}"
     elif zimage_export.exists() and (zimage_export / "images").exists():
         count = len(list((zimage_export / "images").glob("*.*")))
         if args.check_only:
-            print(f"\n[OK] Polish Tier: Found {count} exported images in {zimage_export}")
+            print(f"\n[OK] Polish Tier (Legacy Z-Image): Found {count} exported images in {zimage_export}")
             results["polish"] = f"Ready ({count} images in export)"
         else:
-            print(f"\n[*] Syncing Polish Tier: {zimage_export} -> {polish_target}...")
+            print(f"\n[*] Syncing Polish Tier (Legacy Z-Image): {zimage_export} -> {polish_target}...")
             try:
                 from krisna_training.data_forge_bridge.sync_polish_default import sync as sync_polish
                 out = sync_polish(model_data_dir, polish_target)
@@ -170,7 +191,7 @@ def main() -> int:
                 print(f"    [ERROR] Polish sync failed: {e}")
                 results["polish"] = f"Failed: {e}"
     else:
-        print(f"\n[-] Polish Tier: {zimage_export}/images not yet populated (run stage s12).")
+        print(f"\n[-] Polish Tier: Neither {qwen_manifest} nor {zimage_export}/images populated yet (run stage s12).")
         results["polish"] = "Not exported yet"
 
     # 2. Diffusion-DPO Preference Pairs
