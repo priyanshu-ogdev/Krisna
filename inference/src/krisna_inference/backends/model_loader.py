@@ -26,8 +26,19 @@ from typing import Any
 
 log = logging.getLogger("krisna_inference.backends.model_loader")
 
-PLANNER_GGUF_FILENAME = "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
-PLANNER_MMPROJ_FILENAME = "Qwen2.5-VL-7B-Instruct-mmproj-f16.gguf"
+PLANNER_GGUF_FILENAMES = [
+    "Qwen3.5-9B-Instruct-Q4_K_M.gguf",
+    "Qwen3.5-9B-Q4_K_M.gguf",
+    "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
+]
+PLANNER_MMPROJ_FILENAMES = [
+    "Qwen3.5-9B-Instruct-mmproj-f16.gguf",
+    "Qwen3.5-9B-mmproj-f16.gguf",
+    "Qwen2.5-VL-7B-Instruct-mmproj-f16.gguf",
+]
+
+PLANNER_GGUF_FILENAME = PLANNER_GGUF_FILENAMES[0]
+PLANNER_MMPROJ_FILENAME = PLANNER_MMPROJ_FILENAMES[0]
 
 DEFAULT_CANDIDATE_DIRS = [
     Path("models/planner"),
@@ -119,10 +130,11 @@ def discover_planner_model(explicit_path: str | None = None) -> Path | None:
 
     for candidate_dir in DEFAULT_CANDIDATE_DIRS:
         if candidate_dir.is_dir():
-            target = candidate_dir / PLANNER_GGUF_FILENAME
-            if target.is_file():
-                log.info("Auto-discovered target Planner GGUF at %s", target)
-                return target.resolve()
+            for fn in PLANNER_GGUF_FILENAMES:
+                target = candidate_dir / fn
+                if target.is_file():
+                    log.info("Auto-discovered target Planner GGUF (%s) at %s", fn, target)
+                    return target.resolve()
             # Exclude mmproj from planner model match
             ggufs = [f for f in sorted(candidate_dir.glob("*.gguf")) if "mmproj" not in f.name.lower()]
             if ggufs:
@@ -147,10 +159,11 @@ def discover_mmproj_model(explicit_path: str | None = None) -> Path | None:
 
     for candidate_dir in DEFAULT_CANDIDATE_DIRS:
         if candidate_dir.is_dir():
-            target = candidate_dir / PLANNER_MMPROJ_FILENAME
-            if target.is_file():
-                log.info("Auto-discovered target mmproj GGUF at %s", target)
-                return target.resolve()
+            for fn in PLANNER_MMPROJ_FILENAMES:
+                target = candidate_dir / fn
+                if target.is_file():
+                    log.info("Auto-discovered target mmproj GGUF (%s) at %s", fn, target)
+                    return target.resolve()
             mmprojs = [f for f in sorted(candidate_dir.glob("*.gguf")) if "mmproj" in f.name.lower()]
             if mmprojs:
                 log.info("Auto-discovered mmproj GGUF at %s", mmprojs[0])

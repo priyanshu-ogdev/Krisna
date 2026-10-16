@@ -361,8 +361,8 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   *Technical Role in Krisna*: Landmark mathematical breakthrough reparameterizing the Bradley-Terry preference reward model into an exact closed-form objective over policy logits, eliminating the separate reward model; adapted by Wallace et al. [10, 31] for diffusion and continuous flow matching.
 
 - **Qwen Foundation Literature (Alibaba Group 2023–2026)**  
-  *Qwen Technical Report* (Bai et al., 2023), *Qwen2 Technical Report* (Yang et al., 2024), and *Qwen2-VL: To See the World More Clearly* (Wang et al., 2024).  
-  *Technical Role in Krisna*: Foundational architecture reports for the multilingual vision-language models utilized in Krisna's Planner tier (`Qwen2.5-VL-7B-Instruct`) and the Polish MMDiT generative backbone (`Qwen-Image-2.1` [30]).
+  *Qwen3.5 Small Model Series Technical Report* (Qwen Team, 2026), *Qwen2-VL: To See the World More Clearly* (Wang et al., 2024), *Qwen2 Technical Report* (Yang et al., 2024), and *Qwen Technical Report* (Bai et al., 2023).  
+  *Technical Role in Krisna*: Foundational architecture reports for the multimodal vision-language models utilized in Krisna's Planner tier (primary canonical candidate: `Qwen3.5-9B` hybrid Gated DeltaNet + Gated Attention; controlled baseline: `Qwen2.5-VL-7B-Instruct`) and the Polish MMDiT generative backbone (`Qwen-Image-2.1` [30]).
 
 ---
 

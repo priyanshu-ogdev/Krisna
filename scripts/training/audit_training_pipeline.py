@@ -81,7 +81,7 @@ def collect() -> dict[str, Any]:
             ),
         },
         "trainability": {
-            "planner": "frozen (Qwen/Qwen2.5-VL-7B-Instruct + UICrit RAG, PRD §6 no-RLHF)",
+            "planner": "frozen (Qwen3.5-9B canonical / Qwen2.5-VL-7B baseline + UICrit RAG, PRD §6 no-RLHF)",
             "layout": "deterministic baseline (krisna.layout.v1 Layout IR); MaskGIT retired",
             "polish_default": "intended LoRA/DoRA; trainer contract pinned to Qwen-Image-2.1",
             "polish_quality": "intended frozen; verify no adapter is injected",
