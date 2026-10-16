@@ -163,7 +163,7 @@ was abandoned in favor of the following, final split:
 
 | Tier | Model | Trained? | Why |
 |---|---|---|---|
-| **Planner** | Qwen2.5-VL-7B-Instruct (Qwen3-VL-8B as gated candidate) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
+| **Planner** | Qwen3.5-9B canonical (Qwen2.5-VL-7B controlled baseline) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
 | **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No for the main experiment** | Makes geometry, hierarchy, literals, and lock regions auditable; learned LayoutFlow/HART remains an ablation |
 | **Polish (Default)** | Qwen-Image-2.1 | **Base frozen; LoRA gated and trainable** | Supervised wireframe→screenshot adapter only after a real pair manifest and native trainer smoke test; preference alignment is optional later |
 | **Polish (Quality)** | Qwen-Image-2.1 without adapter | **Frozen** | Same-model no-adapter reference/ablation; must not inherit the Default LoRA through a global fallback |

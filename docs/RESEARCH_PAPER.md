@@ -665,7 +665,7 @@ Grounding Krisna in the latest peer-reviewed visual agent literature (ShowUI, Li
 
 The proposed Krisna decomposition is intended to make consumer-hardware agentic UI design measurable, but it has not established a Pareto frontier in the current checkout. Several limitations remain open for future investigation:
 1. **Component Interactivity**: Layout IR represents static 2D vector geometry and styling. Extending the IR to emit reactive React/Vue code with dynamic state bindings is an active engineering direction.
-2. **Multimodal Planner Projection**: The current audited Planner request is text-only. The primary experiment will first validate an image-grounded `Qwen2.5-VL-7B-Instruct` request; `Qwen3-VL-8B-Instruct` remains a gated comparison.
+2. **Multimodal Planner Projection**: The current audited Planner request is text-only. The primary experiment validates an image-grounded `Qwen3.5-9B` request (with `Qwen2.5-VL-7B-Instruct` retained as a controlled historical baseline).
 3. **Continuous Flow-Matching Layout Training**: While the Layout IR schema is production-ready, training an end-to-end continuous flow-matching generator directly on the CLAY/RICO hierarchical tree distributions will replace template heuristics.
 
 ---
@@ -674,11 +674,7 @@ The proposed Krisna decomposition is intended to make consumer-hardware agentic 
 
 The architecture is approved in a narrower, evidence-disciplined form:
 
-1. **Planner:** use frozen `Qwen/Qwen2.5-VL-7B-Instruct` as the primary
-   image-grounded Planner candidate. Keep `Qwen3-VL-8B-Instruct` as a gated
-   bake-off candidate; do not select it solely because it is newer. The
-   Planner-to-renderer interface is `krisna.delta.v1` plus Layout IR and
-   verifier receipts, not hidden-state sharing.
+1. **Planner:** use frozen `Qwen/Qwen3.5-9B` as the primary image-grounded Planner candidate, operating under the hybrid Gated DeltaNet + Gated Attention architecture for low-latency linear-time multi-turn deliberation. Retain `Qwen2.5-VL-7B-Instruct` strictly as a controlled historical/baseline comparison. The Planner-to-renderer interface is `krisna.delta.v1` plus Layout IR and verifier receipts, not hidden-state sharing.
 2. **Structure:** use deterministic Layout IR and wireframe rendering as the
    main geometry baseline. A learned LayoutFlow/HART route is a future
    ablation, not an already-trained Sketch tier.

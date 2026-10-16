@@ -59,10 +59,10 @@ class ModelSpec:
 # is wired to actual checkpoints. Kept conservative (rounded up).
 REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: ModelSpec(
-        tier=Tier.PLANNER, name="Qwen2.5-VL-7B-Instruct", vram_gb=4.2,
-        quantization="Q4_K_M GGUF via llama.cpp + mmproj-f16",
+        tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=4.2,
+        quantization="Q4_K_M GGUF via llama.cpp (fallback: Qwen2.5-VL-7B-Instruct + mmproj-f16)",
         always_resident=True,
-        # Native vision-language planner (SOTA on ScreenSpot-Pro, NeurIPS 2025).
+        # Native vision-language hybrid planner (Gated DeltaNet + Gated Attention; baseline: Qwen2.5-VL).
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="Krisna structured Layout IR",
