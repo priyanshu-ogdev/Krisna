@@ -809,9 +809,9 @@ We have specified **Krisna**, an agentic multi-turn UI generation system organiz
 - *Role & Impact*: Official model architecture specification for the 7B MMDiT Polish generation backbone.
 
 [31] B. Wallace, M. Dang, R. Rafailov, L. Zhou, M. Kiehl, and S. Ermon, "Diffusion Model Alignment Using Direct Preference Optimization," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 8228–8238, doi: 10.1109/CVPR52733.2024.00784.
-- *Role & Impact*: Peer-reviewed IEEE/CVF CVPR paper establishing direct preference optimization without reinforcement learning or separate reward model training. Adapted in `training/polish/dpo_loss.py`.
+- *Role & Impact*: Peer-reviewed IEEE/CVF CVPR paper adapting Rafailov et al.'s (NeurIPS 2023) closed-form direct preference optimization from token autoregression to continuous generative diffusion and flow matching without separate reward models. Adapted in `training/polish/dpo_loss.py`.
 
-[32] H. Tang, et al., "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer," in *The Thirteenth International Conference on Learning Representations (ICLR)*, 2025.
+[32] H. Tang, Y.-C. Wu, S. Yang, E.-Z. Xie, J.-S. Chen, J.-Y. Chen, Z. Zhang, H. Cai, Y. Lu, and S. Han, "HART: Efficient Visual Generation with Hybrid Autoregressive Transformer," in *The Thirteenth International Conference on Learning Representations (ICLR)*, 2025.
 - *Role & Impact*: Hybrid discrete AR + residual diffusion head architecture; evaluated in Krisna's baseline ablations.
 
 [33] M. Faysse, H. Abou-Chakra, A. Sautier, C. R. de Sainte Marie, A. Parcollet, and V. Guigue, "ColPali: Efficient Document Retrieval with Vision Language Models," in *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science, vol. 15104, Springer, Cham, 2024, pp. 415–432, doi: 10.1007/978-3-031-72995-9_24.
@@ -820,7 +820,7 @@ We have specified **Krisna**, an agentic multi-turn UI generation system organiz
 [34] K. Q. Lin, L. Li, D. Gao, Z. Yang, S. Wu, Z. Bai, S. W. Lei, L. Wang, and M. Z. Shou, "ShowUI: One Vision-Language-Action Model for GUI Visual Agent," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2025, pp. 19498–19508, doi: 10.1109/CVPR52734.2025.01816.
 - *Role & Impact*: Peer-reviewed IEEE/CVF CVPR 2025 paper establishing vision-language-action modeling for GUI visual agents and UI-guided token selection.
 
-[35] "InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 47, no. 12, Dec. 2025, pp. 8920–8934, doi: 10.1109/TPAMI.2025.3595880.
+[35] C. Lin, Y. Lin, P. Pan, X. Zhang, and Y. Mu, "InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 47, no. 12, Dec. 2025, pp. 11040–11050, doi: 10.1109/TPAMI.2025.3595880.
 - *Role & Impact*: Top IEEE journal paper in computer vision. Formulates instruction-driven layout generation governed by semantic graph priors, justifying Krisna's structured delta decomposition and graph prefix injection in `planner_backend_llama.py`.
 
 [36] V. Kulikov, M. Kleiner, I. Huberman-Spiegelglas, and T. Michaeli, "FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models," in *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2025, pp. 19721–19730.
@@ -844,7 +844,7 @@ We have specified **Krisna**, an agentic multi-turn UI generation system organiz
 [42] T. Xie, D. Zhang, J. Chen, et al., "OSWorld: Benchmarking Multimodal Agents for Open-Ended Tasks in Real Computer Environments," in *Advances in Neural Information Processing Systems (NeurIPS)*, vol. 37, 2024.
 - *Role & Impact*: Standard multimodal GUI agent benchmark across desktop and operating system interfaces.
 
-[43] Y. Gui, et al., "Figma2Code: Automating Multimodal Design to Code in the Wild," in *The Fourteenth International Conference on Learning Representations (ICLR)*, 2026.
+[43] Y. Gui, J. Zhang, Y. Wang, T. Ma, Y. Wan, S. He, D. Chen, Z. Zhao, W. Jiang, X. Shi, H. Jin, and P. S. Yu, "Figma2Code: Automating Multimodal Design to Code in the Wild," in *The Fourteenth International Conference on Learning Representations (ICLR)*, 2026.
 - *Role & Impact*: Multi-modal design benchmark linking real-world Figma community vectors and component hierarchies with production frontend rendering.
 
 [44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference," in *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science, vol. 15065, Springer, Cham, 2024, pp. 110–127, doi: 10.1007/978-3-031-72995-9_7.
