@@ -183,3 +183,51 @@ def test_async_warm_and_session_model_status(client: TestClient):
     assert "state" in status_resp
     assert "stage" in status_resp
 
+
+def test_refine_without_prior_render_returns_409(client: TestClient):
+    session_id = client.post("/session", json={}).json()["session_id"]
+    r = client.post(f"/session/{session_id}/refine", json={"instruction": "darker sidebar"})
+    assert r.status_code == 409
+
+
+def test_refine_full_cycle(client: TestClient):
+    session_id = client.post("/session", json={}).json()["session_id"]
+    client.post(f"/session/{session_id}/message", json={"message": "create a landing page"})
+    f_res = client.post(f"/session/{session_id}/finalize", json={})
+    assert f_res.status_code == 200
+    assert f_res.json()["stage"] == "finalized"
+
+    # Populate a critique on the finalized render
+    c_res = client.post(f"/session/{session_id}/critique")
+    assert c_res.status_code == 200
+    assert c_res.json()["critique"]["requested"] is True
+
+    # 1. First refine turn
+    ref_res = client.post(f"/session/{session_id}/refine", json={"instruction": "make the CTA button vibrant blue"})
+    assert ref_res.status_code == 200
+    data = ref_res.json()
+    assert data["stage"] == "finalized"
+    assert data["revision"] > f_res.json()["revision"]
+    assert "vibrant blue" in data["finalize_output"]["prompt_used"]
+    # Verify stale critique was invalidated
+    assert data["critique"]["requested"] is False
+    assert data["critique"]["result"] is None
+
+    # 2. Second refine turn - verify no prompt runaway accumulation
+    ref_res2 = client.post(f"/session/{session_id}/refine", json={"instruction": "add search input in header"})
+    assert ref_res2.status_code == 200
+    data2 = ref_res2.json()
+    prompt2 = data2["finalize_output"]["prompt_used"]
+    assert "add search input in header" in prompt2
+    # Ensure "Refinement edit:" or "Edit update:" appears exactly once, not duplicated
+    assert prompt2.count("Refinement edit:") == 1
+    assert prompt2.count("Edit update:") == 0
+
+
+def test_refine_without_finalize_returns_409(client: TestClient):
+    session_id = client.post("/session", json={}).json()["session_id"]
+    # Attempt refine while still in conversing stage without render
+    r = client.post(f"/session/{session_id}/refine", json={"instruction": "make button green"})
+    assert r.status_code == 409
+    assert "not refine-eligible" in r.json()["detail"]
+

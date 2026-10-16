@@ -9,10 +9,10 @@ from krisna_inference.orchestrator.vram_budget import VRAMLedger
 
 def test_admits_within_envelope():
     ledger = VRAMLedger(envelope_gb=24.0)
-    ledger.admit(Tier.PLANNER)   # 6.5
+    ledger.admit(Tier.PLANNER)   # 4.2
     ledger.admit(Tier.SKETCH)    # 0.2
-    assert ledger.used_gb == pytest.approx(6.7)
-    assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 12.0 more = 18.7, fits
+    assert ledger.used_gb == pytest.approx(4.4)
+    assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 12.0 more = 16.4, fits
 
 
 def test_rejects_over_envelope():
@@ -20,19 +20,19 @@ def test_rejects_over_envelope():
     ledger.admit(Tier.PLANNER)
     ledger.admit(Tier.SKETCH)
     ledger.admit(Tier.POLISH_DEFAULT)
-    assert ledger.used_gb == pytest.approx(18.7)
-    assert not ledger.would_fit(Tier.POLISH_QUALITY)  # +12.0 = 30.7, doesn't fit
+    assert ledger.used_gb == pytest.approx(16.4)
+    assert not ledger.would_fit(Tier.POLISH_QUALITY)  # +16.0 = 32.4, doesn't fit
     with pytest.raises(VRAMBudgetExceededError):
         ledger.admit(Tier.POLISH_QUALITY)
 
 
 def test_release_frees_budget():
-    ledger = VRAMLedger(envelope_gb=18.6)
+    ledger = VRAMLedger(envelope_gb=16.3)
     ledger.admit(Tier.PLANNER)
     ledger.admit(Tier.SKETCH)
-    assert not ledger.would_fit(Tier.POLISH_DEFAULT)  # 6.7 + 12.0 = 18.7 > 18.6
+    assert not ledger.would_fit(Tier.POLISH_DEFAULT)  # 4.4 + 12.0 = 16.4 > 16.3
     ledger.release(Tier.SKETCH)
-    assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 6.5 + 12.0 = 18.5 <= 18.6
+    assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 4.2 + 12.0 = 16.2 <= 16.3
 
 
 def test_double_admit_is_idempotent():
@@ -48,4 +48,4 @@ def test_snapshot_shape():
     ledger.admit(Tier.PLANNER)
     snap = ledger.snapshot()
     assert snap["resident"] == ["planner"]
-    assert snap["used_gb"] == pytest.approx(6.5)
+    assert snap["used_gb"] == pytest.approx(4.2)

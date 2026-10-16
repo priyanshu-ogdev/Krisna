@@ -5,6 +5,8 @@ import json
 import pytest
 from PIL import Image
 
+pytest.importorskip("krisna_training.sketch.token_shard_writer", reason="Legacy MaskGIT sketch retired in commit a4d4d71")
+
 from krisna_training.data_forge_bridge.sync_sketch_tier import sync
 
 

@@ -1,4 +1,6 @@
-from __future__ import annotations
+import pytest
+
+pytest.importorskip("krisna_training.sketch.masking", reason="Legacy MaskGIT sketch retired in commit a4d4d71")
 
 from krisna_training.sketch.masking import apply_random_mask, sample_mask_ratio
 

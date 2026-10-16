@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
+pytest.importorskip("krisna_training.sketch.prepare_dataset", reason="Legacy MaskGIT sketch retired in commit a4d4d71")
+
 from krisna_training.sketch.prepare_dataset import prepare
 
 

@@ -4,6 +4,8 @@ import json
 
 import pytest
 
+pytest.importorskip("krisna_training.sketch.dataset", reason="Legacy MaskGIT sketch retired in commit a4d4d71")
+
 from krisna_training.sketch.dataset import SketchTokenDataset
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 torch = pytest.importorskip("torch")
+pytest.importorskip("krisna_training.sketch.losses", reason="Legacy MaskGIT sketch retired in commit a4d4d71")
 
 from krisna_training.sketch.losses import compute_loss
 
