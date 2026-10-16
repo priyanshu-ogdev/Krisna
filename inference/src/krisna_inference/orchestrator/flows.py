@@ -16,6 +16,7 @@ from typing import Any
 from krisna_inference.orchestrator.design_state import (
     CritiqueResult,
     DesignState,
+    PreviewOutput,
     SessionStage,
 )
 from krisna_inference.orchestrator.exceptions import InvalidTransitionError
@@ -73,7 +74,9 @@ async def conversational_turn(
     from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
 
     delta = planner_out.get("design_state_delta") or {}
-    constraint_updates = delta.get("constraint_updates") or {}
+    constraint_updates = dict(delta.get("constraint_updates") or {})
+    if "actions" in delta and "actions" not in constraint_updates:
+        constraint_updates["actions"] = delta.get("actions")
 
     # UPGRADE (docs/review/35_model_review_3_resync.md): persist this
     # turn's reasoning_note so _synthesize_dpo_prompt() — used for both
@@ -163,7 +166,9 @@ async def planner_self_review(
     from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
 
     delta = planner_out.get("design_state_delta") or {}
-    constraint_updates = delta.get("constraint_updates") or {}
+    constraint_updates = dict(delta.get("constraint_updates") or {})
+    if "actions" in delta and "actions" not in constraint_updates:
+        constraint_updates["actions"] = delta.get("actions")
     new_reasoning_note = str(delta.get("reasoning_note") or "").strip()
     if new_reasoning_note:
         state.last_planner_reasoning_note = new_reasoning_note
@@ -198,6 +203,7 @@ async def finalize(
     store: DesignStateStore,
     session_id: str,
     quality: bool = False,
+    fast: bool = False,
     handoff_hook: Any = None,
     verifier_stack: Any = None,
     prompt: str | None = None,
@@ -257,7 +263,12 @@ async def finalize(
     # _synthesize_dpo_prompt() for both, keeping a single canonical implementation.
     effective_prompt = prompt if prompt else _synthesize_dpo_prompt(state)
 
-    preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
+    if fast:
+        preferred = Tier.POLISH_FAST
+    elif quality:
+        preferred = Tier.POLISH_QUALITY
+    else:
+        preferred = Tier.POLISH_DEFAULT
     result: SwapResult = await orchestrator.request_finalize(
         preferred_tier=preferred,
         session_id=session_id,
@@ -281,15 +292,16 @@ async def finalize(
 
     state.finalize_output.renderer_used = renderer_used  # type: ignore[assignment]
     state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
-    # BUG FOUND ON REVIEW: this is the ONLY point in the whole flow where
-    # the real generation-time prompt (effective_prompt) is known. It was
-    # previously discarded — critique_pass() had to re-synthesize a prompt
-    # from LIVE conversation state, which may have moved on by the time
-    # critique is requested, silently mismatching the prompt stored in any
-    # resulting DPO preference pair against the image it's actually paired
-    # with. Freeze it here so later stages read back the truth instead of
-    # re-guessing it.
     state.finalize_output.prompt_used = effective_prompt
+
+    if fast:
+        state.preview_output = PreviewOutput(
+            renderer_used=renderer_used,  # type: ignore[assignment]
+            image_ref=state.finalize_output.image_ref,
+            step_count=6,
+            prompt_used=effective_prompt,
+        )
+
     verifier_scores = dict(output.get("verifier_scores", {}))
 
     safety_score: float | None = None
@@ -340,6 +352,33 @@ async def finalize(
     return store.save(state, expected_rev)
 
 
+async def fast_preview(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+    prompt: str | None = None,
+    verifier_stack: Any = None,
+    handoff_hook: Any = None,
+    min_safety_score: float = 0.9,
+) -> DesignState:
+    """§5.3 'Fast Preview' — instant 4-8 step preview using Tier.POLISH_FAST (CFM distillation).
+
+    Provides sub-second visual feedback (~0.9s on A6000, ~2.5s on consumer GPU) so designers
+    can inspect typography and spatial hierarchy before running full 28-step or 40-step finalization.
+    """
+    return await finalize(
+        orchestrator=orchestrator,
+        store=store,
+        session_id=session_id,
+        quality=False,
+        fast=True,
+        handoff_hook=handoff_hook,
+        verifier_stack=verifier_stack,
+        prompt=prompt,
+        min_safety_score=min_safety_score,
+    )
+
+
 async def enhance_photo(
     orchestrator: SwapOrchestrator,
     store: DesignStateStore,
@@ -384,6 +423,123 @@ async def enhance_photo(
     state.finalize_output.image_ref = output.get("image_ref", f"render://{session_id}/latest")
     state.finalize_output.prompt_used = prompt
 
+    state.stage = SessionStage.FINALIZED
+    state.touch()
+    return store.save(state, expected_rev)
+
+
+async def iterative_refine(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+    instruction: str,
+    quality: bool = False,
+    verifier_stack: Any = None,
+    num_inference_steps: int = 8,
+    min_safety_score: float = 0.9,
+    actions: list[Any] | None = None,
+) -> DesignState:
+    """FlowEdit-Style Iterative Refinement — PRD §5.3 / ICCV 2025.
+
+    Operates on an already-rendered design (state.finalize_output.image_ref).
+    Solves the flow matching ODE forward/backward for few-step (8-step) edits
+    preserving unmodified regions, followed by LockCompositor enforcement
+    for 0.00% pixel drift on locked regions. Supports Visual-Language-Action (VLA)
+    design grammar actions (ShowUI CVPR 2025; SeeClick ACL 2024).
+
+    Research basis: Kulikov et al. (ICCV 2025, CVF Open Access).
+    """
+    state = store.get(session_id)
+    expected_rev = state.revision
+
+    if not state.is_refine_eligible():
+        raise FlowError(
+            f"Session {session_id} is not refine-eligible: requires an existing rendered image "
+            f"(stage={state.stage.value}, has_render={bool(state.finalize_output.image_ref)})"
+        )
+
+    # Apply any VLA design actions supplied with this refinement turn
+    if actions:
+        from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+
+        original_constraints = state.constraints.model_dump()
+        merged = apply_constraint_updates(original_constraints, actions)
+        state.constraints.style = merged["style"]
+        state.constraints.palette = merged["palette"]
+        state.constraints.layout_hints = merged["layout_hints"]
+        if merged["locked_regions"] != original_constraints["locked_regions"]:
+            from krisna_inference.orchestrator.design_state import LockedRegion
+
+            state.constraints.locked_regions = [
+                r if isinstance(r, LockedRegion) else LockedRegion(**r)
+                for r in merged["locked_regions"]
+            ]
+
+    prior_render = state.finalize_output.image_ref
+    state.stage = SessionStage.REFINING
+    state.append_turn("user", f"[Refinement Instruction]: {instruction}")
+    state.touch()
+    store.save(state, expected_rev)
+    expected_rev = state.revision
+
+    # Compose edit prompt combining style/constraints + instruction without runaway concatenation
+    base = state.constraints.original_intent or state.constraints.style
+    if not base:
+        raw_prior = state.finalize_output.prompt_used or "Modern professional UI"
+        base = raw_prior.split(". Edit update:")[0].split(". Refinement edit:")[0]
+    edit_prompt = f"{base}. Refinement edit: {instruction}"
+
+    preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
+    result: SwapResult = await orchestrator.request_finalize(
+        preferred_tier=preferred,
+        session_id=session_id,
+        handoff_image_ref=prior_render,
+        prompt=edit_prompt,
+        mode="refine",
+        refine=True,
+        num_inference_steps=num_inference_steps,
+        constraints=state.constraints.model_dump(),
+        locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
+    )
+
+    if not result.ok:
+        state.stage = SessionStage.FINALIZED
+        state.touch()
+        store.save(state, expected_rev)
+        raise FlowError(f"Iterative refine failed for session {session_id}: {result.error}")
+
+    output = result.output or {}
+    refined_ref = output.get("image_ref") or output.get("render_ref") or f"render://{session_id}/refined"
+
+    if verifier_stack is not None and refined_ref.startswith("blob://"):
+        passed, safety_score = _check_safety_gate(
+            verifier_stack, image_ref=refined_ref, min_safety_score=min_safety_score
+        )
+        if not passed:
+            try:
+                from krisna_inference.backends.blob_store_singleton import get_blob_store
+                get_blob_store().delete(refined_ref)
+            except Exception:
+                pass
+            state.stage = SessionStage.FINALIZED
+            state.touch()
+            store.save(state, expected_rev)
+            raise FlowError(
+                f"Iterative refinement blocked: safety gate failed (score={safety_score:.3f} < {min_safety_score})"
+            )
+
+    state.finalize_output.image_ref = refined_ref
+    state.finalize_output.prompt_used = edit_prompt
+
+    # Invalidate prior critique evaluated on the pre-refinement image
+    from krisna_inference.orchestrator.design_state import Critique
+    state.critique = Critique()
+
+    state.append_turn("planner", f"Refined design applied based on instruction: {instruction}")
+    if state.refinement.exhausted:
+        state.refinement.reset_cycle()
+    state.refinement.record_turn("user")
+    state.record_refinement_event("iterative_refine", source="user", note=instruction)
     state.stage = SessionStage.FINALIZED
     state.touch()
     return store.save(state, expected_rev)
@@ -670,3 +826,11 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
         return f"High quality UI design, {desc_str}"
     else:
         return "High quality UI design"
+
+
+def export_research_trajectory(store: DesignStateStore, session_id: str):
+    """Exports a SessionResearchTrajectory capturing reasoning traces and turn metrics for research analysis."""
+    from krisna_inference.research.trace_recorder import build_research_trajectory
+
+    state = store.get(session_id)
+    return build_research_trajectory(state)

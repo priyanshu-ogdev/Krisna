@@ -25,6 +25,9 @@ pub fn run() {
             pipeline::backend_send_message,
             pipeline::backend_trigger_self_review,
             pipeline::backend_finalize,
+            pipeline::backend_refine,
+            pipeline::backend_preview,
+            pipeline::backend_get_research_trace,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

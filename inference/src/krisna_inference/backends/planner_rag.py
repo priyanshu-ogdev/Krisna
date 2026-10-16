@@ -72,11 +72,13 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("krisna_inference.backends.planner_rag")
 
@@ -112,31 +114,64 @@ def load_default_embedder() -> Callable[[str], Sequence[float]]:
 
 
 def resolve_embed_fn_from_env() -> Callable[[str], Sequence[float]] | None:
-    """Single shared entry point for the Planner runtime.
-    between the two backends — same "one implementation, not two that
-    could disagree" discipline as _generate_raw()'s extraction (see
-    runtime adapter). Callers should run this
-    inside asyncio.to_thread — model loading is real, blocking work, even
-    though it's a local, already-downloaded checkpoint (not a network
-    call) in the real deployment.
-
+    """Single shared entry point for the Planner runtime text embedder.
     Returns None only when the feature is simply not enabled
-    (KRISNA_PLANNER_RAG_EMBEDDINGS unset) — that is the one legitimate
-    "nothing to do here" case. If the feature IS enabled,
-    load_default_embedder()'s exception (if any) propagates up
-    unmodified; this function does not swallow it."""
-    import os
-
+    (KRISNA_PLANNER_RAG_EMBEDDINGS unset). If the feature IS enabled,
+    load_default_embedder()'s exception propagates unmodified."""
     if os.environ.get("KRISNA_PLANNER_RAG_EMBEDDINGS", "0") != "1":
         return None
     return load_default_embedder()
 
 
-def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+def load_default_visual_embedder() -> Callable[[Any], Sequence[float]]:
+    """Builds a vision embedding function using CLIP/SigLIP for UI visual layout retrieval.
+    Research basis: ColPali (Faysse et al., ECCV 2024, Springer LNCS) — visual embeddings
+    capture UI spatial hierarchy, layout geometry, and visual density directly from screenshots."""
+    import torch
+    from PIL import Image
+    from transformers import CLIPModel, CLIPProcessor
+
+    model_id = os.environ.get("KRISNA_VISUAL_RAG_MODEL", "openai/clip-vit-base-patch32")
+    processor = CLIPProcessor.from_pretrained(model_id)
+    model = CLIPModel.from_pretrained(model_id).eval()
+
+    def _embed_visual(image_input: Any) -> Sequence[float]:
+        img: Image.Image | None = None
+        if isinstance(image_input, (str, Path)):
+            p = Path(image_input)
+            if p.is_file():
+                img = Image.open(p).convert("RGB")
+        elif isinstance(image_input, Image.Image):
+            img = image_input.convert("RGB")
+        elif isinstance(image_input, (bytes, bytearray, memoryview)):
+            import io
+            img = Image.open(io.BytesIO(image_input)).convert("RGB")
+
+        if img is None:
+            return []
+
+        inputs = processor(images=img, return_tensors="pt")
+        with torch.inference_mode():
+            feats = model.get_image_features(**inputs)
+            feats = feats / feats.norm(p=2, dim=-1, keepdim=True).clamp(min=1e-8)
+            return feats[0].detach().cpu().tolist()
+
+    return _embed_visual
+
+
+def resolve_visual_embed_fn_from_env() -> Callable[[Any], Sequence[float]] | None:
+    """Opt-in visual RAG resolver for Planner visual grounding (ECCV 2024).
+    Controlled by KRISNA_PLANNER_RAG_VISUAL=1."""
+    if os.environ.get("KRISNA_PLANNER_RAG_VISUAL", "0") != "1":
+        return None
+    return load_default_visual_embedder()
+
+
+def _cosine(a: Sequence[float], b: Sequence[float], norm_a: float | None = None, norm_b: float | None = None) -> float:
     dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a)) or 1.0
-    norm_b = math.sqrt(sum(x * x for x in b)) or 1.0
-    return dot / (norm_a * norm_b)
+    na = norm_a if norm_a is not None else (math.sqrt(sum(x * x for x in a)) or 1.0)
+    nb = norm_b if norm_b is not None else (math.sqrt(sum(x * x for x in b)) or 1.0)
+    return dot / (na * nb)
 
 
 @dataclass
@@ -159,9 +194,13 @@ class UICritRAGIndex:
     (see PlannerBackend.__init__'s rag_corpus_dir param), and building an
     index is real (if small) work that shouldn't happen as an import
     side-effect.
+
+    Supports dual-encoder multimodal retrieval: text embeddings (MiniLM) + visual embeddings (CLIP/ColPali).
     """
 
     embed_fn: Callable[[str], Sequence[float]] | None = None
+    visual_embed_fn: Callable[[Any], Sequence[float]] | None = None
+    data_root: Path | None = None
     _entries: list[dict] = field(default_factory=list)
     _doc_tokens: list[list[str]] = field(default_factory=list)
     _df: Counter = field(default_factory=Counter)  # document frequency per term
@@ -169,13 +208,24 @@ class UICritRAGIndex:
     _doc_tfidf: list[dict[str, float]] = field(default_factory=list)
     _doc_norms: list[float] = field(default_factory=list)
     _doc_embeddings: list[Sequence[float]] = field(default_factory=list)
+    _doc_embedding_norms: list[float] = field(default_factory=list)
+    _doc_visual_embeddings: list[Sequence[float]] = field(default_factory=list)
+    _doc_visual_norms: list[float] = field(default_factory=list)
 
     @classmethod
     def from_jsonl(
-        cls, path: str | Path, embed_fn: Callable[[str], Sequence[float]] | None = None
+        cls,
+        path: str | Path,
+        embed_fn: Callable[[str], Sequence[float]] | None = None,
+        visual_embed_fn: Callable[[Any], Sequence[float]] | None = None,
+        data_root: str | Path | None = None,
     ) -> "UICritRAGIndex":
         path = Path(path)
-        idx = cls(embed_fn=embed_fn)
+        idx = cls(
+            embed_fn=embed_fn,
+            visual_embed_fn=visual_embed_fn,
+            data_root=Path(data_root) if data_root else None,
+        )
         if not path.exists():
             log.warning(
                 "uicrit_rag_corpus_missing",
@@ -202,8 +252,10 @@ class UICritRAGIndex:
         idx._build()
         log.info(
             "uicrit_rag_index_built",
-            extra={"documents": len(idx._entries),
-                   "mode": "embeddings" if embed_fn else "tfidf"},
+            extra={
+                "documents": len(idx._entries),
+                "mode": "multimodal" if (embed_fn and visual_embed_fn) else ("embeddings" if embed_fn else "tfidf"),
+            },
         )
         return idx
 
@@ -216,54 +268,145 @@ class UICritRAGIndex:
         # reason.
         return co.get("visual_hierarchy_note") or co.get("readability_note") or ""
 
+    def _resolve_image_path(self, raw_path: str | None) -> Path | None:
+        if not raw_path:
+            return None
+        p = Path(raw_path)
+        if p.is_file():
+            return p
+        if self.data_root:
+            cand = self.data_root / raw_path
+            if cand.is_file():
+                return cand
+        return None
+
     def _build(self) -> None:
+        # 1. Text embedding index
         if self.embed_fn is not None:
             for entry in self._entries:
                 note = self._note_text(entry)
                 try:
-                    self._doc_embeddings.append(self.embed_fn(note) if note else [])
+                    vec = self.embed_fn(note) if note else []
+                    self._doc_embeddings.append(vec)
+                    self._doc_embedding_norms.append(math.sqrt(sum(x * x for x in vec)) or 1.0 if vec else 1.0)
                 except Exception as e:
-                    # A single document's embedding failing must not take
-                    # down the whole index — log and treat it as
-                    # unretrievable (empty vector never wins a cosine
-                    # comparison against anything with real magnitude).
                     log.warning("planner_rag_doc_embed_failed", extra={"error": str(e)})
                     self._doc_embeddings.append([])
-            return
+                    self._doc_embedding_norms.append(1.0)
+        else:
+            for entry in self._entries:
+                tokens = _tokenize(self._note_text(entry))
+                self._doc_tokens.append(tokens)
+                for term in set(tokens):
+                    self._df[term] += 1
 
-        for entry in self._entries:
-            tokens = _tokenize(self._note_text(entry))
-            self._doc_tokens.append(tokens)
-            for term in set(tokens):
-                self._df[term] += 1
+            n_docs = max(len(self._entries), 1)
+            self._idf = {
+                term: math.log((n_docs + 1) / (df + 1)) + 1.0  # smoothed idf, always positive
+                for term, df in self._df.items()
+            }
 
-        n_docs = max(len(self._entries), 1)
-        self._idf = {
-            term: math.log((n_docs + 1) / (df + 1)) + 1.0  # smoothed idf, always positive
-            for term, df in self._df.items()
-        }
+            for tokens in self._doc_tokens:
+                tf = Counter(tokens)
+                weights = {term: count * self._idf.get(term, 0.0) for term, count in tf.items()}
+                norm = math.sqrt(sum(w * w for w in weights.values())) or 1.0
+                self._doc_tfidf.append(weights)
+                self._doc_norms.append(norm)
 
-        for tokens in self._doc_tokens:
-            tf = Counter(tokens)
-            weights = {term: count * self._idf.get(term, 0.0) for term, count in tf.items()}
-            norm = math.sqrt(sum(w * w for w in weights.values())) or 1.0
-            self._doc_tfidf.append(weights)
-            self._doc_norms.append(norm)
+        # 2. Visual embedding index (multimodal grounding)
+        if self.visual_embed_fn is not None:
+            for entry in self._entries:
+                img_path = self._resolve_image_path(entry.get("image_path"))
+                if img_path:
+                    try:
+                        vvec = self.visual_embed_fn(img_path)
+                        self._doc_visual_embeddings.append(vvec)
+                        self._doc_visual_norms.append(math.sqrt(sum(x * x for x in vvec)) or 1.0 if vvec else 1.0)
+                    except Exception as e:
+                        log.warning("planner_rag_visual_doc_embed_failed", extra={"error": str(e)})
+                        self._doc_visual_embeddings.append([])
+                        self._doc_visual_norms.append(1.0)
+                else:
+                    self._doc_visual_embeddings.append([])
+                    self._doc_visual_norms.append(1.0)
 
-    def retrieve(self, query: str, k: int = 3) -> list[RetrievedCritique]:
-        """Top-k critiques by cosine similarity to `query`. Empty list if
-        the index has no documents (missing corpus, or a query that
-        tokenizes to nothing under TF-IDF mode) — callers must treat
-        retrieval as optional context, never a hard requirement (a frozen
-        model with zero retrieved context should still degrade to a
-        reasonable generic system prompt, not fail outright).
+    def retrieve(
+        self,
+        query: str = "",
+        visual_query: Any = None,
+        k: int = 3,
+        alpha: float = 0.5,
+    ) -> list[RetrievedCritique]:
+        """Top-k critiques by cosine similarity to `query` and/or `visual_query`.
+
+        Supports:
+        1. Multimodal late fusion (text + visual) when both are provided:
+           score = alpha * text_sim + (1 - alpha) * visual_sim (ColPali/ECCV 2024).
+        2. Pure visual retrieval when only visual_query is provided.
+        3. Pure text retrieval (embeddings or TF-IDF) when only query is provided.
         """
         if not self._entries:
             return []
 
+        # Dual-encoder / Multimodal mode
+        if visual_query is not None and self.visual_embed_fn is not None:
+            return self._retrieve_multimodal(query, visual_query, k, alpha)
+
         if self.embed_fn is not None:
             return self._retrieve_embeddings(query, k)
         return self._retrieve_tfidf(query, k)
+
+    def _retrieve_multimodal(
+        self, query: str, visual_query: Any, k: int, alpha: float
+    ) -> list[RetrievedCritique]:
+        # Embed visual query
+        v_vec: Sequence[float] = []
+        try:
+            v_vec = self.visual_embed_fn(visual_query) if self.visual_embed_fn else []
+        except Exception as e:
+            log.warning("planner_rag_visual_query_embed_failed", extra={"error": str(e)})
+
+        # Embed text query if provided
+        q_vec: Sequence[float] = []
+        if query.strip() and self.embed_fn is not None:
+            try:
+                q_vec = self.embed_fn(query)
+            except Exception as e:
+                log.warning("planner_rag_text_query_embed_failed", extra={"error": str(e)})
+
+        if not v_vec and not q_vec:
+            if query.strip():
+                return self._retrieve_tfidf(query, k) if self.embed_fn is None else self._retrieve_embeddings(query, k)
+            return []
+
+        scored: list[tuple[float, int]] = []
+        has_text_q = bool(q_vec)
+        has_vis_q = bool(v_vec)
+        q_norm = math.sqrt(sum(x * x for x in q_vec)) or 1.0 if has_text_q else 1.0
+        v_norm = math.sqrt(sum(x * x for x in v_vec)) or 1.0 if has_vis_q else 1.0
+
+        for i in range(len(self._entries)):
+            doc_t = self._doc_embeddings[i] if (has_text_q and i < len(self._doc_embeddings)) else None
+            doc_v = self._doc_visual_embeddings[i] if (has_vis_q and i < len(self._doc_visual_embeddings)) else None
+            doc_t_norm = self._doc_embedding_norms[i] if (has_text_q and i < len(self._doc_embedding_norms)) else None
+            doc_v_norm = self._doc_visual_norms[i] if (has_vis_q and i < len(self._doc_visual_norms)) else None
+
+            sim_t = _cosine(q_vec, doc_t, norm_a=q_norm, norm_b=doc_t_norm) if (has_text_q and doc_t) else None
+            sim_v = _cosine(v_vec, doc_v, norm_a=v_norm, norm_b=doc_v_norm) if (has_vis_q and doc_v) else None
+
+            if sim_t is not None and sim_v is not None:
+                final_sim = alpha * sim_t + (1.0 - alpha) * sim_v
+            elif sim_v is not None:
+                final_sim = sim_v
+            elif sim_t is not None:
+                final_sim = sim_t
+            else:
+                continue
+
+            scored.append((final_sim, i))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [self._to_result(i, score) for score, i in scored[:k]]
 
     def _retrieve_embeddings(self, query: str, k: int) -> list[RetrievedCritique]:
         # Mirrors _retrieve_tfidf's empty-query short-circuit — message
@@ -283,11 +426,13 @@ class UICritRAGIndex:
         if not q_vec:
             return []
 
+        q_norm = math.sqrt(sum(x * x for x in q_vec)) or 1.0
         scored: list[tuple[float, int]] = []
         for i, doc_vec in enumerate(self._doc_embeddings):
             if not doc_vec:
                 continue
-            scored.append((_cosine(q_vec, doc_vec), i))
+            doc_norm = self._doc_embedding_norms[i] if i < len(self._doc_embedding_norms) else None
+            scored.append((_cosine(q_vec, doc_vec, norm_a=q_norm, norm_b=doc_norm), i))
         scored.sort(key=lambda x: x[0], reverse=True)
         return [self._to_result(i, score) for score, i in scored[:k]]
 

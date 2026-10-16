@@ -93,7 +93,7 @@ def preflight_models() -> dict:
         log.info("No local Planner GGUF found. (Models directory: models/planner)")
         log.info(
             "To download recommended weights: "
-            "python scripts/inference/download_planner_models.py --repo-id ggml-org/Qwen3.5-9B-GGUF --filename Qwen3.5-9B-Q4_K_M.gguf"
+            "python scripts/inference/download_planner_models.py --repo-id Qwen/Qwen2.5-VL-7B-Instruct-GGUF --filename Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
         )
 
     if mmproj_gguf:

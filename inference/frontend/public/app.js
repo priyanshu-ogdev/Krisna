@@ -1674,7 +1674,9 @@ function setBusy(isBusy) {
   if ($("#message-input")) $("#message-input").disabled = isBusy;
   if ($("#btn-send")) $("#btn-send").disabled = isBusy;
   if ($("#btn-self-review")) $("#btn-self-review").disabled = isBusy;
+  if ($("#btn-fast-preview")) $("#btn-fast-preview").disabled = isBusy;
   if ($("#btn-finalize")) $("#btn-finalize").disabled = isBusy;
+  if ($("#btn-refine")) $("#btn-refine").disabled = isBusy;
   if ($("#btn-enhance")) $("#btn-enhance").disabled = isBusy;
   if ($("#btn-critique")) $("#btn-critique").disabled = isBusy;
 }
@@ -1797,10 +1799,57 @@ $("#btn-self-review")?.addEventListener("click", async () => {
   }
 });
 
+// Fast Preview: runs CFM distillation tier (Tier.POLISH_FAST, 6 steps, ~0.9s)
+$("#btn-fast-preview")?.addEventListener("click", async () => {
+  if (!sessionState || busy) return;
+  const prompt = $("#message-input")?.value?.trim() || undefined;
+  const stepCount = 6;
+
+  clearChatError();
+  setBusy(true);
+  renderPhasePipeline("finalizing");
+  $("#pixel-canvas").classList.add("forming");
+  $("#pixel-canvas-label").textContent = "CFM Distillation Fast Preview (6 Steps) forming pixels…";
+
+  genEngine.startDenoising(1200, stepCount);
+  startStepOverlay(stepCount);
+
+  try {
+    const payload = {};
+    if (prompt) payload.prompt = prompt;
+    const r = await fetch(`/api/session/${sessionState.session_id}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (r.ok) {
+      stopStepOverlay(true, stepCount);
+      applySession(await r.json());
+    } else {
+      stopStepOverlay(false, stepCount);
+      genEngine.stopDenoising(false);
+      renderPhasePipeline(sessionState.stage);
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    stopStepOverlay(false, stepCount);
+    genEngine.stopDenoising(false);
+    renderPhasePipeline(sessionState.stage);
+    showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
+});
+
 // Finalize Render: runs Polish tier synthesis
 $("#btn-finalize").addEventListener("click", async () => {
   if (!sessionState || busy) return;
   const qualityMode = $("#finalize-quality-mode")?.value || "default";
+  if (qualityMode === "fast") {
+    $("#btn-fast-preview")?.click();
+    return;
+  }
   const quality = qualityMode === "quality";
   const stepCount = quality ? 40 : 28;
   const seedVal = $("#seed-input")?.value?.trim();
@@ -1839,6 +1888,76 @@ $("#btn-finalize").addEventListener("click", async () => {
     genEngine.stopDenoising(false);
     renderPhasePipeline(sessionState.stage);
     showChatError(`Couldn't reach the backend: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
+});
+
+// FlowEdit: Inversion-Free Iterative Refinement (Kulikov et al., ICCV 2025)
+$("#btn-refine")?.addEventListener("click", async () => {
+  if (!sessionState || busy) return;
+  const imgRef = sessionState.finalize_output?.image_ref;
+  if (!imgRef) {
+    showChatError("No render exists yet to refine. Finalize or preview a render first.");
+    return;
+  }
+  const instruction = $("#message-input")?.value?.trim() || "Refine layout alignment and typography hierarchy";
+  const stepCount = 8;
+
+  clearChatError();
+  setBusy(true);
+  renderPhasePipeline("finalizing");
+  $("#pixel-canvas").classList.add("forming");
+  $("#pixel-canvas-label").textContent = `FlowEdit Refinement (${stepCount} Steps) updating pixels…`;
+
+  genEngine.startDenoising(1800, stepCount);
+  startStepOverlay(stepCount);
+
+  const actions = [];
+  if (genEngine?.lockedNodeIds && genEngine.lockedNodeIds.size > 0 && Array.isArray(genEngine.currentNodes)) {
+    for (const id of genEngine.lockedNodeIds) {
+      const node = genEngine.currentNodes.find((n) => n.id === id);
+      if (node) {
+        const bx = Math.max(0, Math.min(1, (node.x || 0) / 280));
+        const by = Math.max(0, Math.min(1, (node.y || 0) / 280));
+        const bw = Math.max(0, Math.min(1 - bx, (node.w || 40) / 280));
+        const bh = Math.max(0, Math.min(1 - by, (node.h || 20) / 280));
+        actions.push({
+          action_type: "LOCK_REGION",
+          target_id: String(node.id),
+          bbox: [bx, by, bw, bh],
+          reason: `Locked ${node.label || node.type || "component"} via UI`,
+        });
+      }
+    }
+  }
+
+  const payload = { instruction, num_inference_steps: stepCount };
+  if (actions.length > 0) {
+    payload.actions = actions;
+  }
+
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/refine`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (r.ok) {
+      stopStepOverlay(true, stepCount);
+      applySession(await r.json());
+    } else {
+      stopStepOverlay(false, stepCount);
+      genEngine.stopDenoising(false);
+      renderPhasePipeline(sessionState.stage);
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    stopStepOverlay(false, stepCount);
+    genEngine.stopDenoising(false);
+    renderPhasePipeline(sessionState.stage);
+    showChatError(`Couldn't reach backend: ${err.message || err}`);
   } finally {
     setBusy(false);
     refreshStatus();

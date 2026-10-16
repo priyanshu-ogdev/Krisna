@@ -26,7 +26,7 @@ def sha256(path: Path) -> str:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    p.add_argument("--repo-id", default=os.environ.get("KRISNA_PLANNER_GGUF_REPO", "ggml-org/Qwen3.5-9B-GGUF"))
+    p.add_argument("--repo-id", default=os.environ.get("KRISNA_PLANNER_GGUF_REPO", "Qwen/Qwen2.5-VL-7B-Instruct-GGUF"))
     p.add_argument("--filename", required=True, help="Exact GGUF filename from the publisher")
     p.add_argument("--mmproj-filename")
     p.add_argument("--revision", default="main")

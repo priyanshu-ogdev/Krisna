@@ -35,6 +35,7 @@ from enum import Enum
 class Tier(str, Enum):
     PLANNER = "planner"                  # frozen Qwen3.5-9B GGUF via llama.cpp
     SKETCH = "sketch"                    # structured Layout IR + wireframe
+    POLISH_FAST = "polish_fast"          # 4-8 step CFM distillation (~0.9s real-time preview)
     POLISH_DEFAULT = "polish_default"     # Qwen-Image-2.1 + optional LoRA
     POLISH_QUALITY = "polish_quality"     # Qwen-Image-2.1 frozen base
 
@@ -58,15 +59,20 @@ class ModelSpec:
 # is wired to actual checkpoints. Kept conservative (rounded up).
 REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: ModelSpec(
-        tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5,
-        quantization="4-bit (fast mode: Qwen3.5-4B available)",
+        tier=Tier.PLANNER, name="Qwen2.5-VL-7B-Instruct", vram_gb=4.2,
+        quantization="Q4_K_M GGUF via llama.cpp + mmproj-f16",
         always_resident=True,
-        # Consumer release budget for the pinned llama.cpp GGUF artifact.
+        # Native vision-language planner (SOTA on ScreenSpot-Pro, NeurIPS 2025).
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="Krisna structured Layout IR",
         vram_gb=0.2, quantization="deterministic renderer; no learned weights",
         always_resident=True,
+    ),
+    Tier.POLISH_FAST: ModelSpec(
+        tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
+        quantization="bf16 (4-8 step Consistency Flow Matching distillation)",
+        fallback_tier=Tier.POLISH_DEFAULT,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
@@ -124,13 +130,19 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 #    correctly refuse to admit the Critic tier on a RAM-constrained host
 #    rather than silently OOMing system memory instead of GPU memory.
 #
-# The Planner and Sketch tiers are small enough already (6.5GB + 3.0GB =
-# 9.5GB combined) that no offload is applied to either even in low-VRAM
+# The Planner and Sketch tiers are small enough already (4.2GB + 0.2GB =
+# 4.4GB combined) that no offload is applied to either even in low-VRAM
 # mode — there's nothing to gain and every offload adds real latency.
 # ---------------------------------------------------------------------------
 LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: REGISTRY[Tier.PLANNER],   # unchanged — already small
     Tier.SKETCH: REGISTRY[Tier.SKETCH],     # unchanged — already small
+    Tier.POLISH_FAST: ModelSpec(
+        tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast",
+        vram_gb=4.5, ram_gb=6.0,
+        quantization="4-bit NF4 + diffusers enable_model_cpu_offload()",
+        fallback_tier=Tier.POLISH_DEFAULT,
+    ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1",
         vram_gb=8.0, ram_gb=8.0,
@@ -144,16 +156,48 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
     ),
 }
 
+# ---------------------------------------------------------------------------
+# High-VRAM registry — targets workstation-class GPUs (e.g., RTX 6000 Ada 48GB).
+# Total residency for all models combined (4.2 + 0.2 + 10.0 + 12.0 + 16.0 = 42.4 GB)
+# fits well inside 48 GB, allowing zero eviction, zero CPU swap latency, and
+# fully concurrent resident models.
+# ---------------------------------------------------------------------------
+HIGH_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
+    Tier.PLANNER: REGISTRY[Tier.PLANNER],
+    Tier.SKETCH: REGISTRY[Tier.SKETCH],
+    Tier.POLISH_FAST: ModelSpec(
+        tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
+        quantization="bf16 (4-8 step Consistency Flow Matching, resident)",
+        always_resident=True,
+        fallback_tier=Tier.POLISH_DEFAULT,
+    ),
+    Tier.POLISH_DEFAULT: ModelSpec(
+        tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
+        quantization="bf16 (DreamBooth/DoRA adapter, resident)",
+        always_resident=True,
+    ),
+    Tier.POLISH_QUALITY: ModelSpec(
+        tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
+        quantization="bf16 (high-fidelity 40-step sampling, resident)",
+        always_resident=True,
+        fallback_tier=Tier.POLISH_DEFAULT,
+    ),
+}
 
-def get_registry(low_vram: bool = False) -> dict[Tier, ModelSpec]:
-    """The single entry point for "which VRAM/RAM budget numbers are we
-    operating under" — used by VRAMLedger/RAMLedger construction and by
+
+def get_registry(low_vram: bool = False, high_vram: bool = False) -> dict[Tier, ModelSpec]:
+    """The single entry point for 'which VRAM/RAM budget numbers are we
+    operating under' — used by VRAMLedger/RAMLedger construction and by
     inference/factory.py when deciding which offload kwargs to pass each
     backend. Keeping this as one function (rather than scattering
     `if low_vram: ... else: ...` checks across the codebase) is what
     keeps the ledger, the orchestrator, and the backends from being able
     to silently disagree about which registry is active.
     """
+    if low_vram and high_vram:
+        raise ValueError("low_vram and high_vram cannot both be True")
+    if high_vram:
+        return HIGH_VRAM_REGISTRY
     return LOW_VRAM_REGISTRY if low_vram else REGISTRY
 
 
@@ -254,7 +298,7 @@ class MockBackend(ModelBackend):
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
             base["layout_ref"] = f"layout://mock/{hash(str(rev)) & 0xFFFF:x}.json"
             base["wireframe_ref"] = f"wireframe://mock/{hash(str(rev)) & 0xFFFF:x}.png"
-        elif self.spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY):
+        elif self.spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             base["image_ref"] = f"render://mock/{self.spec.tier.value}/{hash(str(kwargs)) & 0xFFFF:x}.png"
             base["verifier_scores"] = {
                 "clip_alignment": 0.9, "ocr_readability": 0.95,

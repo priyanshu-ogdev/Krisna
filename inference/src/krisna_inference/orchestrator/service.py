@@ -15,9 +15,10 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from krisna_inference.orchestrator import flows
 from krisna_inference.orchestrator.design_state import DesignState
@@ -42,23 +43,24 @@ if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
     from krisna_inference.backends.factory import real_backend_factory
 
     _low_vram = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
+    _high_vram = os.environ.get("KRISNA_HIGH_VRAM_MODE") == "1"
+
+    _default_vram = "12.0" if _low_vram else ("48.0" if _high_vram else "24.0")
+    _default_ram = "128.0" if _high_vram else "64.0"
+
     orchestrator = SwapOrchestrator(
         backend_factory=real_backend_factory,
         low_vram=_low_vram,
-        # 12.0 is the low-VRAM target this README documents; override via
-        # KRISNA_VRAM_ENVELOPE_GB if your card/target differs. Only takes
-        # effect together with low_vram=True — the full-VRAM registry's
-        # vram_gb values (up to 18GB for Critic alone) won't fit a 12GB
-        # envelope at all, so envelope_gb is read regardless of low_vram
-        # but only makes practical sense lowered when low_vram is also on.
-        envelope_gb=float(os.environ.get("KRISNA_VRAM_ENVELOPE_GB", "12.0" if _low_vram else "24.0")),
-        ram_envelope_gb=float(os.environ.get("KRISNA_RAM_ENVELOPE_GB", "64.0")),
+        high_vram=_high_vram,
+        envelope_gb=float(os.environ.get("KRISNA_VRAM_ENVELOPE_GB", _default_vram)),
+        ram_envelope_gb=float(os.environ.get("KRISNA_RAM_ENVELOPE_GB", _default_ram)),
     )
     log.warning(
         "using_real_inference_backends",
         extra={
             "note": "GPU + downloaded weights required — see README's inference-layer section",
             "low_vram_mode": _low_vram,
+            "high_vram_mode": _high_vram,
             "vram_envelope_gb": orchestrator.envelope_gb,
             "ram_envelope_gb": orchestrator.ram_envelope_gb if _low_vram else None,
         },
@@ -172,6 +174,17 @@ class EnhanceRequest(BaseModel):
     quality: bool = True
 
 
+class RefineRequest(BaseModel):
+    instruction: str
+    quality: bool = False
+    num_inference_steps: int = 8
+    actions: list[Any] = Field(default_factory=list)
+
+
+class PreviewRequest(BaseModel):
+    prompt: str | None = None
+
+
 class CritiqueRequest(BaseModel):
     compare_against_image_ref: str | None = None
     compare_against_score: float | None = None
@@ -248,6 +261,7 @@ async def models_status():
         "polish": {
             "model_id": os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1"),
             "lora_adapter": os.environ.get("KRISNA_POLISH_LORA_PATH") or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
+            "fast_lora_adapter": os.environ.get("KRISNA_POLISH_FAST_LORA_PATH"),
         },
         "vram_ledger": orchestrator.ledger.snapshot(),
         "ram_ledger": orchestrator.ram_ledger.snapshot(),
@@ -424,6 +438,48 @@ async def post_enhance(session_id: str, req: EnhanceRequest) -> dict:
         return state.to_wire() | {"revision": state.revision}
 
 
+@app.post("/session/{session_id}/refine")
+async def post_refine(session_id: str, req: RefineRequest) -> dict:
+    """FlowEdit-Style Iterative Refinement (Kulikov et al., ICCV 2025)."""
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.iterative_refine(
+                orchestrator,
+                store,
+                session_id,
+                instruction=req.instruction,
+                quality=req.quality,
+                num_inference_steps=req.num_inference_steps,
+                verifier_stack=_verifier_stack,
+                actions=req.actions,
+            )
+        except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        return state.to_wire() | {"revision": state.revision}
+
+
+@app.post("/session/{session_id}/preview")
+async def post_preview(session_id: str, req: PreviewRequest | None = None) -> dict:
+    """Instant 4-8 step preview using Consistency Flow Matching (Tier.POLISH_FAST)."""
+    req = req or PreviewRequest()
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.fast_preview(
+                orchestrator,
+                store,
+                session_id,
+                prompt=req.prompt,
+                verifier_stack=_verifier_stack,
+                handoff_hook=_handoff_hook,
+            )
+        except (SessionNotFoundError, SwapBusyError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        res = state.to_wire() | {"revision": state.revision}
+        if state.preview_output:
+            res["preview_output"] = state.preview_output.model_dump()
+        return res
+
+
 @app.post("/session/{session_id}/critique")
 async def post_critique(session_id: str, req: CritiqueRequest | None = None) -> dict:
     req = req or CritiqueRequest()
@@ -495,6 +551,18 @@ async def orchestrator_status() -> dict:
         "low_vram_mode": orchestrator.low_vram,
         "history_len": len(orchestrator.state.history),
     }
+
+
+@app.get("/session/{session_id}/research-trace")
+async def get_research_trace(session_id: str) -> dict:
+    """Exports structured reasoning traces, VLA action history, and verifier evaluations
+    for academic paper analysis and ablation studies.
+    """
+    try:
+        trajectory = flows.export_research_trajectory(store, session_id)
+        return trajectory.model_dump()
+    except SessionNotFoundError as e:
+        raise _error_response(e)
 
 
 def main() -> None:
