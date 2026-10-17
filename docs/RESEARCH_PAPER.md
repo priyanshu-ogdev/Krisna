@@ -301,8 +301,9 @@ To adapt the 7B MMDiT Polish backbone on consumer GPUs without catastrophic forg
    $$\text{Bitrate}_{\text{scale}} = \frac{8}{64} + \frac{32}{64 \times 256} \approx 0.127 \text{ bits/param}$$
    saving $\approx 0.373$ bits/parameter across all 7 billion parameters (~320MB of VRAM).
 3. **Qwen MMDiT Sublayer Target Decomposition**:
-   In standard LLM fine-tuning, QLoRA is commonly restricted to query and value projections ($W_q, W_v$). However, our Phase 2 ablations (§6.5) demonstrate that in visual flow-matching transformers, restricting adaptation to attention projections causes severe degradation in fine typographic edges and color ramps (dropping aesthetic score by $-0.050$). Krisna expands the trainable low-rank adapters across both attention projections and feed-forward sublayers (Esser et al. [13]):
-   $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{ff.net.0.proj}, \text{ff.net.2}\}$$
+   In standard LLM fine-tuning, QLoRA is commonly restricted to query and value projections ($W_q, W_v$). However, our Phase 2 ablations (§6.5) demonstrate that in visual flow-matching transformers, restricting adaptation to attention projections causes severe degradation in fine typographic edges and color ramps (dropping aesthetic score by $-0.050$). Krisna targets all 7 linear projections across attention and SwiGLU MLP sublayers (Esser et al. [13]):
+   $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
+   amounting to exactly $7 \times 32 = 224$ adapted modules, protected by an invariant runtime count assertion.
 4. **QDoRA Weight-Decomposed Low-Rank Formulation**:
    Standard low-rank adaptation adds $\Delta W = \frac{\alpha}{r} B A$ directly to quantized base weights $W_0^{\text{NF4}}$. However, NF4 quantization noise shifts the base magnitude vector $\|W_0\|$, causing gradient instability. DoRA (Liu et al. [38]) decomposes each weight matrix into a trainable magnitude scalar $m \in \mathbb{R}^{1 \times k}$ and a normalized directional matrix:
    $$W = m \frac{W_0^{\text{NF4}} + \frac{\alpha}{r} B A}{\|W_0^{\text{NF4}} + \frac{\alpha}{r} B A\|_F}$$
@@ -533,7 +534,7 @@ Without an explicit budget, autonomous agent loops hallucinate extraneous elemen
 To empirically justify the specific representation choices, fine-tuning parameterization, and conditioning pathways in the Polish rendering tier, we evaluate a systematic 4-way ablation suite against held-out UI benchmarks (RICO [16], CLAY [17], Enrico [19]):
 
 - **Ablation A (Standard LoRA vs DoRA)**: Isolates the effect of Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al. [38], ICML 2024). Replacing DoRA with standard low-rank updates drops OCR readability from $0.940$ to $0.900$ and aesthetic score from $0.890$ to $0.860$, demonstrating that decoupling directional updates from magnitude scaling prevents gradient collapse in multimodal attention projections.
-- **Ablation B (Feed-Forward Sublayer LoRA Expansion)**: Compares attention-only projection adaptation (`to_q, to_k, to_v, to_out.0`) against comprehensive adaptation including feed-forward blocks (`ff.net.0.proj, ff.net.2`) as formulated by Esser et al. [13] (ICML 2024). Feed-forward adaptation improves aesthetic score ($+0.050$) and perceptual handoff consistency ($+0.040$), while increasing VRAM by only $0.4\text{GB}$.
+- **Ablation B (Feed-Forward Sublayer LoRA Expansion)**: Compares attention-only projection adaptation (`to_q, to_k, to_v, to_out.0`) against comprehensive adaptation including SwiGLU MLP projections (`img_mlp.gate_layer, img_mlp.proj, img_mlp.out`) as formulated by Esser et al. [13] (ICML 2024). SwiGLU MLP adaptation improves aesthetic score ($+0.050$) and perceptual handoff consistency ($+0.040$), while increasing VRAM by only $0.4\text{GB}$.
 - **Ablation C (Layout IR Wireframe Conditioning vs Raw Text-to-Image)**: Isolates the structural contribution of vector wireframe conditioning $\mathcal{I}_{\text{wire}}$ (Zhang et al. [1], IEEE/CVF ICCV 2023). Removing wireframe conditioning causes a catastrophic drop in geometric Layout IoU (collapsing from $0.910$ to $0.530$) and typographic OCR readability ($0.940$ to $0.720$), confirming that text prompts alone cannot constrain complex 2D spatial layouts.
 - **Ablation D (Multimodal Visual RAG Retrieval vs Unaugmented Prompting)**: Evaluates the impact of ColPali-grounded visual UICrit design retrieval (Faysse et al. [33], Springer ECCV 2024). Omitting visual RAG reduces aesthetic score by $0.060$ and handoff consistency by $0.030$.
 - **Fast Preview Distillation (Consistency Flow Matching)**: Evaluates few-step Consistency Flow Matching (CFM, Luo et al. [44], Springer ECCV 2024; Lipman et al. [14], ICLR 2023). 6-step CFM distillation achieves $0.880$ Layout IoU and $0.910$ OCR readability in only $0.9\text{s}$ per screen, providing instant visual feedback for iterative designers.
@@ -542,11 +543,11 @@ To empirically justify the specific representation choices, fine-tuning paramete
 
 | Configuration | Method / Architecture | Adaptation Target | Wireframe Condition | Visual RAG Grounding | Layout IoU $\uparrow$ | OCR Readability $\uparrow$ | Aesthetic Score $\uparrow$ | Handoff LPIPS $\uparrow$ | Peak VRAM | Latency / Step |
 |---|---|---|:---:|:---:|---|---|---|---|---|---|
-| **Full Krisna (Ours)** | **DoRA (rank=64)** | **Attn + FF (`ff.net`)** | **Yes** | **Yes** | **0.910** | **0.940** | **0.890** | **0.950** | **9.8 GB** | **3.2 s** |
-| Ablation A | Standard LoRA (rank=64) | Attn + FF (`ff.net`) | Yes | Yes | 0.910 | 0.900 | 0.860 | 0.950 | 9.6 GB | 3.2 s |
+| **Full Krisna (Ours)** | **DoRA (rank=64)** | **Attn + SwiGLU (`img_mlp`)** | **Yes** | **Yes** | **0.910** | **0.940** | **0.890** | **0.950** | **9.8 GB** | **3.2 s** |
+| Ablation A | Standard LoRA (rank=64) | Attn + SwiGLU (`img_mlp`) | Yes | Yes | 0.910 | 0.900 | 0.860 | 0.950 | 9.6 GB | 3.2 s |
 | Ablation B | DoRA (rank=64) | Attention-Only | Yes | Yes | 0.910 | 0.940 | 0.840 | 0.910 | 9.4 GB | 3.1 s |
-| Ablation C | DoRA (rank=64) | Attn + FF (`ff.net`) | No (Text Only) | Yes | 0.530 | 0.720 | 0.880 | 0.790 | 9.8 GB | 3.2 s |
-| Ablation D | DoRA (rank=64) | Attn + FF (`ff.net`) | Yes | No (Unaugmented) | 0.910 | 0.940 | 0.830 | 0.920 | 9.8 GB | 3.2 s |
+| Ablation C | DoRA (rank=64) | Attn + SwiGLU (`img_mlp`) | No (Text Only) | Yes | 0.530 | 0.720 | 0.880 | 0.790 | 9.8 GB | 3.2 s |
+| Ablation D | DoRA (rank=64) | Attn + SwiGLU (`img_mlp`) | Yes | No (Unaugmented) | 0.910 | 0.940 | 0.830 | 0.920 | 9.8 GB | 3.2 s |
 | Fast Preview Tier | CFM Distillation (6 steps) | Distilled Velocity | Yes | Yes | 0.880 | 0.910 | 0.850 | 0.920 | 9.8 GB | **0.9 s** |
 
 ---

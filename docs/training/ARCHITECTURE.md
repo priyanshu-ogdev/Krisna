@@ -333,7 +333,11 @@ Every actual run must write `training_receipt.json` containing at least:
   "source_split_policy": "application/page identity",
   "trainable_parameter_count": 0,
   "frozen_parameter_count": 0,
-  "lora_target_modules": [],
+  "lora_target_modules": [
+    "to_q", "to_k", "to_v", "to_out.0",
+    "img_mlp.gate_layer", "img_mlp.proj", "img_mlp.out"
+  ],
+  "lora_target_module_count": 224,
   "resolution": 1024,
   "seed": 0,
   "checkpoint": "...",

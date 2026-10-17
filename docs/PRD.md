@@ -180,15 +180,11 @@ deprecated training script — `training/planner/train.py` — is real,
 functional, loudly marked deprecated, and genuinely never invoked by
 the live inference path, rather than silently orphaned).
 
-### 6.1 Progressive-resolution training (Sketch tier)
+### 6.1 Structure and Layout Strategy (Sketch Tier)
 
-Trained in two stages rather than once at final resolution: Stage 1 at
-256px (16×16 VQGAN token grid), Stage 2 at 512px (32×32 grid),
-initialized from Stage 1's checkpoint via bicubic positional-embedding
-interpolation (the standard ViT/DeiT/MAE technique — see
-`training/sketch/pos_embed.py`). This is cheaper than training at 512px
-from scratch and is the same technique used to progressively grow
-vision transformers in the wider literature.
+The production baseline uses deterministic Layout IR (`krisna.layout.v1`) with our Zero-VRAM Flexbox collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024).
+
+Continuous flow matching for layout (`LayoutFlow`, Guerreiro et al., ECCV 2024) is maintained as an experimental research ablation in `training/src/krisna_training/layout/`. The historical discrete MaskGIT discrete token route has been retired.
 
 ---
 
@@ -196,7 +192,7 @@ vision transformers in the wider literature.
 
 ### 7.1 The core constraint
 
-At most one large generative tier (Polish or Critic) is GPU-resident at
+At most one large generative tier (Polish) is GPU-resident at
 a time, in addition to the always-resident baseline (§5.3). Tiers swap
 in and out on demand — this is a **swap orchestrator**, not a
 multi-model serving cluster.
@@ -215,11 +211,11 @@ context overhead, fragmentation).
 
 | Tier | Full-envelope (24GB) | Low-VRAM (12GB) |
 |---|---|---|
-| Planner (baseline, always resident) | 6.5GB / 0GB RAM (NF4) | unchanged |
-| Sketch (baseline, always resident) | 3.0GB / 0GB RAM | unchanged |
-| Polish-Default (Z-Image-Turbo) | 14.0GB / 0GB RAM (bf16 — deliberately not quantized, matches its LoRA's training precision) | 12.0GB / 2.0GB RAM (`enable_model_cpu_offload()`) |
-| Polish-Quality (Qwen-Image-Edit-2511) | 16.0GB / 0GB RAM (NF4) | 10.0GB / 10.0GB RAM |
-| Critic (Gemma 4 31B) | 18.0GB / 0GB RAM (NF4) | 11.5GB / 45.0GB RAM (plain transformers+bitsandbytes fp32 CPU offload) |
+| Planner (baseline, always resident) | 6.5GB / 0GB RAM (Q4_K_M GGUF) | unchanged |
+| Sketch (baseline, always resident) | 0.0GB VRAM / 0.1GB RAM (CPU resident) | unchanged |
+| Polish-Default (Qwen-Image-2.1 LoRA) | 14.0GB / 0GB RAM (BF16 native pipeline) | 12.0GB / 2.0GB RAM (`enable_model_cpu_offload()`) |
+| Polish-Quality (Qwen-Image-2.1 Frozen) | 14.0GB / 0GB RAM (BF16 frozen base) | 12.0GB / 2.0GB RAM (`enable_model_cpu_offload()`) |
+| Polish-Fast (Qwen-Image-2.1 CFM Distilled) | 14.0GB / 0GB RAM (4–6 step distilled preview) | 12.0GB / 2.0GB RAM (`enable_model_cpu_offload()`) |
 
 "Planner (4-bit) + Sketch tier + verifiers ~8–10GB" is the idle-state
 target this table exists to satisfy (§5.3's Tier A rule). Every figure
