@@ -126,6 +126,11 @@ def _apply_single_action(merged: dict, action) -> None:
         existing_hints = merged.get("layout_hints") or ""
         merged["layout_hints"] = f"{existing_hints}; {hint}".strip("; ")
 
+    elif act_type == "SET_ASSET_MODE":
+        mode_val = action_dict.get("asset_mode") or params.get("asset_mode")
+        if mode_val in ("opaque", "transparent"):
+            merged["asset_mode"] = str(mode_val)
+
 
 def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
     """Returns a NEW dict — never mutates `constraints` — with a
@@ -147,6 +152,7 @@ def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
 
     # Direct list of DesignAction items
     if isinstance(constraint_updates, list):
+        merged["actions"] = list(constraint_updates)
         for act in constraint_updates:
             _apply_single_action(merged, act)
         return merged
@@ -163,6 +169,9 @@ def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
     if constraint_updates.get("layout_hints") is not None:
         merged["layout_hints"] = str(constraint_updates["layout_hints"])
 
+    if constraint_updates.get("asset_mode") in ("opaque", "transparent"):
+        merged["asset_mode"] = str(constraint_updates["asset_mode"])
+
     if isinstance(constraint_updates.get("locked_regions"), list):
         new_locked = []
         for r in constraint_updates["locked_regions"]:
@@ -175,6 +184,7 @@ def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
 
     # Also apply nested actions list if provided in constraint_updates dict
     if isinstance(constraint_updates.get("actions"), list):
+        merged["actions"] = list(constraint_updates["actions"])
         for act in constraint_updates["actions"]:
             _apply_single_action(merged, act)
 

@@ -31,6 +31,28 @@ class FlowError(Exception):
     pass
 
 
+def _extract_current_layout_nodes(layout_ref: str | None) -> list[dict[str, Any]]:
+    """Extract clean component nodes from post-solve LayoutIR for Planner grounding."""
+    if not layout_ref or not Path(layout_ref).exists():
+        return []
+    try:
+        layout_data = json.loads(Path(layout_ref).read_text(encoding="utf-8"))
+        return [
+            {
+                "id": n["id"],
+                "type": n["type"],
+                "bbox": n["bbox"],
+                "text": n.get("text"),
+                "locked": n.get("locked", False),
+            }
+            for n in layout_data.get("nodes", [])
+            if n.get("id") != "root"
+        ]
+    except Exception as e:
+        log.warning("layout_grounding_sync_warning: %s", e)
+        return []
+
+
 async def conversational_turn(
     orchestrator: SwapOrchestrator,
     store: DesignStateStore,
@@ -55,10 +77,16 @@ async def conversational_turn(
 
     state.append_turn("user", user_message)
 
+    # Pass post-solve LayoutIR to Planner context to eliminate the Two-Master problem
+    constraints_for_planner = state.constraints.model_dump()
+    current_nodes = _extract_current_layout_nodes(state.layout.layout_ref)
+    if current_nodes:
+        constraints_for_planner["current_layout"] = current_nodes
+
     result = await orchestrator.run_conversational_turn(
         session_id=session_id,
         message=user_message,
-        constraints=state.constraints.model_dump(),
+        constraints=constraints_for_planner,
         conversation_history=history,
         prior_critique=prior_critique,
     )
@@ -148,10 +176,15 @@ async def planner_self_review(
         f"Inspect hierarchy, spacing, and contrast, and propose targeted constraint adjustments."
     )
 
+    review_constraints = state.constraints.model_dump()
+    current_nodes = _extract_current_layout_nodes(state.layout.layout_ref)
+    if current_nodes:
+        review_constraints["current_layout"] = current_nodes
+
     result = await orchestrator.run_conversational_turn(
         session_id=session_id,
         message=review_message,
-        constraints=state.constraints.model_dump(),
+        constraints=review_constraints,
         conversation_history=history,
         prior_critique=prior_critique,
         review=True,
@@ -208,6 +241,7 @@ async def finalize(
     verifier_stack: Any = None,
     prompt: str | None = None,
     min_safety_score: float = 0.9,
+    **kwargs: Any,
 ) -> DesignState:
     """§5.3 'Finalize'.
 
@@ -257,11 +291,12 @@ async def finalize(
     handoff_input = state.layout.wireframe_ref or state.layout.layout_ref
     pixel_ref = handoff_hook(handoff_input) if handoff_hook else handoff_input
 
-    # Synthesize prompt from conversational intent and constraints if not explicitly provided.
-    # The synthesized string is also stored in DPO preference pairs (see critique_pass() below)
-    # so it must match the format the Polish-Default LoRA was trained against — use
-    # _synthesize_dpo_prompt() for both, keeping a single canonical implementation.
-    effective_prompt = prompt if prompt else _synthesize_dpo_prompt(state)
+    # UPGRADE: Wireframe-as-lock-donor resolution
+    # If a prior finalized render exists, it is the photorealistic lock donor; otherwise fallback to pixel_ref
+    lock_donor_ref = state.finalize_output.image_ref if state.finalize_output.image_ref else (pixel_ref if isinstance(pixel_ref, str) else None)
+
+    # Synthesize prompt from conversational intent, constraints, and LayoutIR components/labels.
+    effective_prompt = prompt if prompt else synthesize_polish_prompt(state)
 
     if fast:
         preferred = Tier.POLISH_FAST
@@ -273,6 +308,7 @@ async def finalize(
         preferred_tier=preferred,
         session_id=session_id,
         handoff_image_ref=pixel_ref,
+        lock_donor_ref=lock_donor_ref,
         prompt=effective_prompt,
         constraints=state.constraints.model_dump(),
         locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
@@ -338,10 +374,67 @@ async def finalize(
                 sketch_pixel_ref=pixel_ref if isinstance(pixel_ref, str) else None,
                 prompt=effective_prompt,
                 safety_score=safety_score,
+                lock_donor_ref=lock_donor_ref,
             )
         if "evaluation_receipt" in verifier_result:
             state.finalize_output.evaluation_receipt = verifier_result.pop("evaluation_receipt")
         verifier_scores.update(verifier_result)
+
+        # Closed-Loop Spatial Alignment Self-Correction (Auto-Refine / Retry Engine)
+        layout_iou = verifier_scores.get("layout_iou")
+        ocr_score = verifier_scores.get("ocr_readability")
+        seam_score = verifier_scores.get("seam_continuity")
+        drift_reasons = []
+        if layout_iou is not None and layout_iou < 0.70:
+            drift_reasons.append(f"Layout IoU {layout_iou:.2f} < 0.70")
+        if ocr_score is not None and ocr_score < 0.80:
+            drift_reasons.append(f"OCR readability {ocr_score:.2f} < 0.80")
+        if seam_score is not None and seam_score < 0.85:
+            drift_reasons.append(f"Seam continuity {seam_score:.2f} < 0.85")
+
+        if drift_reasons and not kwargs.get("_retry_attempted", False):
+            log.warning("Spatial drift detected in finalize (%s); triggering automated layout-enforced retry.", "; ".join(drift_reasons))
+            retry_prompt = build_grounded_spatial_retry_prompt(
+                state=state,
+                base_prompt=effective_prompt,
+                drift_reasons=drift_reasons,
+                layout_iou=layout_iou,
+                ocr_score=ocr_score,
+                seam_score=seam_score,
+            )
+            retry_result = await orchestrator.request_finalize(
+                preferred_tier=preferred,
+                session_id=session_id,
+                handoff_image_ref=pixel_ref,
+                lock_donor_ref=lock_donor_ref,
+                prompt=retry_prompt,
+                constraints=state.constraints.model_dump(),
+                locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
+                seed=42 + 1337,
+            )
+            if retry_result.ok:
+                retry_output = retry_result.output or {}
+                retry_ref = retry_output.get("image_ref")
+                if retry_ref and retry_ref.startswith("blob://"):
+                    retry_verifier_result = _run_verifier_stack(
+                        verifier_stack,
+                        state=state,
+                        image_ref=retry_ref,
+                        sketch_pixel_ref=pixel_ref if isinstance(pixel_ref, str) else None,
+                        prompt=retry_prompt,
+                        safety_score=safety_score,
+                        lock_donor_ref=lock_donor_ref,
+                    )
+                    retry_iou = retry_verifier_result.get("layout_iou", 0.0)
+                    if retry_iou >= (layout_iou or 0.0):
+                        state.finalize_output.image_ref = retry_ref
+                        state.finalize_output.prompt_used = retry_prompt
+                        verifier_scores.update(retry_verifier_result)
+                        drift_reasons.append(f"Auto-refine retry improved IoU to {retry_iou:.2f}")
+
+        # Surface spatial drift diagnostic to conversation history for next-turn Planner grounding
+        if drift_reasons:
+            state.append_turn("system", f"Spatial verifier diagnostic: {'; '.join(drift_reasons)}.")
 
     for k, v in verifier_scores.items():
         if v is not None and hasattr(state.finalize_output.verifier_scores, k):
@@ -475,6 +568,35 @@ async def iterative_refine(
                 for r in merged["locked_regions"]
             ]
 
+        # Synchronize LayoutIR so downstream post-refine IoU verification matches updated nodes
+        if state.layout.layout_ref and Path(state.layout.layout_ref).exists():
+            try:
+                from krisna_inference.layout_baseline import layout_from_constraints
+                from krisna_inference.layout_renderer import render_wireframe
+                from krisna_inference.backends.blob_store_singleton import get_blob_store
+                from PIL import Image
+
+                merged_constraints = state.constraints.model_dump()
+                merged_constraints["actions"] = actions
+                updated_layout = layout_from_constraints(merged_constraints)
+                Path(state.layout.layout_ref).write_text(
+                    json.dumps(updated_layout.model_dump(), indent=2) + "\n", encoding="utf-8"
+                )
+                state.layout.revision += 1
+
+                # Surface any locked-locked collision diagnostics directly to Planner conversation history
+                for diag in getattr(updated_layout, "diagnostics", []):
+                    state.append_turn("system", f"[Layout Conflict]: {diag}")
+
+                # Re-render wireframe with updated layout geometry to prevent geometry loss in refinement
+                wf_path = Path(state.layout.layout_ref).with_suffix(".png")
+                render_wireframe(updated_layout, wf_path, style=state.constraints.style)
+                blobs = get_blob_store()
+                with Image.open(wf_path) as wf_img:
+                    state.layout.wireframe_ref = blobs.save_image(wf_img, prefix="wireframe_refine")
+            except Exception as e:
+                log.warning("refine_layout_sync_warning: %s", e)
+
     prior_render = state.finalize_output.image_ref
     state.stage = SessionStage.REFINING
     state.append_turn("user", f"[Refinement Instruction]: {instruction}")
@@ -490,10 +612,15 @@ async def iterative_refine(
     edit_prompt = f"{base}. Refinement edit: {instruction}"
 
     preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
+    # Refinement Dual-Image Visual Conditioning:
+    # Forward updated wireframe as handoff_image_ref (index 0: new geometry) and prior_render
+    # as lock_donor_ref (index 1: visual style & locks) so block-causal attention receives both.
+    wireframe_condition = state.layout.wireframe_ref or prior_render
     result: SwapResult = await orchestrator.request_finalize(
         preferred_tier=preferred,
         session_id=session_id,
-        handoff_image_ref=prior_render,
+        handoff_image_ref=wireframe_condition,
+        lock_donor_ref=prior_render,
         prompt=edit_prompt,
         mode="refine",
         refine=True,
@@ -511,6 +638,8 @@ async def iterative_refine(
     output = result.output or {}
     refined_ref = output.get("image_ref") or output.get("render_ref") or f"render://{session_id}/refined"
 
+    verifier_scores: dict[str, Any] = {}
+    safety_score: float | None = None
     if verifier_stack is not None and refined_ref.startswith("blob://"):
         passed, safety_score = _check_safety_gate(
             verifier_stack, image_ref=refined_ref, min_safety_score=min_safety_score
@@ -527,6 +656,22 @@ async def iterative_refine(
             raise FlowError(
                 f"Iterative refinement blocked: safety gate failed (score={safety_score:.3f} < {min_safety_score})"
             )
+
+        verifier_result = _run_verifier_stack(
+            verifier_stack,
+            state=state,
+            image_ref=refined_ref,
+            sketch_pixel_ref=state.layout.wireframe_ref or prior_render,
+            prompt=edit_prompt,
+            safety_score=safety_score,
+            lock_donor_ref=prior_render,
+        )
+        if "evaluation_receipt" in verifier_result:
+            state.finalize_output.evaluation_receipt = verifier_result.pop("evaluation_receipt")
+        verifier_scores.update(verifier_result)
+        for k, v in verifier_scores.items():
+            if v is not None and hasattr(state.finalize_output.verifier_scores, k):
+                setattr(state.finalize_output.verifier_scores, k, v)
 
     state.finalize_output.image_ref = refined_ref
     state.finalize_output.prompt_used = edit_prompt
@@ -561,6 +706,7 @@ def _run_verifier_stack(
     sketch_pixel_ref: str | None,
     prompt: str | None,
     safety_score: float | None = None,
+    lock_donor_ref: str | None = None,
 ) -> dict:
     from krisna_inference.backends.blob_store_singleton import get_blob_store
 
@@ -571,23 +717,16 @@ def _run_verifier_stack(
         try:
             sketch_image = blobs.load_image(sketch_pixel_ref)
         except Exception as e:
-            # UPGRADE: was `except FileNotFoundError` only. Before the
-            # handoff_hook fix (sketch_handoff.py's make_vq_decode_handoff
-            # actually being wired up), sketch_pixel_ref could be a raw
-            # VQ-token blob ref rather than a decoded image — load_image()
-            # on that raises PIL.UnidentifiedImageError, not
-            # FileNotFoundError, which this except clause didn't catch,
-            # meaning this was a second, hidden crash site for the same
-            # root cause, reached only when handoff_consistency scoring
-            # actually ran. Now fixed upstream (pixel_ref is a real
-            # decoded image), but this broader catch matches
-            # VerifierStack.score_finalize_output's own established
-            # philosophy in this same module — any verifier input that
-            # can't be loaded degrades to sketch_image=None (handoff_consistency
-            # scored as unavailable) rather than aborting the whole
-            # finalize response over one optional comparison image.
             log.warning("sketch_image_load_failed_for_handoff_verifier", extra={"ref": sketch_pixel_ref, "error": str(e)})
             sketch_image = None
+
+    lock_donor_image = None
+    if lock_donor_ref and lock_donor_ref.startswith("blob://"):
+        try:
+            lock_donor_image = blobs.load_image(lock_donor_ref)
+        except Exception as e:
+            log.warning("lock_donor_image_load_failed", extra={"ref": lock_donor_ref, "error": str(e)})
+            lock_donor_image = None
 
     effective_prompt = prompt or state.constraints.style or "UI design"
     locked_regions = [r.model_dump() for r in state.constraints.locked_regions]
@@ -607,22 +746,45 @@ def _run_verifier_stack(
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
             log.warning("layout_evaluation_reference_unavailable", extra={"error": str(error)})
     if hasattr(verifier_stack, "evaluate_finalize_output"):
-        receipt = verifier_stack.evaluate_finalize_output(
+        try:
+            receipt = verifier_stack.evaluate_finalize_output(
+                polished_image,
+                prompt=effective_prompt,
+                sketch_image=sketch_image,
+                expected_regions=expected_regions,
+                expected_texts=expected_texts,
+                locked_regions=locked_regions,
+                safety_score=safety_score,
+                lock_donor_image=lock_donor_image,
+            )
+        except TypeError:
+            receipt = verifier_stack.evaluate_finalize_output(
+                polished_image,
+                prompt=effective_prompt,
+                sketch_image=sketch_image,
+                expected_regions=expected_regions,
+                expected_texts=expected_texts,
+                locked_regions=locked_regions,
+                safety_score=safety_score,
+            )
+        return {**receipt.get("metrics", {}), "evaluation_receipt": receipt}
+    try:
+        return verifier_stack.score_finalize_output(
             polished_image,
             prompt=effective_prompt,
             sketch_image=sketch_image,
             expected_regions=expected_regions,
             expected_texts=expected_texts,
             locked_regions=locked_regions,
-            safety_score=safety_score,
+            lock_donor_image=lock_donor_image,
         )
-        return {**receipt.get("metrics", {}), "evaluation_receipt": receipt}
-    return verifier_stack.score_finalize_output(
-        polished_image,
-        prompt=effective_prompt,
-        sketch_image=sketch_image,
-        expected_regions=expected_regions,
-    )
+    except TypeError:
+        return verifier_stack.score_finalize_output(
+            polished_image,
+            prompt=effective_prompt,
+            sketch_image=sketch_image,
+            expected_regions=expected_regions,
+        )
 
 
 async def critique_pass(
@@ -826,6 +988,208 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
         return f"High quality UI design, {desc_str}"
     else:
         return "High quality UI design"
+
+
+PROMPT_TEMPLATE_VERSION = "krisna.polish_prompt.v3.pe_prose"
+
+
+def assert_and_inject_verbatim_labels(prompt: str, expected_labels: list[str]) -> str:
+    """Verbatim Label Guard: guarantees that 100% of required text labels survive in the prompt.
+
+    Diffusion models with in-context conditioning require explicit textual tokens for text rendering.
+    If prompt rewriting (e.g. PE-I2I or LLM) omitted any exact label strings, this guard detects
+    the omissions and re-injects them verbatim to ensure zero typographic degradation.
+    """
+    if not expected_labels:
+        return prompt
+
+    missing = [label for label in expected_labels if label not in prompt]
+    if missing:
+        quoted = ", ".join(f"'{lbl}'" for lbl in missing)
+        injection = f" Text labels rendered legibly: {quoted}."
+        prompt = f"{prompt.rstrip('.')}." + injection
+    return prompt
+
+
+def synthesize_descriptive_polish_prompt(state: DesignState) -> str:
+    """Synthesizes rich, descriptive natural language prose matching Qwen PE format.
+
+    Qwen-Image-2.1 was trained on long, coherent descriptive prose rather than raw keyword lists.
+    This generator:
+    1. Extracts structured spec: node IDs, roles, exact label strings, and region-by-region placements.
+    2. Constructs descriptive natural language prose connecting regions, components, and palette tokens.
+    3. Executes the Verbatim Label Guard to ensure all required strings survive without omission.
+    """
+    base_prompt = _synthesize_dpo_prompt(state)
+    if not state.layout.layout_ref:
+        return base_prompt
+
+    try:
+        layout_path = Path(state.layout.layout_ref)
+        if not layout_path.exists():
+            return base_prompt
+
+        payload = json.loads(layout_path.read_text(encoding="utf-8"))
+        nodes = payload.get("nodes", [])
+
+        # Extract typographic label strings and components
+        expected_labels = [
+            str(node["text"]).strip()
+            for node in nodes
+            if node.get("text") and str(node["text"]).strip()
+        ]
+
+        # Categorize components by spatial region
+        header_nodes = []
+        main_nodes = []
+        action_nodes = []
+
+        for node in nodes:
+            if node.get("id") == "root":
+                continue
+            comp_type = str(node.get("type", "element"))
+            text = str(node.get("text") or "").strip()
+            bbox = node.get("bbox") or {}
+            y1 = bbox.get("y1", 0.5) if isinstance(bbox, dict) else (bbox[1] if isinstance(bbox, (list, tuple)) and len(bbox) > 1 else 0.5)
+
+            item = {"id": node.get("id"), "type": comp_type, "text": text}
+            if y1 < 0.22 or node.get("id") in ("title", "header", "nav"):
+                header_nodes.append(item)
+            elif y1 > 0.80 or comp_type == "button":
+                action_nodes.append(item)
+            else:
+                main_nodes.append(item)
+
+        prose_parts = []
+        # Opening intent
+        style_desc = state.constraints.style or "modern clean"
+        prose_parts.append(f"A polished, production-grade UI design with {style_desc} aesthetic.")
+
+        # Header description
+        if header_nodes:
+            header_strs = []
+            for h in header_nodes[:3]:
+                if h["text"]:
+                    header_strs.append(f"{h['type']} displaying '{h['text']}'")
+                else:
+                    header_strs.append(f"{h['type']}")
+            prose_parts.append(f"At the top header region, there is a clean layout featuring {', '.join(header_strs)}.")
+
+        # Main section description
+        if main_nodes:
+            main_strs = []
+            for m in main_nodes[:5]:
+                if m["text"]:
+                    main_strs.append(f"{m['type']} containing '{m['text']}'")
+                else:
+                    main_strs.append(f"{m['type']}")
+            prose_parts.append(f"The central main section presents {', '.join(main_strs)} with structured visual hierarchy.")
+
+        # Actions section description
+        if action_nodes:
+            act_strs = []
+            for a in action_nodes[:3]:
+                if a["text"]:
+                    act_strs.append(f"{a['type']} labeled '{a['text']}'")
+                else:
+                    act_strs.append(f"{a['type']}")
+            prose_parts.append(f"In the lower action area, there is {', '.join(act_strs)} prominently placed.")
+
+        # Visual styling and palette
+        if state.constraints.palette:
+            palette_str = ", ".join(state.constraints.palette[:4])
+            prose_parts.append(f"The design utilizes a cohesive color palette incorporating {palette_str} with balanced contrast.")
+
+        # Locked regions preservation
+        if state.constraints.locked_regions:
+            locked_reasons = [r.reason or f"region at {r.bbox}" for r in state.constraints.locked_regions]
+            prose_parts.append(f"PRESERVE UNCHANGED: {'; '.join(locked_reasons)}.")
+
+        prompt = " ".join(prose_parts)
+
+        # Enforce Verbatim Label Guard
+        guarded_prompt = assert_and_inject_verbatim_labels(prompt, expected_labels)
+        return guarded_prompt
+    except Exception as exc:
+        log.warning("descriptive_prompt_synthesis_error: %s", exc)
+        return base_prompt
+
+
+def build_grounded_spatial_retry_prompt(
+    state: DesignState,
+    base_prompt: str,
+    drift_reasons: list[str],
+    layout_iou: float | None = None,
+    ocr_score: float | None = None,
+    seam_score: float | None = None,
+) -> str:
+    """Builds a grounded, region-specific natural language spatial feedback prompt for retry turns.
+
+    Instead of abstract coordinate reminders, this provides clear linguistic spatial instructions
+    referencing specific buttons, headers, cards, and text labels from the layout.
+    """
+    feedback = []
+    nodes = []
+    if state.layout.layout_ref and Path(state.layout.layout_ref).exists():
+        try:
+            data = json.loads(Path(state.layout.layout_ref).read_text(encoding="utf-8"))
+            nodes = data.get("nodes", [])
+        except Exception:
+            pass
+
+    button_nodes = [
+        n for n in nodes
+        if n.get("type") == "button" or (isinstance(n.get("bbox"), dict) and n.get("bbox", {}).get("y1", 0) > 0.75)
+    ]
+    title_nodes = [
+        n for n in nodes
+        if n.get("id") in ("title", "header") or (isinstance(n.get("bbox"), dict) and n.get("bbox", {}).get("y1", 0) < 0.25)
+    ]
+    card_nodes = [n for n in nodes if n.get("type") == "card"]
+
+    if layout_iou is not None and layout_iou < 0.70:
+        spatial_guidance = []
+        if button_nodes:
+            b_text = button_nodes[0].get("text") or "action"
+            spatial_guidance.append(f"the '{b_text}' button must sit at the bottom-right under the main card")
+        if title_nodes:
+            t_text = title_nodes[0].get("text") or "title"
+            spatial_guidance.append(f"the '{t_text}' header must sit at the top without downward drift")
+        if card_nodes:
+            spatial_guidance.append("the main card must remain centered without spatial distortion")
+        if spatial_guidance:
+            feedback.append(f"Spatial alignment correction: {', '.join(spatial_guidance)}.")
+        else:
+            feedback.append("Spatial alignment correction: elements must strictly stay within their designated visual regions.")
+
+    if ocr_score is not None and ocr_score < 0.80:
+        labels = [n.get("text") for n in nodes if n.get("text")][:4]
+        if labels:
+            quoted_labels = ", ".join(f"'{lbl}'" for lbl in labels)
+            feedback.append(f"Typographic legibility correction: ensure text labels ({quoted_labels}) are rendered crisply with high contrast and exact spelling.")
+        else:
+            feedback.append("Typographic legibility correction: render all UI text crisply and legibly without blur or distortion.")
+
+    if seam_score is not None and seam_score < 0.85:
+        feedback.append("Boundary continuity correction: smooth and harmonize edge transitions around locked regions.")
+
+    if not feedback:
+        feedback.append("Ensure crisp spatial separation between components without overlapping.")
+
+    correction_text = " ".join(feedback)
+    return f"{base_prompt.rstrip('.')}. CRITICAL LAYOUT ENFORCEMENT: {correction_text}"
+
+
+def synthesize_polish_prompt(state: DesignState) -> str:
+    """Synthesizes high-fidelity prompt for Polish tier (Qwen-Image-2.1).
+
+    Enriches the base intent with:
+    1. Exact typographic labels protected by the Verbatim Label Guard.
+    2. Natural language descriptive prose matching Qwen PE format.
+    3. Regional component hierarchy (header, main content, action bar).
+    4. Curated color palette and immutable lock directives.
+    """
+    return synthesize_descriptive_polish_prompt(state)
 
 
 def export_research_trajectory(store: DesignStateStore, session_id: str):

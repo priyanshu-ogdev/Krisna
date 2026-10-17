@@ -34,6 +34,7 @@ EVALUATION_TARGETS = {
     "aesthetic": 0.70,
     "handoff_consistency": 0.65,
     "lock_preservation": 0.95,
+    "seam_continuity": 0.85,
 }
 EVALUATION_POLICY_VERSION = "krisna.eval.v1"
 
@@ -63,15 +64,15 @@ class VerifierStack:
         expected_regions: list[dict] | None = None,
         expected_texts: list[str] | None = None,
         locked_regions: list[dict] | None = None,
+        lock_donor_image=None,
     ) -> dict:
         """Returns a dict with exactly design_state.VerifierScores' fields:
         clip_alignment, ocr_readability, layout_iou, aesthetic,
-        handoff_consistency. Any verifier that raises is logged and scored
-        None rather than aborting the whole pass — a broken OCR install
-        shouldn't block finalize from reporting the four scores it CAN
-        compute.
+        handoff_consistency, lock_preservation. Any verifier that raises is logged and scored
+        None rather than aborting the whole pass.
         """
         scores: dict = {}
+        source_donor = lock_donor_image if lock_donor_image is not None else sketch_image
 
         for name, fn in (
             ("clip_alignment", lambda: self.clip_alignment.score(polished_image, prompt)),
@@ -82,7 +83,8 @@ class VerifierStack:
             ),
             ("aesthetic", lambda: self.aesthetic.score(polished_image)),
             ("handoff_consistency", lambda: self._handoff_score(polished_image, sketch_image)),
-            ("lock_preservation", lambda: self.lock_preservation.score(sketch_image, polished_image, locked_regions)),
+            ("lock_preservation", lambda: self.lock_preservation.score(source_donor, polished_image, locked_regions)),
+            ("seam_continuity", lambda: self.lock_preservation.seam_score(polished_image, locked_regions)),
         ):
             try:
                 scores[name] = fn()
@@ -101,6 +103,7 @@ class VerifierStack:
         expected_texts: list[str] | None = None,
         locked_regions: list[dict] | None = None,
         safety_score: float | None = None,
+        lock_donor_image=None,
     ) -> dict:
         """Return a reproducible multi-metric evaluation receipt.
 
@@ -116,6 +119,7 @@ class VerifierStack:
             expected_regions=expected_regions,
             expected_texts=expected_texts,
             locked_regions=locked_regions,
+            lock_donor_image=lock_donor_image,
         )
         available = {name: value for name, value in metrics.items() if value is not None}
         missing = sorted(set(EVALUATION_TARGETS) - set(available))

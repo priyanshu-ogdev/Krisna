@@ -12,13 +12,14 @@ def test_evaluation_receipt_combines_metrics_and_reports_missing_dimensions():
         "aesthetic": 0.68,
         "handoff_consistency": None,
         "lock_preservation": None,
+        "seam_continuity": None,
     }
 
     receipt = stack.evaluate_finalize_output(object(), prompt="ui", safety_score=0.96)
 
     assert receipt["policy"] == "krisna.eval.v1"
     assert receipt["status"] == "incomplete"
-    assert receipt["missing_metrics"] == ["handoff_consistency", "lock_preservation"]
+    assert receipt["missing_metrics"] == ["handoff_consistency", "lock_preservation", "seam_continuity"]
     assert receipt["failed_metrics"] == ["aesthetic"]
     assert receipt["safety_gate_passed"] is True
     assert 0.0 < receipt["aggregate_geometric_mean"] < 1.0
@@ -33,6 +34,7 @@ def test_evaluation_receipt_passes_only_when_all_targets_are_available():
         "aesthetic": 0.72,
         "handoff_consistency": 0.70,
         "lock_preservation": 0.98,
+        "seam_continuity": 0.90,
     }
 
     receipt = stack.evaluate_finalize_output(object(), prompt="ui", safety_score=0.95)

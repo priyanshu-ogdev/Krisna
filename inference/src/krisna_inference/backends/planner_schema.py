@@ -28,6 +28,7 @@ ActionType = Literal[
     "SET_TEXT",
     "SET_LAYOUT_DIRECTION",
     "REORDER_HIERARCHY",
+    "SET_ASSET_MODE",
 ]
 
 
@@ -97,6 +98,11 @@ class ReorderHierarchyAction(DesignAction):
     action_type: Literal["REORDER_HIERARCHY"] = "REORDER_HIERARCHY"
 
 
+class SetAssetModeAction(DesignAction):
+    action_type: Literal["SET_ASSET_MODE"] = "SET_ASSET_MODE"
+    asset_mode: Literal["opaque", "transparent"] = "opaque"
+
+
 class DesignStateDelta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -105,6 +111,7 @@ class DesignStateDelta(BaseModel):
     actions: list[DesignAction] = Field(default_factory=list)
     tool_call: str | None = None
     reasoning_note: str = Field(default="", max_length=500)
+    asset_mode: Literal["opaque", "transparent"] | None = None
 
 
 class PlannerResponse(BaseModel):
