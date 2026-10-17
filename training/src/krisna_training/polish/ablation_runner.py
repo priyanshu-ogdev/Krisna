@@ -3,9 +3,9 @@
 Automates the execution, tracking, and evaluation of Phase 2 ablation studies
 against the Krisna evaluation benchmark:
 - Ablation A: Standard LoRA (rank=64, attn-only) vs DoRA
-- Ablation B: DoRA (rank=64, attn-only) vs DoRA (+ff.net style sublayers)
-- Ablation C: DoRA (+ff.net) with NO wireframe condition (isolating Layout IR)
-- Ablation D: DoRA (+ff.net) with NO visual RAG grounding (isolating retrieval)
+- Ablation B: DoRA (rank=64, attn-only) vs DoRA (+img_mlp SwiGLU sublayers)
+- Ablation C: DoRA (+img_mlp) with NO wireframe condition (isolating Layout IR)
+- Ablation D: DoRA (+img_mlp) with NO visual RAG grounding (isolating retrieval)
 
 Outputs structured comparative receipts conforming to academic reporting standards.
 """
@@ -71,7 +71,7 @@ def evaluate_ablation_candidate(config: dict[str, Any]) -> AblationMetrics:
     ablation_id = config.get("ablation_id", "UNKNOWN_ABLATION")
     use_dora = bool(config.get("use_dora", False))
     lora_layers = config.get("lora_layers", "")
-    has_ff = "ff.net" in lora_layers
+    has_ff = any(k in lora_layers for k in ("img_mlp", "ff.net"))
     has_wireframe = config.get("cond_image_column") is not None
     has_rag = config.get("caption_column") != "raw_caption_unaugmented"
 
@@ -171,7 +171,7 @@ def generate_ablation_summary(
 
     for r in receipts:
         m = r.metrics
-        layers_desc = "All (+FF)" if "ff.net" in r.lora_layers else "Attn-Only"
+        layers_desc = "All (+FF/MLP)" if any(k in r.lora_layers for k in ("img_mlp", "ff.net")) else "Attn-Only"
         if not r.use_dora:
             method_desc = "Standard LoRA (r=64)"
         elif "cfm" in r.ablation_id.lower():

@@ -30,7 +30,7 @@ use_dora: false  # STANDARD LoRA ABLATION
 pipeline_class: "QwenImage21Pipeline"
 conditioning_contract: "image_conditioned_edit"
 base_weights_frozen: true
-lora_layers: "to_k,to_q,to_v,to_out.0"  # ATTENTION-ONLY (No ff.net style layers)
+lora_layers: "to_k,to_q,to_v,to_out.0"  # ATTENTION-ONLY (No img_mlp SwiGLU layers)
 validation_epochs: 25
 ablation_id: "A_LORA_ATTN_ONLY"
 ablation_hypothesis: "Standard LoRA without DoRA decomposition experiences higher gradient variance and lower typography edge stability."

@@ -33,8 +33,9 @@ DOCUMENTED_QWEN_MODULES = {
         "to_out.0",
     ],
     "feedforward_projections": [
-        "ff.net.0.proj",
-        "ff.net.2",
+        "img_mlp.gate_layer",
+        "img_mlp.proj",
+        "img_mlp.out",
     ],
     "modulation_projections": [
         "norm1.linear",
@@ -126,7 +127,7 @@ def introspect_live(model_name: str, revision: str) -> dict[str, Any]:
 
     all_modules = [name for name, _ in transformer.named_modules()]
     matching_attn = [name for name in all_modules if any(p in name for p in ("to_q", "to_k", "to_v", "to_out"))]
-    matching_ff = [name for name in all_modules if any(p in name for p in ("ff.net", "ff_proj"))]
+    matching_ff = [name for name in all_modules if any(p in name for p in ("img_mlp", "ff.net", "ff_proj"))]
 
     print(f"Discovered {len(all_modules)} named submodules in transformer.")
     print(f"Found {len(matching_attn)} attention projection modules.")

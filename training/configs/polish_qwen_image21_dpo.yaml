@@ -27,7 +27,7 @@ lr_warmup_steps: 100
 lora_rank: 64
 lora_alpha: 32
 use_dora: true
-lora_target_modules: "to_q,to_k,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+lora_target_modules: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
 
 # Batching & Memory Profile (A6000 48GB / Consumer 12GB offload):
 train_batch_size: 1

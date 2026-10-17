@@ -102,10 +102,11 @@ class TestPhase3ConfigAndReceipt:
         assert data["lora_rank"] == 64
         assert data["lora_alpha"] == 32
         assert data["use_dora"] is True
-        assert data["beta"] == 2000.0
-        assert data["fm_anchor_weight"] == 0.1
-        assert "ff.net.0.proj" in data["lora_target_modules"]
+        assert "img_mlp.gate_layer" in data["lora_target_modules"]
+        assert "img_mlp.proj" in data["lora_target_modules"]
+        assert "img_mlp.out" in data["lora_target_modules"]
         assert "to_q" in data["lora_target_modules"]
+        assert "to_out.0" in data["lora_target_modules"]
         assert data["resolution"] == 1024
 
     def test_preference_db_gate_and_receipt_generation(self, tmp_path):

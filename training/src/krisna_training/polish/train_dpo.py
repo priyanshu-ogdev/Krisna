@@ -130,12 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--lora-target-modules", type=str,
-        default="to_q,to_k,to_v,to_out.0,ff.net.0.proj,ff.net.2",
+        default="to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out",
         help=(
             "Target modules for LoRA/DoRA adaptation on Qwen-Image-2.1. "
             "Default includes attention projections (to_q,to_k,to_v,to_out.0) and "
-            "feedforward projections (ff.net.0.proj,ff.net.2). "
-            "Run scripts/training/inspect_qwen_modules.py to introspect and verify "
+            "SwiGLU feedforward projections (img_mlp.gate_layer,img_mlp.proj,img_mlp.out). "
+            "Run scripts/inspect_qwen_transformer_modules.py to introspect and verify "
             "exact module names on physical hardware."
         ),
     )
@@ -432,7 +432,9 @@ def main() -> int:
             if "lora_" in name.lower():
                 param.requires_grad_(True)
     else:
-        _alpha = args.lora_alpha if args.lora_alpha is not None else max(1, args.lora_rank // 2)
+        _target_list = [m.strip() for m in args.lora_target_modules.split(",") if m.strip()] if getattr(args, "lora_target_modules", None) else [
+            "to_q", "to_k", "to_v", "to_out.0", "img_mlp.gate_layer", "img_mlp.proj", "img_mlp.out"
+        ]
         policy_pipe.transformer.add_adapter(
             LoraConfig(
                 r=args.lora_rank,
@@ -440,9 +442,34 @@ def main() -> int:
                 lora_dropout=args.lora_dropout,
                 init_lora_weights="gaussian",
                 use_dora=getattr(args, "use_dora", False),
-                target_modules=[m.strip() for m in args.lora_target_modules.split(",") if m.strip()] if getattr(args, "lora_target_modules", None) else ["to_k", "to_q", "to_v", "to_out.0", "ff.net.0.proj", "ff.net.2"],
+                target_modules=_target_list,
             )
         )
+        # Strict module match set and count assertion:
+        # PEFT silently passes when at least one module matches, leaving unmatched targets unadapted.
+        # We assert that EVERY specified target string matches, and that the total number of adapted
+        # LoRA layers matches len(target_modules) * num_layers (224 for 7 targets * 32 layers).
+        _num_layers = getattr(getattr(policy_pipe.transformer, "config", None), "num_layers", 32)
+        _matched_lora_modules = [
+            name for name, mod in policy_pipe.transformer.named_modules()
+            if hasattr(mod, "lora_A") or type(mod).__name__.startswith("Lora")
+        ]
+        _unmatched_targets = [
+            tgt for tgt in _target_list
+            if not any(tgt in name for name in _matched_lora_modules)
+        ]
+        if _unmatched_targets:
+            raise RuntimeError(
+                f"LoRA target module mismatch: the following target modules matched zero layers in "
+                f"policy_pipe.transformer: {_unmatched_targets}. Matched modules: {_matched_lora_modules}"
+            )
+        _expected_module_count = len(_target_list) * _num_layers
+        if _matched_lora_modules and len(_matched_lora_modules) != _expected_module_count:
+            raise RuntimeError(
+                f"LoRA module count mismatch: expected {_expected_module_count} adapted modules "
+                f"({len(_target_list)} targets x {_num_layers} layers), but found {len(_matched_lora_modules)}: "
+                f"{_matched_lora_modules}"
+            )
     _n_trainable = sum(p.numel() for p in policy_pipe.transformer.parameters() if p.requires_grad)
     if _n_trainable == 0:
         raise RuntimeError(
@@ -451,7 +478,7 @@ def main() -> int:
             "--lora-target-modules against the real module names on this pipeline's "
             "transformer class, or that --lora-adapter-path points at a real LoRA checkpoint."
         )
-    log.info("policy_adapter_ready", extra={"trainable_params": _n_trainable})
+    log.info("policy_adapter_ready", extra={"trainable_params": _n_trainable, "matched_modules": len(_matched_lora_modules) if 'target_modules' in locals() else None})
 
     # Reference model — frozen COPY of the same base weights (NOT the
     # same object as the policy — the whole DPO formulation depends on

@@ -30,7 +30,7 @@ use_dora: true
 pipeline_class: "QwenImage21Pipeline"
 conditioning_contract: "text_to_image"  # Unconditioned text-to-image baseline
 base_weights_frozen: true
-lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
 validation_epochs: 25
 ablation_id: "C_NO_WIREFRAME_CONDITION"
 ablation_hypothesis: "Removing Layout IR spatial wireframes causes severe bounding box drift (>35% IoU drop) and unaligned UI elements."

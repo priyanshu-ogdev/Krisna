@@ -140,7 +140,7 @@ def generate_phase3_receipt(
             "alpha": 32,
             "target_modules": [
                 "to_q", "to_k", "to_v", "to_out.0",
-                "ff.net.0.proj", "ff.net.2"
+                "img_mlp.gate_layer", "img_mlp.proj", "img_mlp.out",
             ],
             "trainable_param_percentage": 0.42,
             "loss_formulation": "Continuous Flow-Matching DPO (Wallace et al. CVPR 2024 / Kim et al. NeurIPS 2024)",

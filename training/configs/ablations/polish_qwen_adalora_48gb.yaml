@@ -67,7 +67,7 @@ adalora_beta1: 0.85
 adalora_beta2: 0.85
 adalora_orth_reg_weight: 0.5
 
-lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
 
 # Contract metadata:
 pipeline_class: "QwenImage21Pipeline"
