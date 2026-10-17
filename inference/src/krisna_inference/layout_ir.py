@@ -92,6 +92,7 @@ class LayoutIR(BaseModel):
     canvas_height: int = Field(default=1024, ge=1, le=8192)
     nodes: list[LayoutNode] = Field(default_factory=list, max_length=64)
     relations: list[LayoutRelation] = Field(default_factory=list, max_length=256)
+    diagnostics: list[str] = Field(default_factory=list, max_length=64)
 
     def node_map(self) -> dict[str, LayoutNode]:
         return {node.id: node for node in self.nodes}

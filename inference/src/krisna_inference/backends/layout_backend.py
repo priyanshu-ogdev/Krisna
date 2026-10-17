@@ -40,8 +40,12 @@ class LayoutBackend(ModelBackend):
             raise RuntimeError("Layout backend not loaded")
         planner_output = planner_output or {}
         delta = planner_output.get("design_state_delta") or {}
-        constraints = dict(kwargs.get("constraints") or {})
-        constraints.update(delta.get("constraint_updates") or {})
+        from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+        raw_constraints = dict(kwargs.get("constraints") or {})
+        constraints = apply_constraint_updates(raw_constraints, delta.get("constraint_updates") or {})
+        actions = delta.get("actions") or constraints.get("actions")
+        if actions:
+            constraints["actions"] = actions
         layout = layout_from_constraints(constraints, text=kwargs.get("message", ""))
         session_id = str(kwargs.get("session_id") or "anonymous")
         turn_id = str(kwargs.get("turn_id") or kwargs.get("message") or "layout")

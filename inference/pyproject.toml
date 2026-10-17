@@ -28,8 +28,8 @@ dev = [
 # scripts/inference/setup_env_critic.sh, not this extra.
 backends = [
     "torch>=2.3",
-    "transformers @ git+https://github.com/huggingface/transformers.git",
-    "diffusers>=0.31",
+    "transformers>=5.17.0",
+    "diffusers>=0.41.0,<=0.42.0",
     "bitsandbytes>=0.43",
     "pillow>=10.4",
     "torchvision>=0.18",
@@ -37,6 +37,9 @@ backends = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+krisna_inference = ["assets/fonts/*.ttf"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

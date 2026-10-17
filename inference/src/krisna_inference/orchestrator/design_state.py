@@ -42,7 +42,7 @@ class SessionStage(str, Enum):
 
 
 class ConversationTurn(BaseModel):
-    role: Literal["user", "planner"]
+    role: Literal["user", "planner", "system"]
     content: str
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
@@ -58,6 +58,7 @@ class Constraints(BaseModel):
     layout_hints: str | None = None
     locked_regions: list[LockedRegion] = Field(default_factory=list)
     original_intent: str | None = None  # D2: preserves original user intent across long conversations
+    asset_mode: Literal["opaque", "transparent"] = "opaque"
 
 
 class LayoutDraft(BaseModel):
@@ -73,6 +74,7 @@ class VerifierScores(BaseModel):
     aesthetic: float | None = None
     handoff_consistency: float | None = None
     lock_preservation: float | None = None
+    seam_continuity: float | None = None
 
 
 RendererUsed = Literal["qwen_image_2_1", "z_image_turbo", "qwen_image_edit_2511", None]
@@ -191,7 +193,7 @@ class DesignState(BaseModel):
         self.updated_at = datetime.now(timezone.utc).isoformat()
         self.revision += 1
 
-    def append_turn(self, role: Literal["user", "planner"], content: str) -> None:
+    def append_turn(self, role: Literal["user", "planner", "system"], content: str) -> None:
         self.conversation_history.append(ConversationTurn(role=role, content=content))
         self.touch()
 

@@ -267,17 +267,28 @@ class PlannerBackendLlama(ModelBackend):
             system += " Human UICrit design grounding: " + " | ".join(r.note for r in retrieved)
 
         # InstructLayout (IEEE TPAMI 2025): Structured Semantic Graph Prefix
-        active_layout = layout_tree or (constraints or {}).get("layout_tree") or (constraints or {}).get("layout_ir")
+        active_layout = (
+            layout_tree
+            or (constraints or {}).get("current_layout")
+            or (constraints or {}).get("layout_tree")
+            or (constraints or {}).get("layout_ir")
+        )
         prefix = self._format_layout_graph_prefix(active_layout)
         if prefix:
             system += f"\n\n{prefix}"
 
         messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
         for turn in (history or [])[-6:]:
-            role = "assistant" if turn.get("role") == "planner" else turn.get("role", "user")
+            raw_role = turn.get("role")
             content = turn.get("content")
-            if content:
-                messages.append({"role": role, "content": content})
+            if not content:
+                continue
+            if raw_role == "planner":
+                messages.append({"role": "assistant", "content": content})
+            elif raw_role == "system":
+                messages.append({"role": "user", "content": f"[System Diagnostic]: {content}"})
+            else:
+                messages.append({"role": "user", "content": content})
 
         user_content = message or ("Audit and review the active design state." if review else "Continue the design.")
         if image_payload is None:
@@ -489,7 +500,15 @@ class PlannerBackendLlama(ModelBackend):
             output_tokens = usage.get("completion_tokens", 0)
 
             raw_text = result["choices"][0]["message"]["content"]
-            parsed = json.loads(raw_text)
+            # Qwen3.5-9B Thinking Mode decoupling: extract JSON payload if enclosed in <think> tags or markdown fences
+            if "<think>" in raw_text and "</think>" in raw_text:
+                raw_text = raw_text.split("</think>")[-1].strip()
+            if "```json" in raw_text:
+                raw_text = raw_text.split("```json")[-1].split("```")[0].strip()
+            elif "```" in raw_text:
+                raw_text = raw_text.split("```")[1].strip()
+
+            parsed = json.loads(raw_text.strip())
             validated = PlannerResponse.model_validate(parsed)
             return (
                 {

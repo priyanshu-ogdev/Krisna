@@ -330,6 +330,11 @@ class QwenImage21Backend(ModelBackend):
                         raise ValueError("strict serving requires valid split_counts")
                     if not isinstance(manifest.get("lora_target_modules"), list) or not manifest.get("lora_target_modules"):
                         raise ValueError("strict serving requires lora_target_modules")
+                    rv = manifest.get("renderer_version")
+                    if rv is not None and not (rv == "krisna.renderer.v2" or str(rv).startswith("krisna.renderer.v2.")):
+                        raise ValueError(f"adapter renderer_version mismatch: {manifest.get('renderer_version')}")
+                    if manifest.get("prompt_template_version") not in (None, "krisna.polish_prompt.v2"):
+                        raise ValueError(f"adapter prompt_template_version mismatch: {manifest.get('prompt_template_version')}")
                 log.info("Verified LoRA adapter manifest: %s (run_id=%s)", adapter_path, manifest.get("run_id"))
             except Exception as e:
                 if self.strict:
@@ -405,24 +410,56 @@ class QwenImage21Backend(ModelBackend):
 
         blobs = get_blob_store()
 
-        # Load input wireframe / conditioning image
+        # Load input wireframe / conditioning image (supporting native RGB and RGBA)
         source_img = None
         if handoff_ref:
             if isinstance(handoff_ref, str) and handoff_ref.startswith("blob://"):
                 try:
-                    source_img = blobs.load_image(handoff_ref).convert("RGB")
+                    loaded = blobs.load_image(handoff_ref)
+                    source_img = loaded.copy() if loaded.mode in ("RGB", "RGBA") else loaded.convert("RGBA" if "A" in loaded.mode else "RGB")
                 except (OSError, ValueError, RuntimeError) as e:
                     log.warning("Failed to load handoff blob image %s: %s", handoff_ref, e)
             elif isinstance(handoff_ref, (str, Path)) and Path(handoff_ref).exists():
                 from PIL import Image
                 with Image.open(handoff_ref) as image:
-                    source_img = image.convert("RGB")
+                    source_img = image.copy() if image.mode in ("RGB", "RGBA") else image.convert("RGBA" if "A" in image.mode else "RGB")
 
         if source_img is None:
             if self.strict:
                 raise ValueError("Qwen-Image-2.1 requires a valid image conditioning reference")
             from PIL import Image
             source_img = Image.new("RGB", (1024, 768), color=(245, 247, 250))
+
+        # UPGRADE: Wireframe-as-lock-donor resolution.
+        # When editing or refining an existing design, the locked region must preserve photorealistic
+        # pixels from the prior polished render (lock_donor_ref), NOT the low-fidelity wireframe!
+        lock_donor_ref = kwargs.get("lock_donor_ref")
+        lock_donor_img = None
+        if lock_donor_ref and lock_donor_ref != handoff_ref:
+            if isinstance(lock_donor_ref, str) and lock_donor_ref.startswith("blob://"):
+                try:
+                    loaded_d = blobs.load_image(lock_donor_ref)
+                    lock_donor_img = loaded_d.copy() if loaded_d.mode in ("RGB", "RGBA") else loaded_d.convert("RGBA" if "A" in loaded_d.mode else "RGB")
+                except Exception as e:
+                    log.warning("Failed to load lock donor blob image %s: %s", lock_donor_ref, e)
+            elif isinstance(lock_donor_ref, (str, Path)) and Path(lock_donor_ref).exists():
+                from PIL import Image
+                with Image.open(lock_donor_ref) as d_image:
+                    lock_donor_img = d_image.copy() if d_image.mode in ("RGB", "RGBA") else d_image.convert("RGBA" if "A" in d_image.mode else "RGB")
+
+        # Explicit Resolution & Lock Policy:
+        # If canvas resolution/aspect ratio changed between turns, pixel-level lock preservation
+        # from a prior render of different dimensions is mathematically invalid.
+        # Drop the locks with a logged warning rather than silently distorting pixels via interpolation.
+        if lock_donor_img is not None and source_img is not None and lock_donor_img.size != source_img.size:
+            log.warning(
+                "Canvas resolution/aspect changed from %s to %s between turns; dropping pixel locks.",
+                lock_donor_img.size, source_img.size
+            )
+            donor_img = source_img
+            locked_regions = []
+        else:
+            donor_img = lock_donor_img if lock_donor_img is not None else source_img
 
         def _generate():
             if self._pipeline is None and self.strict:
@@ -437,16 +474,33 @@ class QwenImage21Backend(ModelBackend):
                         except (TypeError, ValueError, AttributeError) as exc:
                             raise RuntimeError("cannot inspect native Qwen pipeline call signature") from exc
                     supported = self._native_call_parameters
-                    call = {"prompt": prompt, "image": source_img, "num_inference_steps": steps}
-                    # Soft inpainting mask conditioning (Zhang et al., ICCV 2023)
-                    if locked_regions:
-                        inpaint_mask = self._build_inpaint_mask(source_img.size, locked_regions)
-                        if "mask_image" in supported:
-                            call["mask_image"] = inpaint_mask
-                        elif "inpainting_mask" in supported:
-                            call["inpainting_mask"] = inpaint_mask
-                        elif "masked_image" in supported:
-                            call["masked_image"] = inpaint_mask
+                    # Visual conditioning input:
+                    # Initial turn: conditions on single wireframe image (4096 tokens).
+                    # Refinement turn: conditions on BOTH [updated_wireframe, prior_render] in fixed, deterministic
+                    # order so block-causal attention receives new layout geometry (idx 0) followed by prior visual
+                    # style/textures (idx 1). Sequence budget: 2 * 4096 condition tokens + 4096 target latents + <=512 text ~= 12.8K tokens.
+                    if (is_refine or kwargs.get("mode") == "refine") and lock_donor_img is not None and lock_donor_img != source_img:
+                        condition_images = [source_img, lock_donor_img]
+                    else:
+                        condition_images = source_img
+                    call = {"prompt": prompt, "image": condition_images, "num_inference_steps": steps}
+                    # Explicitly pin resolution to multiples of 32 aligned with 1MP token budget (supports 1024x1024, 1344x768, 768x1344)
+                    if source_img is not None:
+                        w, h = source_img.width, source_img.height
+                        max_pixels = 1024 * 1024
+                        if w * h > max_pixels:
+                            scale = math.sqrt(max_pixels / (w * h))
+                            w = int(w * scale)
+                            h = int(h * scale)
+                        target_w = max(512, (w // 32) * 32)
+                        target_h = max(512, (h // 32) * 32)
+                    else:
+                        target_w, target_h = 1024, 1024
+                    if "width" in supported:
+                        call["width"] = target_w
+                    if "height" in supported:
+                        call["height"] = target_h
+
                     if "generator" in supported and seed is not None:
                         import torch
                         generator = torch.Generator(device=self.device).manual_seed(int(seed))
@@ -459,9 +513,30 @@ class QwenImage21Backend(ModelBackend):
                         raise ValueError("native Qwen pipeline does not support true_cfg_scale")
                     out = self._pipeline(**call)
                     rendered = out.images[0]
-                    # Apply region locking if requested
+
+                    # Alpha flattening: ensure opaque rendered UI output is composited onto an opaque canvas
+                    # to prevent alpha jitter (253-254 vs 255) from breaking bitwise exact lock verification,
+                    # while preserving native RGBA mode if explicitly requested by constraints.asset_mode or source image.
+                    if rendered.mode == "RGBA":
+                        is_transparent_requested = (
+                            constraints.get("asset_mode") == "transparent"
+                            or (source_img is not None and getattr(source_img, "mode", None) == "RGBA")
+                        )
+                        if not is_transparent_requested:
+                            from PIL import Image
+                            opaque_bg = Image.new("RGBA", rendered.size, (255, 255, 255, 255))
+                            rendered = Image.alpha_composite(opaque_bg, rendered).convert("RGB")
+
+                    # Fail-fast dimension assertion: rendered output must match canvas size exactly
+                    if donor_img is not None and rendered.size != donor_img.size:
+                        raise ValueError(
+                            f"Pipeline output size {rendered.size} does not match canvas size {donor_img.size}. "
+                            "Exact pixel preservation requires identical dimensions."
+                        )
+
+                    # Apply region locking from donor_img (preserving prior polished pixels, not wireframe)
                     if locked_regions:
-                        rendered = self._apply_locked_regions(source_img, rendered, locked_regions)
+                        rendered = self._apply_locked_regions(donor_img, rendered, locked_regions)
                     return rendered, True, None
                 except Exception as e:
                     if self.strict:
@@ -476,7 +551,7 @@ class QwenImage21Backend(ModelBackend):
                 fallback_reason = "real pipeline unavailable"
 
             # Synthetic high-quality render fallback for test / CPU environments
-            return self._synthesize_render(source_img, prompt, constraints, locked_regions, scheduler), False, fallback_reason
+            return self._synthesize_render(source_img, prompt, constraints, locked_regions, scheduler, lock_donor_img=donor_img), False, fallback_reason
 
         rendered_image, used_real, fallback_reason = await asyncio.to_thread(_generate)
         output_ref = blobs.save_image(rendered_image, prefix="polish_qwen")
@@ -557,6 +632,7 @@ class QwenImage21Backend(ModelBackend):
             raise ValueError(
                 "locked-region exact pixel preservation requires source and rendered images to have identical sizes"
             )
+        target_mode = "RGBA" if (source_img.mode == "RGBA" or rendered_img.mode == "RGBA") else "RGB"
         src = source_img.convert("RGBA")
         dst = rendered_img.convert("RGBA")
 
@@ -609,7 +685,7 @@ class QwenImage21Backend(ModelBackend):
         # A binary mask is intentional: feathering would alter pixels inside a
         # protected region and violate the lock contract.
         blended = Image.composite(src, dst, mask)
-        return blended.convert("RGB")
+        return blended.convert(target_mode)
 
     def _build_inpaint_mask(self, size: tuple[int, int], locked_regions: list[Any]) -> Any:
         """Constructs an inverted binary inpaint mask (L-mode PIL Image).
@@ -658,11 +734,13 @@ class QwenImage21Backend(ModelBackend):
         constraints: dict,
         locked_regions: list,
         scheduler: FlowODEScheduler,
+        lock_donor_img: Any = None,
     ) -> Any:
         """Synthetic render fallback providing realistic visual polishing and region locking."""
         from PIL import ImageDraw, ImageEnhance
 
-        img = source_img.copy().convert("RGB")
+        target_mode = "RGBA" if getattr(source_img, "mode", None) == "RGBA" else "RGB"
+        img = source_img.copy().convert(target_mode)
         # Visual polish: subtle contrast and sharpness enhancement
         enhancer = ImageEnhance.Contrast(img)
         img = enhancer.enhance(1.08)
@@ -674,6 +752,10 @@ class QwenImage21Backend(ModelBackend):
         draw.rectangle([0, 0, img.width, 4], fill=(79, 70, 229))
 
         if locked_regions:
-            img = self._apply_locked_regions(source_img, img, locked_regions)
+            effective_donor = lock_donor_img if lock_donor_img is not None else source_img
+            if effective_donor is not None and effective_donor.size != img.size:
+                log.warning("Lock donor size %s differs from canvas %s; dropping invalid cross-aspect locks.", effective_donor.size, img.size)
+            else:
+                img = self._apply_locked_regions(effective_donor, img, locked_regions)
 
         return img
