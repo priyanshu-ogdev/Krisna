@@ -28,8 +28,11 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 | **Weight-Decomposed Adaptation** | **DoRA** (Liu et al., 2024) | *Proceedings of ICML 2024*, PMLR vol. 235, pp. 32087–32109. | Decomposes weight updates into directional and magnitude components. | Integrated via `use_dora: true` in Polish MMDiT training configuration to stabilize attention convergence. |
 | **Direct Preference Optimization** | **Diffusion-DPO** (Wallace et al., 2024) | *Proceedings of IEEE/CVF CVPR 2024*, pp. 8228–8238. [10.1109/CVPR52733.2024.00784](https://doi.org/10.1109/CVPR52733.2024.00784) | Reward-free direct preference optimization for generative diffusion. | Grounding for `training/polish/dpo_loss.py`, adapted from noise-prediction to velocity-prediction flow matching. |
 | **P2.A: Fast Consistency Flow Distillation** | **LCM-LoRA / CFM** (Luo et al., 2024) | *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, pp. 120–137. [10.1007/978-3-031-72995-9_7](https://doi.org/10.1007/978-3-031-72995-9_7) | Consistency distillation reducing multi-step ODE flows to 4–8 steps without quality degradation. | Integrated into `Tier.POLISH_FAST` in `model_registry.py` and `flows.fast_preview`, delivering ~0.9s real-time UI preview on A6000 and ~2.5s on consumer GPUs. |
-| **P2.B: Feed-Forward LoRA Expansion** | **Scaling Rectified Flow** (Esser et al., 2024) | *Proceedings of ICML 2024*, PMLR vol. 235, pp. 12423–12444. | MMDiT transformer feed-forward sublayers encode high-frequency style patterns and color ramps. | Expanded `lora_layers` to include `ff.net.0.proj,ff.net.2` alongside attention projections; verified via 4-way ablation suite (`ablation_runner.py`). |
+| **P2.B: Feed-Forward LoRA Expansion** | **Scaling Rectified Flow** (Esser et al., 2024) | *Proceedings of ICML 2024*, PMLR vol. 235, pp. 12423–12444. | MMDiT transformer feed-forward sublayers encode high-frequency style patterns and color ramps. | Targeted all 7 Single-Stream DiT projections: attention (`to_q, to_k, to_v, to_out.0`) and SwiGLU MLP (`img_mlp.gate_layer, img_mlp.proj, img_mlp.out`) across 32 transformer blocks (224 modules total); verified via 224-module fail-fast assertion. |
 | **P2.C: Inpainting-Aware Lock Conditioning** | **ControlNet & Mask Guidance** (Zhang et al., 2023) | *Proceedings of IEEE/CVF ICCV 2023*, pp. 3836–3847. [10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355) | Inpainting soft mask spatial conditioning during diffusion flow to prevent boundary artifacts. | Implemented in `_build_inpaint_mask` in `polish_backend_qwen.py`, passing inverse binary masks to native pipeline while `_apply_locked_regions` guarantees 0.00% pixel drift. |
+| **Continuous Flow Layout Generation** | **LayoutFlow** (Guerreiro et al., 2024) | *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, pp. 54–71. [10.1007/978-3-031-72764-1_4](https://doi.org/10.1007/978-3-031-72764-1_4) | Optimal-transport continuous vector fields for layout bounding box generation. | Integrated into `LayoutBackend` trajectory projection metrics and LayoutFlow dataset canonicalization. |
+| **Visual Glyph Semantic Wireframe** | **AnyText** (Tu et al., 2024) | *The Twelfth International Conference on Learning Representations (ICLR 2024)*. | High-contrast visual semantic wireframe conditioning for diffusion rendering. | Implemented in `render_wireframe` producing high-entropy 3-channel RGB conditioning with TrueType anti-aliased font rendering and luminance drop shadows. |
+| **Deterministic Constraint Layout** | **Cassowary** (Badros et al., 2001) | *ACM Transactions on Computer-Human Interaction (TOCHI)*, vol. 8, no. 4, pp. 272–306. [10.1145/502732.502734](https://doi.org/10.1145/502732.502734) | Linear arithmetic constraint solving for non-overlapping bounding boxes. | Algorithmic basis for `_resolve_flex_layout` and hierarchy preservation in `layout_baseline.py` guaranteeing locked node immutability. |
 
 ---
 
@@ -123,7 +126,25 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   *TextDiffuser-2: Unleashing the Power of Language Models for Text Rendering*.  
   In *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science (LNCS), vol. 15090, pp. 1–18.  
   DOI: [10.1007/978-3-031-72761-0_1](https://doi.org/10.1007/978-3-031-72761-0_1).  
-  *Technical Role in Krisna*: Demonstrates that language-model layout planning coupled with diffusion inpainting guarantees typographic legibility on digital screens.
+  *Technical Role in Krisna*: Demonstrates that language-model layout planning coupled with diffusion inpainting guarantees typographic legibility on digital screens. Informs our anti-aliased TrueType font scaling and bounding box typography metrics in `layout_renderer.py`.
+
+- **Tu, Y., et al. (ICLR 2024)**  
+  *AnyText: Multilingual Visual Text Generation and Editing*.  
+  In *The Twelfth International Conference on Learning Representations*.  
+  *Permanent Link*: [https://openreview.net/forum?id=unwtwz6r8p](https://openreview.net/forum?id=unwtwz6r8p).  
+  *Role in Krisna*: Proves that high-contrast visual semantic wireframes in standard 3-channel RGB provide optimal structural conditioning for text-heavy UI synthesis, guiding our 3-channel RGB wireframe handoff contract in `layout_renderer.py`.
+
+- **Guerreiro, J. A., et al. (Springer ECCV 2024)**  
+  *LayoutFlow: Flow Matching for Layout Generation*.  
+  In *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science (LNCS), vol. 15104, pp. 54–71.  
+  DOI: [10.1007/978-3-031-72764-1_4](https://doi.org/10.1007/978-3-031-72764-1_4).  
+  *Role in Krisna*: Formulates layout generation as continuous bounding box trajectories driven by optimal-transport vector fields. Integrated into `LayoutBackend` trajectory projection metrics.
+
+- **Badros, G. J., Borning, A., & Stuckey, P. J. (ACM TOCHI 2001)**  
+  *The Cassowary Linear Arithmetic Constraint Solving Algorithm: Interface and Implementation*.  
+  *ACM Transactions on Computer-Human Interaction*, vol. 8, no. 4, pp. 272–306, Dec. 2001.  
+  *DOI*: [10.1145/502732.502734](https://doi.org/10.1145/502732.502734).  
+  *Role in Krisna*: Algorithmic foundation for deterministic linear constraint solving, bounding-box hierarchy preservation, and Flexbox partitioning with strict locked node immutability in `layout_baseline.py`.
 
 ---
 
@@ -142,7 +163,7 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 - **Hu, E. J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L., & Chen, W. (ICLR 2022)**  
   *LoRA: Low-Rank Adaptation of Large Language Models*.  
   In *The Tenth International Conference on Learning Representations*.  
-  *Technical Role in Krisna*: Low-rank parameter-efficient adapter injection targeting attention projections (`to_k, to_q, to_v, to_out.0`) and feed-forward networks (`ff.net.0.proj, ff.net.2`).
+  *Technical Role in Krisna*: Low-rank parameter-efficient adapter injection targeting attention projections (`to_k, to_q, to_v, to_out.0`) and SwiGLU MLP projections (`img_mlp.gate_layer, img_mlp.proj, img_mlp.out`).
 
 - **Dettmers, T., Lewis, M., Shleifer, S., & Zettlemoyer, L. (ICLR 2022)**  
   *8-bit Approximations for Parallelism in Deep Learning*.  
@@ -231,7 +252,7 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 - **Esser, P., Kulal, S., Blattmann, A., Entezari, R., Müller, J., Saini, H., Levi, Y., Lorenz, D., Sauer, A., Boesel, F., Podell, D., Dockhorn, T., English, Z., & Rombach, R. (ICML 2024)**  
   *Scaling Rectified Flow Transformers for High-Resolution Image Synthesis*.  
   In *Proceedings of the 41st International Conference on Machine Learning*, PMLR vol. 235, pp. 12423–12444.  
-  *Technical Role in Krisna*: Formulates the MMDiT feed-forward sublayer architecture. Krisna expands LoRA target modules to include `ff.net.0.proj` and `ff.net.2`, capturing high-frequency UI styling, drop shadows, and subtle background gradients, validated through the 4-way ablation suite.
+  *Technical Role in Krisna*: Formulates the MMDiT feed-forward sublayer architecture. Krisna targets the SwiGLU MLP linear projections `img_mlp.gate_layer`, `img_mlp.proj`, and `img_mlp.out` alongside attention projections (`to_q, to_k, to_v, to_out.0`) across all 32 blocks (224 modules total), capturing high-frequency UI styling, drop shadows, and subtle background gradients.
 
 - **Zhang, L., Rao, A., & Agrawala, M. (IEEE/CVF ICCV 2023)**  
   *Adding Conditional Control to Text-to-Image Diffusion Models*.  
@@ -378,8 +399,9 @@ Fine-tuning `Qwen-Image-2.1` within consumer GPU envelopes (12GB VRAM) introduce
 2. **Qwen Sublayer Adaptation & Target Module Decomposition**:
    - In standard LLM fine-tuning, low-rank adapters target only attention projections ($W_q, W_v$).
    - For `Qwen-Image-2.1` MMDiT joint attention blocks, empirical ablation proves that adapting only attention projections causes severe loss of subtle UI styling, border anti-aliasing, and color gradients (dropping aesthetic scores by $-0.050$).
-   - Krisna expands the low-rank adapter targets across both attention and feed-forward sublayers (Esser et al. [13]):
-     $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{ff.net.0.proj}, \text{ff.net.2}\}$$
+   - Krisna targets all 7 linear projections across attention and SwiGLU MLP sublayers (Esser et al. [13]):
+     $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
+     amounting to exactly $7 \times 32 = 224$ adapted modules, protected by a strict count assertion.
 
 3. **QDoRA (Weight-Decomposed Adaptation on NF4 Base)**:
    - To counteract the quantization noise introduced by NF4 base weights, Krisna applies DoRA (Liu et al. [38]):

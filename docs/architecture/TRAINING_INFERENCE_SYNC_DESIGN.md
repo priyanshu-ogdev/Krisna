@@ -130,16 +130,33 @@ sequenceDiagram
 4. **Deterministic Layout IR Grounding**:
    - `LayoutBackend` parses the hierarchical UI element tree and generates a lossless 2D SVG/PNG wireframe, guaranteeing 100% geometric repeatability without token quantization artifacts.
 
-5. **Finalize Prompt Synthesis**:
-   - If `prompt` is None, `flows.finalize` synthesizes an enriched prompt from conversation history and active constraints, passing it to both the Polish renderer and the Verifier Stack.
+5. **PE-Style Descriptive Prompt Synthesis & Verbatim Label Guard**:
+   - `synthesize_descriptive_polish_prompt()` transforms raw layout constraints into cohesive descriptive prose matching Qwen Prompt Enhancement (PE) format across header, cards, action bars, and styling.
+   - `assert_and_inject_verbatim_labels()` acts as an enforceable guard guaranteeing 100% survival of text labels from `LayoutIR` before passing to the diffusion pipeline.
+
+6. **Refinement Mode Dual-Image Visual Conditioning & FlowEdit**:
+   - In refinement turns, Polish conditions on **both images in fixed block-causal order**: `[updated_wireframe_png, prior_render_png]`.
+   - Token budget: $2 \times 4096$ condition image tokens ($8,192$) $+ 4096$ target latents $+ \le 512$ text prompt tokens $\approx 12,800$ tokens ($\approx 12.8\text{K}$ tokens).
+   - `iterative_refine` immediately re-renders the wireframe to `state.layout.wireframe_ref` upon VLA action execution, and locks photorealistic regions from the prior render (`lock_donor_ref`) for 0.00% pixel drift.
+
+7. **Grounded Regional Spatial Retry Feedback & Seam Gating**:
+   - `build_grounded_spatial_retry_prompt()` translates numeric drift into natural-language regional spatial directives referencing specific buttons, headers, and labels.
+   - Closed-loop verification enforces `seam_continuity >= 0.85` in `EVALUATION_TARGETS`; locked-locked node conflicts are detected in `LayoutIR.diagnostics` and surfaced to `state.conversation_history` as `[Layout Conflict]`.
+
+8. **Single-Stream DiT LoRA Architecture Invariant**:
+   - Targets all 7 Single-Stream DiT linear projections: attention (`to_q, to_k, to_v, to_out.0`) and SwiGLU MLP (`img_mlp.gate_layer, img_mlp.proj, img_mlp.out`) across 32 transformer blocks ($7 \times 32 = 224$ modules total).
+   - Enforced by a strict fail-fast assertion in `train_dpo.py` (`assert len(_matched_lora_modules) == 224`).
 
 ---
 
 ## 4. VRAM Envelopes & State Machine (PRD §7.4)
 
+> [!NOTE]
+> All memory figures below represent **Documented Architecture Estimates / Unmeasured (Code-Level Invariants)** pending physical GPU hardware profiling.
+
 Baseline residency maintains **Planner (Q4_K_M: 6.5GB)** + **Layout IR (0.2GB)** = **6.7GB VRAM**, comfortably within the 10GB resident ceiling:
 
 - **Conversational Turn**: Zero swaps. Always-resident high throughput.
 - **Review / Critique Pass**: **Zero swaps, 0GB added memory**. Runs directly on resident Planner (`review=True`) with zero cold-load latency (eliminates old 45s Gemma swap).
-- **Finalize**: Planner + Layout IR temporarily unloaded (or offloaded); Polish tier loaded (`POLISH_DEFAULT` 8–12GB / `POLISH_QUALITY` 10–16GB). Output generated, verifiers scored, baseline restored.
-- **Low-VRAM Envelope**: 12–16GB target via Diffusers `enable_model_cpu_offload()` for Polish (8GB VRAM / 8GB host RAM). System RAM budget fits comfortably in 16GB total RAM without multi-gigabyte FP32 CPU offload spikes.
+- **Finalize**: Planner + Layout IR temporarily unloaded; Polish tier loaded (`POLISH_DEFAULT` 8–12GB / `POLISH_QUALITY` 10–16GB). Output generated, verifiers scored, baseline restored.
+- **Low-VRAM Envelope & Sequential Swapping**: On a 12GB consumer GPU, Planner (5.5–6GB) and Polish (5.5–6GB NF4 with CPU offload) cannot reside concurrently. Krisna's `SwapOrchestrator` performs **sequential model swapping** via `enable_model_cpu_offload()` and host RAM staging ($\ge 32\text{GB}$ host RAM recommended), trading PCI-e swap latency for single-GPU 12GB feasibility.

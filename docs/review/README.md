@@ -41,6 +41,12 @@ those are left visible, not silently edited away.
 | `27_prd_open_risks_research.md` | Closes PRD open research risks: resolves Qwen3.5 dependency via native PyPI release `transformers>=5.2.0`, investigates Critic/Planner venv isolation consolidation, implements `inspect.signature` guard for `strength` in `polish_quality_backend.py`, validates Z-Image-Turbo `encode_prompt()` return shapes via unit testing, addresses DPO beta=500 / LoRA rank=32 sweep recommendations, unifies `_export_zimage` `source_caption` schema, and guards `conversational_turn` stage advance |
 | `28_docker_isolation_and_hardware_preflight.md` | Production Docker containerization, multi-tier virtualenv isolation (`/opt/venv-inference` vs. `/opt/venv-critic`), fail-fast hardware & CUDA preflight diagnostic engine (`krisna_inference.common.hardware` and `check_hardware.py`), service fail-fast startup guard, `docker-compose.yml` GPU stack, and upgraded installers |
 | `29_comprehensive_codebase_and_docs_audit.md` | Comprehensive codebase and docs audit: fixes `CriticBackend` missing `os` import, `SwapOrchestrator` CUDA OOM exception handling, `download_weights.py` Windows venv interpreter default, `vram_budget.py` cross-platform host RAM probe, full GameLabel-10K preference pipeline sync (S12 export, `PreferenceStore`, `sync_dpo_pairs`, DPO training configs, unit tests), `data_forge` OCR stage filter, and aligns stale doc paths / VRAM specs |
+| `30_phase_3_literature_and_negative_gap_audit.md` | Phase 3 DPO Preference Alignment audit and negative literature gap review |
+| `31_phase_4_cfm_distillation_and_preview_audit.md` | Phase 4 Consistency Flow Matching (CFM) distillation and fast preview audit |
+| `37_sota_literature_survey_gap_audit_and_upgrade_roadmap.md` | Comprehensive SOTA literature survey, peer-reviewed citations audit, and foundational roadmap |
+| `38_phase_5_flowedit_refinement_and_action_grammar_audit.md` | Phase 5 FlowEdit 8-step iterative refinement, dual-layer mask conditioning, and VLA design action grammar audit |
+| `39_comprehensive_3tier_synchronization_and_literature_audit.md` | Phase 6 Comprehensive 3-tier synchronization, zero-VRAM layout geometry, Qwen-Image-2.1 RGBA alignment, wireframe-as-lock-donor resolution, and closed-loop spatial verification |
+| `40_sketch_tier_qwen_image_21_deep_audit_and_sync.md` | Deep architectural audit of the Sketch Tier against Qwen-Image-2.1 conditioning, VAE spatial downsampling, multi-device aspect ratios, typography boundary clipping, and zero-VRAM execution |
 
 
 ## What's fixed vs. still open
