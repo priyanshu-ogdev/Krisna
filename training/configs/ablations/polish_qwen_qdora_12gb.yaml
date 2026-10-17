@@ -60,7 +60,7 @@ bnb_4bit_compute_dtype: "bfloat16"
 bnb_4bit_use_double_quant: true   # nested 4-bit quantization of the quantization constants
 
 # Target same module set as primary BF16 config for fair ablation:
-lora_layers: "to_k,to_q,to_v,to_out.0,ff.net.0.proj,ff.net.2"
+lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
 
 # Contract metadata (validated by qwen_trainer_contract.py):
 pipeline_class: "QwenImage21Pipeline"

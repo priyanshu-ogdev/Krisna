@@ -1,5 +1,5 @@
 # Phase 2 Ablation B: DoRA Attention-Only (Isolating Feed-Forward Style Layers)
-# Compares DoRA attention-only against DoRA full layers (+ff.net.0.proj, +ff.net.2).
+# Compares DoRA attention-only against DoRA full layers (+img_mlp.gate_layer, +img_mlp.proj, +img_mlp.out).
 # Isolates: feed-forward sublayer contribution to digital UI aesthetic and gradient rendering.
 
 diffusers_dir: "./third_party/diffusers"
@@ -30,7 +30,7 @@ use_dora: true   # DoRA ACTIVE
 pipeline_class: "QwenImage21Pipeline"
 conditioning_contract: "image_conditioned_edit"
 base_weights_frozen: true
-lora_layers: "to_k,to_q,to_v,to_out.0"  # ATTENTION-ONLY (Isolating effect of omitting ff.net)
+lora_layers: "to_k,to_q,to_v,to_out.0"  # ATTENTION-ONLY (Isolating effect of omitting img_mlp SwiGLU)
 validation_epochs: 25
 ablation_id: "B_DORA_ATTN_ONLY"
 ablation_hypothesis: "Omitting feed-forward sublayers degrades subtle UI gradients, drop shadows, and high-frequency color ramps."

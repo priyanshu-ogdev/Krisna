@@ -24,7 +24,7 @@ dev = [
 # package's own logic (masking, dataset collation, lora target-module
 # discovery) is deliberately pure-Python/testable without these.
 sketch = ["torch>=2.3", "pillow>=10.4"]
-polish = ["torch>=2.3", "diffusers>=0.31", "peft>=0.13", "pillow>=10.4"]
+polish = ["torch>=2.3", "transformers>=5.17.0", "diffusers>=0.41.0,<=0.42.0", "peft>=0.13", "pillow>=10.4"]
 layout = ["torch>=2.3", "pillow>=10.4", "pyyaml>=6.0"]
 
 [tool.setuptools.packages.find]
