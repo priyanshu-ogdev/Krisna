@@ -84,7 +84,7 @@ data-forge/registry_reports/
 data-forge/audit_reports/
 data_krisna/
 custom_data_root/
-data_*/
+/data_*/
 datasets/
 dataset_cache/
 scratch/
@@ -129,3 +129,6 @@ powershell.cmd
 *.tar
 *.tar.gz
 *.7z
+
+# Downloaded academic research papers (fetched on demand via scripts/docs/download_papers.py)
+docs/papers/*.pdf
