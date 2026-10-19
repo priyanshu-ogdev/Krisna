@@ -122,13 +122,11 @@ class TestPhase4RuntimeTierAndFlowIntegration:
         spec = REGISTRY[Tier.POLISH_FAST]
         assert spec.tier == Tier.POLISH_FAST
         assert spec.vram_gb == 10.0
-        assert spec.fallback_tier == Tier.POLISH_DEFAULT
 
         # Low-VRAM registry
         low_spec = LOW_VRAM_REGISTRY[Tier.POLISH_FAST]
         assert low_spec.vram_gb == 4.5
         assert low_spec.ram_gb == 6.0
-        assert low_spec.fallback_tier == Tier.POLISH_DEFAULT
 
         # High-VRAM registry
         high_spec = HIGH_VRAM_REGISTRY[Tier.POLISH_FAST]

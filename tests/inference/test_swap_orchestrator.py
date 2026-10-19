@@ -77,18 +77,18 @@ async def test_second_swap_rejected_while_first_in_flight(started_orchestrator: 
 
 
 @pytest.mark.asyncio
-async def test_oom_falls_back_to_polish_default(started_orchestrator: SwapOrchestrator):
-    # Force POLISH_QUALITY to always OOM; it has a configured fallback
-    # (POLISH_DEFAULT per §6's stack table).
+async def test_oom_rejects_and_recovers_without_silent_fallback(started_orchestrator: SwapOrchestrator):
+    # Force POLISH_QUALITY to OOM; no silent tier substitution occurs.
     started_orchestrator.backends[Tier.POLISH_QUALITY].fail_loads = 999
 
     result = await started_orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
-    assert result.ok
-    assert result.tier_used == Tier.POLISH_DEFAULT
-    assert result.degraded is True
-    # System healthy afterward.
+    assert not result.ok
+    assert result.tier_used is None
+    assert result.degraded is False
+    # System healthy afterward: baseline is restored.
     assert started_orchestrator.backends[Tier.PLANNER].is_loaded
     assert started_orchestrator.backends[Tier.SKETCH].is_loaded
+    assert started_orchestrator.conversation_available()
 
 
 @pytest.mark.asyncio
@@ -116,13 +116,13 @@ async def test_review_rejected_while_swap_in_flight(
 
 
 @pytest.mark.asyncio
-async def test_both_quality_and_fallback_oom_exhausts_recovery(
+async def test_oom_exhausts_recovery_and_restores_baseline(
     started_orchestrator: SwapOrchestrator,
 ):
     started_orchestrator.backends[Tier.POLISH_QUALITY].fail_loads = 999
-    started_orchestrator.backends[Tier.POLISH_DEFAULT].fail_loads = 999
     result = await started_orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
     assert not result.ok
+    assert result.degraded is False
     # System still healthy — this is the whole point of the recovery path.
     assert started_orchestrator.backends[Tier.PLANNER].is_loaded
     assert started_orchestrator.backends[Tier.SKETCH].is_loaded
@@ -130,19 +130,17 @@ async def test_both_quality_and_fallback_oom_exhausts_recovery(
 
 
 @pytest.mark.asyncio
-async def test_vram_budget_preflight_skips_straight_to_fallback(started_orchestrator: SwapOrchestrator):
-    # Tiny envelope: POLISH_QUALITY (16GB) alone doesn't fit, but
-    # POLISH_DEFAULT (14GB, corrected from an earlier 8GB estimate that
-    # wrongly assumed NF4 quantization — see model_registry.py and
-    # docs/review/13_ram_offload_and_precision_audit.md) does. Baseline
-    # gets unloaded before the polish load in the real sequence, so
-    # budget is checked against JUST the candidate tier size.
+async def test_vram_budget_preflight_rejects_overbudget_tier_cleanly(started_orchestrator: SwapOrchestrator):
+    # Envelope smaller than POLISH_QUALITY's 16GB: budget preflight fails cleanly without degradation.
     orchestrator = started_orchestrator
-    orchestrator.ledger.envelope_gb = 15.0  # smaller than POLISH_QUALITY's 16GB alone, bigger than POLISH_DEFAULT's 14GB
+    orchestrator.ledger.envelope_gb = 15.0  # smaller than POLISH_QUALITY's 16GB
     result = await orchestrator.request_finalize(preferred_tier=Tier.POLISH_QUALITY)
-    assert result.ok
-    assert result.tier_used == Tier.POLISH_DEFAULT  # 14GB fits under 15GB envelope
-    assert result.degraded is True
+    assert not result.ok
+    assert result.tier_used is None
+    assert result.degraded is False
+    assert started_orchestrator.backends[Tier.PLANNER].is_loaded
+    assert started_orchestrator.backends[Tier.SKETCH].is_loaded
+    assert started_orchestrator.conversation_available()
 
 
 @pytest.mark.asyncio

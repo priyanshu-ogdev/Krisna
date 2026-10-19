@@ -223,7 +223,16 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
         shadow_color = (226, 232, 240)
         accent_color = palette[2] if len(palette) > 2 else (palette[1] if len(palette) > 1 else "#4F46E5")
 
-    image = Image.new("RGB", (canvas_w, canvas_h), bg_color)
+    is_transparent = (
+        style == "transparent"
+        or root_tokens.get("asset_mode") == "transparent"
+        or root_tokens.get("transparent") is True
+    )
+
+    if is_transparent:
+        image = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    else:
+        image = Image.new("RGB", (canvas_w, canvas_h), bg_color)
     draw = ImageDraw.Draw(image)
     fonts = _resolve_ui_fonts()
 
@@ -342,3 +351,79 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
+
+
+UI_SEMANTIC_PALETTE: dict[str, tuple[int, int, int]] = {
+    "background": (15, 23, 42),       # Class 0: Dark slate background
+    "container": (30, 41, 59),        # Class 1: Generic structural container
+    "card": (51, 65, 85),             # Class 2: Card container / surface
+    "text": (56, 189, 248),           # Class 3: Typographic text block
+    "button": (99, 102, 241),         # Class 4: Interactive CTA / button
+    "input": (168, 85, 247),          # Class 5: Text input field / search
+    "image": (34, 197, 94),           # Class 6: Media / image placeholder
+    "icon": (234, 179, 8),            # Class 7: Icon / badge
+    "divider": (100, 116, 139),       # Class 8: Divider rule / boundary
+    "list": (71, 85, 105),            # Class 9: List / repeating items
+    "other": (148, 163, 184),         # Class 10: Other misc elements
+    "locked": (239, 68, 68),          # Class 11: Frozen / immutable locked region
+}
+
+
+def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
+    """Render canonical UI semantic segmentation map for spatially-adaptive flow conditioning.
+
+    Research Grounding:
+    - Park, T., et al. (CVPR 2019 Oral). "Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE)."
+    - Zhang, L., et al. (IEEE/CVF ICCV 2023). "Adding Conditional Control to Text-to-Image Diffusion Models (ControlNet)."
+    - Xie, E., et al. (ICLR 2025). "Sana: Efficient High-Resolution Image Synthesis with Linear Diffusion Transformers."
+
+    Assigns discrete categorical RGB class indices to each pixel in the canvas, enabling regional
+    cross-attention and spatially-adaptive velocity modulation during Polish flow matching.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError as exc:
+        raise RuntimeError("Pillow is required for segmentation rendering") from exc
+
+    report = project_layout(layout)
+    canvas_w = layout.canvas_width
+    canvas_h = layout.canvas_height
+
+    # Initialize canvas with background class
+    bg_color = UI_SEMANTIC_PALETTE["background"]
+    image = Image.new("RGB", (canvas_w, canvas_h), bg_color)
+    draw = ImageDraw.Draw(image)
+
+    for node in sorted(report.layout.nodes, key=lambda item: (item.z_index, item.id)):
+        if node.id == "root" and node.parent is None:
+            continue
+
+        x1 = max(0, min(canvas_w - 2, int(node.bbox.x1 * canvas_w)))
+        y1 = max(0, min(canvas_h - 2, int(node.bbox.y1 * canvas_h)))
+        x2 = max(x1 + 1, min(canvas_w, int(node.bbox.x2 * canvas_w)))
+        y2 = max(y1 + 1, min(canvas_h, int(node.bbox.y2 * canvas_h)))
+
+        node_type = str(node.type).lower()
+        if node.locked:
+            fill_color = UI_SEMANTIC_PALETTE["locked"]
+        else:
+            fill_color = UI_SEMANTIC_PALETTE.get(node_type, UI_SEMANTIC_PALETTE["other"])
+
+        # Render semantic category footprint
+        if node_type == "button":
+            radius = min(8, max(2, (y2 - y1) // 2))
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
+        elif node_type in ("card", "container", "list"):
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=6, fill=fill_color)
+            # If container contains a text label, render inner text zone
+            if node.text:
+                th = min(y2 - y1 - 4, 16)
+                draw.rectangle((x1 + 6, y1 + 6, min(x2 - 6, x1 + int((x2 - x1) * 0.7)), y1 + 6 + th), fill=UI_SEMANTIC_PALETTE["text"])
+        else:
+            draw.rectangle((x1, y1, x2, y2), fill=fill_color)
+
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+    return path
+

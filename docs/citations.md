@@ -33,6 +33,9 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 | **Continuous Flow Layout Generation** | **LayoutFlow** (Guerreiro et al., 2024) | *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, pp. 54–71. [10.1007/978-3-031-72764-1_4](https://doi.org/10.1007/978-3-031-72764-1_4) | Optimal-transport continuous vector fields for layout bounding box generation. | Integrated into `LayoutBackend` trajectory projection metrics and LayoutFlow dataset canonicalization. |
 | **Visual Glyph Semantic Wireframe** | **AnyText** (Tu et al., 2024) | *The Twelfth International Conference on Learning Representations (ICLR 2024)*. | High-contrast visual semantic wireframe conditioning for diffusion rendering. | Implemented in `render_wireframe` producing high-entropy 3-channel RGB conditioning with TrueType anti-aliased font rendering and luminance drop shadows. |
 | **Deterministic Constraint Layout** | **Cassowary** (Badros et al., 2001) | *ACM Transactions on Computer-Human Interaction (TOCHI)*, vol. 8, no. 4, pp. 272–306. [10.1145/502732.502734](https://doi.org/10.1145/502732.502734) | Linear arithmetic constraint solving for non-overlapping bounding boxes. | Algorithmic basis for `_resolve_flex_layout` and hierarchy preservation in `layout_baseline.py` guaranteeing locked node immutability. |
+| **Spatially-Adaptive Semantic Modulation** | **SPADE / GauGAN** (Park et al., 2019, 2021) | *IEEE/CVF CVPR 2019 Oral*, pp. 2337–2346. [10.1109/CVPR.2019.00244](https://doi.org/10.1109/CVPR.2019.00244); *IEEE TPAMI*, 43(11):4165–4181. [10.1109/TPAMI.2020.3013583](https://doi.org/10.1109/TPAMI.2020.3013583) | Spatially-adaptive semantic map modulation preventing feature normalization washout. | Implemented in `render_segmentation_map` (`layout_renderer.py`) generating discrete categorical UI color masks for multi-stream spatial conditioning in `polish_backend_qwen.py`. |
+| **Magnitude-Preserving Flow Dynamics** | **EDM2** (Karras et al., 2024) | *IEEE/CVF CVPR 2024 Oral*, pp. 24165–24174. [10.1109/CVPR52733.2024.02283](https://doi.org/10.1109/CVPR52733.2024.02283) | Weight normalization and variance-stabilized velocity schedules. | Grounds DoRA magnitude normalization and flow matching velocity-loss weighting across varying UI element token densities. |
+| **Efficient High-Res Linear DiT & Flow ODE** | **Sana** (Xie et al., 2025) | *The Thirteenth International Conference on Learning Representations (ICLR 2025)*. | Deep autoencoder compression (32x), Linear DiT, and Flow-DPM-Solver ODE schedules. | Guides resolution-aware multi-scale patch tokenization and Flow ODE step scheduling in Qwen-Image-2.1 Polish backend. |
 
 ---
 
@@ -343,6 +346,34 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   *Technical Role in Krisna*: Multi-metric evaluation framework combining low-level element bounding-box IoU, high-level visual similarity, and automated layout matching.
 
 ---
+
+### 3.10 NVIDIA Spatially-Adaptive Normalization, Flow Matching & High-Resolution DiT Foundations
+
+- **Park, T., Liu, M.-Y., Wang, T.-C., & Zhu, J.-Y. (IEEE/CVF CVPR 2019 Oral & IEEE TPAMI 2021)**  
+  *Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE / GauGAN)*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2019)*, pp. 2337–2346.  
+  DOI: [10.1109/CVPR.2019.00244](https://doi.org/10.1109/CVPR.2019.00244).  
+  Extended Journal Publication: *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 43, no. 11, Nov. 2021, pp. 4165–4181.  
+  DOI: [10.1109/TPAMI.2020.3013583](https://doi.org/10.1109/TPAMI.2020.3013583).  
+  *Technical Role in Krisna*: Landmark formulation demonstrating that passing semantic segmentation layouts through spatially-adaptive affine transformations ($\gamma(M) \odot \frac{h - \mu}{\sigma} + \beta(M)$) prevents spatial semantic information from being obliterated by standard normalization layers. Krisna translates this fundamental insight into multi-stream spatial conditioning for `Qwen-Image-2.1`: the Sketch tier renders both a high-frequency visual wireframe (`wireframe_ref`) and a canonical discrete categorical semantic segmentation map (`segmentation_ref` via `UI_SEMANTIC_PALETTE`), feeding both to the Polish flow-matching model to guide attention maps without feature washout.
+
+- **Karras, T., Aittala, M., Lehtinen, J., Karras, J., Laine, S., & Aila, T. (IEEE/CVF CVPR 2024 Oral)**  
+  *Analyzing and Improving the Image Quality of Diffusion Models (EDM2)*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 24165–24174.  
+  DOI: [10.1109/CVPR52733.2024.02283](https://doi.org/10.1109/CVPR52733.2024.02283).  
+  *Technical Role in Krisna*: Discovers network capacity bottlenecks in modern generative diffusion models and formulates magnitude-preserving (MP) operations, weight normalization, and variance-stabilized noise schedules. Informs Krisna's flow matching velocity-loss weighting schedule and DoRA magnitude normalization across sparse and dense UI component distributions.
+
+- **Xie, E., Yao, L., Shi, H., Zhou, Z., Liu, X., Zhou, D., Li, Z., & Shen, C. (ICLR 2025)**  
+  *Sana: Efficient High-Resolution Image Synthesis with Linear Diffusion Transformers*.  
+  In *The Thirteenth International Conference on Learning Representations (ICLR 2025)*.  
+  Conference Archive: openreview.net/forum?id=V3mKSpzKow.  
+  *Technical Role in Krisna*: Proves that high-resolution flow-matching generative models benefit substantially from deep autoencoder compression (32x compression), Linear DiT cross-attention layers, and Flow-DPM-Solver ODE schedules. Guides Krisna's multi-scale flow matching schedule and resolution-aware patch token packing for UI composition.
+
+- **Zhang, L., Rao, A., & Agrawala, M. (IEEE/CVF ICCV 2023)**  
+  *Adding Conditional Control to Text-to-Image Diffusion Models (ControlNet)*.  
+  In *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV 2023)*, pp. 3836–3847.  
+  DOI: [10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355).  
+  *Technical Role in Krisna*: Seminal spatial control architecture injecting structural condition priors via dual-stream conditioning branches. Formulates the dual-stream spatial input mechanism (`[source_img, segmentation_img]`) utilized by Krisna's `QwenImage21Backend` to anchor flow matching trajectories to wireframe boundaries and categorical regions.
 
 ---
 

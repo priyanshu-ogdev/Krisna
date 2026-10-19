@@ -194,3 +194,47 @@ def test_dpo_dataset_single_pair_zero_overlap(tmp_path):
             split="val",
             val_fraction=0.1,
         )
+
+
+def test_dpo_dataset_prompt_augmentation_invariants():
+    from unittest.mock import MagicMock, patch
+
+    store = PreferenceStore(db_path=":memory:")
+    try:
+        store.add(
+            PreferencePair(
+                prompt="a majestic mountain landscape at dusk",
+                chosen_ref="blob://chosen/abc123",
+                rejected_ref="blob://rejected/def456",
+                source="pickapic_v2",
+            )
+        )
+        ds = object.__new__(PreferencePairDataset)
+        ds.pairs = store.list()
+        ds.transform = lambda img: img
+        fake_img = MagicMock()
+        fake_img.convert.return_value = fake_img
+        fake_blobs = MagicMock()
+        fake_blobs.load_image.return_value = fake_img
+        ds.blobs = fake_blobs
+        ds.flip_prob = 0.0
+
+        assert len(ds) == 1
+        item = ds[0]
+        assert "chosen_pixel_values" in item
+        assert "rejected_pixel_values" in item
+        assert item["prompt"] is not None
+        assert len(item["prompt"]) > 0
+
+        # Augmented prompt path
+        with patch("krisna_training.polish.dpo_dataset.random.random", return_value=0.0):
+            aug_item = ds[0]
+            assert len(aug_item["prompt"]) > 0
+
+        # Raw prompt path
+        with patch("krisna_training.polish.dpo_dataset.random.random", return_value=1.0):
+            raw_item = ds[0]
+            assert raw_item["prompt"] == "a majestic mountain landscape at dusk"
+    finally:
+        store.close()
+

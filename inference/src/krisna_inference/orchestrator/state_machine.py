@@ -6,8 +6,7 @@ provided document text was cut off before §7.4's body. This module is that
 spec, reconstructed from what IS fully specified elsewhere in the document —
 §5.3's three sequence diagrams, §3's goals ("Model transitions ... complete
 without user-visible failure, even under memory pressure" and the 16-24GB
-envelope), and §6's fallback_tier relationship (POLISH_QUALITY ->
-POLISH_DEFAULT) — rather than invented from scratch. Treat this as the
+envelope) — rather than invented from scratch. Treat this as the
 concrete proposal for §7.4; if the original spec differs, the transition
 table below is the part to reconcile against it.
 

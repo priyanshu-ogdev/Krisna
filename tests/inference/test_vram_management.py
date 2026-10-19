@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from krisna_inference.orchestrator.exceptions import VRAMBudgetExceededError
 from krisna_inference.orchestrator.model_registry import (
     HIGH_VRAM_REGISTRY,
     LOW_VRAM_REGISTRY,
@@ -12,11 +13,61 @@ from krisna_inference.orchestrator.model_registry import (
     get_registry,
 )
 from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krisna_inference.orchestrator.vram_budget import VRAMLedger
 
 
 def fast_mock_factory(spec: ModelSpec) -> MockBackend:
     return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
 
+
+# ---------------------------------------------------------------------------
+# VRAMLedger Unit Tests
+# ---------------------------------------------------------------------------
+
+class TestVRAMLedger:
+    def test_admits_within_envelope(self):
+        ledger = VRAMLedger(envelope_gb=24.0)
+        ledger.admit(Tier.PLANNER)   # 4.2
+        ledger.admit(Tier.SKETCH)    # 0.2
+        assert ledger.used_gb == pytest.approx(4.4)
+        assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 12.0 more = 16.4, fits
+
+    def test_rejects_over_envelope(self):
+        ledger = VRAMLedger(envelope_gb=20.0)
+        ledger.admit(Tier.PLANNER)
+        ledger.admit(Tier.SKETCH)
+        ledger.admit(Tier.POLISH_DEFAULT)
+        assert ledger.used_gb == pytest.approx(16.4)
+        assert not ledger.would_fit(Tier.POLISH_QUALITY)  # +16.0 = 32.4, doesn't fit
+        with pytest.raises(VRAMBudgetExceededError):
+            ledger.admit(Tier.POLISH_QUALITY)
+
+    def test_release_frees_budget(self):
+        ledger = VRAMLedger(envelope_gb=16.3)
+        ledger.admit(Tier.PLANNER)
+        ledger.admit(Tier.SKETCH)
+        assert not ledger.would_fit(Tier.POLISH_DEFAULT)  # 4.4 + 12.0 = 16.4 > 16.3
+        ledger.release(Tier.SKETCH)
+        assert ledger.would_fit(Tier.POLISH_DEFAULT)  # 4.2 + 12.0 = 16.2 <= 16.3
+
+    def test_double_admit_is_idempotent(self):
+        ledger = VRAMLedger(envelope_gb=24.0)
+        ledger.admit(Tier.PLANNER)
+        used_after_first = ledger.used_gb
+        ledger.admit(Tier.PLANNER)
+        assert ledger.used_gb == used_after_first
+
+    def test_snapshot_shape(self):
+        ledger = VRAMLedger(envelope_gb=24.0)
+        ledger.admit(Tier.PLANNER)
+        snap = ledger.snapshot()
+        assert snap["resident"] == ["planner"]
+        assert snap["used_gb"] == pytest.approx(4.2)
+
+
+# ---------------------------------------------------------------------------
+# Model Registry & Envelope Configuration Tests
+# ---------------------------------------------------------------------------
 
 class TestGetRegistry:
     def test_default_returns_full_vram_registry(self):
@@ -61,6 +112,10 @@ class TestGetRegistry:
             assert LOW_VRAM_REGISTRY[tier].vram_gb <= 12.0
         assert baseline_vram <= 12.0
 
+
+# ---------------------------------------------------------------------------
+# SwapOrchestrator Low-VRAM Integration Tests
+# ---------------------------------------------------------------------------
 
 class TestSwapOrchestratorLowVramMode:
     @pytest.mark.asyncio

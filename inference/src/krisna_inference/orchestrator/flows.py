@@ -136,6 +136,7 @@ async def conversational_turn(
     if new_layout_ref:
         state.layout.layout_ref = new_layout_ref
         state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
+        state.layout.segmentation_ref = sketch_out.get("segmentation_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
 
@@ -224,6 +225,7 @@ async def planner_self_review(
     if new_layout_ref:
         state.layout.layout_ref = new_layout_ref
         state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
+        state.layout.segmentation_ref = sketch_out.get("segmentation_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
 
@@ -290,6 +292,7 @@ async def finalize(
 
     handoff_input = state.layout.wireframe_ref or state.layout.layout_ref
     pixel_ref = handoff_hook(handoff_input) if handoff_hook else handoff_input
+    segmentation_ref = state.layout.segmentation_ref
 
     # UPGRADE: Wireframe-as-lock-donor resolution
     # If a prior finalized render exists, it is the photorealistic lock donor; otherwise fallback to pixel_ref
@@ -309,6 +312,7 @@ async def finalize(
         session_id=session_id,
         handoff_image_ref=pixel_ref,
         lock_donor_ref=lock_donor_ref,
+        segmentation_ref=segmentation_ref,
         prompt=effective_prompt,
         constraints=state.constraints.model_dump(),
         locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
@@ -407,6 +411,7 @@ async def finalize(
                 session_id=session_id,
                 handoff_image_ref=pixel_ref,
                 lock_donor_ref=lock_donor_ref,
+                segmentation_ref=segmentation_ref,
                 prompt=retry_prompt,
                 constraints=state.constraints.model_dump(),
                 locked_regions=[r.model_dump() for r in state.constraints.locked_regions],

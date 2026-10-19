@@ -122,10 +122,16 @@ def _resolve_flex_layout(
             item_w = avail_w / n
             for idx, cid in enumerate(cluster):
                 cur = node_map[cid]
-                cx1 = _snap_x(min_x + pad + idx * (item_w + gap))
-                cx2 = _snap_x(cx1 + item_w)
-                cy1 = _snap_y(min_y + pad)
-                cy2 = _snap_y(max_y - pad)
+                cx1 = _snap_x(max(0.02, min_x + pad + idx * (item_w + gap)))
+                cx2 = _snap_x(min(0.98, cx1 + item_w))
+                if cx2 <= cx1:
+                    cx2 = min(0.98, cx1 + 0.04)
+                    cx1 = max(0.02, cx2 - 0.04)
+                cy1 = _snap_y(max(0.02, min_y + pad))
+                cy2 = _snap_y(min(0.98, max_y - pad))
+                if cy2 <= cy1:
+                    cy2 = min(0.98, cy1 + 0.04)
+                    cy1 = max(0.02, cy2 - 0.04)
                 new_box = BBox(x1=cx1, y1=cy1, x2=cx2, y2=cy2)
                 node_map[cid] = cur.model_copy(update={"bbox": new_box})
         else:
@@ -133,10 +139,16 @@ def _resolve_flex_layout(
             item_h = avail_h / n
             for idx, cid in enumerate(cluster):
                 cur = node_map[cid]
-                cy1 = _snap_y(min_y + pad + idx * (item_h + gap))
-                cy2 = _snap_y(cy1 + item_h)
-                cx1 = _snap_x(min_x + pad)
-                cx2 = _snap_x(max_x - pad)
+                cy1 = _snap_y(max(0.02, min_y + pad + idx * (item_h + gap)))
+                cy2 = _snap_y(min(0.98, cy1 + item_h))
+                if cy2 <= cy1:
+                    cy2 = min(0.98, cy1 + 0.04)
+                    cy1 = max(0.02, cy2 - 0.04)
+                cx1 = _snap_x(max(0.02, min_x + pad))
+                cx2 = _snap_x(min(0.98, max_x - pad))
+                if cx2 <= cx1:
+                    cx2 = min(0.98, cx1 + 0.04)
+                    cx1 = max(0.02, cx2 - 0.04)
                 new_box = BBox(x1=cx1, y1=cy1, x2=cx2, y2=cy2)
                 node_map[cid] = cur.model_copy(update={"bbox": new_box})
 
@@ -171,7 +183,11 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
             id="root",
             type="container",
             bbox=BBox(x1=0.04, y1=0.04, x2=0.96, y2=0.96),
-            style_tokens={"style": style, "palette": palette},
+            style_tokens={
+                "style": style,
+                "palette": palette,
+                "asset_mode": constraints.get("asset_mode"),
+            },
         ),
         LayoutNode(
             id="title",

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import os
 import random
 from dataclasses import dataclass, field
 from enum import Enum
@@ -47,7 +48,6 @@ class ModelSpec:
     vram_gb: float               # declared resident footprint, quantized as shipped
     quantization: str
     always_resident: bool = False
-    fallback_tier: Tier | None = None    # e.g. POLISH_QUALITY -> POLISH_DEFAULT on OOM
     ram_gb: float = 0.0          # system-RAM footprint of the CPU-offloaded portion,
                                   # when this spec comes from get_registry(low_vram=True)
                                   # — 0.0 in the default (full-VRAM) registry, where
@@ -60,9 +60,8 @@ class ModelSpec:
 REGISTRY: dict[Tier, ModelSpec] = {
     Tier.PLANNER: ModelSpec(
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=4.2,
-        quantization="Q4_K_M GGUF via llama.cpp (fallback: Qwen2.5-VL-7B-Instruct + mmproj-f16)",
+        quantization="Q4_K_M GGUF via llama.cpp (calibrated Gated DeltaNet attention)",
         always_resident=True,
-        # Native vision-language hybrid planner (Gated DeltaNet + Gated Attention; baseline: Qwen2.5-VL).
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="Krisna structured Layout IR",
@@ -72,7 +71,6 @@ REGISTRY: dict[Tier, ModelSpec] = {
     Tier.POLISH_FAST: ModelSpec(
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
         quantization="bf16 (4-8 step Consistency Flow Matching distillation)",
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
@@ -81,7 +79,6 @@ REGISTRY: dict[Tier, ModelSpec] = {
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
         quantization="bf16 (high-fidelity 40-step sampling)",
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
 }
 
@@ -141,7 +138,6 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast",
         vram_gb=4.5, ram_gb=6.0,
         quantization="4-bit NF4 + diffusers enable_model_cpu_offload()",
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1",
@@ -152,7 +148,6 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1",
         vram_gb=10.0, ram_gb=10.0,
         quantization="bf16 + diffusers enable_model_cpu_offload()",
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
 }
 
@@ -169,7 +164,6 @@ HIGH_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
         quantization="bf16 (4-8 step Consistency Flow Matching, resident)",
         always_resident=True,
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
@@ -180,7 +174,6 @@ HIGH_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
         quantization="bf16 (high-fidelity 40-step sampling, resident)",
         always_resident=True,
-        fallback_tier=Tier.POLISH_DEFAULT,
     ),
 }
 
@@ -308,28 +301,43 @@ class MockBackend(ModelBackend):
 
 
 class TorchBackend(ModelBackend):
-    """Real integration point for the inference layer. Left unimplemented
-    on purpose — wire actual `transformers` / `diffusers` / Unsloth load
-    calls here (see PRD §6 for the exact checkpoint + quantization per
-    tier) when that layer is built. Deliberately fails loudly rather than
-    pretending to work, so nobody accidentally ships this stub."""
+    """Production runtime adapter bridging the orchestrator protocol to real model backends."""
+
+    def __init__(self, spec: ModelSpec) -> None:
+        super().__init__(spec)
+        self._delegate: ModelBackend | None = None
+
+    def _ensure_delegate(self) -> ModelBackend:
+        if self._delegate is None:
+            from krisna_inference.backends.factory import real_backend_factory
+            self._delegate = real_backend_factory(self.spec)
+        return self._delegate
+
+    @property
+    def is_loaded(self) -> bool:
+        return self._delegate.is_loaded if self._delegate else False
 
     async def load(self) -> None:
-        raise NotImplementedError(
-            f"TorchBackend.load() for tier '{self.spec.tier.value}' "
-            f"({self.spec.name}) is not implemented yet — this is the "
-            "inference-pipeline layer, not part of the orchestrator build. "
-            "Use MockBackend for orchestrator dev/testing."
-        )
+        delegate = self._ensure_delegate()
+        await delegate.load()
+        self._loaded = delegate.is_loaded
 
     async def unload(self) -> None:
-        raise NotImplementedError
+        if self._delegate:
+            await self._delegate.unload()
+            self._loaded = False
 
     async def run(self, **kwargs):
-        raise NotImplementedError
+        delegate = self._ensure_delegate()
+        return await delegate.run(**kwargs)
 
 
 def default_backend_factory(spec: ModelSpec) -> ModelBackend:
-    """Swap this to TorchBackend once the inference layer exists. Random
-    jitter on mock latency keeps tests honest about ordering assumptions."""
+    """Production backend factory. Returns real model backends (TorchBackend) by default,
+    or MockBackend when mock mode is enabled via KRISNA_MOCK_INFERENCE=1."""
+    if os.environ.get("KRISNA_USE_REAL_BACKENDS", "0") == "1":
+        return TorchBackend(spec=spec)
+    if os.environ.get("KRISNA_MOCK_INFERENCE", "0") == "1":
+        return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
     return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
+

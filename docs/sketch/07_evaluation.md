@@ -1,36 +1,42 @@
-# Evaluation
+# Sketch Tier Evaluation & Benchmark Suite
 
-## Structured metrics
+## 1. Multi-Tier Evaluation Framework
 
-- node-type accuracy;
-- box IoU and generalized IoU;
-- parent/tree accuracy;
-- relation accuracy;
-- locked-node preservation;
-- legality violation rate;
-- completion quality;
-- alignment and overlap;
-- layout FID only within the same dataset/split/protocol.
+Evaluation of the Sketch Tier is conducted across two complementary axes:
+1. **Isolated Structured Layout Metrics**: Evaluating the mathematical legality, alignment, and constraint fidelity of the generated `LayoutIR` tree.
+2. **End-to-End Closed-Loop Synthesis Metrics**: Evaluating the visual, typographic, and spatial fidelity of the polished render produced by the downstream Polish tier.
 
-## End-to-end metrics
+---
 
-Render the generated IR and pass it through the same Polish stack. Measure:
+## 2. Structured Layout Metrics
 
-- OCR text accuracy;
-- layout IoU against known references;
-- component placement error;
-- style/constraint adherence;
-- image quality;
-- human pairwise preference;
-- time to first usable sketch;
-- final render improvement over the current MaskGIT handoff.
+| Metric | Target | Formula / Definition | Operational Role |
+| :--- | :--- | :--- | :--- |
+| **Legality Violation Rate** | **$0.0\%$** | $\frac{1}{N}\sum \mathbb{I}(\text{violations} > 0)$ | Hard gate: bounding boxes inside $[0, 1]^4$, $x_1 < x_2$, $y_1 < y_2$, acyclic tree. |
+| **Locked Node Drift** | **$0.000$** | $\max_{i \in \text{locked}} \|\mathbf{b}_i - \mathbf{b}_i^\text{orig}\|_2$ | Invariant: locked elements must experience zero spatial displacement. |
+| **Box Overlap Rate** | **$\le 5.0\%$** | $\frac{1}{\binom{N}{2}}\sum_{i < j} \mathbb{I}(\text{IoU}(\mathbf{b}_i, \mathbf{b}_j) > 0.05)$ | Validates collision partitioner effectiveness on sibling elements. |
+| **Grid Alignment Score** | **$\ge 85.0\%$** | $\frac{1}{2N}\sum (\mathbb{I}(x \in 8\text{pt}) + \mathbb{I}(y \in 8\text{pt}))$ | Measures adherence to the 8pt UI grid rhythm. |
+| **Containment Precision** | **$100.0\%$** | $\frac{1}{|V_\text{child}|}\sum \mathbb{I}(\mathbf{b}_u \subseteq \mathbf{b}_{\text{parent}(u)})$ | Asserts children do not breach container parent bounds. |
 
-## Required A/B matrix
+---
 
-1. current MaskGIT;
-2. Planner JSON layout;
-3. LayoutFlow-adapted IR model;
-4. LayoutFlow + Planner retrieval;
-5. optional TA-TiTok/MaskGen visual route.
+## 3. End-to-End Polish Integration Metrics
 
-No model replaces the current path until the end-to-end A/B shows a real improvement, not just a better layout-only FID.
+Evaluated via `VerifierStack.evaluate_finalize_output()` in `flows.finalize()`:
+
+| Metric | Target Threshold | Description | Verifier Component |
+| :--- | :--- | :--- | :--- |
+| **Layout IoU** | **$\ge 0.70$** | Mean IoU between rendered components and LayoutIR bounding boxes. | `LayoutIoUVerifier` |
+| **OCR Readability** | **$\ge 0.80$** | Word error rate and string match on expected typographic labels. | `OCRReadabilityVerifier` |
+| **Seam Continuity** | **$\ge 0.85$** | Boundary gradient consistency between locked and edited pixels. | `LockPreservationVerifier` |
+| **Safety Gate** | **$\ge 0.90$** | Multi-class safety, NSFW, and content compliance filter. | `SafetyVerifier` |
+| **Handoff Consistency**| **$\ge 0.80$** | Structural embedding similarity between wireframe and final render. | `HandoffConsistencyVerifier`|
+
+---
+
+## 4. Closed-Loop Auto-Refine Gating
+
+If any metric falls below its target threshold:
+1. An automated retry is triggered via `build_grounded_spatial_retry_prompt()`.
+2. The retry prompt explicitly instructs the Polish tier on the drifted region using exact component labels.
+3. If the retry improves IoU, the new render is committed; otherwise, a diagnostic is logged in the conversation history for Planner self-correction.

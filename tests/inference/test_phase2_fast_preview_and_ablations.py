@@ -45,13 +45,11 @@ def test_polish_fast_tier_registry():
 
     fast_spec = REGISTRY[Tier.POLISH_FAST]
     assert fast_spec.vram_gb == 10.0
-    assert fast_spec.fallback_tier == Tier.POLISH_DEFAULT
     assert "Consistency Flow Matching" in fast_spec.quantization
 
     low_spec = LOW_VRAM_REGISTRY[Tier.POLISH_FAST]
     assert low_spec.vram_gb == 4.5
     assert low_spec.ram_gb == 6.0
-    assert low_spec.fallback_tier == Tier.POLISH_DEFAULT
 
     high_spec = HIGH_VRAM_REGISTRY[Tier.POLISH_FAST]
     assert high_spec.vram_gb == 10.0

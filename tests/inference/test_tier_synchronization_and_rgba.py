@@ -932,6 +932,52 @@ def test_seam_continuity_evaluation_target_gating():
     assert receipt["per_metric"]["seam_continuity"]["target"] == 0.85
 
 
+def test_render_wireframe_transparent_asset_mode_produces_rgba(tmp_path):
+    """Verify wireframe renderer outputs an RGBA image when asset_mode is transparent."""
+    constraints = {
+        "style": "modern",
+        "asset_mode": "transparent",
+        "palette": ["#000000", "#38bdf8"],
+    }
+    layout = layout_from_constraints(constraints, text="Transparent Component")
+    out_png = tmp_path / "transparent_wireframe.png"
+
+    path = render_wireframe(layout, out_png)
+    assert path.exists()
+
+    with Image.open(path) as img:
+        assert img.size == (layout.canvas_width, layout.canvas_height)
+        assert img.mode == "RGBA"
+
+
+@pytest.mark.asyncio
+async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
+    """Verify LayoutBackend saves and retains native RGBA wireframe in blob store."""
+    from krisna_inference.backends.layout_backend import LayoutBackend
+    from krisna_inference.backends.blob_store_singleton import get_blob_store
+    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+
+    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
+    backend = LayoutBackend(spec, output_dir=str(tmp_path))
+    await backend.load()
+
+    result = await backend.run(
+        planner_output={},
+        constraints={"asset_mode": "transparent", "style": "clean"},
+        message="A transparent badge UI",
+        session_id="test_sess",
+        turn_id="turn_1",
+    )
+
+    assert "wireframe_ref" in result
+    wireframe_ref = result["wireframe_ref"]
+    blob_store = get_blob_store()
+    img = blob_store.load_image(wireframe_ref)
+    assert img.mode == "RGBA"
+
+
+
+
 
 
 

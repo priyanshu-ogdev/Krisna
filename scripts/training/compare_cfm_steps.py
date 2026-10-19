@@ -97,7 +97,6 @@ def generate_cfm_distillation_receipt(
         "model": {
             "name": "Qwen/Qwen-Image-2.1 CFM Fast",
             "tier": "Tier.POLISH_FAST",
-            "fallback_tier": "Tier.POLISH_DEFAULT",
             "teacher_base": "Qwen/Qwen-Image-2.1",
             "teacher_lora_checkpoint": "./checkpoints/qwen_image21_lora",
             "architecture": "Single-Stream Multimodal Diffusion Transformer (MMDiT)",

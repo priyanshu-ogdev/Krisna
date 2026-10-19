@@ -12,21 +12,15 @@ reaching — see state_machine.py's module docstring for the same note):
      `max_retries` times (a real backend would call
      torch.cuda.empty_cache() + gc.collect() between attempts; MockBackend
      just counts attempts).
-  3. If retries are exhausted and the tier has a `fallback_tier`
-     (currently: POLISH_QUALITY -> POLISH_DEFAULT, per §6's stack table),
-     attempt the fallback tier instead. The caller is told the requested
-     tier was degraded, not just handed a silent substitution.
-  4. If there is no fallback tier or the fallback also
-     fails, recovery gives up on the *request* but not the *system*:
-     baseline residency (Planner + Sketch) is restored before control
-     returns to the caller, and OOMRecoveryExhausted is raised. This is
-     what makes "no user-visible failure" (§3) precise and testable: the
-     specific finalize/critique call can fail, but the orchestrator itself
-     never gets stuck in a half-loaded state that breaks the next
-     conversational turn.
-  5. Restoring baseline residency after ERROR_RECOVERY gets MORE retries
+  3. If retries are exhausted or budget preflight fails:
+     recovery gives up on the *request* cleanly without silent degradation,
+     while protecting the *system*: baseline residency (Planner + Sketch)
+     is restored before control returns to the caller, and failure is reported.
+     This makes behavior deterministic and testable: the specific call fails cleanly,
+     and the orchestrator never gets stuck in a half-loaded state.
+  4. Restoring baseline residency after ERROR_RECOVERY gets MORE retries
      than a normal load, not fewer — failing to restore Planner+Sketch is
-     the one failure mode this design has no fallback for, so it's worth
+     the one critical failure mode this design has, so it's worth
      throwing extra attempts at before giving up.
 """
 
@@ -111,18 +105,8 @@ class SwapOrchestrator:
     vram_safety_margin_gb: float = 0.0
     """Optional extra headroom subtracted from `envelope_gb` before every
     admission check (see vram_budget.py's _BaseLedger.safety_margin_gb).
-    Defaults to 0.0 — no behavior change from prior versions. Left as an
-    explicit opt-in rather than a nonzero default because at least one
-    registered tier (Critic, low-VRAM mode) is sized to fit its envelope
-    with exactly zero headroom on paper; a nonzero default here would
-    make that tier permanently inadmissible (it has no fallback_tier),
-    which would trade a real problem for a worse one. Operators running
-    close to the edge on real hardware should raise this explicitly, not
-    rely on it being safe by default."""
-    # Product preserves the historical quality -> default fallback. Set
-    # reproducible_experiment for experiments where a tier change would make
-    # results incomparable; allow_tier_fallback is an explicit direct override.
-    allow_tier_fallback: bool = True
+    Defaults to 0.0 — no behavior change from prior versions. Operators running
+    close to the edge on real hardware can raise this explicitly."""
     reproducible_experiment: bool = False
 
     state: StateMachine = field(init=False)
@@ -151,15 +135,6 @@ class SwapOrchestrator:
             "resident": [],
         }
 
-    @property
-    def _fallback_enabled(self) -> bool:
-        """Product keeps its historical fallback; experiments can opt out.
-
-        A reproducible experiment must not silently change the requested model
-        tier after an OOM.  The explicit flag leaves product behavior intact
-        while making the research policy selectable and testable.
-        """
-        return self.allow_tier_fallback and not self.reproducible_experiment
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -345,48 +320,25 @@ class SwapOrchestrator:
             try:
                 output = await self.backends[active_tier].run(**run_kwargs)
             except Exception as e:
-                fallback = self.registry[active_tier].fallback_tier if active_tier else None
-                if _is_oom_error(e) and fallback is not None and self._fallback_enabled:
-                    log.warning(
-                        "tier_run_oom_fallback",
-                        extra={
-                            "tier": active_tier.value,
-                            "fallback": fallback.value,
-                            "error": str(e),
-                        },
-                    )
-                    # Unload failed tier and attempt fallback
-                    await self._unload_one(active_tier)
-                    active_tier = None
-
-                    # Load fallback tier
-                    await self._load_one(fallback)
-                    active_tier = fallback
-                    output = await self.backends[fallback].run(**run_kwargs)
-                    result.tier_used = fallback
-                    result.degraded = True
-                elif _is_oom_error(e):
-                    log.warning(
-                        "tier_run_oom_no_fallback",
+                if _is_oom_error(e):
+                    log.error(
+                        "tier_run_oom",
                         extra={"tier": active_tier.value if active_tier else "unknown", "error": str(e)},
                     )
                     if active_tier is not None:
                         await self._unload_one(active_tier)
                         active_tier = None
                     return await self._enter_recovery(preferred_tier, result.attempts + 1)
-                else:
-                    raise
+                raise
         except Exception as exc:
-            if _is_oom_error(exc):
-                log.warning(
-                    "tier_fallback_run_oom",
-                    extra={"error": str(exc)},
-                )
-                if active_tier is not None:
-                    await self._unload_one(active_tier)
-                    active_tier = None
-                return await self._enter_recovery(preferred_tier, result.attempts + 2)
-            raise
+            log.error(
+                "tier_run_failed",
+                extra={"tier": active_tier.value if active_tier else "unknown", "error": str(exc)},
+            )
+            if active_tier is not None:
+                await self._unload_one(active_tier)
+                active_tier = None
+            return await self._enter_recovery(preferred_tier, result.attempts + 1)
         finally:
             if self.state.state == ResidencyState.POLISH_RESIDENT:
                 self.state.apply(SwapTrigger.POLISH_DONE)
@@ -521,45 +473,38 @@ class SwapOrchestrator:
                 ) from last_exc
 
     async def _load_with_recovery(self, requested_tier: Tier) -> SwapResult:
-        """Implements the OOM policy documented in this module's docstring."""
-        candidates = [requested_tier]
-        fallback = self.registry[requested_tier].fallback_tier
-        if self._fallback_enabled and fallback is not None and fallback != requested_tier:
-            candidates.append(fallback)
-
+        """Load requested tier cleanly with retry recovery, avoiding silent tier degradation."""
         total_attempts = 0
-        for candidate in candidates:
-            degraded = candidate != requested_tier
-            if not self.ledger.would_fit(candidate) or not self.ram_ledger.would_fit(candidate):
-                log.warning(
-                    "tier_budget_preflight_fail",
-                    extra={
-                        "tier": candidate.value,
-                        "vram_ledger": self.ledger.snapshot(),
-                        "ram_ledger": self.ram_ledger.snapshot(),
-                    },
+        if not self.ledger.would_fit(requested_tier) or not self.ram_ledger.would_fit(requested_tier):
+            log.warning(
+                "tier_budget_preflight_fail",
+                extra={
+                    "tier": requested_tier.value,
+                    "vram_ledger": self.ledger.snapshot(),
+                    "ram_ledger": self.ram_ledger.snapshot(),
+                },
+            )
+            return await self._enter_recovery(requested_tier, attempts=0)
+
+        for attempt in range(1, self.max_retries + 1):
+            total_attempts += 1
+            try:
+                await self._load_one(requested_tier)
+                return SwapResult(
+                    ok=True, tier_used=requested_tier, degraded=False, attempts=total_attempts
                 )
-                continue
-
-            for attempt in range(1, self.max_retries + 1):
-                total_attempts += 1
-                try:
-                    await self._load_one(candidate)
-                    return SwapResult(
-                        ok=True, tier_used=candidate, degraded=degraded, attempts=total_attempts
+            except Exception as e:
+                if _is_oom_error(e):
+                    log.warning(
+                        "tier_load_oom",
+                        extra={"tier": requested_tier.value, "attempt": attempt, "error": str(e)},
                     )
-                except Exception as e:
-                    if _is_oom_error(e):
-                        log.warning(
-                            "tier_load_oom",
-                            extra={"tier": candidate.value, "attempt": attempt, "error": str(e)},
-                        )
-                        # Real backend: torch.cuda.empty_cache() + gc.collect() here.
-                        await asyncio.sleep(0.005 * attempt)
-                        continue
-                    raise
+                    # Real backend: torch.cuda.empty_cache() + gc.collect() here.
+                    await asyncio.sleep(0.005 * attempt)
+                    continue
+                raise
 
-        # All candidates and all retries exhausted. Enter ERROR_RECOVERY,
+        # All retries exhausted. Enter ERROR_RECOVERY,
         # restore baseline, and report failure — but the system stays healthy.
         return await self._enter_recovery(requested_tier, total_attempts)
 
