@@ -177,9 +177,10 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
     else:
         canvas_w, canvas_h = 1024, 1024
 
-    # Start with baseline foundation hierarchy
-    starter_nodes = [
-        LayoutNode(
+    # Initialize node_map from prior turn's current_layout if present, preserving multi-turn state
+    current_layout = constraints.get("current_layout")
+    if current_layout and isinstance(current_layout, list):
+        root_node = LayoutNode(
             id="root",
             type="container",
             bbox=BBox(x1=0.04, y1=0.04, x2=0.96, y2=0.96),
@@ -188,31 +189,82 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
                 "palette": palette,
                 "asset_mode": constraints.get("asset_mode"),
             },
-        ),
-        LayoutNode(
-            id="title",
-            type="text",
-            bbox=BBox(x1=0.10, y1=0.10, x2=0.90, y2=0.20),
-            parent="root",
-            text=text[:240] or "Title",
-            locked=False,
-        ),
-        LayoutNode(
-            id="content",
-            type="container",
-            bbox=BBox(x1=0.10, y1=0.26, x2=0.90, y2=0.82),
-            parent="root",
-        ),
-        LayoutNode(
-            id="action",
-            type="button",
-            bbox=BBox(x1=0.10, y1=0.86, x2=0.34, y2=0.94),
-            parent="root",
-            text="Continue",
-        ),
-    ]
+        )
+        node_map: dict[str, LayoutNode] = {"root": root_node}
+        for item in current_layout:
+            if not isinstance(item, dict):
+                continue
+            nid = str(item.get("id") or item.get("node_id") or "")
+            if not nid or nid == "root":
+                continue
+            ntype = str(item.get("type") or item.get("component") or "container")
+            bbox_raw = item.get("bbox") or item.get("bounds")
+            if isinstance(bbox_raw, dict):
+                bx1 = max(0.0, min(0.98, float(bbox_raw.get("x1", 0.1))))
+                by1 = max(0.0, min(0.98, float(bbox_raw.get("y1", 0.1))))
+                bx2 = max(bx1 + 0.02, min(1.0, float(bbox_raw.get("x2", 0.9))))
+                by2 = max(by1 + 0.02, min(1.0, float(bbox_raw.get("y2", 0.9))))
+                bbox = BBox(x1=bx1, y1=by1, x2=bx2, y2=by2)
+            elif isinstance(bbox_raw, (list, tuple)) and len(bbox_raw) == 4:
+                v = [float(x) for x in bbox_raw]
+                if v[2] > v[0] and v[3] > v[1]:
+                    bx1 = max(0.0, min(0.98, v[0]))
+                    by1 = max(0.0, min(0.98, v[1]))
+                    bx2 = max(bx1 + 0.02, min(1.0, v[2]))
+                    by2 = max(by1 + 0.02, min(1.0, v[3]))
+                else:
+                    bx1 = max(0.0, min(0.98, v[0]))
+                    by1 = max(0.0, min(0.98, v[1]))
+                    bx2 = max(bx1 + 0.02, min(1.0, v[0] + v[2]))
+                    by2 = max(by1 + 0.02, min(1.0, v[1] + v[3]))
+                bbox = BBox(x1=bx1, y1=by1, x2=bx2, y2=by2)
+            else:
+                bbox = BBox(x1=0.1, y1=0.1, x2=0.9, y2=0.3)
 
-    node_map: dict[str, LayoutNode] = {node.id: node for node in starter_nodes}
+            node_map[nid] = LayoutNode(
+                id=nid,
+                type=ntype,
+                bbox=bbox,
+                parent=item.get("parent", "root"),
+                text=item.get("text"),
+                locked=bool(item.get("locked", False)),
+            )
+    else:
+        # Start with baseline foundation hierarchy for new session
+        starter_nodes = [
+            LayoutNode(
+                id="root",
+                type="container",
+                bbox=BBox(x1=0.04, y1=0.04, x2=0.96, y2=0.96),
+                style_tokens={
+                    "style": style,
+                    "palette": palette,
+                    "asset_mode": constraints.get("asset_mode"),
+                },
+            ),
+            LayoutNode(
+                id="title",
+                type="text",
+                bbox=BBox(x1=0.10, y1=0.10, x2=0.90, y2=0.20),
+                parent="root",
+                text=text[:240] or "Title",
+                locked=False,
+            ),
+            LayoutNode(
+                id="content",
+                type="container",
+                bbox=BBox(x1=0.10, y1=0.26, x2=0.90, y2=0.82),
+                parent="root",
+            ),
+            LayoutNode(
+                id="action",
+                type="button",
+                bbox=BBox(x1=0.10, y1=0.86, x2=0.34, y2=0.94),
+                parent="root",
+                text="Continue",
+            ),
+        ]
+        node_map = {node.id: node for node in starter_nodes}
 
     # Apply VLA DesignAction elements from Planner delta
     actions = constraints.get("actions") or []

@@ -976,6 +976,48 @@ async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
     assert img.mode == "RGBA"
 
 
+def test_layout_from_constraints_preserves_and_mutates_current_layout():
+    """Verify that layout_from_constraints preserves prior turn's current_layout and applies actions cleanly."""
+    from krisna_inference.layout_baseline import layout_from_constraints
+
+    prior_layout = [
+        {"id": "navbar", "type": "container", "bbox": [0.0, 0.0, 1.0, 0.12], "locked": False},
+        {"id": "hero_card", "type": "card", "bbox": [0.05, 0.18, 0.95, 0.65], "text": "Welcome"},
+        {"id": "cta_button", "type": "button", "bbox": [0.35, 0.75, 0.65, 0.85], "text": "Click Here"},
+    ]
+    actions = [
+        {"action_type": "SET_TEXT", "target_id": "cta_button", "text_content": "Register Now"},
+        {"action_type": "LOCK_REGION", "target_id": "navbar"},
+        {"action_type": "ADD_COMPONENT", "component_type": "text", "target_id": "sub_caption", "bbox": [0.1, 0.88, 0.9, 0.94], "text_content": "No credit card required"},
+    ]
+    constraints = {
+        "current_layout": prior_layout,
+        "actions": actions,
+        "style": "clean modern SaaS",
+    }
+
+    result_ir = layout_from_constraints(constraints, text="Update the button and add subcaption")
+    node_ids = {n.id for n in result_ir.nodes}
+
+    # 1. Custom nodes from prior turn are preserved
+    assert "navbar" in node_ids
+    assert "hero_card" in node_ids
+    assert "cta_button" in node_ids
+    assert "sub_caption" in node_ids
+
+    # 2. Generic initial starter nodes are NOT reintroduced
+    assert "title" not in node_ids
+    assert "content" not in node_ids
+    assert "action" not in node_ids
+
+    # 3. Actions applied accurately
+    node_dict = {n.id: n for n in result_ir.nodes}
+    assert node_dict["cta_button"].text == "Register Now"
+    assert node_dict["navbar"].locked is True
+    assert node_dict["sub_caption"].text == "No credit card required"
+
+
+
 
 
 

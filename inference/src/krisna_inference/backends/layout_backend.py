@@ -1,9 +1,13 @@
 """Structured Sketch backend — Neuro-Symbolic LayoutFlow vector-field integration.
 
 Grounding:
-- Guerreiro, J. A., et al. (ECCV 2024). "LayoutFlow: Flow Matching for Layout Generation."
-- Tan, Z., et al. (IEEE TPAMI 2025). "InstructLayout: Instruction-Driven Graphic Layout Generation via Semantic Graph Priors."
-- Lipman, Y., et al. (ICLR 2023). "Flow Matching for Generative Modeling."
+- Guerreiro, J. A., et al. (Springer ECCV 2024). "LayoutFlow: Flow Matching for Layout Generation." DOI: 10.1007/978-3-031-72764-1_4.
+- Lin, C., Lin, Y., Pan, P., Zhang, X., & Mu, Y. (IEEE TPAMI 2025). "InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior." DOI: 10.1109/TPAMI.2025.3595880.
+- Park, T., Liu, M.-Y., Wang, T.-C., & Zhu, J.-Y. (IEEE/CVF CVPR 2019 Oral; IEEE TPAMI 2021). "Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE / GauGAN)." DOI: 10.1109/CVPR.2019.00244.
+- Karras, T., Aittala, M., Lehtinen, J., et al. (IEEE/CVF CVPR 2024 Oral). "Analyzing and Improving the Image Quality of Diffusion Models (EDM2)." DOI: 10.1109/CVPR52733.2024.02283.
+- Lipman, Y., Chen, R. T. Q., Ben-Hamu, H., Nickel, M., & Le, M. (ICLR 2023). "Flow Matching for Generative Modeling."
+- Tu, Y., et al. (ICLR 2024). "AnyText: Multilingual Visual Text Generation and Editing."
+- Badros, G. J., Borning, A., & Stuckey, P. J. (ACM TOCHI 2001). "The Cassowary Linear Arithmetic Constraint Solving Algorithm." DOI: 10.1145/502732.502734.
 
 Implements a Neuro-Symbolic continuous layout architecture:
 1. Neural Generative Prior: Continuous ODE vector field integration v_theta(b_t, t, c) predicting

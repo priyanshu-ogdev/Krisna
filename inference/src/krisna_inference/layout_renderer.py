@@ -1,4 +1,15 @@
-"""Deterministic low-fidelity renderer for LayoutIR handoff and evaluation."""
+"""Deterministic low-fidelity renderer for LayoutIR handoff and evaluation.
+
+Citations & Research Grounding:
+- Park, T., Liu, M.-Y., Wang, T.-C., & Zhu, J.-Y. (IEEE/CVF CVPR 2019 Oral; IEEE TPAMI 2021).
+  Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE / GauGAN).
+  DOI: 10.1109/CVPR.2019.00244.
+- Tu, Y., Xiang, W., He, J.-Y., Geng, Y., & Xie, X. (ICLR 2024).
+  AnyText: Multilingual Visual Text Generation And Editing.
+- Chen, J., Song, Y., Jia, L., Zhao, H., et al. (Springer ECCV 2024).
+  TextDiffuser-2: Unleashing the Power of Language Models for Text Rendering.
+  DOI: 10.1007/978-3-031-72761-0_1.
+"""
 
 from __future__ import annotations
 
@@ -411,14 +422,20 @@ def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
 
         # Render semantic category footprint
         if node_type == "button":
-            radius = min(8, max(2, (y2 - y1) // 2))
+            radius = min(8, max(0, min((x2 - x1) // 2, (y2 - y1) // 2)))
             draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
         elif node_type in ("card", "container", "list"):
-            draw.rounded_rectangle((x1, y1, x2, y2), radius=6, fill=fill_color)
+            radius = min(6, max(0, min((x2 - x1) // 2, (y2 - y1) // 2)))
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
             # If container contains a text label, render inner text zone
             if node.text:
                 th = min(y2 - y1 - 4, 16)
-                draw.rectangle((x1 + 6, y1 + 6, min(x2 - 6, x1 + int((x2 - x1) * 0.7)), y1 + 6 + th), fill=UI_SEMANTIC_PALETTE["text"])
+                tx1 = x1 + 6
+                tx2 = min(x2 - 6, x1 + int((x2 - x1) * 0.7))
+                ty1 = y1 + 6
+                ty2 = min(y2 - 2, y1 + 6 + th)
+                if tx2 > tx1 and ty2 > ty1:
+                    draw.rectangle((tx1, ty1, tx2, ty2), fill=UI_SEMANTIC_PALETTE["text"])
         else:
             draw.rectangle((x1, y1, x2, y2), fill=fill_color)
 

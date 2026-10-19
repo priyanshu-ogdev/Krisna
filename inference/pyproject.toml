@@ -27,12 +27,22 @@ dev = [
 # version-pin conflict this exists to avoid) via
 # scripts/inference/setup_env_critic.sh, not this extra.
 backends = [
-    "torch>=2.3",
+    "torch>=2.11.0",
     "transformers>=5.17.0",
     "diffusers>=0.41.0,<=0.42.0",
     "bitsandbytes>=0.43",
     "pillow>=10.4",
-    "torchvision>=0.18",
+    "torchvision>=0.26.0",
+]
+# Optional vLLM 0.29 + PyTorch 2.11+ stack (Linux/CUDA container; excluded from Windows base to avoid wheel build failures)
+planner-vllm = [
+    "vllm==0.29.0",
+    "torch>=2.11.0",
+    "transformers>=5.17.0",
+]
+# Windows-compatible native GBNF Planner runtime
+planner-llama = [
+    "llama-cpp-python>=0.3.16",
 ]
 
 [tool.setuptools.packages.find]

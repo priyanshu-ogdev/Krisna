@@ -5,16 +5,27 @@ FlashAttention KV cache optimization, grammar-guided JSON schema decoding,
 and hybrid UICrit RAG retrieval.
 
 References & Citations:
-- Gerganov, G., et al. (2023). llama.cpp: Port of Facebook's LLaMA model in C/C++.
-  https://github.com/ggml-org/llama.cpp (Demonstrating zero-copy mmap and unified GGUF execution).
+- Gerganov, G., et al. (2023). llama.cpp: High-performance inference of GGUF models with k-quants.
+  https://github.com/ggml-org/llama.cpp (Demonstrating zero-copy mmap, k-quants, and unified GGUF execution).
 - Geng, S., Josifoski, M., Peyrard, M., & West, R. (EMNLP 2023).
   Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning.
-  arXiv:2305.13971.
-- Willard, B. T., & Louf, R. (2023). Efficient Guided Generation for Large Language Models.
-  arXiv:2307.09702.
-- Dao, T. (2023). FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning.
-  arXiv:2307.08691.
-- Lin, J., et al. (MLSys 2024). AWQ: Activation-aware Weight Quantization for On-Device LLM Compression.
+  In Proceedings of EMNLP 2023, pp. 10932–10952. DOI: 10.18653/v1/2023.emnlp-main.674.
+- Dao, T. (ICLR 2024 Oral).
+  FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning.
+  In The Twelfth International Conference on Learning Representations (ICLR 2024).
+- Lin, J., Tang, J., Tang, H., Yang, S., et al. (MLSys 2024).
+  AWQ: Activation-aware Weight Quantization for LLM Compression and Acceleration.
+  In Proceedings of MLSys 2024, vol. 6, pp. 87–100.
+- Kwon, W., Li, Z., Zhuang, S., et al. (ACM SOSP 2023).
+  Efficient Memory Management for Large Language Model Serving with PagedAttention.
+  In Proceedings of the 29th ACM SOSP, pp. 611–626. DOI: 10.1145/3600006.3613165.
+- Xiao, G., Lin, J., Seznec, M., et al. (ICML 2023).
+  SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models.
+  In Proceedings of ICML 2023, PMLR vol. 202, pp. 38087–38099.
+- Lin, C., Lin, Y., Pan, P., Zhang, X., & Mu, Y. (IEEE TPAMI 2025).
+  InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior.
+  IEEE Transactions on Pattern Analysis and Machine Intelligence, vol. 47, no. 12, pp. 11040–11050.
+  DOI: 10.1109/TPAMI.2025.3595880.
 """
 
 from __future__ import annotations
