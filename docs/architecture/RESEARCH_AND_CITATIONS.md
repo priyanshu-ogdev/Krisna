@@ -179,7 +179,7 @@ via DPO/LoRA. **Initially not wired in**: ships as a single 2.26GB
 `data.csv`, not parquet — doesn't fit either existing preference-pair
 fetch shape, and its exact column names weren't independently confirmed
 against the live file at the time. **Since integrated**
-(`docs/review/20_gamelabel_10k_integration.md`): the live schema was
+(see [Volume I: System Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)): the live schema was
 confirmed directly (vote-count columns, not a fixed label; a
 non-standard base64+bytes-repr image encoding — neither matched what was
 initially assumed), a dedicated fetch adapter was written for that exact
@@ -456,7 +456,7 @@ Every citation below is a confirmed primary source directly grounding decisions 
 4. **Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025)**. *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*.
    - *Role*: Curriculum margin scheduling dynamically re-weighting DPO loss according to difficulty thresholds ($\gamma$) to prevent gradient death on noisy UI pairs.
 4. **Flow-Matching Empirical Sweeps (2024/2025)**. Esser et al. (*ICML 2024*); Wallace et al. (*IEEE/CVF CVPR 2024*).
-   - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (`docs/review/27_prd_open_risks_research.md`).
+   - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 5. **Ho, J. & Salimans, T. (2022)**. *Classifier-Free Diffusion Guidance*. In *Advances in Neural Information Processing Systems (NeurIPS)*.
    - *Role*: Theoretical basis of joint conditional/unconditional score modeling with random conditioning dropout (§6.2).
 6. **Qwen Team, Alibaba (2026-03-02)**. *Qwen3.5 Small Model Series release notes*.
@@ -514,7 +514,7 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
 | IEEE Xplore bibliographic record for PromptMagician | Interactive prompt-engineering design precedent; DOI `10.1109/TVCG.2023.3327168` |
 | Springer ECCV/LayoutFlow publication lineage | Learned continuous-layout precedent; not evidence of a Krisna checkpoint |
-| Springer ECCV 2024 / ColPali (Faysse et al.) | Dual-encoder visual screenshot retrieval; DOI `10.1007/978-3-031-72995-9_24` |
+| Springer ECCV Workshops 2024 / ColPali (Faysse et al.) | Dual-encoder visual screenshot retrieval; DOI `10.1007/978-3-031-73021-4_23` |
 | IEEE TPAMI 2025 / InstructLayout | Instruction-driven layout synthesis with semantic graph priors; DOI `10.1109/TPAMI.2025.3595880` |
 | IEEE/CVF ICCV 2025 / FlowEdit (Kulikov et al.) | Inversion-free flow editing trajectories for few-step localized editing |
 | NeurIPS 2023 / QLoRA (Dettmers et al.) | 4-bit NormalFloat (NF4) quantization and double dequantization |
@@ -590,7 +590,7 @@ benchmark table cannot substitute for an end-to-end Krisna run.
 - DreamBooth: N. Ruiz et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2023, pp. 22500–22510.
 - InstructLayout: *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 47, no. 12, Dec. 2025, doi: 10.1109/TPAMI.2025.3595880.
 - FlowEdit: V. Kulikov et al., *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2025, pp. 19721–19730.
-- ColPali: M. Faysse et al., *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, 2024, doi: 10.1007/978-3-031-72995-9_24.
+- ColPali: M. Faysse et al., *Computer Vision – ECCV 2024 Workshops*, Springer LNCS, vol. 15145, 2024, pp. 387–404, doi: 10.1007/978-3-031-73021-4_23.
 - QLoRA: T. Dettmers et al., *Advances in Neural Information Processing Systems (NeurIPS)*, vol. 36, 2023.
 - DoRA: S. Y. Liu et al., *Proceedings of the 41st International Conference on Machine Learning (ICML)*, 2024.
 - LCM-LoRA / CFM: S. Luo et al., *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15104, 2024, doi: 10.1007/978-3-031-72995-9_7.

@@ -35,8 +35,8 @@ This directory holds the research records, architectural audits, and workflow de
     - Section-by-section mapping from paper claims to implementation modules,
       required receipts, and publication status.
 
-8. **[Strict Local VLM Preprocessing Architecture](../data-forge/LOCAL_VLM_PREPROCESSING_ARCHITECTURE.md)**:
-    - Pinned Qwen3.8-27B local runtime, 48 GiB VRAM/128 GiB RAM allocation, no-fallback policy, commands, and final training-data gates.
+8. **[Data-Forge Architecture & Local VLM Serving](../data-forge/ARCHITECTURE.md#32-local-vlm-serving-infrastructure)**:
+    - Pinned local VLM runtime, 48 GiB VRAM/128 GiB RAM allocation, no-fallback policy, 22-stage chunk-based pipeline, and training data gates.
 
 9. **[Developer Notes & Engineering Record](../DEV_NOTES.md)**:
    - System overview, component specifications, feature retention audit, memory ledgers (12GB VRAM / 16GB host RAM), and testing runbooks.

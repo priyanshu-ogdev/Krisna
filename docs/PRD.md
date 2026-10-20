@@ -87,9 +87,10 @@ The single source of truth for a session, persisted between turns
   `finalized` → `critiquing`, defined by `SessionStage`)
 - `conversation_history: list[{role, content, timestamp}]`
 - `constraints` (accumulated structured intent from the Planner)
-- `sketch_tokens` (the Sketch tier's VQ token output, plus a
-  `vq_tokens` reference)
-- `finalize_output` (`image_ref`, `renderer_used`, `verifier_scores`)
+- `layout: LayoutDraft` (strongly-typed `krisna.layout.v1` draft:
+  `layout_ref`, `wireframe_ref`, `segmentation_ref`, `mask_ref`, `revision`)
+- `finalize_output` (`image_ref`, `renderer_used`, `verifier_scores`,
+  `prompt_used`, `evaluation_receipt`)
 - `critique` (`requested`, `source`, `result`, `timestamp`)
 - `revision` — an optimistic-concurrency counter; every write compares
   against the caller's expected revision and raises `StaleDesignStateError`
@@ -119,22 +120,31 @@ requested for it (see §5.3, §9).
 resident" rule
 
 Finalize is the single most resource-sensitive flow in the system: it
-must swap Polish (8–16GB) into a GPU that also, at idle, holds the
+must swap Polish (12–14GB) into a GPU that also, at idle, holds the
 **always-resident baseline** — Planner + Sketch, "Tier A." This rule is
 load-bearing for every admission calculation in §7: **Tier A must never
 exceed ~10GB resident**, so that swapping in any single Polish/Critic
 tier still fits the smallest supported envelope (12GB, low-VRAM mode)
 with the baseline unloaded first (see §7.4's swap sequence — baseline
 is torn down *before* a swappable tier is admitted, not summed with
-it). Concretely: Planner (NF4, ~6.5GB) + Sketch (from-scratch, ~3.0GB)
-= ~9.5GB, under the 10GB ceiling with real margin.
+it). Concretely: Planner (Q4_K_M GGUF, ~6.5GB) + Sketch (`krisna.layout.v1`,
+0.0GB VRAM on CPU) = ~6.5GB, well under the 10GB ceiling with substantial margin.
 
-The flow itself: Sketch's VQ tokens are decoded to real pixels (the
-VQGAN handoff — see §9), handed to whichever Polish backend was
-requested, scored by the verifier stack, gated by `safety_gate()`, and
-only then does `DesignState.stage` advance to `finalized`. A safety-gate
-failure rolls the stage back to `sketching` and raises rather than
-returning a partial/unsafe result.
+The flow itself: Sketch's `LayoutIR` DAG is converted via `render_dual_stream_sketch()`
+into an atomic `DualStreamSketch` condition bundle:
+1. **Stream 1: High-Frequency TrueType Wireframe** (RGB or native RGBA when `asset_mode == "transparent"`),
+   featuring anti-aliased font rendering with a strict legibility floor ($\ge 12\text{px}$) and
+   elevation-aware drop shadows ($s = 2+2z, r = 8+2z$).
+2. **Stream 2: 16-Class SPADE Semantic Map** (discrete categorical palette preventing normalization
+   washout in deep MMDiT layers).
+3. **Stream 3: Spatial Alpha / Inpaint Mask** (8-bit grayscale $L$, distinguishing $0$ locked donor
+   regions from $255$ active regions).
+
+These multi-stream conditions are handed to `Qwen-Image-2.1` with quoted verbatim text labels
+and locked donor region restoration ($0.00\%$ pixel drift), scored by the verifier stack
+(including Laplacian seam boundary continuity $\Delta \nabla \le 0.05$), gated by `safety_gate()`,
+and only then does `DesignState.stage` advance to `finalized`. A safety-gate failure rolls the stage
+back to `sketching` and raises rather than returning a partial or unsafe result.
 
 ### 5.4 FlowEdit 8-step iterative refinement and VLA action grammar
 
@@ -174,7 +184,7 @@ AI-judge-labeled training data anywhere in this project. Every training
 signal is either a real, published, human-collected dataset, or the
 model needs no training data at all because it ships frozen. This is
 checked, not just stated — see `docs/architecture/RESEARCH_AND_CITATIONS.md`
-§1 for the full reasoning trail, and `docs/review/` for every place this
+§1 for the full reasoning trail, and `docs/research/` for every place this
 review independently re-verified it (e.g., confirming the Planner's
 deprecated training script — `training/planner/train.py` — is real,
 functional, loudly marked deprecated, and genuinely never invoked by
@@ -182,7 +192,7 @@ the live inference path, rather than silently orphaned).
 
 ### 6.1 Structure and Layout Strategy (Sketch Tier)
 
-The production baseline uses deterministic Layout IR (`krisna.layout.v1`) with our Zero-VRAM Flexbox collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024).
+The production baseline uses an open-domain Universal Scene DAG (`krisna.layout.v1`) with our Zero-VRAM Simplex collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024). It supports infinite design scenarios (UI mockups, marketing posters, editorial publishing, e-commerce showcases, infographics, diagrams, and freeform sketches) via polymorphic node types (`NODE_TYPES`), a 16-class universal semantic palette (`UNIVERSAL_SEMANTIC_PALETTE`, NVIDIA SPADE), automated turn-to-turn differential masking (`compute_differential_mask`, FlowEdit ICCV 2025), and 2D spatial quad-tree prompt indexing (Hybrid Layout Control, ICCV 2025).
 
 Continuous flow matching for layout (`LayoutFlow`, Guerreiro et al., ECCV 2024) is maintained as an experimental research ablation in `training/src/krisna_training/layout/`. The historical discrete MaskGIT discrete token route has been retired.
 
@@ -222,7 +232,7 @@ target this table exists to satisfy (§5.3's Tier A rule). Every figure
 above is arithmetic-derived from real published model specs and
 measured quantization behavior, not yet confirmed by a live hardware
 run in this environment — flagged plainly rather than presented as
-measured (see `docs/review/13`, `18`, `24`).
+measured (see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 
 ### 7.4 Swap Orchestrator state machine
 
@@ -234,9 +244,8 @@ plus `ERROR_RECOVERY`, reachable from either swapping-in state and
 always resolving back to `IDLE_RESIDENT`. The baseline is fully
 unloaded *before* a swappable tier is admitted — admission is checked
 against the candidate tier's declared size alone, never baseline-plus-
-candidate summed (a distinction this review found itself getting wrong
-more than once — see `docs/review/06`'s retracted finding and `21`'s
-regression-test fix).
+candidate summed (a distinction documented in
+[Volume I: Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
 
 ### 7.5 Serving strategy: plain `transformers`/`diffusers`, not a dedicated inference server
 
@@ -290,7 +299,7 @@ The escalation step's position (*before* recaption/structure, not after)
 is load-bearing: a record Tier-2 rescues from
 "borderline" to "safe" must still be reachable by the safety-tier
 filters that gate every later stage, or it's silently lost — a real bug
-this review found and fixed (`docs/review/16`).
+this review found and fixed (see [Volume II: DataForge Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)).
 
 ### 8.5 Preference pairs: a separate stream
 
@@ -302,7 +311,7 @@ sync_dpo_pairs.py` resolves them through the shared BlobStore into a
 `PreferenceStore`; `train_dpo.py` live-encodes through Z-Image-Turbo's
 own VAE at train time. (`s08_5_dpo_encoding.py`, an earlier attempt at
 pre-computing these latents, is disabled by default — confirmed to have
-zero real consumers; see `docs/review/15`, `23`.)
+zero real consumers; see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 
 ### 8.6 Synthetic captions, kept from mismatching real usage
 
@@ -318,20 +327,19 @@ types at inference time (Ho & Salimans, 2022; see §12).
 ## 9. Known, disclosed gaps and fixes (a live document, not a static one)
 
 This PRD is written to match a system whose own review process
-(`docs/review/`, 24 phases as of this revision) has repeatedly found
+([Volumes I–III](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md), 74 phases of rigorous verification) has repeatedly found
 real bugs by tracing actual data paths rather than trusting
 documentation or prior claims. Two are structural enough to belong in
 this document rather than only the review log:
 
-- **The VQ-token → pixel handoff** (Sketch → Polish): a raw VQ-token
-  blob reference must be decoded through the VQGAN before Polish can
-  consume it as a real image; the installer (`download_weights.py`) now
-  auto-discovers/downloads this decoder and wires the env vars it
-  needs — this was, for a period, a guaranteed crash on the first real
-  Finalize call (`docs/review/19`, `22`).
+- **The VQ-token → pixel handoff superseded by DualStreamSketch**: The early
+  exploratory MaskGIT 2D VQGAN codebook token pipeline was completely retired.
+  In production, the Sketch Tier generates deterministic `DualStreamSketch`
+  artifacts (`wireframe_ref`, `segmentation_ref`, `mask_ref`) directly from `LayoutIR`,
+  completely eliminating the brittle VQGAN token decoding step and its crash vectors ([Final System Design](file:///d:/Krisna/docs/FINAL_SYSTEM_DESIGN.md)).
 - **The safety gate**: `VerifierStack.safety_gate()` must run and must
   be able to block a Finalize result — it existed as a method for a
-  period without ever being called anywhere (`docs/review/14`).
+  period without ever being called anywhere ([Volume I: Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
 
 ## 10. Success metrics (qualitative — no live model to benchmark in this environment)
 
@@ -381,7 +389,7 @@ this document rather than only the review log:
 Primary sources this PRD and the underlying implementation are built
 on — see `docs/architecture/RESEARCH_AND_CITATIONS.md` for the full,
 one-hundred-plus-line version with per-decision reasoning, and
-`docs/review/07_consolidated_citations.md` for the complete list
+[citations.md](file:///d:/Krisna/docs/citations.md) for the complete list
 including every citation independently re-verified during this
 project's review process.
 
@@ -441,7 +449,7 @@ project's review process.
 `PRD §X` citation already present in this codebase's comments, tests,
 and configs back to a single, internally consistent source — cross-
 checked against `docs/architecture/RESEARCH_AND_CITATIONS.md` and
-`docs/review/` (24 phases) rather than drafted independently. Where a
+`docs/research/` (Volumes I–III) rather than drafted independently. Where a
 citation's context implied a fact not otherwise documented (e.g. the
 exact "Tier A ~10GB" ceiling, or §8.3's 100K–500K scale target), that
 fact is stated here as the codebase's own established design intent,

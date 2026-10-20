@@ -1,91 +1,33 @@
-# Design-Sync Review — Index
+# Design-Sync Review: Consolidated Research Archive
 
-An independent, phase-by-phase audit of this monorepo against its own
-stated design: is data → training → inference actually in sync for
-every model, are hyperparameters sound and precedent-matched, is the
-inference strategy SOTA-competitive, and is every claim backed by a
-real, checkable citation. Read `00_REVIEW_PLAN.md` first for method;
-everything after is one self-contained finding-set per phase, in the
-order they were produced. Later docs correct earlier ones where a
-deeper pass changed the conclusion (see `06`'s correction section) —
-those are left visible, not silently edited away.
+> [!IMPORTANT]
+> **Compilation & Consolidation Notice**:  
+> In accordance with the project specification and preparation for the peer-reviewed research paper, the 71 individual review files (`00_REVIEW_PLAN.md` through `71_single_unified_resident_model_literature_and_serving_design.md`) have been formally compiled into dense, authoritative master volumes.
+>
+> All historical findings, mathematical formulations, negative audit logs, ablation matrices, and architectural evolutions are preserved in full fidelity within the following master compendiums:
+>
+> 1. **[FINAL_SYSTEM_DESIGN.md](../FINAL_SYSTEM_DESIGN.md)**: The canonical, unified master system specification covering the 3-tier architecture, resident serving, memory ledgers, and formal contracts.
+> 2. **[Volume I: Tier Architecture Evolution & Ablation Studies](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)**: Detailed technical breakdown of Reviews 01–04, 17, 19, 31, 38, 41, 44, 46, 50, 64, 70, and 71. Details the deprecation of MaskGIT discrete VQ tokens, the Simplex layout solver, and Continuous Flow Matching.
+> 3. **[Volume II: Data-Forge 22-Stage Pipeline & 2.68TB Portfolio](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)**: Detailed technical breakdown of Reviews 05, 09, 10, 15, 16, 20, 23, 52–63, 65, 66, 68, and 69. Contains the 22-stage execution flow, forensic negative purges (PubLayNet, DocBank, raw 2017 RICO), and the 20.0% general photo prior mathematical proof.
+> 4. **[Volume III: Systems Serving, Latency Foundations & Verification](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)**: Detailed technical breakdown of Reviews 00, 06, 08, 11–14, 18, 21, 22, 24–29, 37, 67, and 71. Contains USENIX OSDI systems literature proofs, VRAM allocation ledgers, hardware preflight diagnostics, and 64 automated regression tests.
+> 5. **[RESEARCH_PAPER.md](../RESEARCH_PAPER.md)**: The publication-ready academic manuscript synthesizing the peer-reviewed contributions of the Krisna architecture.
 
-| Doc | Covers |
-|---|---|
-| `00_REVIEW_PLAN.md` | Method, scope, phase list |
-| `01_sketch_tier.md` | MaskGIT-style Sketch tier: data↔train↔inference sync, hyperparameters vs. Chang et al. 2022, real data quantity/quality (RICO/CLAY/Enrico/WebUI) |
-| `02_polish_tier.md` | Z-Image LoRA + Diffusion-DPO: data↔train sync, DPO loss/beta verification, diffusion convergence hyperparameters (logit-normal timestep sampling) |
-| `03_planner.md` | Qwen3.5-9B (frozen, RAG-only): why frozen, RAG corpus sync, retrieval strategy |
-| `04_critic.md` | Gemma-4 31B (frozen, zero-shot): corrects the original plan's "on-demand adapter" assumption, cross-checks the shared critique schema |
-| `05_data_pipeline.md` | Cross-cutting data-forge review: closes the Phase 1 RICO-licensing open item, safety/PII stage ordering, domain-balance caveats |
-| `06_inference_orchestrator.md` | SwapOrchestrator/VRAM budget — **includes a self-correction**: an initial "critical bug" finding was wrong and is retracted in place, with the real (lower-severity) issue identified instead |
-| `07_consolidated_citations.md` | Every citation from Phases 1–6, cross-checked against the repo's existing `RESEARCH_AND_CITATIONS.md`; full open-action rollup with priority order |
-| `08_hyperparameter_validation.md` | Validates the two sketch-tier hyperparameter fixes (label smoothing, AdamW betas) against synthetic data shaped like the real config, since a live training run isn't available in this environment — states plainly what this does and doesn't prove |
-| `09_synthetic_data_audit.md` | Every dataset traced as real vs. synthetic; identifies the one real synthetic-data touchpoint (VLM-assisted caption densification) and its generalization risk |
-| `10_synthetic_data_generalization_fix.md` | Researches and fixes that touchpoint: verifies its purpose against real data (Screen2Words' 6.57-word average captions), closes two real sync gaps (source caption discarded before training; no CFG dropout anywhere), implements + tests both fixes, and addresses the separate general-domain-DPO → UI-domain generalization question |
-| `11_scripts_review.md` | Reviews every script under `scripts/` for whether it actually runs the pipeline as documented — finds and fixes a genuinely broken path bug (`verify_schemas.py` never worked), two misleading/stale operator-facing hints for deprecated tiers, a broken doc link, and two stale READMEs; corrects an overstated claim from `02_polish_tier.md` about LoRA composition after tracing the real inference factory code |
-| `12_post_upgrade_resync_audit.md` | Follow-up session changelog: closes out the `maskgit_vq` dead-stage fix (upgrades its severity — it was silently emptying the Sketch tier's exported training data on every run, not just dead weight), a `vram_budget.py` doc-accuracy bug, verifies the new `download_weights.py`/`inference-frontend/` artifacts against real training save paths and the real wire contract, and re-checks Phase 2/3/4's model citations against sources published since those phases (closes Phase 4's open Gemma-4 citation gap; upgrades Phase 2's Z-Image-Turbo citation to a primary source; raises one new open Medium-severity finding on Polish-Default's declared VRAM) |
-| `13_ram_offload_and_precision_audit.md` | Closes Phase 12's open Polish-Default VRAM finding: traces the actual root cause (a false `quantization="NF4/NVFP4"` claim — the backend has always loaded bf16, deliberately, to match its LoRA's bf16-trained precision), corrects the registry's `vram_gb` from an arithmetic-grounded recomputation, and adds the RAM-offload capability the wrong number had excluded this tier from. Also phase-by-phase re-checks every other backend (Planner/Sketch/Polish-Quality/Critic) for the same declared-vs-actual quantization drift — none found — and confirms the orchestrator/pipeline contract is unaffected by the fix |
-| `14_safety_gate_wiring.md`, `15_data_forge_finalization.md` | Later sessions (see repo's own commit history/conversation log): `14` wires `VerifierStack.safety_gate()` into the finalize flow after finding it was defined but never called anywhere — an unsafe image could previously finalize successfully with no enforcement. `15` verifies every model's training data comes from real, licensed(-or-flagged) sources (dataset registry found to be the most thoroughly-audited part of the whole project — no gaps found), re-traces the synthetic-caption pipeline end-to-end and confirms it's genuinely wired (all five links from VLM recaption through CFG dropout live), and closes out a second orphaned-producer stage (`s08_5_dpo_encoding.py`) that Phase 2 had already flagged but that was still running by default |
-| `16_preprocessing_ordering_audit.md` | Found and fixed the highest-severity issue in this entire review: `s04_5_escalation` ran *after* `s05_recaption`/`s06_structure` in the real execution order, so every record the two-tier safety escalation system successfully rescued (borderline → confirmed safe) was silently, permanently dropped from the training pool — invisible to every prior phase's pairwise stage-filter checks, only found by reading the actual multi-phase control flow end to end. Also gives a direct opinion on the three previously-"still open" items: recommends deleting (not wiring) `s08_5_dpo_encoding.py`; confirms the RICO join count and VRAM measurements remain genuinely blocked on hardware/network access unavailable in this environment |
-| `17_sketch_inference_conditioning_and_cfg.md` | Found the Sketch tier's inference path never actually used the training-side fixes from Phase 10: `sketch_backend.py` sent an unconditional zero embedding on every call regardless of user input, and `maskgit_model.py`'s sampler never performed classifier-free guidance despite the model being trained with CFG dropout specifically to support it. Wires real CLIP text conditioning and a researched, cited (Muse, Chang et al. 2023) CFG implementation, verified against real `sample()` code via a numpy-backed torch stub since no GPU is available here |
-| `18_training_memory_audit.md` | A6000 48GB/128GB-RAM training-memory audit across all four tiers. Adds gradient checkpointing to Sketch Stage 2 and Planner (with the documented `enable_input_require_grads()` ordering requirement — verified against real upstream GitHub issues), fixes three real gaps in DPO training (missing LR scheduler, a fully redundant reference-pipeline VAE/text-encoder load, both transformer copies held on GPU simultaneously — the last fixed per real literature, Reg-DPO arXiv:2511.01450), and documents a real self-correction: an earlier "standardize all LoRA alpha to 2x" fix was wrong and reverted after research showed Critic and DPO each follow a different, real, model-API-specific convention (Unsloth's own FastVisionModel docs; diffusers' own dreambooth scripts) than the cross-tier consistency assumption that motivated the first attempt |
-| `19_agentic_workflow_io_audit.md` | Traces the real Planner→Sketch→Polish→Critic data contract hop by hop. Finds and fixes the second-highest-severity issue in this review: `service.py` never wired the real VQ-token-to-pixel-image decode hook into the Finalize flow, so every real `/finalize` call crashed with `PIL.UnidentifiedImageError` — not a hypothetical, the only code path the service used. Also fixes a raw-JSON-leaking-into-chat bug in the Planner backend (caught and fixed a mistake in the first attempt at this exact fix via direct execution, not just re-reading the diff) and a critique-results panel that was fetched and stored but never rendered in the frontend. Confirms the rest of the handoff chain (Polish↔Critic key names, the IPC protocol, the training/inference prompt-duplication invariant — verified character-by-character, not eyeballed) was already correct |
-| `20_gamelabel_10k_integration.md` | Integrates GameLabel-10K (confirmed real via live search, Apache 2.0) into the DPO preference-pair pipeline, after confirming its actual column schema against the live dataset rather than the paper's description — it doesn't fit either existing fetch mode. Catches two real bugs before shipping (a lenient `base64.b64decode()` accepting garbage input, and a `NameError`-class scoping bug identical in shape to one caught in Phase 19), both found by executing the code against synthetic data matching the confirmed real format rather than trusting it on inspection |
-| `21_frontend_and_scripts_merge.md` | Merges two working copies that had diverged (one with extensive training/inference fixes, this session's own with a newer frontend design) rather than discarding either. Finds and fixes two more real bugs in a *restored* test (one re-encoded a misconception Phase 6 already retracted; one had a stale post-fix value), finds the Phase-16 escalation-ordering docstring fix had regressed a second time and reapplies it, adds a missing `frontend` setup phase to `setup.sh`, and verifies the Muse CFG citation from `17` line-by-line against the actual primary source (arXiv:2301.00704) rather than trusting it — confirmed exact |
-| `22_root_orchestration_and_vqgan_gap.md` | Traces the full root-tooling chain (`setup.sh` → `run_data_forge.sh` → `train.sh` → install-for-inference → `run_inference.sh` → `inference-frontend/`) end-to-end and finds one real, previously-undiscovered gap: `download_weights.py` had zero awareness of the VQGAN decoder `service.py` requires for every real Finalize call — fixed with auto-discovery + auto-download. Also finds three shell-script "next step" hints claimed-added in a prior session were never actually on disk (reapplied), a real test-suite bug where one file's bare `import torch` broke collection for the *entire* `pytest tests/` run (fixed to match the established `importorskip` pattern), and rewrites both the root README and `src/README.md`, which were stale and in the latter case listed API endpoints that never existed |
-| `23_s08_5_stale_doc_sweep.md` | Confirms `inference/README.md`'s VRAM/RAM table fix (Polish-Default, Critic) landed correctly, and finishes a sweep a prior session started but left incomplete under time pressure: `s08_5_dpo_encoding` was still described as an active, load-bearing DPO stage across `data-forge/README.md` and three `docs/data-forge/*.md` files, despite being disabled since Phase 15 with zero real consumers — every table, flow diagram, and prose mention corrected against the real `sync_dpo_pairs.py` → `train_dpo.py` path |
-| `24_tensor_shape_final_check.md` | Final tensor/dimension-consistency pass across the data pipeline and training code: confirms progressive-resolution positional-embedding interpolation, grid dimensions across Sketch training stages, CFG collate-function shapes, and DPO VAE latent scaling are all correct — then finds and fixes one real stale placeholder (`prompt_dim`'s fallback default was 4096, a pre-Phase-17 leftover, when CLIP ViT-L/14's real dimension and both training configs' actual value is 768) |
-| `25_polish_resolution_cross_stage_check.md` | Pairwise-diffs config values across stage boundaries within the same tier — the angle Phase 24 flagged as highest-value remaining — and finds Polish's base LoRA fine-tune (1024px) and its DPO continuation of the *same* adapter (512px) disagree with zero acknowledgment anywhere. Researches rather than silently resolves it: Z-Image-Turbo's MMDiT/RoPE lineage (confirmed against this project's own architecture docs) is inherently resolution-flexible per the literature (DyPE, FiTv2), and a real public FLUX-LoRA writeup shows this exact two-resolution pattern working in practice — so likely safe, but still not confirmed as this repo's deliberate choice; both configs now cross-reference the finding |
-| `26_agentic_pipeline_and_multi_turn_sync.md` | Audits and synchronizes the complete agentic pipeline before training: fixes multi-turn amnesia in `flows.py` (dialog history forwarded to Planner), connects dropped JSON delta constraint updates into `DesignState`, closes the Critic feedback loop (injects prior critique scores/edits into Planner prompt), grounds Sketch CLIP conditioning in active constraints, synthesizes rich polish prompts from intent, and adds 1-click agentic iteration in the Studio UI |
-| `27_prd_open_risks_research.md` | Closes PRD open research risks: resolves Qwen3.5 dependency via native PyPI release `transformers>=5.2.0`, investigates Critic/Planner venv isolation consolidation, implements `inspect.signature` guard for `strength` in `polish_quality_backend.py`, validates Z-Image-Turbo `encode_prompt()` return shapes via unit testing, addresses DPO beta=500 / LoRA rank=32 sweep recommendations, unifies `_export_zimage` `source_caption` schema, and guards `conversational_turn` stage advance |
-| `28_docker_isolation_and_hardware_preflight.md` | Production Docker containerization, multi-tier virtualenv isolation (`/opt/venv-inference` vs. `/opt/venv-critic`), fail-fast hardware & CUDA preflight diagnostic engine (`krisna_inference.common.hardware` and `check_hardware.py`), service fail-fast startup guard, `docker-compose.yml` GPU stack, and upgraded installers |
-| `29_comprehensive_codebase_and_docs_audit.md` | Comprehensive codebase and docs audit: fixes `CriticBackend` missing `os` import, `SwapOrchestrator` CUDA OOM exception handling, `download_weights.py` Windows venv interpreter default, `vram_budget.py` cross-platform host RAM probe, full GameLabel-10K preference pipeline sync (S12 export, `PreferenceStore`, `sync_dpo_pairs`, DPO training configs, unit tests), `data_forge` OCR stage filter, and aligns stale doc paths / VRAM specs |
-| `30_phase_3_literature_and_negative_gap_audit.md` | Phase 3 DPO Preference Alignment audit and negative literature gap review |
-| `31_phase_4_cfm_distillation_and_preview_audit.md` | Phase 4 Consistency Flow Matching (CFM) distillation and fast preview audit |
-| `37_sota_literature_survey_gap_audit_and_upgrade_roadmap.md` | Comprehensive SOTA literature survey, peer-reviewed citations audit, and foundational roadmap |
-| `38_phase_5_flowedit_refinement_and_action_grammar_audit.md` | Phase 5 FlowEdit 8-step iterative refinement, dual-layer mask conditioning, and VLA design action grammar audit |
-| `39_comprehensive_3tier_synchronization_and_literature_audit.md` | Phase 6 Comprehensive 3-tier synchronization, zero-VRAM layout geometry, Qwen-Image-2.1 RGBA alignment, wireframe-as-lock-donor resolution, and closed-loop spatial verification |
-| `40_sketch_tier_qwen_image_21_deep_audit_and_sync.md` | Deep architectural audit of the Sketch Tier against Qwen-Image-2.1 conditioning, VAE spatial downsampling, multi-device aspect ratios, typography boundary clipping, and zero-VRAM execution |
+---
 
+## Historical Phase Mapping to Master Compendiums
 
-## What's fixed vs. still open
+For traceability against code docstrings and commit messages citing specific historical review numbers, refer to the following mapping table:
 
-Full list with status is in `07_consolidated_citations.md`'s rollup
-table (updated through Phase 23). Short version: five items fixed and
-verified in the original six-phase pass (label smoothing, AdamW betas, a
-stale docstring, a pinned LoRA rank, a VRAM safety-margin capability),
-one retracted finding (the "VRAM bug" turned out to be a review error),
-two doc-hygiene bugs fixed in `docs/architecture/RESEARCH_AND_CITATIONS.md`
-along the way, two more real fixes from `10_synthetic_data_generalization_fix.md`
-(caption-style mixing, CFG conditioning dropout), four more real fixes
-as of `12_post_upgrade_resync_audit.md` (the `maskgit_vq` data-loss bug,
-the VRAM-margin doc bug, the installer's fabricated artifact paths, the
-frontend's wrong field names), the Polish-Default VRAM/quantization fix
-in `13`, a safety-gate wiring fix in `14`, a second orphaned data-forge
-stage disabled in `15`, the escalation-ordering fix in `16` (reverted
-and reapplied twice more, in `21` and `22`), the Sketch inference-
-conditioning and CFG fixes in `17` (citation independently re-verified
-in `21`), a four-tier training-memory audit in `18`, the Finalize-crash
-and JSON-leak fixes in `19`, the GameLabel-10K integration in `20`, a
-merge of two divergent working copies plus two more test bugs and a
-`setup.sh` gap in `21`, the VQGAN installer gap (the last real missing
-link between training output and a working inference run) plus three
-more claimed-but-missing script hints, a test-collection bug, and both
-README files brought current in `22`, and — in `23` — the completion of
-a stale-documentation sweep (`s08_5_dpo_encoding` described as active
-across `data-forge/README.md` and three `docs/data-forge/*.md` files
-for at least two sessions after being disabled) that a prior session
-had started but left as "a known cleanup item."
-**Top remaining items:** (1) verifying
-the exact real usable-image count for the Sketch tier once the
-RICO-license/dedup/join interaction is exercised against a real pipeline
-run, (2) measuring every tier's actual VRAM/RAM footprint on real
-hardware — every number in `18` and earlier phases is arithmetic-derived,
-not measured, (3) `s08_5_dpo_encoding.py`'s wire-vs-delete decision — `16`
-recommends deletion but hasn't executed it, (4) a recurring pattern
-flagged in `19` and confirmed again in `21` and `22`: fixes from this review have
-gone missing from later
-uploaded working copies at least three times over the course of this
-project — worth treating "is this fix actually still present" as a
-standing question for any copy of this repo, not an assumption.
+| Review Gate Range | Topic & Original Focus | Master Compendium Location |
+| :--- | :--- | :--- |
+| **Reviews 00 – 04** | Initial Baseline Audits (Sketch, Polish, Planner, Critic) | [Volume I §2](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md#2-chronological-architectural-evolution-phases-01-to-71) & [FINAL_SYSTEM_DESIGN.md §1-3](../FINAL_SYSTEM_DESIGN.md) |
+| **Reviews 05, 09 – 10** | Data Pipeline, Synthetic Captions & CFG Text Dropout | [Volume II §2-4](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md) |
+| **Reviews 06, 11 – 14** | VRAM Ledgers, Precision, Safety Gates & Script Alignment | [Volume III §2-3](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) & [FINAL_SYSTEM_DESIGN.md §6](../FINAL_SYSTEM_DESIGN.md) |
+| **Reviews 15 – 17** | Preprocessing Ordering, Escalation & Sketch Conditioning | [Volume I §2](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md) & [Volume II §2](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md) |
+| **Reviews 18 – 25** | A6000 Memory Audit, Agentic Handoff IR, GameLabel-10K & Precision | [Volume I §3](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md) & [Volume III §2](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) |
+| **Reviews 26 – 29** | Multi-Turn Amnesia Fixes, Docker Isolation & Hardware Preflight | [Volume III §3](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) |
+| **Reviews 30 – 38** | DPO Preferences, CFM Distillation vs Step Scaling & FlowEdit | [Volume I §3.3](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md) & [Volume III §1.2](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) |
+| **Reviews 39 – 51** | Qwen-Image-2.1 MMDiT, Simplex Layout Engine & GBNF Grammar | [Volume I §3.1-3.2](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md) & [FINAL_SYSTEM_DESIGN.md §2-4](../FINAL_SYSTEM_DESIGN.md) |
+| **Reviews 52 – 63** | 2.68TB Sub-3TB Multimodal Portfolio & Forensic Purges | [Volume II §3-5](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md) & [FINAL_SYSTEM_DESIGN.md §5](../FINAL_SYSTEM_DESIGN.md) |
+| **Reviews 64 – 70** | Single-Model Training, Critic Tier Pruning & Active Layers Audit | [Volume I §3-4](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md) & [Volume III §4](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) |
+| **Review 71** | Single Resident Model Architecture & USENIX OSDI Serving Proof | [Volume III §1](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md) & [FINAL_SYSTEM_DESIGN.md §1](../FINAL_SYSTEM_DESIGN.md) |

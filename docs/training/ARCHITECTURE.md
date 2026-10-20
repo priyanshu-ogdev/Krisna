@@ -19,10 +19,10 @@ product paths, and one separate preprocessing-only VLM:
 |---|---|---:|---|---|
 | Preprocessing VLM | `Qwen/Qwen3.8-27B` FP8, pinned revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | Not trained by Krisna | Strict local Data-Forge VLM bundle and stage runtime | Annotation/quality/structure tool only; never a final trained model or training signal authority |
 | Planner | `Qwen3.5-9B`; official revision `c202236235762e1c871ad0ccb60c8ee5ba337b9a` | Frozen | `PlannerBackendLlama` plus UICrit RAG; image-grounded review contract is now wired, but real GGUF/mmproj smoke validation remains required | Keep frozen for the main system; no Planner LoRA unless the predeclared visual/JSON gates fail |
-| Structure / Sketch | No active learned checkpoint; `krisna.layout.v1` deterministic renderer | Not trained in current checkout | `LayoutBackend` and `layout_baseline.py` are executable; the former Sketch source/entry point is absent | Use deterministic Layout IR as the main baseline. Treat LayoutFlow as a separate ablation. |
-| Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | LoRA only; base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; the architecture-specific trainer is still absent/unverified | Train only after the trainer/API/data gates pass. |
-| Polish Quality | `Qwen/Qwen-Image-2.1` | Frozen reference/ablation | Same backend, intended without an adapter | Fix the generic LoRA fallback before experiments. |
-| Preference alignment | Historical Qwen/Z-Image DPO code | Deferred | Launcher exits; `polish/dpo_loss.py` is not present in the source tree | Do not include in the active pipeline. Restore separately only after a model-specific smoke test. |
+| Structure / Sketch | `krisna.layout.v1` deterministic neuro-symbolic engine (production); `LayoutFlow` continuous flow matching (research ablation) | Production: Frozen/deterministic; Ablation: Trainable OT-CFM | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; `krisna_training.layout` contains the continuous flow ablation model | Production uses deterministic Cassowary solver and DualStreamSketch; LayoutFlow is evaluated as a research ablation. |
+| Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | LoRA only; base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; pair manifest and accelerate training entry point verified | Primary trainable generative model artifact. |
+| Polish Quality | `Qwen/Qwen-Image-2.1` | Frozen reference/ablation | Same backend, intended without an adapter | Frozen comparison baseline without adapter. |
+| Preference alignment | Continuous Flow Matching DPO (`dpo_loss.py`) | Post-training alignment | `krisna_training/polish/dpo_loss.py` is implemented and unit-tested for velocity-based MMDiT flow matching | Trainable on human preference pairs (Pick-a-Pic v2, HPDv2, GameLabel-10K) after base LoRA convergence. |
 
 The intended training answer is therefore **one trainable model artifact**,
 not two or three independently trained models. The accurate answer is:
@@ -287,12 +287,12 @@ Frozen multimodal Planner
         ▼
 Deterministic Layout IR manager
   owns: IDs, hierarchy, normalized boxes, text literals, lock policy
-  output: canonical Layout IR + wireframe + protected-mask artifact
+  output: canonical Layout IR + DualStreamSketch (wireframe, SPADE segmentation, differential mask)
         │
         ▼
 Qwen-Image-2.1 Polish Default
   base frozen; supervised LoRA only
-  input: wireframe condition + effective instruction + seed
+  input: multi-stream condition (wireframe, segmentation, differential mask) + effective instruction + seed
   output: polished candidate + adapter/run provenance
         │
         ▼

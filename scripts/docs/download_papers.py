@@ -472,10 +472,10 @@ PAPERS: list[PaperEntry] = [
         cite_id=33,
         filename="33_colpali_faysse2024.pdf",
         title="ColPali: Efficient Document Retrieval with Vision Language Models",
-        authors="M. Faysse, H. Abou-Chakra, A. Sautier, C. R. de Sainte Marie, A. Parcollet, and V. Guigue",
-        venue="Springer ECCV 2024",
+        authors="M. Faysse, H. Sibille, T. Wu, B. Omrani, G. Viaud, C. Hudelot, and P. Colombo",
+        venue="Springer ECCV Workshops 2024",
         year=2024,
-        doi_url="https://doi.org/10.1007/978-3-031-72995-9_24",
+        doi_url="https://doi.org/10.1007/978-3-031-73021-4_23",
         role_in_krisna="Multi-vector visual retrieval directly from rendered 2D layouts grounding UICrit RAG",
         urls=[
             "https://arxiv.org/pdf/2407.01449.pdf",

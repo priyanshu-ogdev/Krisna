@@ -7,19 +7,20 @@ The production **Sketch Tier** in Krisna (`Tier.SKETCH`) is driven by the **Stru
 ### 1.1 Core Components
 
 1. **`LayoutBackend` (`ModelBackend`)**:
-   - Manages layout execution lifecycle, output serialization (`layout_ref`), wireframe image rasterization (`wireframe_ref`), and continuous optimal transport flow metrics computation.
-   - Coordinates with `BlobStore` to persist serialized JSON and high-entropy PNG wireframes, preserving native `RGBA` alpha channels when `asset_mode == "transparent"`.
+   - Manages layout execution lifecycle in production deterministic mode (`krisna.layout.v1.production`), serialization (`layout_ref`), atomic multi-stream spatial condition rasterization (`DualStreamSketch`), and continuous optimal transport flow metrics computation.
+   - Coordinates with `BlobStore` to persist serialized JSON and condition artifacts: `wireframe_ref` (RGB/RGBA), `segmentation_ref` (universal 16-class SPADE map), and `mask_ref` (spatial alpha/differential inpaint mask).
+   - Enforces strict multiple-of-32 canvas quantization ($W \equiv 0 \pmod{32}, H \equiv 0 \pmod{32}$) matching Qwen-Image-2.1's $16\times$ VAE downsampler and $2\times 2$ patch stride.
 
 2. **`layout_baseline.py` (`layout_from_constraints`)**:
    - Translates Planner conversational constraints and discrete action deltas (`AddComponentAction`, `RemoveComponentAction`, `ResizeAction`, `SetTextAction`, `LockRegionAction`) into a validated `LayoutIR` tree.
-   - Executes the **Deterministic Box-Model Collision Partitioner** (`_resolve_flex_layout`) with 8pt grid snapping.
-   - Strictly enforces locked-region immutability, ensuring user-frozen UI areas are never displaced.
+   - Executes the **Cassowary Linear Arithmetic Constraint Partitioner** (`_resolve_flex_layout`) with 8pt grid snapping.
+   - Strictly enforces locked-region immutability, ensuring user-frozen UI areas are never displaced ($0.00\%$ coordinate drift).
 
-3. **`layout_renderer.py` (`render_wireframe`)**:
-   - Converts the `LayoutIR` tree into a crisp, high-contrast visual semantic wireframe for diffusion handoff.
-   - Implements anti-aliased TrueType font rasterization with bundled `DejaVuSans` / `DejaVuSans-Bold` fonts, enforcing font sizes $\ge 12\text{px}$ to prevent spatial collapse through the Polish tier's $16\times$ VAE downsampler.
-   - Implements measured pixel-boundary text wrapping (`_wrap_text_measured`) to guarantee verbatim label survival within target bounding boxes.
-   - Native RGBA transparent canvas support (`(0, 0, 0, 0)` background) for component isolation.
+3. **`layout_renderer.py` (`render_dual_stream_sketch`)**:
+   - Renders the unified `DualStreamSketch` condition bundle adhering to **NVIDIA Composer** (*NeurIPS 2023*), **NVIDIA SPADE** (*CVPR 2019 Oral*), and **NVIDIA LayerDiffuse** (*CVPR 2024*):
+     - **Stream 1 (Wireframe)**: Anti-aliased TrueType font rasterization (`DejaVuSans` / `DejaVuSans-Bold`) with a strict typographic floor ($\ge 12\text{px}$) and elevation-aware drop shadows ($s = 2+2z, r = 8+2z$). Native 4-channel RGBA transparency supported when `asset_mode == "transparent"`.
+     - **Stream 2 (SPADE Semantic Map)**: Discrete 16-class universal RGB categorical palette (`UNIVERSAL_SEMANTIC_PALETTE`) preventing feature washout in deep MMDiT layers across UI, marketing, editorial, and graphic design assets.
+     - **Stream 3 (Spatial Alpha / Differential Mask)**: 8-bit mask generated via `compute_differential_mask()` ($0$ on invariant donor regions, $255$ on active edit zones with a 16px dilation radius) guiding localized FlowEdit ODE trajectory integration and the deterministic Lock Compositor.
 
 ---
 
@@ -72,18 +73,17 @@ The legacy MaskGIT implementation is retained exclusively in `training/src/krisn
    └── Compute displacement metrics (mean, max)
             │
             ▼
-5. Rasterization (`render_wireframe`)
-   ├── Check asset_mode == "transparent" -> initialize RGBA (0, 0, 0, 0)
-   ├── Check style == "dark" / "light" -> initialize styled RGB canvas
-   ├── Render elevated surfaces and subtle drop-shadows
-   ├── Render TrueType typography with measured bounds (_wrap_text_measured)
-   └── Render locked-region diagonal stroke markers
+5. Multi-Stream Condition Rasterization (`render_dual_stream_sketch`)
+   ├── Enforce multiple-of-32 canvas quantization: max(512, round(dim / 32) * 32)
+   ├── Stream 1: TrueType Anti-Aliased Wireframe (RGB / RGBA with >= 12px font floor)
+   ├── Stream 2: 16-Class Universal SPADE Semantic Map (discrete UNIVERSAL_SEMANTIC_PALETTE)
+   └── Stream 3: Spatial Alpha / Differential Change Mask (0 for locked donor regions, 255 for active edits)
             │
             ▼
 6. Persistence & Handoff (`LayoutBackend.run`)
    ├── Write LayoutIR to disk & save layout_ref
-   ├── Persist wireframe to BlobStore preserving RGBA mode
-   └── Return flow_metrics (displacement, element_count, ot_coherence)
+   ├── Persist wireframe_ref, segmentation_ref, and mask_ref to BlobStore
+   └── Return synchronized dictionary with canvas_width, canvas_height, and flow_metrics
 ```
 
 ---

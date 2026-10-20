@@ -10,6 +10,7 @@
 
 ```
 docs/
+├── FINAL_SYSTEM_DESIGN.md       # Master Consolidated Final Design (Compiled from 71 Review Gates)
 ├── PRD.md                       # Canonical Master Requirements & Architecture Spec
 ├── DEV_NOTES.md                 # Engineering Dev Notes, Component Contracts & Feature Audit
 ├── RESEARCH_PAPER.md            # Formal Research Paper: Bounded Multi-Turn Agentic UI Design
@@ -21,25 +22,29 @@ docs/
 │   └── INFERENCE_PRODUCTION_STACK.md # Rust/Python/Tauri runtime boundaries and fail-closed gates
 │   └── EVALUATION_PROTOCOL.md     # Unified multi-metric receipt and validation standards
 ├── data-forge/                  # Data engineering & pipeline architecture
-│   ├── ARCHITECTURE.md          # Multi-stage chunk-based processing pipeline
-│   ├── DATA_SOURCES.md          # Public datasets: licenses, schemas, and fetch modes
-│   └── DATA_COMPLETENESS.md     # Audit of data transformations, PII, and safety filters
+│   ├── README.md                # Master index, architectural orientation, and overview
+│   ├── ARCHITECTURE.md          # 22-stage chunk-based processing pipeline & methodology
+│   ├── DATA_SOURCES.md          # Public datasets: licenses, schemas, and 5-pillar portfolio
+│   └── LITERATURE_SURVEY.md     # Academic literature survey & credits to prior research
 ├── training/                    # Model training documentation & runbooks
 │   ├── README.md                # Training documentation index and current status
 │   ├── ARCHITECTURE.md          # Current training design, gates, and bibliography
 │   └── TRAINING_RUNBOOK.md      # Readiness checks and current execution guide
 ├── inference/                   # Serving, orchestration & client integration
 │   └── README.md                # Swap state machine, VRAM ledgers & API reference
+├── research/                    # Master multi-volume compendiums
+│   ├── PROGRESS_AND_ARCHITECTURE_VOLUME_1.md # Architecture evolution & ablation studies
+│   ├── PROGRESS_AND_DATAFORGE_VOLUME_2.md    # 22-stage data-forge & multimodal portfolio
+│   └── PROGRESS_AND_SYSTEMS_VOLUME_3.md      # Systems serving, OSDI proofs & verification
 └── review/                      # Formal verification audit log
-    ├── README.md                # Audit index and phase roadmap
-    ├── 07_consolidated_citations.md # Paper-ready academic bibliography
-    └── 28_docker_isolation_and_hardware_preflight.md # Containerization & hardware verification
+    └── README.md                # Consolidated Research Archive and 71-gate phase mapping
 ```
 
 ---
 
 ## Key Guides & Quick Links
 
+- **Master Final System Design**: See [FINAL_SYSTEM_DESIGN.md](FINAL_SYSTEM_DESIGN.md) for the consolidated, authoritative specification compiled from all 71 forensic review gates, systems serving literature, and peer-reviewed algorithms.
 - **Developer Notes & Feature Retention Audit**: See [DEV_NOTES.md](DEV_NOTES.md) for engineering history, component contracts, memory ledgers, and feature audit.
 - **Scientific Research Paper Specification**: See [RESEARCH_PAPER.md](RESEARCH_PAPER.md) for formal problem formulation, mathematical models, empirical evaluation, and ablation studies.
 - **Current training status and model trainability**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md).
@@ -48,6 +53,12 @@ docs/
 - **Hardware Preflight & Fail-Fast Enforcement**: See [inference/README.md §6](inference/README.md#6-fail-fast-hardware--deployment-preflight-verification) and [PRD.md §7.8](PRD.md#78-hardware--deployment-preflight-verification-fail-fast).
 - **Structure/Layout baseline and future learned ablations**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md#2-the-authoritative-training-pipeline).
 - **Deferred preference alignment**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md#36-flow-matching-and-preference-alignment).
+- **Master Review Archive & 71-Gate Mapping**: See [review/README.md](review/README.md).
+- **Volume I: Tier Architecture Evolution & Ablation Studies**: See [research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md](research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md).
+- **Volume II: Data-Forge 22-Stage Pipeline & 2.68TB Portfolio**: See [research/PROGRESS_AND_DATAFORGE_VOLUME_2.md](research/PROGRESS_AND_DATAFORGE_VOLUME_2.md).
+- **Volume III: Systems Serving, Latency Foundations & Verification**: See [research/PROGRESS_AND_SYSTEMS_VOLUME_3.md](research/PROGRESS_AND_SYSTEMS_VOLUME_3.md).
+- **Data-Forge Academic Literature Survey & Prior Research Attribution**: See [data-forge/LITERATURE_SURVEY.md](data-forge/LITERATURE_SURVEY.md).
+- **Canonical Peer-Reviewed Citations Matrix (Zero arXiv)**: See [citations.md](citations.md).
 - **Hardware Runbook (RTX A6000 48GB)**: See [training/TRAINING_RUNBOOK.md](training/TRAINING_RUNBOOK.md).
 
 

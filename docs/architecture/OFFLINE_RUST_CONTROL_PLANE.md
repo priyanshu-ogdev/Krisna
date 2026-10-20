@@ -21,7 +21,7 @@ the other.
 
 ## Implemented slice
 
-`src-tauri/src/pipeline.rs` provides an allocation-light in-process policy:
+`inference/frontend/src-tauri/src/pipeline.rs` provides an allocation-light in-process policy:
 
 - four-turn maximum;
 - user/self-review source tracking;

@@ -42,7 +42,7 @@
 | `[30]` | [30_qwen_image_spec2026.pdf](30_qwen_image_spec2026.pdf) | **Qwen-Image-2.1: Visual Foundation Models with Image Conditioning & Flow Matching** | Qwen Team | Alibaba Technical Report & Official Specification (2026) | [https://github.com/QwenLM/Qwen-Image](https://github.com/QwenLM/Qwen-Image) | 33176.9 KB | Verified PDF |
 | `[31]` | [31_diffusion_dpo_wallace2024.pdf](31_diffusion_dpo_wallace2024.pdf) | **Diffusion Model Alignment Using Direct Preference Optimization (Loss Formulation)** | B. Wallace, M. Dang, R. Rafailov, L. Zhou, M. Kiehl, and S. Ermon | IEEE/CVF CVPR 2024 (2024) | [https://doi.org/10.1109/CVPR52733.2024.00784](https://doi.org/10.1109/CVPR52733.2024.00784) | 9073.4 KB | Verified PDF |
 | `[32]` | [32_hart_tang2025.pdf](32_hart_tang2025.pdf) | **HART: Efficient Visual Generation with Hybrid Autoregressive Transformer** | H. Tang, Y.-C. Wu, S. Yang, E.-Z. Xie, J.-S. Chen, J.-Y. Chen, Z. Zhang, H. Cai, Y. Lu, and S. Han | ICLR 2025 (2025) | [https://openreview.net/forum?id=1V7xXpB6gZ](https://openreview.net/forum?id=1V7xXpB6gZ) | 23764.7 KB | Verified PDF |
-| `[33]` | [33_colpali_faysse2024.pdf](33_colpali_faysse2024.pdf) | **ColPali: Efficient Document Retrieval with Vision Language Models** | M. Faysse, H. Abou-Chakra, A. Sautier, C. R. de Sainte Marie, A. Parcollet, and V. Guigue | Springer ECCV 2024 (2024) | [https://doi.org/10.1007/978-3-031-72995-9_24](https://doi.org/10.1007/978-3-031-72995-9_24) | 8066.7 KB | Verified PDF |
+| `[33]` | [33_colpali_faysse2024.pdf](33_colpali_faysse2024.pdf) | **ColPali: Efficient Document Retrieval with Vision Language Models** | M. Faysse, H. Sibille, T. Wu, B. Omrani, G. Viaud, C. Hudelot, and P. Colombo | Springer ECCV Workshops 2024 (2024) | [https://doi.org/10.1007/978-3-031-73021-4_23](https://doi.org/10.1007/978-3-031-73021-4_23) | 8066.7 KB | Verified PDF |
 | `[34]` | [34_showui_lin2025.pdf](34_showui_lin2025.pdf) | **ShowUI: One Vision-Language-Action Model for GUI Visual Agent** | K. Q. Lin, L. Li, D. Gao, Z. Yang, S. Wu, Z. Bai, S. W. Lei, L. Wang, and M. Z. Shou | IEEE/CVF CVPR 2025 (2025) | [https://doi.org/10.1109/CVPR52734.2025.01816](https://doi.org/10.1109/CVPR52734.2025.01816) | 19668.8 KB | Verified PDF |
 | `[35]` | [35_instructlayout_tpami2025.pdf](35_instructlayout_tpami2025.pdf) | **InstructLayout: Instruction-Driven 2D and 3D Layout Synthesis with Semantic Graph Prior** | C. Lin, Y. Lin, P. Pan, X. Zhang, and Y. Mu | IEEE TPAMI 2025 (2025) | [https://doi.org/10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880) | 9662.9 KB | Verified PDF |
 | `[36]` | [36_flowedit_kulikov2025.pdf](36_flowedit_kulikov2025.pdf) | **FlowEdit: Inversion-Free Text-Based Editing Using Pre-Trained Flow Models** | V. Kulikov, M. Kleiner, I. Huberman-Spiegelglas, and T. Michaeli | IEEE/CVF ICCV 2025 (2025) | [https://openaccess.thecvf.com/ICCV2025](https://openaccess.thecvf.com/ICCV2025) | 13414.1 KB | Verified PDF |
@@ -300,9 +300,9 @@
 - **Role in Krisna**: Hybrid discrete AR + residual diffusion head architecture evaluated in baseline ablations
 
 ### `[33]` ColPali: Efficient Document Retrieval with Vision Language Models
-- **Authors**: M. Faysse, H. Abou-Chakra, A. Sautier, C. R. de Sainte Marie, A. Parcollet, and V. Guigue
-- **Accredited Venue**: Springer ECCV 2024 (2024)
-- **Official Link**: [https://doi.org/10.1007/978-3-031-72995-9_24](https://doi.org/10.1007/978-3-031-72995-9_24)
+- **Authors**: M. Faysse, H. Sibille, T. Wu, B. Omrani, G. Viaud, C. Hudelot, and P. Colombo
+- **Accredited Venue**: Springer ECCV Workshops 2024 (2024)
+- **Official Link**: [https://doi.org/10.1007/978-3-031-73021-4_23](https://doi.org/10.1007/978-3-031-73021-4_23)
 - **Local PDF File**: [`docs/papers/33_colpali_faysse2024.pdf`](file:///D:/Krisna/docs/papers/33_colpali_faysse2024.pdf)
 - **Role in Krisna**: Multi-vector visual retrieval directly from rendered 2D layouts grounding UICrit RAG
 
