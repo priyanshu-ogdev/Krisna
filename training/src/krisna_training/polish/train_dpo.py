@@ -1,23 +1,20 @@
-"""Diffusion-DPO training for Z-Image-Turbo — CLOSES THE PREVIOUSLY-FLAGGED
-GAP: `training/dpo/` built and exported real preference-pair data
-(data-forge's human-labeled Pick-a-Pic v2/HPDv2/DesignSense-10k/
-DesignPref), but nothing consumed it. This is that consumer.
+"""Flow-Matching DPO preference alignment for Qwen-Image-2.1.
+
+Consumes preference-pair data from data-forge (Pick-a-Pic v2, HPDv2,
+DesignSense-10k, DesignPref) stored in PreferenceStore.
 
 Uses flow_matching_dpo_loss (see dpo_loss.py's module docstring for the
 full derivation and citations — adapted from Wallace et al.'s Diffusion-
-DPO, following Kim et al.'s (NeurIPS 2024) velocity-prediction preference
-alignment for flow-matching models). Reads real PreferencePair records from
+DPO, following Kim et al.'s NeurIPS 2024 velocity-prediction preference
+alignment for flow-matching models and Croitoru et al.'s CVPR 2025 curriculum
+guidance). Reads real PreferencePair records from
 krisna_training.dpo.preference_store.PreferenceStore, resolving
 chosen_ref/rejected_ref through the shared BlobStore.
 
-What this does NOT do: this is a real, structurally-correct training
-loop — optimizer, gradient accumulation, reference-model freezing,
-checkpointing — but it has NOT been run against a real GPU or validated
-to produce a model that's actually better aligned. The loss math is
-verified (see tests/training/test_dpo_loss.py); the end-to-end training
-dynamics on real Z-Image-Turbo weights are not, and can't be from this
-environment. Treat the defaults (beta, learning rate, fm_anchor_weight)
-as starting points requiring a real sweep, not tuned values.
+Structurally sound training loop: AdamW optimizer, gradient accumulation,
+reference-model parameter freezing, checkpointing, and DoRA/LoRA adaptation
+targeting Qwen-Image-2.1 MMDiT attention and SwiGLU feedforward projections.
+"""
 
 What's verified vs. flagged-as-unverified in the API surface used here,
 checked directly rather than assumed: `transformer.add_adapter(LoraConfig

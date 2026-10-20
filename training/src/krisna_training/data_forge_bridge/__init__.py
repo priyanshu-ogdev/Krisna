@@ -50,4 +50,12 @@ over:
    `dpo/preference_store.py`, using data-forge's exact source keys
    (pickapic_v2, hpdv2, designsense_10k, designpref) as the `source`
    field — extended into `preference_store.VALID_SOURCES` for this.
+
+4. **Active Polish Tier (Qwen-Image-2.1) consumes paired condition/target
+   manifests directly via `sync_polish_qwen.py`.** Data-Forge exports
+   `model_data/polish_qwen_image21/manifest.jsonl` with strict source-disjoint
+   split receipts and dual SHA-256 content hashes, which `prepare_dataset.py`
+   validates and loads into HuggingFace `Dataset` format without intermediate
+   latent mismatches.
 """
+

@@ -329,3 +329,49 @@ class TestSourceCaptionSurvivesEndToEnd:
 
         rec = json.loads((out / "metadata.jsonl").read_text().strip())
         assert rec["text"] == "dense only, no source label available"
+
+
+class TestSyncPolishQwen:
+    def test_missing_manifest_raises_file_not_found(self, tmp_path):
+        from krisna_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
+        with pytest.raises(FileNotFoundError, match="Qwen-Image-2.1 pair manifest not found"):
+            sync_qwen(tmp_path / "model_data", tmp_path / "prepared")
+
+    def test_sync_qwen_materializes_valid_pairs(self, tmp_path):
+        import hashlib
+        from krisna_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
+
+        model_dir = tmp_path / "model_data" / "polish_qwen_image21"
+        cond_dir = model_dir / "conditions"
+        target_dir = model_dir / "targets"
+        cond_dir.mkdir(parents=True)
+        target_dir.mkdir(parents=True)
+
+        cond_path = cond_dir / "cond-1.png"
+        target_path = target_dir / "target-1.png"
+        Image.new("RGB", (16, 16), color="black").save(cond_path)
+        Image.new("RGB", (16, 16), color="white").save(target_path)
+
+        cond_sha = hashlib.sha256(cond_path.read_bytes()).hexdigest()
+        target_sha = hashlib.sha256(target_path.read_bytes()).hexdigest()
+
+        manifest_line = json.dumps({
+            "record_id": "pair-001",
+            "condition_image": "conditions/cond-1.png",
+            "target_image": "targets/target-1.png",
+            "caption": "a crisp UI layout",
+            "split": "train",
+            "source_dataset": "figma2code",
+            "source_provenance": {"repo_id": "test/figma"},
+            "condition_sha256": cond_sha,
+            "target_sha256": target_sha,
+        })
+        (model_dir / "manifest.jsonl").write_text(manifest_line + "\n", encoding="utf-8")
+
+        prepared_dir = sync_qwen(tmp_path / "model_data", tmp_path / "prepared")
+        assert (prepared_dir / "metadata.jsonl").is_file()
+        metadata_lines = [json.loads(line) for line in (prepared_dir / "metadata.jsonl").read_text().splitlines() if line.strip()]
+        assert len(metadata_lines) == 1
+        assert metadata_lines[0]["pair_id"] == "pair-001"
+        assert metadata_lines[0]["caption"] == "a crisp UI layout"
+

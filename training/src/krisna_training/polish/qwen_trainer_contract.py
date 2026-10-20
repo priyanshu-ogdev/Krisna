@@ -112,6 +112,17 @@ METADATA_ONLY_KEYS = {
     "bnb_4bit_quant_type",
     "bnb_4bit_compute_dtype",
     "bnb_4bit_use_double_quant",
+    "ablation_id",
+    "ablation_hypothesis",
+    "use_adalora",
+    "adalora_init_r",
+    "adalora_target_r",
+    "adalora_orth_reg_weight",
+    "adalora_beta1",
+    "adalora_beta2",
+    "adalora_tinit",
+    "adalora_tfinal",
+    "adalora_deltaT",
 }
 
 SUPPORTED_SCHEDULERS = {
@@ -168,6 +179,20 @@ def prepare_trainer_config(raw: dict[str, Any]) -> dict[str, Any]:
                 "put held-out records in the prepared validation/test splits instead"
             )
         cfg.pop(unsupported, None)
+    for meta_key in (
+        "ablation_id",
+        "ablation_hypothesis",
+        "use_adalora",
+        "adalora_init_r",
+        "adalora_target_r",
+        "adalora_orth_reg_weight",
+        "adalora_beta1",
+        "adalora_beta2",
+        "adalora_tinit",
+        "adalora_tfinal",
+        "adalora_deltaT",
+    ):
+        cfg.pop(meta_key, None)
     cfg["revision"] = MODEL_REVISION
 
     if not str(cfg.get("instance_prompt") or "").strip():
