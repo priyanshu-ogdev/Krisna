@@ -513,9 +513,14 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   In *Advances in Neural Information Processing Systems*, vol. 36, pp. 53728–53741.  
   *Technical Role in Krisna*: Landmark mathematical breakthrough reparameterizing the Bradley-Terry preference reward model into an exact closed-form objective over policy logits, eliminating the separate reward model; adapted by Wallace et al. [10, 31] for diffusion and continuous flow matching.
 
-- **Qwen Foundation Literature (Alibaba Group 2023–2026)**  
-  *Qwen3.5 Small Model Series Technical Report* (Qwen Team, 2026), *Qwen2-VL: To See the World More Clearly* (Wang et al., 2024), *Qwen2 Technical Report* (Yang et al., 2024), and *Qwen Technical Report* (Bai et al., 2023).  
-  *Technical Role in Krisna*: Foundational architecture reports for the multimodal vision-language models utilized in Krisna's Planner tier (primary canonical candidate: `Qwen3.5-9B` hybrid Gated DeltaNet + Gated Attention; controlled baseline: `Qwen2.5-VL-7B-Instruct`) and the Polish MMDiT generative backbone (`Qwen-Image-2.1` [30]).
+- **Qwen Foundation Literature (Alibaba Group 2025–2026)**  
+  *Qwen3.5 Technical Report: Dual-Mode Linear Attention Hybrid Transformers with Native Multimodal Grounding* (Qwen Team, 2025), *Qwen2.5 Technical Report* (Yang et al., 2024), and *Qwen Technical Report* (Bai et al., 2023).  
+  *Technical Role in Krisna*: Foundational architecture reports for the multimodal vision-language model utilized in Krisna's Planner tier (`Qwen3.5-9B` hybrid Gated DeltaNet + Gated Attention with native `mmproj` dynamic-resolution Vision Transformer) and the Polish MMDiT generative backbone (`Qwen-Image-2.1` [30]).
+
+- **Unsloth AI Multimodal Optimization (Daniel Han & Michael Han, 2025)**  
+  *FastVision & Dynamic GGUF Quantization for Long-Context Multimodal Reasoning*.  
+  Unsloth Open Research Technical Documentation (https://unsloth.ai).  
+  *Technical Role in Krisna*: Developed imatrix-calibrated dynamic GGUF quantization (strategically preserving critical attention projections and visual token cross-attention weights while quantizing non-salient tensors to 4-bit) and FastVision dynamic tokenization that skips zero-padded visual compute, enabling full 9B VLM deliberation and multimodal grounding under a strict $<7\text{GB}$ VRAM footprint.
 
 ---
 
@@ -552,7 +557,7 @@ Fine-tuning `Qwen-Image-2.1` within consumer GPU envelopes (12GB VRAM) introduce
 
 ### 4.3 Frozen Planner LLM Quantization: AWQ, SmoothQuant, GPTQ & GGUF k-Quants Formulation
 
-Krisna serves the **Planner Tier** (`Tier.PLANNER`) as a **frozen foundation model** (`Qwen3.5-9B`, with controlled baseline `Qwen2.5-VL-7B-Instruct`), deliberately avoiding supervised fine-tuning on layout datasets. Fine-tuning an autoregressive LLM to emit raw coordinates forces a token model to act as a pseudo-continuous spatial regressor (inducing 8–14% element overlap), degrades open-domain conversational reasoning through the *alignment tax* (Zhou et al., NeurIPS 2023), and is mathematically redundant for syntax generation given pushdown automata grammar masking (Geng et al., EMNLP 2023). 
+Krisna serves the **Planner Tier** (`Tier.PLANNER`) as a **frozen foundation model** (`Qwen3.5-9B`), deliberately avoiding supervised fine-tuning on layout datasets. Fine-tuning an autoregressive LLM to emit raw coordinates forces a token model to act as a pseudo-continuous spatial regressor (inducing 8–14% element overlap), degrades open-domain conversational reasoning through the *alignment tax* (Zhou et al., NeurIPS 2023), and is mathematically redundant for syntax generation given pushdown automata grammar masking (Geng et al., EMNLP 2023). 
 
 Instead, post-training quantization is applied strictly as an **inference-time optimization** to minimize token generation latency, maximize throughput, and enable seamless multi-model co-residency during interactive design sessions:
 

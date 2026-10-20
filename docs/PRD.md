@@ -160,10 +160,15 @@ For offline research paper analysis, ablation studies, and DPO alignment dataset
 - `TurnTraceRecord`: Per-turn record tracking user prompt, assistant response, planner chain-of-thought (`reasoning_note`), discrete VLA actions, SHA-256 state digest, wireframe and image blob pointers, and multi-axis verifier score receipts.
 - `SessionResearchTrajectory`: Session-level aggregate available via `GET /session/{session_id}/research-trace` and exportable to JSON/JSONL (`export_trajectory_jsonl()`) for direct consumption by empirical evaluation harnesses.
 
-### 5.6 Multimodal VLM Module Synchronization & Raster Image Decompilation
+### 5.6 Unified Plan-and-Sketch Layer & Autonomous Direct Execution
 
-To close the "Raster Image-to-Layout" gap and enable true Image-to-Image workflows:
-- **Direct VLM Module Integration**: Synchronizes the Sketch tier directly with the 9B model (Qwen3.5-9B / Qwen2.5-VL with mmproj Vision Transformer) serving as the multimodal perception module. The Flow-matching Polish DiT (Qwen-Image-2.1) operates strictly on continuous latent pixels and cannot emit discrete JSON coordinates; the 9B VLM module handles visual grounding, spatial perception, and layout decompilation.
+To close the "Raster Image-to-Layout" gap and enable autonomous agentic workflows:
+- **Unified Plan-and-Sketch Layer (`UnifiedPlanSketchLayer`)**: Synchronizes the Sketch tier directly with the 9B model (`Qwen3.5-9B` with `mmproj` dynamic-resolution Vision Transformer) serving as the multimodal perception and deliberation module. The Flow-matching Polish DiT (Qwen-Image-2.1) operates strictly on continuous latent pixels and cannot emit discrete JSON coordinates; the 9B VLM module handles visual grounding, spatial perception, and layout decompilation.
+- **Autonomous Direct-to-Polish Execution (`POST /session/{session_id}/execute`)**: Enables a single-call autonomous cycle:
+  1. *Simultaneous Plan + Sketch*: Runs Qwen3.5-9B deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding) and `krisna.layout.v1` layout compilation simultaneously.
+  2. *Direct Polish Progression*: Hands off wireframe, SPADE segmentation, and synthesized prompt directly to Qwen-Image-2.1 without intermediate user intervention.
+  3. *Verifier Stack Evaluation*: Scores aesthetic quality, OCR readability, layout IoU, seam continuity, identity preservation, and enforces the safety gate.
+  4. *Closed-Loop Post-Render Review & Further Planning*: Passes the verifier receipt and render metadata back into Qwen3.5-9B, formulating autonomous self-critique and next-step planning directives (`[Post-Render Deliberation]`) appended to conversation history. Supported via `POST /session/{session_id}/execute` or `auto_proceed: true` on `POST /session/{session_id}/message`.
 - **Raster Image Decompilation (`POST /session/{session_id}/decompile`)**: Users can upload raw screenshots, competitor mockups, or UI photos. The 9B VLM module decompiles flat raster images into discrete `LayoutIR` DAG components with normalized bounding boxes $[x_1, y_1, x_2, y_2]$ and text literals via `flows.decompile_screenshot()`.
 - **Image-to-Image Facial Identity Shielding (NVIDIA AnyDoor & ConsisID)**:
   - Supports Turn 1 Image-to-Image editing (`reference_image_ref`), correctly resolving the lock donor to the uploaded reference photo rather than the wireframe.
@@ -183,7 +188,7 @@ was abandoned in favor of the following, final split:
 
 | Tier | Model | Trained? | Why |
 |---|---|---|---|
-| **Planner** | Qwen3.5-9B canonical (Qwen2.5-VL-7B controlled baseline) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
+| **Planner** | Qwen3.5-9B GGUF (Unsloth Dynamic Quantization) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
 | **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No** | Makes geometry, hierarchy, literals, and lock regions auditable with 0 MB VRAM and 0% overlap guarantee |
 | **Polish (Default)** | Qwen-Image-2.1 | **Base frozen; LoRA gated and trainable** | Supervised wireframe→screenshot adapter only after a real pair manifest and native trainer smoke test; preference alignment is optional later |
 | **Polish (Quality)** | Qwen-Image-2.1 without adapter | **Frozen** | Same-model no-adapter reference/ablation; must not inherit the Default LoRA through a global fallback |

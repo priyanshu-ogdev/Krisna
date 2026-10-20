@@ -16,7 +16,7 @@ launcher integrations. The current architecture and runbook live in:
 | `polish/cfm_loss.py` | Active | Phase 4 Consistency Flow Matching few-step distillation (Luo et al., Song et al.) |
 | `data_forge_bridge/` | Active | Real-time sync adapters for Polish pairs (`sync_polish_default.py`) and preference pairs (`sync_dpo_pairs.py`) |
 | `preference/` & `dpo/` | Active | Unified SQLite PreferenceStore with idempotent `INSERT OR IGNORE` and PRD §6 no-AI-judge constraint |
-| `planner/` | Frozen | Frozen Qwen2.5-VL-7B-Instruct / Qwen3.5-9B GGUF + UICrit RAG; no Planner LoRA under PRD §6 |
+| `planner/` | Frozen | Frozen Qwen3.5-9B GGUF + UICrit RAG; no Planner LoRA under PRD §6 |
 | `critic/` | Frozen | Resident review pass within Planner tier (Gemma 4 31B external training retired for 12GB VRAM envelope) |
 | `sketch/` & `layout/` | Deterministic | Deterministic Layout IR (`krisna.layout.v1`) baseline; discrete MaskGIT codebook training retired |
 
