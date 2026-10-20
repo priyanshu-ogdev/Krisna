@@ -90,11 +90,13 @@ class EncodingStage(Stage):
         canny_low = stage_cfg.get("canny_low_threshold", 50)
         canny_high = stage_cfg.get("canny_high_threshold", 150)
         max_enc_size = stage_cfg.get("max_encoding_resolution", 1024)
+        max_aspect_ratio = stage_cfg.get("max_aspect_ratio", 2.5)
         encoder_spec = config.encoders.get("z_image_vae")
         stage_fingerprint_data = {
             "stage_code": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "encoder": vars(encoder_spec) if encoder_spec is not None else None,
             "max_encoding_resolution": max_enc_size,
+            "max_aspect_ratio": max_aspect_ratio,
             "canny_low_threshold": canny_low,
             "canny_high_threshold": canny_high,
             "opencv_version": getattr(cv2, "__version__", None) if _HAS_OPENCV else None,
@@ -262,17 +264,17 @@ class EncodingStage(Stage):
                     }
 
                 w, h = image.size
-                if max(w, h) / max(min(w, h), 1) > 4.0:
+                if max(w, h) / max(min(w, h), 1) > max_aspect_ratio:
                     return {
                         "type": "done",
                         "id": rec.id,
                         "status": "excluded_low_quality",
-                        "reason": "Extreme aspect ratio",
+                        "reason": f"Extreme aspect ratio: {w}x{h} (>{max_aspect_ratio}:1)",
                         "exclusion_reason": "extreme_aspect_ratio",
                     }
 
                 image = resize_for_model(image, max_size=max_enc_size)
-                image = pad_to_multiple(image, 16)
+                image = pad_to_multiple(image, 32)
 
                 encoding_paths = {}
                 record_bytes = 0

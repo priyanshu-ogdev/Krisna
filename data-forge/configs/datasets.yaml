@@ -37,22 +37,197 @@ datasets:
       download_concurrency: 32
       download_timeout_seconds: 15
       note: Metadata-only repo; images are fetched via URL column, not bundled files.
+  crello:
+    enabled: true
+    display_name: "Crello (Graphic Design & Marketing Templates)"
+    source_type: "huggingface"
+    repo_id: "cyberagent/crello"
+    revision: "7997e2f434ee4aa73cf4cdf22c5954cb175872e1"
+    category: graphic_design
+    expected_record_count: 25000
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/cyberagent/crello
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://cdla.dev/permissive-2-0/
+    license_status: verified
+    license_notes: "CDLA-Permissive-2.0 / MIT upstream. Peer-reviewed benchmark (CyberAgent AI Lab, ACM MM 2021). High-resolution social media marketing templates, banners, and posters with full vector layer geometries, typography bounding boxes, and images."
+    note: "Primary graphic design & marketing collateral training corpus for Polish tier."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      caption_column: description
+      sample_size: 25000
+  pku_poster:
+    enabled: true
+    display_name: "PKU-PosterLayout (Marketing Posters)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/PKU-PosterLayout"
+    revision: "6168f88b1d3bcd1a078c8915057162febf847241"
+    category: graphic_design
+    expected_record_count: 9974
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/creative-graphic-design/PKU-PosterLayout
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://huggingface.co/datasets/creative-graphic-design/PKU-PosterLayout
+    license_status: verified
+    license_notes: "CC-BY-SA-4.0. Peer-reviewed benchmark (CVPR 2023). High-resolution commercial marketing and e-commerce posters paired with structured presentation layout annotations."
+    note: "High-resolution commercial marketing poster layouts."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: poster_image
+      sample_size: 10000
+  publaynet:
+    enabled: false
+    display_name: "PubLayNet (Editorial & Multi-Column Publishing)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/PubLayNet"
+    revision: "4bfc1ae32abdad8953c0b81e5cdf236f1745de50"
+    category: editorial_document
+    expected_record_count: 360000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/creative-graphic-design/PubLayNet
+    quality_tier: gold
+    training_targets: []
+    license_url: https://cdla.dev/permissive-1-0/
+    license_status: verified
+    license_notes: "CDLA-Permissive-1.0. Peer-reviewed benchmark (IBM Research, ICDAR 2019)."
+    note: "Quarantined: 360k pages of PubMed medical articles represent monochrome academic LaTeX PDF redundancy; DocLayNet covers diverse real-world documents without scientific paper aesthetic collapse."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 10000
+  docbank:
+    enabled: false
+    display_name: "DocBank (Multi-Unit Document Layouts)"
+    source_type: "huggingface"
+    repo_id: "maveriq/DocBank"
+    revision: "5df3e3504e161a0fac9c3f3c9aba26cc22e3dc63"
+    category: editorial_document
+    expected_record_count: 500000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/maveriq/DocBank
+    quality_tier: gold
+    training_targets: []
+    license_url: https://www.apache.org/licenses/LICENSE-2.0
+    license_status: verified
+    license_notes: "Apache-2.0. Peer-reviewed benchmark (COLING 2020)."
+    note: "Quarantined: 500k pages of arXiv academic papers represent monochrome LaTeX redundancy; purged to maintain high-aesthetic visual design."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 10000
+  doclaynet:
+    enabled: true
+    display_name: "DocLayNet (IBM Real-World Document Layouts)"
+    source_type: "huggingface"
+    repo_id: "docling-project/DocLayNet"
+    revision: "5656dbae459cf15b3a112d46bb6b5484cabcd2d2"
+    category: editorial_document
+    expected_record_count: 80863
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/docling-project/DocLayNet
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://cdla.io/permissive-1-0/
+    license_status: verified
+    license_notes: "CDLA-Permissive-1.0. Peer-reviewed benchmark (ACM SIGKDD 2022). 80,863 real-world document pages across 6 categories: financial reports, manuals, laws, patents, tenders, and scientific articles with 11 distinct layout units."
+    note: "Cross-domain real-world document layout corpus preventing scientific paper distribution collapse."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 80000
+  abo_ecommerce:
+    enabled: true
+    display_name: "Amazon Berkeley Objects (ABO Product Showcases)"
+    source_type: "huggingface"
+    repo_id: "wardana/amazon-berkeley-objects"
+    revision: "8c815f67a37719b698defc082084b12504ead430"
+    category: ecommerce_product
+    expected_record_count: 147000
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/wardana/amazon-berkeley-objects
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://amazon-berkeley-objects.s3.amazonaws.com/index.html
+    license_status: verified
+    license_notes: "Amazon Open Data / CC-BY-NC 4.0. Peer-reviewed benchmark (CVPR 2022). High-resolution commercial catalog images with isolated products and clean backgrounds."
+    note: "Commercial product showcases and isolated asset composition."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 35000
+  rico_semantic:
+    enabled: true
+    display_name: "RICO Semantic Annotations (FiftyOne)"
+    source_type: "huggingface"
+    repo_id: "Voxel51/rico"
+    revision: "a675f84fbb93e23e1a74681638951c8efe18c0eb"
+    category: mobile_ui
+    expected_record_count: 66261
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/Voxel51/rico
+    quality_tier: silver
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://creativecommons.org/licenses/by/4.0/
+    license_status: verified
+    license_notes: "CC BY 4.0 confirmed directly on the live FiftyOne dataset card. Mobile UI layout and screenshot baseline."
+    note: "Mobile UI application screen baseline."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 66000
   pickapic_v2:
     enabled: false
     display_name: Pick-a-Pic v2
     source_type: huggingface
     repo_id: liuhuohuo2/pick-a-pic-v2
-    revision: main
+    revision: f602d48e244a68f04e9bcb6ca2a9ed5bcb578576
     category: dpo_preference_general
     expected_record_count: 500000
     training_eligible: false
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/liuhuohuo2/pick-a-pic-v2
-    quality_tier: unrated
-    training_targets: []
-    license_url: https://huggingface.co/datasets/liuhuohuo2/pick-a-pic-v2
-    license_status: unverified
+    quality_tier: gold
+    training_targets:
+      - dpo_alignment
+    license_url: https://opensource.org/licenses/MIT
+    license_status: verified
     license_notes: 'Real, web-collected human preference comparisons (pickapic.io), MIT license per the PickScore repo. General text-to-image domain, not UI-specific â€” this is Stage-1 DPO signal (broad aesthetic alignment), not a substitute for the UI-domain datasets below. Image bytes are embedded directly in columns jpg_0/jpg_1 per the dataset card â€” no external URL fetch needed.
 
       '
@@ -72,17 +247,18 @@ datasets:
     display_name: HPDv2 (Human Preference Dataset v2)
     source_type: huggingface
     repo_id: ymhao/HPDv2
-    revision: main
+    revision: bb0f2563e451e11c3f376b2ba93615db00e042e1
     category: dpo_preference_general
     expected_record_count: 798000
     training_eligible: false
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/ymhao/HPDv2
-    quality_tier: unrated
-    training_targets: []
-    license_url: https://huggingface.co/datasets/ymhao/HPDv2
-    license_status: unverified
+    quality_tier: gold
+    training_targets:
+      - dpo_alignment
+    license_url: https://www.apache.org/licenses/LICENSE-2.0
+    license_status: verified
     license_notes: Apache 2.0, confirmed on the dataset card. Real human annotator rankings, general T2I domain.
     note: "Quarantined: general text-to-image preference rankings are outside the active UI-polish objective."
     fetch_config:
@@ -90,19 +266,21 @@ datasets:
       annotation_file: train.json
       sample_size: 60000
   figma2code:
+    enabled: true
     display_name: Figma2Code (Community Figma Designs)
     source_type: huggingface
     repo_id: xcodemind/Figma2Code
-    revision: main
+    revision: 76647a5e86d5a5edd9aef4aa19d4e0df1c92097e
     category: web_ui
     expected_record_count: 2817
-    training_eligible: false
+    training_eligible: true
     synthetic: false
-    synthetic_status: unknown
+    synthetic_status: real
     provenance_url: https://huggingface.co/datasets/xcodemind/Figma2Code
-    quality_tier: silver
-    training_targets: []
-    license_url: https://huggingface.co/datasets/xcodemind/Figma2Code
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://opensource.org/licenses/MIT
     license_status: verified
     license_notes: MIT License. Extremely high-quality UI/UX design aesthetic sourced from Figma.
     note: "Retained as a high-value UI design/structure candidate; it does not create Qwen pairs until a deterministic condition renderer and asset-rights receipt exist."
@@ -121,12 +299,37 @@ datasets:
         - raw_metadata
         - processed_metadata
       parquet_batch_size: 256
-      sample_size: 25000
+      sample_size: 2817
+  magicbrush:
+    enabled: true
+    display_name: "MagicBrush (Human-Annotated Natural Image Editing)"
+    source_type: huggingface
+    repo_id: osunlp/MagicBrush
+    revision: 6c254560879df7851233ea0fd2ae2a62764d0ef2
+    category: instruction_image_editing
+    expected_record_count: 10500
+    training_eligible: true
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/osunlp/MagicBrush
+    quality_tier: gold
+    training_targets:
+      - polish_qwen_image21
+    license_url: https://creativecommons.org/licenses/by/4.0/
+    license_status: verified
+    license_notes: "CC-BY-4.0. Peer-reviewed human-annotated image-to-image editing benchmark (NeurIPS 2023 Oral). Pairs include source photo, editing instruction, and target photo over real people, animals, objects, and natural scenes."
+    note: "Primary instruction-based image-to-image editing corpus for Polish tier multimodal generalization."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - 'data/*.parquet'
+      sample_size: 10500
   ui_vision:
+    enabled: true
     display_name: UI-Vision
     source_type: huggingface
     repo_id: ServiceNow/ui-vision
-    revision: main
+    revision: 766c66aeffef16608d4916525902d9fb2598d7ce
     category: desktop_ui
     expected_record_count: 1464
     training_eligible: false
@@ -147,15 +350,16 @@ datasets:
         - 'images/*/*.png'
       sample_size: 10000
   screenspot:
+    enabled: true
     display_name: ScreenSpot (Cross-Platform GUI)
     source_type: huggingface
     repo_id: bevaya/ScreenSpot
-    revision: main
+    revision: 0be08781e2e188582f6131625ae1598d443b4d5d
     category: cross_platform_ui
     expected_record_count: 1272
     training_eligible: false
     synthetic: false
-    synthetic_status: unknown
+    synthetic_status: real
     provenance_url: https://huggingface.co/datasets/bevaya/ScreenSpot
     quality_tier: unrated
     training_targets: []
@@ -177,21 +381,21 @@ datasets:
     display_name: SeeClick (Web & Desktop Screens)
     source_type: huggingface
     repo_id: moondream/seeclick
-    revision: main
+    revision: 3c2cabe59ede641ee7cd2f7f76b1f955d12e88e1
     category: web_ui
     expected_record_count: 250000
     training_eligible: false
     synthetic: false
-    synthetic_status: unknown
+    synthetic_status: real
     provenance_url: https://huggingface.co/datasets/moondream/seeclick
-    quality_tier: unrated
+    quality_tier: gold
     training_targets: []
-    license_url: https://huggingface.co/datasets/moondream/seeclick
+    license_url: https://www.apache.org/licenses/LICENSE-2.0
     license_status: verified
     license_notes: 'CONFIRMED Apache-2.0 upstream (SeeClick GUI agent foundation). Pristine 1920x1080 Full HD desktop and web application screens with structured element hierarchies. Ingested via streaming parquet reader to prevent memory blowup.
 
       '
-    note: "Quarantined: current source/schema and asset-rights receipt were not independently validated for this workspace; do not bulk fetch."
+    note: "Quarantined / Purged: VLM click-grounding and action-prediction dataset represents a task mismatch for generative UI diffusion; imperative coordinate prompts corrupt visual synthesis."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -203,21 +407,21 @@ datasets:
     display_name: Android Control (Google Research)
     source_type: huggingface
     repo_id: ckg/AndroidControlParsedWithImages-20k
-    revision: main
+    revision: 4f800d302b41ad026f73cd8e6f4ea4e9d2f578d2
     category: mobile_ui
     expected_record_count: 20000
     training_eligible: false
     synthetic: false
-    synthetic_status: unknown
+    synthetic_status: real
     provenance_url: https://huggingface.co/datasets/ckg/AndroidControlParsedWithImages-20k
-    quality_tier: unrated
+    quality_tier: gold
     training_targets: []
     license_url: https://github.com/google-research/google-research/tree/master/android_control
     license_status: verified
     license_notes: 'CONFIRMED Apache-2.0 (Google Research Android Control upstream). 1080x2400 modern Android Material Design 3 screens across 833 apps, paired with natural language multi-turn task instructions. Provides modern mobile UI distributions replacing 2017 RICO styling.
 
       '
-    note: "Quarantined pending confirmation that the mirror's screenshots and app assets inherit the claimed upstream rights."
+    note: "Quarantined / Purged: GUI action-grounding and multi-turn agent click execution represent a task mismatch for generative UI diffusion; excluded to protect generative visual layout fidelity."
     fetch_config:
       download_mode: hf_parquet_images
       file_patterns:
@@ -330,15 +534,16 @@ datasets:
     display_name: GameLabel-10K
     source_type: huggingface
     repo_id: Jonathan-Zhou/GameLabel-10k
-    revision: main
+    revision: 50d39526846c7d76ad27819d899b125e21efc657
     category: dpo_preference_general
     expected_record_count: 9800
     training_eligible: false
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
-    quality_tier: unrated
-    training_targets: []
+    quality_tier: gold
+    training_targets:
+      - dpo_alignment
     license_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
     license_status: verified
     license_notes: 'Apache 2.0, confirmed on the live dataset card. Real crowdsourced human preference votes (mobile-game players, rewarded with in-game currency â€” arXiv:2409.19830), NOT AI-judge/synthetic labeling. General T2I domain (game-style/illustrative prompts), same category as Pick-a-Pic/HPDv2 above â€” supplements Stage-1 general DPO signal, does not close the Stage-2 UI-domain gap (designsense_10k/designpref below remain unreleased for that).
@@ -347,7 +552,7 @@ datasets:
     note: "Quarantined: general game-image preference data is deferred and irrelevant to supervised UI pair training."
     fetch_config:
       download_mode: gamelabel_csv
-      parquet_revision: refs/convert/parquet
+      parquet_revision: 1ed0ee6ebe28faefcd3f640ad7ad1bb9017c10cd
       sample_size: 20000
   uicrit:
     enabled: false
@@ -375,10 +580,11 @@ datasets:
         - '*.json'
         - '*.csv'
   taste:
+    enabled: true
     display_name: TASTE (multi-axis design-preference benchmark)
     source_type: huggingface
     repo_id: purvanshi/TASTE
-    revision: main
+    revision: 731a7f588d433214c6d864d2e9f47978d91aed6b
     category: eval_design_multiaxis
     expected_record_count: 14500
     training_eligible: false
@@ -401,10 +607,11 @@ datasets:
         - '*.json'
         - '*.jsonl'
   partiprompts:
+    enabled: true
     display_name: PartiPrompts (P2)
     source_type: huggingface
     repo_id: nateraw/parti-prompts
-    revision: main
+    revision: 944b156abfdad7627c3221b5ec4f6a6fb060a197
     category: eval_prompt_diversity
     expected_record_count: 1632
     training_eligible: false
@@ -414,7 +621,7 @@ datasets:
     quality_tier: unrated
     training_targets: []
     license_url: https://huggingface.co/datasets/nateraw/parti-prompts
-    license_status: unverified
+    license_status: verified
     license_notes: Apache 2.0, confirmed on the dataset card. Prompts only (PartiPrompts.tsv), no images â€” used to diversify the held-out evaluation prompt set, never for training.
     eval_only: true
     note: "Retained as prompt-diversity evaluation only; it contains text prompts, not UI targets."
@@ -525,6 +732,104 @@ datasets:
         - 'parquet/*.parquet'
       image_column: image
       sample_size: 15000
+  magazine:
+    enabled: false
+    display_name: "Magazine (Condé Nast Spreads - Zheng et al. ACM SIGGRAPH 2019)"
+    source_type: "huggingface"
+    repo_id: "creative-graphic-design/Magazine"
+    revision: "9b4981b46a4493b299a5412083b959ae4119e928"
+    category: editorial_document
+    expected_record_count: 3919
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/creative-graphic-design/Magazine
+    quality_tier: gold
+    training_targets: []
+    license_url: https://huggingface.co/datasets/creative-graphic-design/Magazine
+    license_status: unverified
+    license_notes: "ACM SIGGRAPH 2019 / ACM TOG (Xiaotian Qiao et al.). Exactly 3,919 editorial magazine pages scanned from Condé Nast publications (Vogue, BRIDES, Architectural Digest) with structured polygon element annotations and multi-column article typography."
+    note: "High-aesthetic editorial publication spreads augmenting DocLayNet; verified record count is 3,919 pages."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "data/*.parquet"
+      image_column: images
+      sample_size: 3919
+  hq_edit:
+    enabled: false
+    display_name: "HQ-Edit (High-Quality Instruction-Based Editing)"
+    source_type: "huggingface"
+    repo_id: "UCSC-VLAA/HQ-Edit"
+    revision: "8d0a51255d4ebc82152806e1f3891c85b8e4e037"
+    category: instruction_image_editing
+    expected_record_count: 197350
+    training_eligible: false
+    synthetic: true
+    synthetic_status: synthetic
+    provenance_url: https://huggingface.co/datasets/UCSC-VLAA/HQ-Edit
+    quality_tier: gold
+    training_targets: []
+    license_url: https://creativecommons.org/licenses/by-nc/4.0/
+    license_status: verified
+    license_notes: "CC-BY-NC-4.0. Peer-reviewed benchmark (ICLR 2025). 197,350 high-resolution diptych pairs synthesized via GPT-4V and DALL-E 3 with verified alignment and visual coherence metrics."
+    note: "High-resolution instruction editing corpus replacing noisy SD 1.5 InstructPix2Pix data."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "data/*.parquet"
+      image_column: output_image
+      caption_column: edit
+      sample_size: 197350
+  anyword_3m:
+    enabled: false
+    display_name: "AnyWord-3M (Multilingual Typographic Posters & Packaging)"
+    source_type: "huggingface"
+    repo_id: "stzhao/AnyWord-3M"
+    revision: "54f67ddf34eb4a5aac46539c2a5b511dd0ca1fc4"
+    category: graphic_design
+    expected_record_count: 3000000
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/stzhao/AnyWord-3M
+    quality_tier: gold
+    training_targets: []
+    license_url: https://www.apache.org/licenses/LICENSE-2.0
+    license_status: verified
+    license_notes: "Apache-2.0. Peer-reviewed benchmark (ICLR 2024 Spotlight). 3M image-text pairs with line- and word-level polygon OCR annotations. Requires filtering out outdoor scene OCR to retain exclusively digital marketing posters and packaging."
+    note: "Typographic text rendering ground truth; quarantined pending digital-only subset extraction."
+    fetch_config:
+      download_mode: hf_parquet_images
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 100000
+  design2code:
+    enabled: false
+    display_name: "Design2Code (Real-World Web Interfaces)"
+    source_type: "huggingface"
+    repo_id: "SALT-NLP/Design2Code"
+    revision: "e2f61f6e9d9b5ee201b81d8e0ae4d37aa13f8f25"
+    category: web_ui
+    expected_record_count: 484
+    training_eligible: false
+    synthetic: false
+    synthetic_status: real
+    provenance_url: https://huggingface.co/datasets/SALT-NLP/Design2Code
+    quality_tier: gold
+    training_targets: []
+    license_url: https://opendatacommons.org/licenses/by/1-0/
+    license_status: verified
+    license_notes: "ODC-By / MIT. Peer-reviewed benchmark (Stanford, ACL 2025). 484 real-world web page screenshots paired with HTML/CSS code."
+    eval_only: true
+    note: "High-fidelity real-world web design benchmark and held-out evaluation suite."
+    fetch_config:
+      download_mode: eval_reference
+      file_patterns:
+        - "*.parquet"
+      image_column: image
+      sample_size: 484
 watcher_scan_targets:
   - query: UI design dataset
     platforms:

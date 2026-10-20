@@ -72,6 +72,9 @@ stages:
     max_resolution:
     - 8192
     - 8192
+    max_aspect_ratio: 2.5
+    purge_legacy_era: true
+    require_complete_ui: true
     batch_size: 256
   s03_5_pii_scrub:
     enabled: true
@@ -138,6 +141,11 @@ stages:
     enabled: true
   s12_model_data_export:
     enabled: true
+    active_targets:
+      - polish_qwen_image21
+      - dpo_alignment
+      - planner_rag_corpus
+      - eval_external
 storage:
   safety_margin: 0.1
   per_record_estimates:

@@ -42,25 +42,16 @@ _UI_FIRST_SOURCES = frozenset([
     "aria_ui",
     "atomblock_webui",
     "ui_vision",
+    "crello",
+    "pku_poster",
+    "publaynet",
+    "docbank",
+    "doclaynet",
+    "abo_ecommerce",
+    "magicbrush",
 ])
 
-# Datasets known to be general design
-# BUG FIX: pd12m and cc12m are real, configured dataset keys (see
-# configs/datasets.yaml — both category: "general_visual", PRD §8.1's
-# "General visual backbone" / "Supplementary" rows) but were missing
-# here, same class of gap as the ui_first fix above. Without an exact
-# match, both fell through to the structure-based heuristic and were
-# only correctly tagged `general_design` via that heuristic's final
-# default branch — which works in practice (stock/photo content rarely
-# trips >=2 UI-element-type overlaps) but is fragile: a false-positive
-# structural detection on a PD12M/CC12M image would silently misroute it
-# into `ui_first`, contaminating the sketch tier's domain-gated training
-# data (s08_encoding.py Branch 3) with non-UI content — exactly what the
-# domain gate exists to prevent. Explicit source-key matching removes
-# that dependency on the heuristic's default behavior. design_inspiration,
-# behance_general, and poster_design are left in place as forward-
-# declared source keys for datasets not yet added to datasets.yaml —
-# harmless if unused, same pattern as figma_ui/dribbble_ui above.
+# Datasets known to be general visual (unstructured photo / web crawl)
 _GENERAL_DESIGN_SOURCES = frozenset([
     "pd12m",
     "cc12m",

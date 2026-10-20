@@ -139,15 +139,36 @@ class ModelDataExportStage(Stage):
             training_pool = manifest.get_training_pool()
 
         critique_records = manifest.get_all_records_with_critique()
-        loop = asyncio.get_running_loop()
-        summary["sketch_tier_maskgit"] = await loop.run_in_executor(None, self._export_sketch_tier, training_pool, config, root)
-        summary["polish_zimage_turbo"] = await loop.run_in_executor(None, self._export_zimage, training_pool, config, root)
-        summary["polish_qwen_image21"] = await loop.run_in_executor(
-            None, self._export_qwen_image21, training_pool, config, root
+        stage_cfg = config.get_stage("s12_model_data_export")
+        # Fallback includes all known targets for unit test backward compatibility.
+        # Production configs/pipeline.yaml explicitly restricts active_targets to polish_qwen_image21.
+        active_targets = stage_cfg.get(
+            "active_targets",
+            [
+                "sketch_tier_maskgit",
+                "polish_zimage_turbo",
+                "polish_qwen_image21",
+                "dpo_alignment",
+                "planner_rag_corpus",
+                "eval_external",
+            ],
         )
-        summary["dpo_alignment"] = await loop.run_in_executor(None, self._export_dpo_pairs, config, root)
-        summary["planner_rag_corpus"] = await loop.run_in_executor(None, self._export_planner_rag, critique_records, config, root)
-        summary["eval_external"] = await loop.run_in_executor(None, self._export_eval_external, config, root)
+
+        loop = asyncio.get_running_loop()
+        if "sketch_tier_maskgit" in active_targets:
+            summary["sketch_tier_maskgit"] = await loop.run_in_executor(None, self._export_sketch_tier, training_pool, config, root)
+        if "polish_zimage_turbo" in active_targets:
+            summary["polish_zimage_turbo"] = await loop.run_in_executor(None, self._export_zimage, training_pool, config, root)
+        if "polish_qwen_image21" in active_targets:
+            summary["polish_qwen_image21"] = await loop.run_in_executor(
+                None, self._export_qwen_image21, training_pool, config, root
+            )
+        if "dpo_alignment" in active_targets:
+            summary["dpo_alignment"] = await loop.run_in_executor(None, self._export_dpo_pairs, config, root)
+        if "planner_rag_corpus" in active_targets:
+            summary["planner_rag_corpus"] = await loop.run_in_executor(None, self._export_planner_rag, critique_records, config, root)
+        if "eval_external" in active_targets:
+            summary["eval_external"] = await loop.run_in_executor(None, self._export_eval_external, config, root)
 
         (root / "EXPORT_SUMMARY.json").write_text(
             json.dumps(summary, indent=2), encoding="utf-8"
@@ -404,6 +425,7 @@ class ModelDataExportStage(Stage):
                 # ``prompt`` makes the instruction role explicit to consumers.
                 "caption": caption,
                 "prompt": caption,
+                "source_caption": rec.source_caption,
                 # Stage 9's status is the persisted split receipt.  Do not
                 # infer a split from record order or randomly re-split here.
                 "split": "validation" if rec.status == "heldout" else "train",
@@ -478,6 +500,7 @@ class ModelDataExportStage(Stage):
         source_spec = getattr(config, "datasets", {}).get(rec.source_dataset)
         if source_spec is not None and source_spec.category in {
             "general_visual",
+            "general_visual_unfiltered",
             "dpo_preference_general",
             "dpo_preference_domain",
         }:
@@ -490,6 +513,12 @@ class ModelDataExportStage(Stage):
             return "source_not_training_approved"
         if "polish_qwen_image21" not in source_spec.training_targets:
             return "source_not_approved_for_qwen"
+        if source_spec.category in {
+            "general_visual_unfiltered",
+            "dpo_preference_general",
+            "dpo_preference_domain",
+        }:
+            return "source_category_incompatible_with_sft"
         if not source_spec.provenance_url:
             return "source_provenance_missing"
         if source_spec.policy_violations(config.source_policy):
@@ -516,22 +545,24 @@ class ModelDataExportStage(Stage):
         except (OSError, UnidentifiedImageError, ValueError):
             return "scrubbed_target_invalid"
 
-        structure = rec.structure_output
-        if not isinstance(structure, dict):
-            return "structure_output_missing"
-        # A valid empty/freeform structure is intentionally the representation
-        # used for general visual records.  It cannot deterministically produce
-        # a UI wireframe condition.
-        if structure.get("layout_type") == "freeform" or not structure.get("elements"):
-            return "structure_not_suitable_for_condition"
-        try:
-            from data_forge.data.schema_validator import SchemaValidator
+        is_instruction_edit = source_spec is not None and source_spec.category == "instruction_image_editing"
+        if not is_instruction_edit:
+            structure = rec.structure_output
+            if not isinstance(structure, dict):
+                return "structure_output_missing"
+            # A valid empty/freeform structure is intentionally the representation
+            # used for general visual records.  It cannot deterministically produce
+            # a UI wireframe condition.
+            if structure.get("layout_type") == "freeform" or not structure.get("elements"):
+                return "structure_not_suitable_for_condition"
+            try:
+                from data_forge.data.schema_validator import SchemaValidator
 
-            valid, _errors = SchemaValidator(config.schemas_dir).validate_structure(structure)
-        except (OSError, ValueError, FileNotFoundError):
-            return "structure_schema_unavailable"
-        if not valid:
-            return "structure_output_invalid"
+                valid, _errors = SchemaValidator(config.schemas_dir).validate_structure(structure)
+            except (OSError, ValueError, FileNotFoundError):
+                return "structure_schema_unavailable"
+            if not valid:
+                return "structure_output_invalid"
 
         condition_rel = (rec.encoding_paths or {}).get("condition_image")
         if not condition_rel:

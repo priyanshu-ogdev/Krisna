@@ -52,6 +52,10 @@ class QualityStage(Stage):
         excluded = 0
         failed = 0
 
+        max_aspect_ratio = stage_cfg.get("max_aspect_ratio", 2.5)
+        purge_legacy_era = stage_cfg.get("purge_legacy_era", False)
+        require_complete_ui = stage_cfg.get("require_complete_ui", False)
+
         async def _process(rec):
             if not rec.image_path:
                 return {"id": rec.id, "status": "excluded_failed", "reason": "No image path specified", "exclusion_reason": "image_missing"}
@@ -71,8 +75,8 @@ class QualityStage(Stage):
                 return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Below min resolution: {w}x{h}", "exclusion_reason": "below_min_resolution", "w": w, "h": h}
             if w > max_res[0] or h > max_res[1]:
                 return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Above max resolution: {w}x{h}", "exclusion_reason": "above_max_resolution", "w": w, "h": h}
-            if max(w, h) / max(min(w, h), 1) > 4.0:
-                return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Extreme aspect ratio: {w}x{h} (>4:1)", "exclusion_reason": "extreme_aspect_ratio", "w": w, "h": h}
+            if max(w, h) / max(min(w, h), 1) > max_aspect_ratio:
+                return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Extreme aspect ratio: {w}x{h} (>{max_aspect_ratio}:1)", "exclusion_reason": "extreme_aspect_ratio", "w": w, "h": h}
 
             try:
                 quality_out = await tier1.score_quality(img_path)
@@ -83,6 +87,15 @@ class QualityStage(Stage):
 
             if quality_out.aesthetic_score is None or math.isnan(quality_out.aesthetic_score) or math.isinf(quality_out.aesthetic_score):
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Invalid aesthetic score (NaN/Inf)", "exclusion_reason": "inference_failed", "w": w, "h": h}
+
+            if quality_out.resolution_adequate is False:
+                return {"id": rec.id, "status": "excluded_low_quality", "reason": "Resolution judged inadequate by VLM quality model", "exclusion_reason": "resolution_inadequate", "score": quality_out.aesthetic_score, "out": quality_out.model_dump(), "w": w, "h": h}
+
+            if purge_legacy_era and getattr(rec, "domain", None) == "ui_first" and quality_out.design_era == "legacy":
+                return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Legacy design era ({quality_out.design_era}) purged to prevent aesthetic decay", "exclusion_reason": "legacy_design_era", "score": quality_out.aesthetic_score, "out": quality_out.model_dump(), "w": w, "h": h}
+
+            if require_complete_ui and getattr(rec, "domain", None) == "ui_first" and quality_out.is_complete_ui is False:
+                return {"id": rec.id, "status": "excluded_low_quality", "reason": "Incomplete UI screenshot crop (missing viewport context)", "exclusion_reason": "incomplete_ui_crop", "score": quality_out.aesthetic_score, "out": quality_out.model_dump(), "w": w, "h": h}
 
             if quality_out.aesthetic_score < threshold:
                 return {"id": rec.id, "status": "excluded_low_quality", "reason": f"Aesthetic score {quality_out.aesthetic_score:.3f} < {threshold}", "exclusion_reason": "below_aesthetic_threshold", "score": quality_out.aesthetic_score, "out": quality_out.model_dump(), "w": w, "h": h}

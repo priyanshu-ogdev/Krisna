@@ -181,3 +181,46 @@ class TestQwenImage21Export:
         summary = json.loads((model_dir / "manifest_summary.json").read_text())
         assert summary["pairs_exported"] == 0
         assert summary["exclusions_by_reason"]["source_disjoint_split_not_configured"] == 1
+
+    def test_exports_instruction_editing_pair_with_freeform_structure(
+        self, manifest, config, data_root, sample_image
+    ):
+        _configure_test_source(config)
+        config.datasets["magicbrush"] = DatasetSpec(
+            display_name="MagicBrush",
+            source_type="huggingface",
+            repo_id="osunlp/MagicBrush",
+            category="instruction_image_editing",
+            training_eligible=True,
+            synthetic=False,
+            synthetic_status="real",
+            provenance_url="https://example.test/magicbrush",
+            quality_tier="gold",
+            training_targets=["polish_qwen_image21"],
+            license_status="verified",
+            revision="a" * 40,
+        )
+        condition = data_root / "processed" / "source_photos" / "source.png"
+        condition.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (512, 512), color=(240, 240, 240)).save(condition)
+        record = _make_record(
+            manifest, data_root, sample_image, condition=condition, domain="ui_first"
+        )
+        manifest.update_record(
+            record.id,
+            "test_setup",
+            source_dataset="magicbrush",
+            structure_output={"layout_type": "freeform", "elements": []},
+        )
+        record = manifest.get_record(record.id)
+
+        summary = ModelDataExportStage()._export_qwen_image21(
+            [record], config, config.resolved_paths["model_data_root"]
+        )
+        model_dir = config.resolved_paths["model_data_root"] / "polish_qwen_image21"
+        exclusions_text = (model_dir / "exclusions.jsonl").read_text() if (model_dir / "exclusions.jsonl").is_file() else ""
+        assert summary["pairs_exported"] == 1, f"Export failed. Summary: {summary}, Exclusions: {exclusions_text}"
+        entry = json.loads((model_dir / "manifest.jsonl").read_text().strip())
+        assert entry["record_id"] == record.id
+        assert entry["source_dataset"] == "magicbrush"
+
