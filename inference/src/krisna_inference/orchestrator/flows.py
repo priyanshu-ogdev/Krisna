@@ -136,6 +136,9 @@ async def conversational_turn(
             for r in merged["locked_regions"]
         ]
 
+    if image_ref:
+        state.constraints.reference_image_ref = image_ref
+
     sketch_out = result.get("sketch", {})
     new_layout_ref = sketch_out.get("layout_ref")
     if new_layout_ref:
@@ -146,6 +149,19 @@ async def conversational_turn(
         state.layout.mask_ref = sketch_out.get("mask_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
+
+    sketch_locked = sketch_out.get("locked_regions") or []
+    if sketch_locked:
+        from krisna_inference.orchestrator.design_state import LockedRegion
+        existing_boxes = [list(r.bbox) for r in state.constraints.locked_regions]
+        for slr in sketch_locked:
+            slr_dict = slr if isinstance(slr, dict) else slr.model_dump()
+            box = slr_dict.get("bbox")
+            if box and list(box) not in existing_boxes:
+                state.constraints.locked_regions.append(
+                    LockedRegion(bbox=tuple(box), reason=slr_dict.get("reason", "Sketch lock"))
+                )
+                existing_boxes.append(list(box))
 
     if state.refinement.exhausted:
         state.refinement.reset_cycle()

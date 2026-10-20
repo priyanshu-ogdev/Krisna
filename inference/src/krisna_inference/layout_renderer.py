@@ -587,7 +587,7 @@ def render_spatial_alpha_mask(
     for node in report.layout.nodes:
         if node.id == "root" and node.parent is None:
             continue
-        if node.locked:
+        if node.locked or getattr(node, "identity_lock", False):
             x1 = max(0, min(canvas_w - 2, int(node.bbox.x1 * canvas_w)))
             y1 = max(0, min(canvas_h - 2, int(node.bbox.y1 * canvas_h)))
             x2 = max(x1 + 1, min(canvas_w, int(node.bbox.x2 * canvas_w)))
@@ -738,7 +738,7 @@ def compute_differential_mask(
     re_draw = ImageDraw.Draw(mask)
     for n in new_nodes:
         nd = _node_to_dict(n)
-        if nd.get("locked"):
+        if nd.get("locked") or nd.get("identity_lock"):
             bbox = nd.get("bbox") or {}
             if isinstance(bbox, dict):
                 lx1, ly1, lx2, ly2 = bbox.get("x1", 0.0), bbox.get("y1", 0.0), bbox.get("x2", 1.0), bbox.get("y2", 1.0)

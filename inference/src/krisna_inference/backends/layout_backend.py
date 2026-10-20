@@ -61,10 +61,11 @@ class LayoutBackend(ModelBackend):
         from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
 
         raw_constraints = dict(kwargs.get("constraints") or {})
-        constraints = apply_constraint_updates(raw_constraints, delta.get("constraint_updates") or {})
-        actions = delta.get("actions") or constraints.get("actions")
+        delta_updates = dict(delta.get("constraint_updates") or {})
+        actions = delta.get("actions") or planner_output.get("actions") or raw_constraints.get("actions")
         if actions:
-            constraints["actions"] = actions
+            delta_updates["actions"] = actions
+        constraints = apply_constraint_updates(raw_constraints, delta_updates)
 
         layout = layout_from_constraints(constraints, text=kwargs.get("message", ""))
         num_elements = len(layout.nodes)
@@ -133,4 +134,5 @@ class LayoutBackend(ModelBackend):
             "canvas_height": dual_sketch.height,
             "projection": flow_metrics,
             "flow_metrics": flow_metrics,
+            "locked_regions": constraints.get("locked_regions", []),
         }

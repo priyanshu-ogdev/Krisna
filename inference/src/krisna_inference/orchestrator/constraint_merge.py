@@ -18,7 +18,7 @@ from __future__ import annotations
 
 
 def _normalize_and_clamp_bbox(bbox) -> list[float] | None:
-    """Clamps bounding boxes to valid screen bounds to prevent out-of-bounds rendering crashes."""
+    """Clamps bounding boxes to valid [x, y, w, h] screen bounds to prevent out-of-bounds rendering crashes."""
     if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
         return None
     try:
@@ -70,8 +70,13 @@ def _apply_single_action(merged: dict, action) -> None:
         clamped = _normalize_and_clamp_bbox(bbox)
         if clamped is not None:
             current_locked = list(merged.get("locked_regions") or [])
-            current_locked.append({"bbox": clamped, "reason": str(reason)})
-            merged["locked_regions"] = current_locked
+            if not any(r.get("bbox") == clamped for r in current_locked if isinstance(r, dict)):
+                current_locked.append({"bbox": clamped, "reason": str(reason)})
+                merged["locked_regions"] = current_locked
+        target = action_dict.get("target_id") or params.get("target_id")
+        if target:
+            existing_hints = merged.get("layout_hints") or ""
+            merged["layout_hints"] = f"{existing_hints}; Lock {target}".strip("; ")
 
     elif act_type == "RESIZE":
         target = action_dict.get("target_id") or params.get("target_id")
@@ -96,6 +101,20 @@ def _apply_single_action(merged: dict, action) -> None:
         hint = f"Add {comp_type} at {clamped}" if clamped else f"Add {comp_type}"
         existing_hints = merged.get("layout_hints") or ""
         merged["layout_hints"] = f"{existing_hints}; {hint}".strip("; ")
+
+        is_focal = bool(
+            action_dict.get("is_focal_subject")
+            or params.get("is_focal_subject")
+            or action_dict.get("identity_lock")
+            or params.get("identity_lock")
+            or str(comp_type).lower() in ("focal_subject", "character")
+        )
+        if is_focal and clamped:
+            current_locked = list(merged.get("locked_regions") or [])
+            reason = action_dict.get("reason") or f"Identity lock for {comp_type}"
+            if not any(r.get("bbox") == clamped for r in current_locked if isinstance(r, dict)):
+                current_locked.append({"bbox": clamped, "reason": str(reason)})
+                merged["locked_regions"] = current_locked
 
     elif act_type == "REMOVE_COMPONENT":
         target = action_dict.get("target_id") or params.get("target_id")
@@ -173,14 +192,16 @@ def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
         merged["asset_mode"] = str(constraint_updates["asset_mode"])
 
     if isinstance(constraint_updates.get("locked_regions"), list):
-        new_locked = []
+        merged_locked = list(merged.get("locked_regions") or [])
         for r in constraint_updates["locked_regions"]:
-            if isinstance(r, dict) and "bbox" in r and "reason" in r:
-                new_locked.append(r)
-            elif hasattr(r, "model_dump"):
-                new_locked.append(r.model_dump())
-        if new_locked:
-            merged["locked_regions"] = new_locked
+            item = r.model_dump() if hasattr(r, "model_dump") else r
+            if isinstance(item, dict) and "bbox" in item:
+                clamped_box = _normalize_and_clamp_bbox(item["bbox"])
+                if clamped_box is not None:
+                    entry = {"bbox": clamped_box, "reason": str(item.get("reason", "Locked region"))}
+                    if not any(existing.get("bbox") == clamped_box for existing in merged_locked if isinstance(existing, dict)):
+                        merged_locked.append(entry)
+        merged["locked_regions"] = merged_locked
 
     # Also apply nested actions list if provided in constraint_updates dict
     if isinstance(constraint_updates.get("actions"), list):

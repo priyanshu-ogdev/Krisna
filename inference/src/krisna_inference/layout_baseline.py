@@ -596,6 +596,13 @@ def layout_from_constraints(
                         adj_y1 = max(0.0, adj_y2 - bh_adj)
                         new_bbox = BBox(x1=round(adj_x1, 4), y1=round(adj_y1, 4), x2=round(adj_x2, 4), y2=round(adj_y2, 4))
 
+                is_locked = bool(
+                    act_dict.get("locked")
+                    or params.get("locked")
+                    or act_dict.get("identity_lock")
+                    or params.get("identity_lock")
+                    or is_focal
+                )
                 node_map[comp_id] = LayoutNode(
                     id=comp_id,
                     type=comp_type,
@@ -603,6 +610,7 @@ def layout_from_constraints(
                     parent="root",
                     z_index=z_idx,
                     text=text_content,
+                    locked=is_locked,
                     is_focal_subject=is_focal,
                     facial_landmarks=act_dict.get("facial_landmarks") or params.get("facial_landmarks"),
                     identity_lock=bool(act_dict.get("identity_lock") or params.get("identity_lock", is_focal)),
@@ -641,7 +649,58 @@ def layout_from_constraints(
 
             elif act_type == "LOCK_REGION":
                 if target_id and target_id in node_map:
-                    node_map[target_id] = node_map[target_id].model_copy(update={"locked": True})
+                    node_map[target_id] = node_map[target_id].model_copy(update={"locked": True, "identity_lock": True})
+                bbox_raw = act_dict.get("bbox") or params.get("bbox")
+                if bbox_raw and len(bbox_raw) == 4:
+                    try:
+                        bx, by, bw, bh = [float(v) for v in bbox_raw]
+                        for nid, node in list(node_map.items()):
+                            if nid == "root":
+                                continue
+                            nb = node.bbox
+                            ncx, ncy = (nb.x1 + nb.x2) / 2.0, (nb.y1 + nb.y2) / 2.0
+                            if bx <= ncx <= (bx + bw) and by <= ncy <= (by + bh):
+                                node_map[nid] = node.model_copy(update={"locked": True, "identity_lock": True})
+                    except Exception:
+                        pass
+
+            elif act_type == "SET_LAYOUT_DIRECTION":
+                direction = str(act_dict.get("layout_direction") or params.get("layout_direction") or "row").lower()
+                constraints["layout_direction"] = direction
+                if target_id and target_id in node_map:
+                    node_map[target_id].props["layout_direction"] = direction
+                elif "root" in node_map:
+                    node_map["root"].props["layout_direction"] = direction
+
+            elif act_type == "REORDER_HIERARCHY":
+                if target_id and target_id in node_map:
+                    pos = str(act_dict.get("hierarchy_position") or params.get("hierarchy_position") or "front").lower()
+                    current_z = [n.z_index for n in node_map.values()]
+                    max_z = max(current_z) if current_z else 0
+                    min_z = min(current_z) if current_z else 0
+                    new_z = max_z + 1 if pos in ("front", "top", "up") else min_z - 1
+                    node_map[target_id] = node_map[target_id].model_copy(update={"z_index": new_z})
+
+            elif act_type == "SET_STYLE":
+                new_style = act_dict.get("style") or params.get("style")
+                if new_style and "root" in node_map:
+                    tokens = dict(node_map["root"].style_tokens)
+                    tokens["style"] = str(new_style)
+                    node_map["root"] = node_map["root"].model_copy(update={"style_tokens": tokens})
+
+            elif act_type == "SET_PALETTE":
+                new_pal = act_dict.get("palette") or params.get("palette")
+                if isinstance(new_pal, list) and "root" in node_map:
+                    tokens = dict(node_map["root"].style_tokens)
+                    tokens["palette"] = [str(c) for c in new_pal]
+                    node_map["root"] = node_map["root"].model_copy(update={"style_tokens": tokens})
+
+            elif act_type == "SET_ASSET_MODE":
+                new_mode = act_dict.get("asset_mode") or params.get("asset_mode")
+                if new_mode in ("opaque", "transparent") and "root" in node_map:
+                    tokens = dict(node_map["root"].style_tokens)
+                    tokens["asset_mode"] = str(new_mode)
+                    node_map["root"] = node_map["root"].model_copy(update={"style_tokens": tokens})
 
     # Synchronize locked_regions directly with LayoutNode.locked BEFORE Flexbox resolution
     locked_regions = constraints.get("locked_regions") or []
@@ -658,9 +717,18 @@ def layout_from_constraints(
                         nb = node.bbox
                         ncx, ncy = (nb.x1 + nb.x2) / 2.0, (nb.y1 + nb.y2) / 2.0
                         if bx <= ncx <= (bx + bw) and by <= ncy <= (by + bh):
-                            node_map[nid] = node.model_copy(update={"locked": True})
+                            node_map[nid] = node.model_copy(update={"locked": True, "identity_lock": True})
                 except Exception:
                     pass
+
+    # Two-way sync: Ensure all locked / identity-locked nodes are registered in constraints["locked_regions"]
+    final_locked_regions = list(constraints.get("locked_regions") or [])
+    for nid, node in node_map.items():
+        if nid != "root" and (node.locked or getattr(node, "identity_lock", False)):
+            box_coords = [round(node.bbox.x1, 4), round(node.bbox.y1, 4), round(node.bbox.x2 - node.bbox.x1, 4), round(node.bbox.y2 - node.bbox.y1, 4)]
+            if not any(r.get("bbox") == box_coords for r in final_locked_regions if isinstance(r, dict)):
+                final_locked_regions.append({"bbox": box_coords, "reason": f"Lock for {nid} ({node.type})"})
+    constraints["locked_regions"] = final_locked_regions
 
     # Apply deterministic Flexbox partitioner (with strict locked-node exemption and 8pt grid snapping)
     layout_conflicts: list[str] = []

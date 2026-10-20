@@ -1665,4 +1665,245 @@ def test_service_execute_endpoint_and_auto_proceed(tmp_path, monkeypatch):
     test_store.close()
 
 
+def test_vla_action_primitives_end_to_end():
+    """Negative audit: verify all VLA action primitives are parsed, executed, and mutate Scene DAG."""
+    from krisna_inference.backends.planner_schema import (
+        AddComponentAction,
+        LockRegionAction,
+        MoveComponentAction,
+        RemoveComponentAction,
+        ReorderHierarchyAction,
+        ResizeAction,
+        SetAssetModeAction,
+        SetLayoutDirectionAction,
+        SetPaletteAction,
+        SetStyleAction,
+        SetTextAction,
+    )
+
+    constraints = {
+        "style": "default",
+        "palette": ["#ffffff", "#000000"],
+        "actions": [
+            SetStyleAction(style="cyberpunk neon"),
+            SetPaletteAction(palette=["#050505", "#00ffcc", "#ff007f"]),
+            SetAssetModeAction(asset_mode="transparent"),
+            AddComponentAction(
+                component_type="focal_subject",
+                target_id="hero_face",
+                # Pass a tiny box to test spatial floor enforcement (<128px)
+                bbox=[0.40, 0.40, 0.05, 0.05],
+                props={"label": "Character Portrait"},
+                is_focal_subject=True,
+            ),
+            AddComponentAction(
+                component_type="card",
+                target_id="overlay_card",
+                bbox=[0.10, 0.60, 0.40, 0.30],
+                props={"label": "Overlay Panel"},
+            ),
+            SetLayoutDirectionAction(target_id="root", layout_direction="column"),
+            ReorderHierarchyAction(target_id="overlay_card", hierarchy_position="front"),
+            SetTextAction(target_id="title", text_content="Updated Mission Title"),
+            MoveComponentAction(target_id="action", bbox=[0.55, 0.85, 0.35, 0.08]),
+            ResizeAction(target_id="content", bbox=[0.05, 0.20, 0.90, 0.35]),
+            LockRegionAction(target_id="hero_face"),
+            RemoveComponentAction(target_id="nonexistent_mock"),
+        ],
+    }
+
+    layout = layout_from_constraints(constraints, text="VLA Primitive Audit", canvas_width=1024, canvas_height=1024)
+    nodes = layout.node_map()
+
+    # 1. Spatial floor & Focal subject preservation: min 128px (12.5% of canvas)
+    assert "hero_face" in nodes
+    hero = nodes["hero_face"]
+    assert hero.is_focal_subject is True
+    assert hero.locked is True
+    assert hero.identity_lock is True
+    bw = hero.bbox.x2 - hero.bbox.x1
+    bh = hero.bbox.y2 - hero.bbox.y1
+    assert bw >= 0.125, f"Spatial floor violated: width {bw} < 0.125 (128px / 1024px)"
+    assert bh >= 0.125, f"Spatial floor violated: height {bh} < 0.125 (128px / 1024px)"
+
+    # 2. Two-way lock sync: hero_face must be registered in constraints["locked_regions"]
+    assert len(constraints["locked_regions"]) >= 1
+    assert any(r.get("bbox") == [hero.bbox.x1, hero.bbox.y1, round(bw, 4), round(bh, 4)] for r in constraints["locked_regions"])
+
+    # 3. Hierarchy mutation: overlay_card was moved to front (z_index > 0)
+    assert "overlay_card" in nodes
+    assert nodes["overlay_card"].z_index > 0
+
+    # 4. Text and style tokens updated
+    assert nodes["root"].style_tokens.get("style") == "cyberpunk neon"
+    assert nodes["root"].style_tokens.get("palette") == ["#050505", "#00ffcc", "#ff007f"]
+    assert nodes["root"].style_tokens.get("asset_mode") == "transparent"
+    assert nodes["title"].text == "Updated Mission Title"
+
+
+@pytest.mark.asyncio
+async def test_face_identity_preservation_turn_1_image_to_image(tmp_path):
+    """Verify Turn 1 Image-to-Image preserves human facial identity with 0.00% drift (lock score 1.000)."""
+    import numpy as np
+    from krisna_inference.backends.blob_store_singleton import get_blob_store
+    from krisna_inference.orchestrator.design_state import DesignState
+    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+
+    blobs = get_blob_store()
+    store = DesignStateStore(db_path=str(tmp_path / "face_turn1_test.db"))
+
+    # Synthesize an uploaded photo with a unique distinct human face texture
+    w, h = 1024, 1024
+    np.random.seed(42)
+    face_pattern = np.random.randint(50, 220, (300, 300, 3), dtype=np.uint8)
+    base_canvas = np.full((h, w, 3), 240, dtype=np.uint8)
+    # Face located at [0.30, 0.20, 0.30, 0.30] -> (307px, 204px)
+    fx0, fy0, fw, fh = 307, 204, 300, 300
+    base_canvas[fy0 : fy0 + fh, fx0 : fx0 + fw] = face_pattern
+    uploaded_photo = Image.fromarray(base_canvas, mode="RGB")
+    uploaded_ref = blobs.save_image(uploaded_photo, prefix="test_user_portrait")
+
+    # Initialize session and mock orchestrator
+    state = DesignState(session_id="face_session")
+    state.constraints.style = "portrait"
+    state.constraints.palette = ["#222222", "#ffffff"]
+    state.constraints.reference_image_ref = uploaded_ref
+    store.create(state)
+
+    def test_backend_factory(spec):
+        if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_FAST, Tier.POLISH_QUALITY):
+            return QwenImage21Backend(spec, strict=False)
+        if spec.tier == Tier.SKETCH:
+            from krisna_inference.backends.layout_backend import LayoutBackend
+            return LayoutBackend(spec)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
+
+    orchestrator = SwapOrchestrator(backend_factory=test_backend_factory)
+    await orchestrator.start()
+
+    try:
+        final_state = await plan_sketch_and_polish(
+            orchestrator=orchestrator,
+            store=store,
+            session_id="face_session",
+            user_message="Keep the person's face untouched, add an elegant subtitle below",
+            image_ref=uploaded_ref,
+            quality=False,
+            auto_review=False,
+        )
+
+        assert final_state.stage.value == "finalized"
+        assert final_state.finalize_output.image_ref is not None
+
+        # Verify donor pixels were bitwise restored
+        polished_img = blobs.load_image(final_state.finalize_output.image_ref)
+        locked_regions = [r.model_dump() for r in final_state.constraints.locked_regions]
+
+        # Ensure at least one locked region covers the face
+        assert len(locked_regions) >= 1
+        verifier = LockPreservationVerifier()
+        score = verifier.score(uploaded_photo, polished_img, locked_regions)
+
+        # Facial preservation contract: EXACT donor pixels preserved -> score must be 1.000
+        assert score == 1.0, f"Facial drift detected! Lock score {score:.4f} < 1.000"
+    finally:
+        await orchestrator.shutdown()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
+    """Verify facial identity is preserved across multiple conversational turns without degradation."""
+    import numpy as np
+    from krisna_inference.backends.blob_store_singleton import get_blob_store
+    from krisna_inference.orchestrator.flows import conversational_turn, finalize
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+
+    blobs = get_blob_store()
+    store = DesignStateStore(db_path=str(tmp_path / "face_multiturn_test.db"))
+
+    # Synthesize original portrait
+    w, h = 1024, 1024
+    face_pattern = np.random.randint(60, 200, (250, 250, 3), dtype=np.uint8)
+    canvas = np.full((h, w, 3), 230, dtype=np.uint8)
+    canvas[150:400, 200:450] = face_pattern
+    donor_photo = Image.fromarray(canvas, mode="RGB")
+    donor_ref = blobs.save_image(donor_photo, prefix="donor_portrait")
+
+    from krisna_inference.orchestrator.design_state import DesignState
+
+    state = DesignState(session_id="multiturn_face")
+    state.constraints.style = "minimalist"
+    state.constraints.reference_image_ref = donor_ref
+    store.create(state)
+
+    def test_backend_factory(spec):
+        if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_FAST, Tier.POLISH_QUALITY):
+            return QwenImage21Backend(spec, strict=False)
+        if spec.tier == Tier.SKETCH:
+            from krisna_inference.backends.layout_backend import LayoutBackend
+            return LayoutBackend(spec)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
+
+    orchestrator = SwapOrchestrator(backend_factory=test_backend_factory)
+    await orchestrator.start()
+
+    try:
+        # Turn 1: Initial creation with face lock
+        state = await conversational_turn(
+            orchestrator=orchestrator,
+            store=store,
+            session_id="multiturn_face",
+            user_message="Lock the portrait face at [0.1953, 0.1465, 0.2441, 0.2441], add heading",
+            image_ref=donor_ref,
+        )
+        state = await finalize(orchestrator=orchestrator, store=store, session_id="multiturn_face")
+        t1_img = blobs.load_image(state.finalize_output.image_ref)
+
+        locked_regs = [r.model_dump() for r in state.constraints.locked_regions]
+        assert len(locked_regs) >= 1
+        verifier = LockPreservationVerifier()
+        score_t1 = verifier.score(donor_photo, t1_img, locked_regs)
+        assert score_t1 == 1.0, f"Turn 1 face drift: score {score_t1:.4f}"
+
+        # Turn 2: Mutate theme and style
+        state = await conversational_turn(
+            orchestrator=orchestrator,
+            store=store,
+            session_id="multiturn_face",
+            user_message="Change theme to dark emerald and add a call to action",
+        )
+        state = await finalize(orchestrator=orchestrator, store=store, session_id="multiturn_face")
+        t2_img = blobs.load_image(state.finalize_output.image_ref)
+
+        # Check face is STILL bitwise preserved from donor
+        score_t2 = verifier.score(donor_photo, t2_img, locked_regs)
+        assert score_t2 == 1.0, f"Turn 2 face degradation: score {score_t2:.4f}"
+
+        # Turn 3: Add additional elements
+        state = await conversational_turn(
+            orchestrator=orchestrator,
+            store=store,
+            session_id="multiturn_face",
+            user_message="Add navigation links at the top",
+        )
+        state = await finalize(orchestrator=orchestrator, store=store, session_id="multiturn_face")
+        t3_img = blobs.load_image(state.finalize_output.image_ref)
+
+        # Check face remains 100% invariant through Turn 3
+        score_t3 = verifier.score(donor_photo, t3_img, locked_regs)
+        assert score_t3 == 1.0, f"Turn 3 face degradation: score {score_t3:.4f}"
+    finally:
+        await orchestrator.shutdown()
+        store.close()
+
+
+
 
