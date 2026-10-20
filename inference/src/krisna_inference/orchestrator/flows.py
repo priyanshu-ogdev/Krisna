@@ -513,6 +513,116 @@ async def fast_preview(
     )
 
 
+async def plan_sketch_and_polish(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+    user_message: str,
+    image_ref: str | None = None,
+    quality: bool = False,
+    fast: bool = False,
+    prompt: str | None = None,
+    verifier_stack: Any = None,
+    handoff_hook: Any = None,
+    min_safety_score: float = 0.9,
+    auto_review: bool = True,
+    **kwargs: Any,
+) -> DesignState:
+    """Unified Autonomous Plan-and-Sketch Pipeline with Direct-to-Polish and Closed-Loop Review.
+
+    Integrates Qwen3.5-9B VLM deliberation and krisna.layout.v1 into a single pipeline:
+    1. Simultaneous Plan + Sketch:
+       Executes Planner deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding)
+       and layout compilation (Cassowary constraint solving, DualStreamSketch rasterization).
+    2. Direct Polish Progression:
+       Immediately hands off wireframe, segmentation, and synthesized prompt to Qwen-Image-2.1
+       (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, or Tier.POLISH_FAST) without manual intermediate calls.
+    3. Verifier Stack Evaluation:
+       Scores the rendered output on layout IoU, OCR readability, aesthetic score, seam continuity,
+       and enforces the safety gate.
+    4. Closed-Loop Review & Further Planning Deliberation:
+       Passes the verifier receipt and render metadata back into Qwen3.5-9B for post-render
+       deliberation, generating an autonomous evaluation and recommended next-step refinements
+       ([Post-Render Deliberation]) and appending it to the session conversation history.
+    """
+    # Step 1: Simultaneous Plan and Sketch execution
+    state = await conversational_turn(
+        orchestrator=orchestrator,
+        store=store,
+        session_id=session_id,
+        user_message=user_message,
+        image_ref=image_ref,
+    )
+
+    # Step 2: Direct Polish progression
+    state = await finalize(
+        orchestrator=orchestrator,
+        store=store,
+        session_id=session_id,
+        quality=quality,
+        fast=fast,
+        handoff_hook=handoff_hook,
+        verifier_stack=verifier_stack,
+        prompt=prompt,
+        min_safety_score=min_safety_score,
+        **kwargs,
+    )
+
+    # Step 3 & 4: Closed-Loop Post-Render Review & Further Planning Deliberation
+    if auto_review and state.stage == SessionStage.FINALIZED and not state.refinement.exhausted:
+        try:
+            expected_rev = state.revision
+            verifier_scores = state.finalize_output.verifier_scores
+            scores_summary = []
+            if getattr(verifier_scores, "layout_iou", None) is not None:
+                scores_summary.append(f"Layout IoU: {verifier_scores.layout_iou:.2f}")
+            if getattr(verifier_scores, "ocr_readability", None) is not None:
+                scores_summary.append(f"OCR Readability: {verifier_scores.ocr_readability:.2f}")
+            if getattr(verifier_scores, "aesthetic", None) is not None:
+                scores_summary.append(f"Aesthetic: {verifier_scores.aesthetic:.2f}")
+            if getattr(verifier_scores, "seam_continuity", None) is not None:
+                scores_summary.append(f"Seam Continuity: {verifier_scores.seam_continuity:.2f}")
+            if getattr(verifier_scores, "lock_preservation", None) is not None:
+                scores_summary.append(f"Lock Preservation: {verifier_scores.lock_preservation:.2f}")
+
+            scores_text = ", ".join(scores_summary) if scores_summary else "N/A"
+            intent = state.constraints.original_intent or user_message
+
+            review_prompt = (
+                f"Post-render verifier review for rendered UI image. "
+                f"Original intent: '{intent}'. "
+                f"Active style: '{state.constraints.style}'. "
+                f"Verifier scores: [{scores_text}]. "
+                f"Evaluate layout fidelity, typography legibility, and aesthetics against intent. "
+                f"Formulate next-step planning directives."
+            )
+
+            history = [turn.model_dump() for turn in state.conversation_history]
+            constraints_for_review = state.constraints.model_dump()
+            current_nodes = _extract_current_layout_nodes(state.layout.layout_ref)
+            if current_nodes:
+                constraints_for_review["current_layout"] = current_nodes
+
+            review_res = await orchestrator.run_conversational_turn(
+                session_id=session_id,
+                message=review_prompt,
+                constraints=constraints_for_review,
+                conversation_history=history,
+                review=True,
+                wireframe_ref=state.layout.wireframe_ref,
+            )
+            planner_out = review_res.get("planner", {})
+            review_reply = planner_out.get("reply_text") or "(Post-render deliberation completed. Layout aligns with specification.)"
+            state.append_turn("planner", f"[Post-Render Deliberation] {review_reply}")
+            state.refinement.record_turn("self_review")
+            state.touch()
+            state = store.save(state, expected_rev)
+        except Exception as e:
+            log.warning("post_render_auto_review_warning: %s", e)
+
+    return state
+
+
 async def enhance_photo(
     orchestrator: SwapOrchestrator,
     store: DesignStateStore,

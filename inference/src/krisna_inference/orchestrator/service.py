@@ -162,6 +162,20 @@ class NewSessionRequest(BaseModel):
 class MessageRequest(BaseModel):
     message: str
     image_ref: str | None = None
+    auto_proceed: bool = False
+    quality: bool = False
+    fast: bool = False
+    prompt: str | None = None
+    auto_review: bool = True
+
+
+class ExecuteRequest(BaseModel):
+    message: str
+    image_ref: str | None = None
+    quality: bool = False
+    fast: bool = False
+    prompt: str | None = None
+    auto_review: bool = True
 
 
 class DecompileRequest(BaseModel):
@@ -394,13 +408,58 @@ async def post_message(session_id: str, req: MessageRequest) -> dict:
     session_coordinator.cancel(session_id)
     async with _get_session_lock(session_id):
         try:
-            state = await flows.conversational_turn(
-                orchestrator, store, session_id, req.message, image_ref=req.image_ref
-            )
-        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
+            if req.auto_proceed:
+                state = await flows.plan_sketch_and_polish(
+                    orchestrator,
+                    store,
+                    session_id,
+                    user_message=req.message,
+                    image_ref=req.image_ref,
+                    quality=req.quality,
+                    fast=req.fast,
+                    prompt=req.prompt,
+                    verifier_stack=_verifier_stack,
+                    handoff_hook=_handoff_hook,
+                    auto_review=req.auto_review,
+                )
+            else:
+                state = await flows.conversational_turn(
+                    orchestrator, store, session_id, req.message, image_ref=req.image_ref
+                )
+                _schedule_self_review(session_id)
+        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError, OOMRecoveryExhausted) as e:
             raise _error_response(e)
-        _schedule_self_review(session_id)
-        return state.to_wire() | {"revision": state.revision}
+        res = state.to_wire() | {"revision": state.revision}
+        if state.preview_output:
+            res["preview_output"] = state.preview_output.model_dump()
+        return res
+
+
+@app.post("/session/{session_id}/execute")
+async def post_execute(session_id: str, req: ExecuteRequest) -> dict:
+    """Unified simultaneous Plan + Sketch, direct-to-Polish, Verifier Review, and Further Planning."""
+    session_coordinator.cancel(session_id)
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.plan_sketch_and_polish(
+                orchestrator,
+                store,
+                session_id,
+                user_message=req.message,
+                image_ref=req.image_ref,
+                quality=req.quality,
+                fast=req.fast,
+                prompt=req.prompt,
+                verifier_stack=_verifier_stack,
+                handoff_hook=_handoff_hook,
+                auto_review=req.auto_review,
+            )
+        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError, OOMRecoveryExhausted) as e:
+            raise _error_response(e)
+        res = state.to_wire() | {"revision": state.revision}
+        if state.preview_output:
+            res["preview_output"] = state.preview_output.model_dump()
+        return res
 
 
 @app.post("/session/{session_id}/decompile")

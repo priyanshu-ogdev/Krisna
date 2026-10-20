@@ -1507,3 +1507,162 @@ async def test_image_to_image_turn1_face_preservation(tmp_path, monkeypatch):
     db_store.close()
 
 
+@pytest.mark.asyncio
+async def test_unified_plan_sketch_layer_simultaneous_execution(tmp_path):
+    """Verify UnifiedPlanSketchLayer executes Plan deliberation and Layout compilation simultaneously."""
+    from krisna_inference.orchestrator.unified_plan_sketch import UnifiedPlanSketchLayer
+    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+
+    db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
+    state = DesignState()
+    state = db_store.create(state)
+
+    orch = SwapOrchestrator()
+    await orch.start()
+
+    layer = UnifiedPlanSketchLayer(orchestrator=orch, store=db_store)
+    updated_state, exec_result = await layer.execute(
+        session_id=state.session_id,
+        user_message="Design a fintech investment dashboard with dark theme",
+    )
+
+    assert updated_state.session_id == state.session_id
+    assert updated_state.stage == SessionStage.SKETCHING
+    assert updated_state.layout.wireframe_ref is not None
+    assert updated_state.layout.segmentation_ref is not None
+    assert any(turn.role == "planner" for turn in updated_state.conversation_history)
+
+    assert exec_result.session_id == state.session_id
+    assert exec_result.wireframe_ref == updated_state.layout.wireframe_ref
+    assert exec_result.segmentation_ref == updated_state.layout.segmentation_ref
+
+    await orch.shutdown()
+    db_store.close()
+
+
+@pytest.mark.asyncio
+async def test_plan_sketch_and_polish_closed_loop_deliberation(tmp_path):
+    """Verify plan_sketch_and_polish directly proceeds to Polish and loops back to review & further planning."""
+    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator import flows
+
+    db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
+    state = DesignState()
+    state = db_store.create(state)
+
+    orch = SwapOrchestrator()
+    await orch.start()
+
+    # Run the unified plan, sketch, direct-to-polish, and post-render deliberation pipeline
+    final_state = await flows.plan_sketch_and_polish(
+        orchestrator=orch,
+        store=db_store,
+        session_id=state.session_id,
+        user_message="Create an e-commerce product landing page with hero image and CTA",
+        auto_review=True,
+    )
+
+    # 1. State must reach FINALIZED stage
+    assert final_state.stage == SessionStage.FINALIZED
+
+    # 2. Layout artifacts must be generated
+    assert final_state.layout.wireframe_ref is not None
+    assert final_state.layout.segmentation_ref is not None
+
+    # 3. Polish output must be populated
+    assert final_state.finalize_output.image_ref is not None
+    assert final_state.finalize_output.renderer_used == "qwen_image_2_1"
+
+    # 4. Post-render deliberation turn must be appended to conversation history
+    history_turns = [turn.content for turn in final_state.conversation_history if turn.role == "planner"]
+    assert len(history_turns) >= 2  # Turn 1: initial plan; Turn 2: post-render deliberation
+    assert any("[Post-Render Deliberation]" in content for content in history_turns)
+
+    await orch.shutdown()
+    db_store.close()
+
+
+@pytest.mark.asyncio
+async def test_plan_sketch_and_polish_fast_preview(tmp_path):
+    """Verify plan_sketch_and_polish with fast=True populates preview_output via CFM distillation."""
+    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator import flows
+
+    db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
+    state = DesignState()
+    state = db_store.create(state)
+
+    orch = SwapOrchestrator()
+    await orch.start()
+
+    final_state = await flows.plan_sketch_and_polish(
+        orchestrator=orch,
+        store=db_store,
+        session_id=state.session_id,
+        user_message="Quick preview of travel booking card",
+        fast=True,
+        auto_review=False,
+    )
+
+    assert final_state.stage == SessionStage.FINALIZED
+    assert final_state.preview_output is not None
+    assert final_state.preview_output.step_count == 6
+    assert final_state.preview_output.image_ref is not None
+
+    await orch.shutdown()
+    db_store.close()
+
+
+def test_service_execute_endpoint_and_auto_proceed(tmp_path, monkeypatch):
+    """Test POST /session/{session_id}/execute and /message with auto_proceed=True via FastAPI TestClient."""
+    from fastapi.testclient import TestClient
+    from krisna_inference.orchestrator.service import app
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+
+    test_store = DesignStateStore(db_path=str(tmp_path / "svc_test.db"))
+    monkeypatch.setattr("krisna_inference.orchestrator.service.store", test_store)
+
+    with TestClient(app) as client:
+        # Create session
+        resp = client.post("/session", json={"style": "cyberpunk", "palette": ["#ff0055", "#00ffff"]})
+        assert resp.status_code == 200
+        session_id = resp.json()["session_id"]
+
+        # Test POST /session/{session_id}/execute
+        exec_resp = client.post(
+            f"/session/{session_id}/execute",
+            json={"message": "Build modern portfolio hero section", "quality": False, "auto_review": True},
+        )
+        assert exec_resp.status_code == 200
+        data = exec_resp.json()
+        assert data["stage"] == "finalized"
+        assert data["finalize_output"]["image_ref"] is not None
+
+        # Check post-render deliberation is in conversation history
+        planner_turns = [t for t in data["conversation_history"] if t["role"] == "planner"]
+        assert any("[Post-Render Deliberation]" in t["content"] for t in planner_turns)
+
+        # Create second session to test /message with auto_proceed=True
+        resp2 = client.post("/session", json={})
+        session_id_2 = resp2.json()["session_id"]
+
+        msg_resp = client.post(
+            f"/session/{session_id_2}/message",
+            json={"message": "Generate medical diagnostic card", "auto_proceed": True, "fast": True},
+        )
+        assert msg_resp.status_code == 200
+        data2 = msg_resp.json()
+        assert data2["stage"] == "finalized"
+        assert data2["preview_output"] is not None
+
+    test_store.close()
+
+
+

@@ -299,8 +299,11 @@ class MockBackend(ModelBackend):
             }
         elif self.spec.tier == Tier.SKETCH:
             rev = kwargs.get("planner_output", {}).get("input_echo", {})
-            base["layout_ref"] = f"layout://mock/{hash(str(rev)) & 0xFFFF:x}.json"
-            base["wireframe_ref"] = f"wireframe://mock/{hash(str(rev)) & 0xFFFF:x}.png"
+            h = f"{hash(str(rev)) & 0xFFFF:x}"
+            base["layout_ref"] = f"layout://mock/{h}.json"
+            base["wireframe_ref"] = f"wireframe://mock/{h}.png"
+            base["segmentation_ref"] = f"seg://mock/{h}.png"
+            base["mask_ref"] = None
         elif self.spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             base["image_ref"] = f"render://mock/{self.spec.tier.value}/{hash(str(kwargs)) & 0xFFFF:x}.png"
             base["verifier_scores"] = {
