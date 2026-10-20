@@ -252,9 +252,48 @@ class MockBackend(ModelBackend):
         # orchestration layer.
         if self.spec.tier == Tier.PLANNER:
             base["reply_text"] = "(mock planner reply)"
+            delta_actions = []
+            if kwargs.get("image_ref") or kwargs.get("wireframe_ref") or kwargs.get("image_bytes"):
+                msg = str(kwargs.get("message") or "").lower()
+                if "face" in msg or "portrait" in msg or "photo" in msg:
+                    delta_actions.append({
+                        "action_type": "ADD_COMPONENT",
+                        "component_type": "focal_subject",
+                        "target_id": "portrait_face",
+                        "bbox": [0.2, 0.15, 0.8, 0.75],
+                        "text_content": "Detected Portrait Subject",
+                        "is_focal_subject": True,
+                        "identity_lock": True,
+                        "facial_landmarks": {"eyes": [0.5, 0.38], "nose": [0.5, 0.48], "mouth": [0.5, 0.6]},
+                    })
+                else:
+                    delta_actions.extend([
+                        {
+                            "action_type": "ADD_COMPONENT",
+                            "component_type": "navbar",
+                            "target_id": "decompiled_nav",
+                            "bbox": [0.05, 0.05, 0.95, 0.15],
+                            "text_content": "Navigation",
+                        },
+                        {
+                            "action_type": "ADD_COMPONENT",
+                            "component_type": "heading",
+                            "target_id": "decompiled_hero",
+                            "bbox": [0.10, 0.20, 0.90, 0.40],
+                            "text_content": "Decompiled Hero Title",
+                        },
+                        {
+                            "action_type": "ADD_COMPONENT",
+                            "component_type": "button",
+                            "target_id": "decompiled_cta",
+                            "bbox": [0.10, 0.45, 0.40, 0.55],
+                            "text_content": "Action Button",
+                        },
+                    ])
             base["design_state_delta"] = {
                 "stage": "sketching",
                 "constraint_updates": kwargs.get("constraints") or {},
+                "actions": delta_actions,
                 "tool_call": None,
                 "reasoning_note": "Proceeding with current constraints.",
             }

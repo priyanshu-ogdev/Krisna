@@ -58,6 +58,7 @@ class Constraints(BaseModel):
     layout_hints: str | None = None
     locked_regions: list[LockedRegion] = Field(default_factory=list)
     original_intent: str | None = None  # D2: preserves original user intent across long conversations
+    reference_image_ref: str | None = None  # Uploaded image reference for visual VLM layout extraction & lock donor
     asset_mode: Literal["opaque", "transparent"] = "opaque"
 
 

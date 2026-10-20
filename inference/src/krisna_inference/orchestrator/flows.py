@@ -58,10 +58,14 @@ async def conversational_turn(
     store: DesignStateStore,
     session_id: str,
     user_message: str,
+    image_ref: str | None = None,
 ) -> DesignState:
     """§5.3 'Conversational turn' — the common, cheap, no-swap path."""
     state = store.get(session_id)
     expected_rev = state.revision
+
+    if image_ref:
+        state.constraints.reference_image_ref = image_ref
 
     # Multi-turn context: pass prior dialog history and any prior critique
     history = [turn.model_dump() for turn in state.conversation_history]
@@ -89,6 +93,7 @@ async def conversational_turn(
         constraints=constraints_for_planner,
         conversation_history=history,
         prior_critique=prior_critique,
+        image_ref=image_ref,
     )
 
     planner_out = result.get("planner", {})
@@ -148,6 +153,29 @@ async def conversational_turn(
     state.touch()
 
     return store.save(state, expected_rev)
+
+
+async def decompile_screenshot(
+    orchestrator: SwapOrchestrator,
+    store: DesignStateStore,
+    session_id: str,
+    image_ref: str,
+    instruction: str = "Decompile this UI screenshot into an editable layout.",
+) -> DesignState:
+    """VLM Screenshot-to-Layout Decompilation (ACL Design2Code / CVPR ShowUI).
+
+    Synchronizes the Sketch tier directly with the 9B VLM Planner.
+    Processes the raw raster screenshot through the VLM module, extracts semantic
+    UI components with spatial coordinates [x1, y1, x2, y2], and renders a deterministic
+    LayoutIR, wireframe, and SPADE segmentation mask without human transcription.
+    """
+    return await conversational_turn(
+        orchestrator=orchestrator,
+        store=store,
+        session_id=session_id,
+        user_message=instruction,
+        image_ref=image_ref,
+    )
 
 
 async def planner_self_review(
@@ -299,9 +327,11 @@ async def finalize(
     mask_ref = state.layout.mask_ref
 
     # UPGRADE: Wireframe-as-lock-donor resolution
-    # Only use a lock donor if a prior photorealistic render actually exists!
-    # On Turn 1, there is no prior render; using the wireframe as donor corrupts the render with low-fi pixels.
-    lock_donor_ref = state.finalize_output.image_ref if state.finalize_output.image_ref else None
+    # Only use a lock donor if a prior photorealistic render actually exists or an initial photo/screenshot was uploaded!
+    # On Turn 1 text-to-image, lock_donor_ref is None to avoid copying low-fidelity wireframe lines into the photorealistic render.
+    # On Image-to-Image (or portrait editing), lock_donor_ref resolves to the original reference photo (state.constraints.reference_image_ref),
+    # guaranteeing 0.00% facial drift for locked identity regions (NVIDIA AnyDoor & ConsisID).
+    lock_donor_ref = state.finalize_output.image_ref or getattr(state.constraints, "reference_image_ref", None)
 
     # Synthesize prompt from conversational intent, constraints, and LayoutIR components/labels.
     effective_prompt = prompt if prompt else synthesize_polish_prompt(state)

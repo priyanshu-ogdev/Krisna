@@ -161,6 +161,12 @@ class NewSessionRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
+    image_ref: str | None = None
+
+
+class DecompileRequest(BaseModel):
+    image_ref: str
+    instruction: str = "Decompile this UI screenshot into an editable layout."
 
 
 class FinalizeRequest(BaseModel):
@@ -388,7 +394,24 @@ async def post_message(session_id: str, req: MessageRequest) -> dict:
     session_coordinator.cancel(session_id)
     async with _get_session_lock(session_id):
         try:
-            state = await flows.conversational_turn(orchestrator, store, session_id, req.message)
+            state = await flows.conversational_turn(
+                orchestrator, store, session_id, req.message, image_ref=req.image_ref
+            )
+        except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
+            raise _error_response(e)
+        _schedule_self_review(session_id)
+        return state.to_wire() | {"revision": state.revision}
+
+
+@app.post("/session/{session_id}/decompile")
+async def post_decompile(session_id: str, req: DecompileRequest) -> dict:
+    """VLM Screenshot-to-Layout Decompilation (ACL Design2Code / CVPR ShowUI)."""
+    session_coordinator.cancel(session_id)
+    async with _get_session_lock(session_id):
+        try:
+            state = await flows.decompile_screenshot(
+                orchestrator, store, session_id, image_ref=req.image_ref, instruction=req.instruction
+            )
         except (SessionNotFoundError, SwapBusyError, StaleDesignStateError, FlowError) as e:
             raise _error_response(e)
         _schedule_self_review(session_id)

@@ -266,7 +266,7 @@ class PlannerBackendLlama(ModelBackend):
 
         system = (
             "You are Krisna's frozen design Planner. Return one valid JSON object conforming to "
-            "the krisna.delta.v1 specification with keys: schema_version, reply_text, "
+            "the planner.delta.v1 specification with keys: schema_version, reply_text, "
             "design_state_delta, retrieved_critique_ids, and runtime_metadata. "
             "Never invent unsupported tool calls. Active constraints: " + str(constraints or {})
         )
@@ -276,6 +276,15 @@ class PlannerBackendLlama(ModelBackend):
             system += " Prior review: " + str(critique)
         if retrieved:
             system += " Human UICrit design grounding: " + " | ".join(r.note for r in retrieved)
+        if image_payload is not None:
+            system += (
+                "\n\n[Multimodal VLM Layout Decompilation Mode (Design2Code / ShowUI / InstructLayout)]:\n"
+                "You have received a reference image. Analyze its spatial structure, identify discrete visual components "
+                "(navbar, hero, card, button, heading, text, focal_subject/face, image, etc.), and emit corresponding "
+                "ADD_COMPONENT, MOVE_COMPONENT, or LOCK_REGION actions in design_state_delta.actions. "
+                "Provide normalized bounding boxes [x1, y1, x2, y2] between 0.0 and 1.0, and specify component types and text. "
+                "For human faces or focal subjects, set component_type='focal_subject', identity_lock=True, and is_focal_subject=True."
+            )
 
         # InstructLayout (IEEE TPAMI 2025): Structured Semantic Graph Prefix
         active_layout = (
@@ -479,15 +488,77 @@ class PlannerBackendLlama(ModelBackend):
             t0 = time.perf_counter()
             if self._llama is None:
                 # Deterministic synthetic response for headless test environments
+                from krisna_inference.backends.planner_schema import (
+                    AddComponentAction,
+                    SCHEMA_VERSION,
+                )
+
+                delta_actions = []
+                img_src = (
+                    image_ref
+                    or wireframe_ref
+                    or image_bytes
+                    or (constraints or {}).get("reference_image_ref")
+                )
+                if img_src:
+                    msg_lower = (message or "").lower()
+                    if "face" in msg_lower or "portrait" in msg_lower or "photo" in msg_lower:
+                        delta_actions.append(
+                            AddComponentAction(
+                                action_type="ADD_COMPONENT",
+                                target_id="portrait_face",
+                                component_type="focal_subject",
+                                bbox=[0.2, 0.15, 0.8, 0.75],
+                                text_content="Detected Portrait Subject",
+                                props={"is_focal_subject": True, "identity_lock": True},
+                                parameters={
+                                    "is_focal_subject": True,
+                                    "identity_lock": True,
+                                    "facial_landmarks": {
+                                        "eyes": [0.5, 0.38],
+                                        "nose": [0.5, 0.48],
+                                        "mouth": [0.5, 0.6],
+                                    },
+                                },
+                            )
+                        )
+                    else:
+                        delta_actions.extend([
+                            AddComponentAction(
+                                action_type="ADD_COMPONENT",
+                                target_id="decompiled_nav",
+                                component_type="navbar",
+                                bbox=[0.05, 0.05, 0.95, 0.15],
+                                text_content="Navigation",
+                            ),
+                            AddComponentAction(
+                                action_type="ADD_COMPONENT",
+                                target_id="decompiled_hero",
+                                component_type="heading",
+                                bbox=[0.10, 0.20, 0.90, 0.40],
+                                text_content="Decompiled Hero Title",
+                            ),
+                            AddComponentAction(
+                                action_type="ADD_COMPONENT",
+                                target_id="decompiled_cta",
+                                component_type="button",
+                                bbox=[0.10, 0.45, 0.40, 0.55],
+                                text_content="Action Button",
+                            ),
+                        ])
+
                 synthetic_resp = {
-                    "schema_version": "krisna.delta.v1",
+                    "schema_version": SCHEMA_VERSION,
                     "reply_text": f"Updated layout design based on: {message or 'review'}",
                     "design_state_delta": {
+                        "stage": "sketching",
                         "constraint_updates": {
                             "theme": "modern",
                             "primary_color": "#6366F1",
                             "last_planner_reasoning_note": "Synthetic planner step",
-                        }
+                        },
+                        "actions": [a.model_dump() for a in delta_actions],
+                        "reasoning_note": "Grounding visual layout actions via VLM module.",
                     },
                     "retrieved_critique_ids": [r.record_id for r in retrieved],
                     "runtime_metadata": {"runtime": "synthetic_mock"},

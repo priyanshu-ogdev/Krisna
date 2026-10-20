@@ -13,3 +13,8 @@ def get_blob_store() -> BlobStore:
         root = os.environ.get("KRISNA_BLOB_ROOT", "krisna_blobs")
         _instance = BlobStore(root=root)
     return _instance
+
+
+def set_blob_store(store: BlobStore | None) -> None:
+    global _instance
+    _instance = store
