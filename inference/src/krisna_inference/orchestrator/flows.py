@@ -440,6 +440,7 @@ async def finalize(
         layout_iou = verifier_scores.get("layout_iou")
         ocr_score = verifier_scores.get("ocr_readability")
         seam_score = verifier_scores.get("seam_continuity")
+        lock_preservation = verifier_scores.get("lock_preservation")
         drift_reasons = []
         if layout_iou is not None and layout_iou < 0.70:
             drift_reasons.append(f"Layout IoU {layout_iou:.2f} < 0.70")
@@ -447,6 +448,8 @@ async def finalize(
             drift_reasons.append(f"OCR readability {ocr_score:.2f} < 0.80")
         if seam_score is not None and seam_score < 0.85:
             drift_reasons.append(f"Seam continuity {seam_score:.2f} < 0.85")
+        if lock_preservation is not None and lock_preservation < 0.95:
+            drift_reasons.append(f"Lock preservation {lock_preservation:.2f} < 0.95")
 
         if drift_reasons and not kwargs.get("_retry_attempted", False):
             log.warning("Spatial drift detected in finalize (%s); triggering automated layout-enforced retry.", "; ".join(drift_reasons))
@@ -457,6 +460,7 @@ async def finalize(
                 layout_iou=layout_iou,
                 ocr_score=ocr_score,
                 seam_score=seam_score,
+                lock_preservation=lock_preservation,
             )
             retry_result = await orchestrator.request_finalize(
                 preferred_tier=preferred,
@@ -464,6 +468,7 @@ async def finalize(
                 handoff_image_ref=pixel_ref,
                 lock_donor_ref=lock_donor_ref,
                 segmentation_ref=segmentation_ref,
+                mask_ref=mask_ref,
                 prompt=retry_prompt,
                 constraints=state.constraints.model_dump(),
                 locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
@@ -738,10 +743,17 @@ async def iterative_refine(
         # Synchronize LayoutIR so downstream post-refine IoU verification matches updated nodes
         if state.layout.layout_ref and Path(state.layout.layout_ref).exists():
             try:
-                from krisna_inference.layout_baseline import layout_from_constraints
-                from krisna_inference.layout_renderer import render_wireframe
+                from krisna_inference.layout_baseline import layout_from_constraints, LayoutIR
+                from krisna_inference.layout_renderer import render_dual_stream_sketch
                 from krisna_inference.backends.blob_store_singleton import get_blob_store
-                from PIL import Image
+
+                prior_layout_obj = None
+                try:
+                    prior_text = Path(state.layout.layout_ref).read_text(encoding="utf-8")
+                    prior_json = json.loads(prior_text)
+                    prior_layout_obj = LayoutIR(**prior_json)
+                except Exception as read_exc:
+                    log.debug("Could not parse prior layout for differential masking: %s", read_exc)
 
                 merged_constraints = state.constraints.model_dump()
                 merged_constraints["actions"] = actions
@@ -755,12 +767,22 @@ async def iterative_refine(
                 for diag in getattr(updated_layout, "diagnostics", []):
                     state.append_turn("system", f"[Layout Conflict]: {diag}")
 
-                # Re-render wireframe with updated layout geometry to prevent geometry loss in refinement
+                # Re-render dual-stream sketch (wireframe, SPADE segmentation, and FlowEdit differential mask)
                 wf_path = Path(state.layout.layout_ref).with_suffix(".png")
-                render_wireframe(updated_layout, wf_path, style=state.constraints.style)
                 blobs = get_blob_store()
-                with Image.open(wf_path) as wf_img:
-                    state.layout.wireframe_ref = blobs.save_image(wf_img, prefix="wireframe_refine")
+                asset_mode = str(getattr(state.constraints, "asset_mode", "opaque") or "opaque").lower()
+                dual_sketch = render_dual_stream_sketch(
+                    updated_layout,
+                    output_dir=wf_path.parent,
+                    prefix=f"refine_{session_id}",
+                    prior_layout=prior_layout_obj,
+                    asset_mode=asset_mode,
+                    style=state.constraints.style or "dark",
+                )
+                state.layout.wireframe_ref = blobs.save_image(dual_sketch.wireframe, prefix="wireframe_refine")
+                state.layout.segmentation_ref = blobs.save_image(dual_sketch.segmentation, prefix="seg_refine")
+                if dual_sketch.mask is not None:
+                    state.layout.mask_ref = blobs.save_image(dual_sketch.mask, prefix="mask_refine")
             except Exception as e:
                 log.warning("refine_layout_sync_warning: %s", e)
 
@@ -780,14 +802,19 @@ async def iterative_refine(
 
     preferred = Tier.POLISH_QUALITY if quality else Tier.POLISH_DEFAULT
     # Refinement Dual-Image Visual Conditioning:
-    # Forward updated wireframe as handoff_image_ref (index 0: new geometry) and prior_render
-    # as lock_donor_ref (index 1: visual style & locks) so block-causal attention receives both.
+    # Forward updated wireframe as handoff_image_ref (index 0: new geometry), prior_render
+    # as lock_donor_ref (index 1: visual style & locks), and dual-stream segmentation + differential mask
+    # so block-causal attention receives the full spatial multi-modal representation.
     wireframe_condition = state.layout.wireframe_ref or prior_render
+    segmentation_condition = state.layout.segmentation_ref
+    mask_condition = state.layout.mask_ref
     result: SwapResult = await orchestrator.request_finalize(
         preferred_tier=preferred,
         session_id=session_id,
         handoff_image_ref=wireframe_condition,
         lock_donor_ref=prior_render,
+        segmentation_ref=segmentation_condition,
+        mask_ref=mask_condition,
         prompt=edit_prompt,
         mode="refine",
         refine=True,
@@ -1371,6 +1398,7 @@ def build_grounded_spatial_retry_prompt(
     layout_iou: float | None = None,
     ocr_score: float | None = None,
     seam_score: float | None = None,
+    lock_preservation: float | None = None,
 ) -> str:
     """Builds a grounded, region-specific natural language spatial feedback prompt for retry turns.
 
@@ -1421,6 +1449,9 @@ def build_grounded_spatial_retry_prompt(
 
     if seam_score is not None and seam_score < 0.85:
         feedback.append("Boundary continuity correction: smooth and harmonize edge transitions around locked regions.")
+
+    if lock_preservation is not None and lock_preservation < 0.95:
+        feedback.append(f"Lock preservation correction ({lock_preservation:.2f} < 0.95): preserve all locked donor pixels strictly without visual drift or identity degradation.")
 
     if not feedback:
         feedback.append("Ensure crisp spatial separation between components without overlapping.")

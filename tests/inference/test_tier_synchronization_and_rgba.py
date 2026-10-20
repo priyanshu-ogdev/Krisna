@@ -1905,5 +1905,221 @@ async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
         store.close()
 
 
+@pytest.mark.asyncio
+async def test_polish_backend_differential_mask_and_pipeline_signature(tmp_path, monkeypatch):
+    """Verify PolishBackendQwen passes mask_image to native pipeline and composites differential masks."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.orchestrator.model_registry import Tier, ModelSpec
+
+    blobs = BlobStore(root=tmp_path / "blobs")
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+
+    spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="test_qwen", vram_gb=14.0, quantization="bf16")
+    backend = QwenImage21Backend(spec, strict=False)
+
+    # 1. Test native pipeline signature inspection & mask forwarding
+    class MockPipeline:
+        def __init__(self):
+            self.last_call = None
+            self.scheduler = None
+
+        def __call__(self, prompt, image, num_inference_steps=28, mask_image=None, width=None, height=None, **kwargs):
+            self.last_call = {"prompt": prompt, "image": image, "mask_image": mask_image, "width": width, "height": height}
+            from PIL import Image
+            class Output:
+                images = [Image.new("RGB", (width or 512, height or 512), (120, 120, 120))]
+            return Output()
+
+    mock_pipe = MockPipeline()
+    backend._pipeline = mock_pipe
+    backend._native_call_parameters = {"prompt", "image", "num_inference_steps", "mask_image", "width", "height"}
+    backend._loaded = True
+
+    # Create source image, mask image, and donor image
+    src_img = Image.new("RGB", (512, 512), (50, 50, 50))
+    src_ref = blobs.save_image(src_img, prefix="src")
+
+    mask_img = Image.new("L", (512, 512), 0)
+    # Active edit zone in bottom quadrant:
+    for x in range(100, 400):
+        for y in range(300, 500):
+            mask_img.putpixel((x, y), 255)
+    mask_ref = blobs.save_image(mask_img, prefix="diff_mask")
+
+    res = await backend.run(
+        image_ref=src_ref,
+        mask_ref=mask_ref,
+        prompt="Update hero button",
+        constraints={"style": "modern"},
+    )
+    assert res["run_receipt"]["mask_used"] is True
+    assert mock_pipe.last_call is not None
+    assert mock_pipe.last_call["mask_image"] is not None
+
+    # 2. Test synthetic fallback compositing preserves locked/unchanged background
+    backend._pipeline = None  # Switch to synthetic mode
+    donor_img = Image.new("RGB", (512, 512), (200, 10, 10))  # Vivid red donor
+    donor_ref = blobs.save_image(donor_img, prefix="donor")
+
+    res_synth = await backend.run(
+        image_ref=src_ref,
+        lock_donor_ref=donor_ref,
+        mask_ref=mask_ref,
+        prompt="Update hero button",
+        constraints={"style": "modern"},
+    )
+    synth_output = blobs.load_image(res_synth["image_ref"])
+    # Where mask was 0 (e.g. at (50, 50)), donor red pixels MUST be preserved exactly!
+    assert synth_output.getpixel((50, 50)) == (200, 10, 10)
+
+
+@pytest.mark.asyncio
+async def test_iterative_refine_syncs_dual_stream_sketch_and_mask_to_polish(tmp_path, monkeypatch):
+    """Verify iterative_refine re-renders dual-stream sketch (SPADE + differential mask) and passes to polish."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator.model_registry import Tier
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.backends.layout_backend import LayoutBackend
+    from krisna_inference.orchestrator.flows import finalize, iterative_refine
+
+    blobs = BlobStore(root=tmp_path / "blobs_refine")
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+
+    store = DesignStateStore(db_path=tmp_path / "sessions_refine.db")
+
+    # Populate initial layout and finalize
+    from krisna_inference.layout_baseline import layout_from_constraints
+    initial_layout = layout_from_constraints({"style": "dark", "layout_hints": ["header", "cta_button"]})
+    layout_file = tmp_path / "initial_layout.json"
+    import json
+    layout_file.write_text(json.dumps(initial_layout.model_dump(), indent=2), encoding="utf-8")
+
+    initial_state = DesignState(
+        session_id="refine_test_sess",
+        stage=SessionStage.SKETCHING,
+        layout=LayoutDraft(layout_ref=str(layout_file)),
+    )
+    state = store.create(initial_state)
+
+    def backend_factory(spec):
+        if spec.tier == Tier.SKETCH:
+            return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
+        elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
+            return QwenImage21Backend(spec, strict=False)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec, load_latency_s=0.0, unload_latency_s=0.0)
+
+    orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
+    await orch.start()
+    try:
+        # Initial finalize
+        state = await finalize(orchestrator=orch, store=store, session_id="refine_test_sess")
+        assert state.finalize_output.image_ref is not None
+
+        # Execute iterative refine with MOVE_COMPONENT action
+        state = await iterative_refine(
+            orchestrator=orch,
+            store=store,
+            session_id="refine_test_sess",
+            instruction="Move cta button to bottom",
+            actions=[{"action": "move_component", "target_id": "cta_button", "bbox": [0.2, 0.85, 0.6, 0.1]}],
+        )
+
+        # Assert dual-stream conditioning was synchronized and updated:
+        assert state.layout.wireframe_ref is not None
+        assert state.layout.segmentation_ref is not None
+        assert state.layout.mask_ref is not None
+        assert state.layout.revision >= 1
+
+        # Polish backend synthesized render should succeed and reflect the refinement
+        assert state.finalize_output.image_ref is not None
+    finally:
+        await orch.shutdown()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_finalize_retries_on_lock_preservation_drop(tmp_path, monkeypatch):
+    """Verify that lock preservation degradation (< 0.95) triggers automated retry with mask_ref preserved."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage, LockedRegion
+    from krisna_inference.orchestrator.model_registry import Tier
+    from krisna_inference.orchestrator.swap_orchestrator import SwapResult
+    from krisna_inference.orchestrator.flows import finalize
+
+    store_blob = BlobStore(root=tmp_path / "blobs_retry")
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
+
+    state = DesignState(
+        session_id="retry_lock_test",
+        stage=SessionStage.SKETCHING,
+        layout=LayoutDraft(
+            layout_ref="blob://layout.json",
+            wireframe_ref="blob://wf.png",
+            segmentation_ref="blob://seg.png",
+            mask_ref="blob://diff_mask.png",
+        ),
+    )
+    state.constraints.locked_regions = [LockedRegion(id="face_0", bbox=[0.2, 0.2, 0.3, 0.3], reason="user_locked")]
+
+    class FakeStore:
+        def get(self, session_id):
+            return state
+        def save(self, s, rev):
+            return s
+
+    retry_count = 0
+    captured_calls = []
+
+    class FakeOrchestrator:
+        async def request_finalize(self, **kwargs):
+            nonlocal retry_count
+            retry_count += 1
+            captured_calls.append(kwargs)
+            img = Image.new("RGB", (100, 100), (50, 50, 50))
+            ref = store_blob.save_image(img, prefix="render")
+            return SwapResult(ok=True, tier_used=Tier.POLISH_DEFAULT, output={"image_ref": ref})
+
+    class FakeVerifierStack:
+        def safety_gate(self, img, min_safety_score=0.9):
+            return True, 0.99
+
+        def score_finalize_output(self, polished_image, **kwargs):
+            # Attempt 1: lock_preservation fails (0.80 < 0.95)
+            # Attempt 2: lock_preservation passes (1.00)
+            score = 0.80 if retry_count == 1 else 1.00
+            return {
+                "layout_iou": 0.85,
+                "ocr_readability": 0.90,
+                "seam_continuity": 0.95,
+                "lock_preservation": score,
+            }
+
+    final_state = await finalize(
+        orchestrator=FakeOrchestrator(),
+        store=FakeStore(),
+        session_id="retry_lock_test",
+        verifier_stack=FakeVerifierStack(),
+    )
+
+    assert retry_count == 2, f"Expected 2 attempts (initial + retry), got {retry_count}"
+    # Verify mask_ref was forwarded to the retry call!
+    assert captured_calls[1]["mask_ref"] == "blob://diff_mask.png"
+    assert captured_calls[1]["segmentation_ref"] == "blob://seg.png"
+    # Verify drift reasons in prompt mention lock preservation
+    assert "Lock preservation correction (0.80 < 0.95)" in captured_calls[1]["prompt"]
+
+
+
 
 

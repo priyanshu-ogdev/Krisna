@@ -520,6 +520,9 @@ class QwenImage21Backend(ModelBackend):
                 with Image.open(mask_ref) as m_image:
                     mask_img = m_image.convert("L")
 
+        if mask_img is None and locked_regions and source_img is not None:
+            mask_img = self._build_inpaint_mask(source_img.size, locked_regions)
+
         def _generate():
             if self._pipeline is None and self.strict:
                 raise RuntimeError("Qwen-Image-2.1 pipeline is unavailable in real mode")
@@ -561,6 +564,13 @@ class QwenImage21Backend(ModelBackend):
                         call["width"] = target_w
                     if "height" in supported:
                         call["height"] = target_h
+
+                    # Forward differential / inpaint mask for spatial edit preservation (LayerDiffuse / FlowEdit)
+                    if mask_img is not None:
+                        if "mask_image" in supported:
+                            call["mask_image"] = mask_img
+                        elif "mask" in supported:
+                            call["mask"] = mask_img
 
                     if "generator" in supported and seed is not None:
                         import torch
@@ -619,6 +629,7 @@ class QwenImage21Backend(ModelBackend):
                 scheduler,
                 lock_donor_img=donor_img,
                 segmentation_img=segmentation_img,
+                mask_img=mask_img,
                 is_refine=is_refine,
                 mode=mode,
             ), False, fallback_reason
@@ -812,12 +823,21 @@ class QwenImage21Backend(ModelBackend):
         scheduler: FlowODEScheduler,
         lock_donor_img: Any = None,
         segmentation_img: Any = None,
+        mask_img: Any = None,
         **kwargs: Any,
     ) -> Any:
         """Synthetic render fallback providing realistic visual polishing, SPADE alignment, and region locking."""
-        from PIL import ImageDraw, ImageEnhance
+        from PIL import Image, ImageDraw, ImageEnhance
 
-        target_mode = "RGBA" if getattr(source_img, "mode", None) == "RGBA" else "RGB"
+        target_mode = (
+            "RGBA"
+            if (
+                getattr(source_img, "mode", None) == "RGBA"
+                or constraints.get("asset_mode") == "transparent"
+                or constraints.get("style") == "transparent"
+            )
+            else "RGB"
+        )
         img = source_img.copy().convert(target_mode)
         # Visual polish: subtle contrast and sharpness enhancement
         enhancer = ImageEnhance.Contrast(img)
@@ -835,16 +855,28 @@ class QwenImage21Backend(ModelBackend):
             # Subtle boundary enhancement reflecting semantic class transitions
             pass
 
-        if locked_regions:
-            effective_donor = lock_donor_img if lock_donor_img is not None else source_img
-            if effective_donor is not None and effective_donor.size != img.size:
+        # Differential Update Masking (Kulikov et al., ICCV 2025 FlowEdit) & Locked Region Blending
+        effective_donor = lock_donor_img if lock_donor_img is not None else source_img
+        if effective_donor is not None and effective_donor.size != img.size:
+            try:
+                effective_donor = effective_donor.resize(img.size, Image.Resampling.LANCZOS)
+            except Exception as e:
+                log.warning("Lock donor size %s differs from canvas %s; could not resize: %s", effective_donor.size, img.size, e)
+                effective_donor = None
+
+        if effective_donor is not None:
+            if mask_img is not None:
+                # Mask semantics: 255 = modified/active region, 0 = locked/preserved background
                 try:
-                    from PIL import Image
-                    effective_donor = effective_donor.resize(img.size, Image.Resampling.LANCZOS)
-                    img = self._apply_locked_regions(effective_donor, img, locked_regions)
+                    if mask_img.size != img.size:
+                        mask_img = mask_img.resize(img.size, Image.Resampling.NEAREST)
+                    img = Image.composite(img, effective_donor.convert(target_mode), mask_img)
                 except Exception as e:
-                    log.warning("Lock donor size %s differs from canvas %s; could not resize: %s", effective_donor.size, img.size, e)
-            elif effective_donor is not None:
+                    log.warning("Could not composite using mask_img: %s", e)
+
+            if locked_regions:
                 img = self._apply_locked_regions(effective_donor, img, locked_regions)
+        elif locked_regions:
+            img = self._apply_locked_regions(source_img, img, locked_regions)
 
         return img

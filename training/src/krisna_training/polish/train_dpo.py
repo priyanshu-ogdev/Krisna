@@ -14,7 +14,6 @@ chosen_ref/rejected_ref through the shared BlobStore.
 Structurally sound training loop: AdamW optimizer, gradient accumulation,
 reference-model parameter freezing, checkpointing, and DoRA/LoRA adaptation
 targeting Qwen-Image-2.1 MMDiT attention and SwiGLU feedforward projections.
-"""
 
 What's verified vs. flagged-as-unverified in the API surface used here,
 checked directly rather than assumed: `transformer.add_adapter(LoraConfig
