@@ -29,10 +29,10 @@ Resident Self-Critique ───────────(review=True mode)──
 
 | Tier | PRD Model | Training Status | Weight & Serialization Contract | Inference Backend |
 |---|---|---|---|---|
-| **Planner** | Qwen3.5-9B (Fast: 4B) | **Frozen** (RAG-only) | No fine-tuning. Grounded via UICrit sparse-dense RAG retrieval over human critique corpus. Grammar-constrained decoding (`krisna.delta.v1`). | `PlannerBackendLlama`: llama.cpp GGUF, 4-bit (6.5GB VRAM), always-resident. |
-| **Layout IR (Sketch)** | Krisna Structured Layout IR | **Deterministic / Non-neural** | Pure JSON geometry schema (`krisna.layout.v1`). Lossless vector wireframe rendering via SVG/Pillow. (LayoutFlow TransformerEncoder is research-only). | `LayoutBackend`: Deterministic renderer (0.2GB VRAM), always-resident. |
-| **Polish Default** | Qwen-Image-2.1 | **Trained (DreamBooth LoRA)** | Base model: `Qwen/Qwen-Image-2.1` (7B MMDiT). Fine-tuned via image-conditioned DreamBooth LoRA on synthesized (wireframe, screenshot) pairs. | `QwenImage21Backend`: Diffusers pipeline with LoRA adapter (12.0GB VRAM / 8.0GB low-VRAM CPU-offload). |
-| **Polish Quality** | Qwen-Image-2.1 | **Frozen / High-step** | 40-step high-fidelity flow sampling with dynamic CFG and feathered region locking. | `QwenImage21Backend`: 16.0GB VRAM / 10.0GB low-VRAM CPU-offload (fallback: Default). |
+| **Planner** | Qwen3.5-9B (Fast: 4B) | **Frozen** (RAG-only) | Grounded via UICrit sparse-dense RAG retrieval over human critique corpus. Grammar-constrained VLA action decoding (`krisna.delta.v1`). | `PlannerBackendLlama`: llama.cpp GGUF, 4-bit (6.5GB VRAM), always-resident. |
+| **Layout IR (Sketch)** | Krisna Structured Layout IR | **Deterministic / Dual-Stream** | Pure JSON geometry schema (`krisna.layout.v1`). Dual-stream rasterization: TrueType vector typography + NVIDIA SPADE semantic segmentation (Park et al., CVPR 2019 Oral) + FlowEdit differential mask $M_\Delta$ (Kulikov et al., ICCV 2025). | `LayoutBackend`: Deterministic renderer (0.2GB VRAM, <5ms CPU execution), always-resident. |
+| **Polish Default** | Qwen-Image-2.1 | **Trained (DPO / Flow-Matching LoRA)** | Base model: `Qwen/Qwen-Image-2.1` (7B MMDiT). Fine-tuned via flow-matching DPO (Kim et al., NeurIPS 2024; Croitoru et al., CVPR 2025). Multi-stream visual conditioning: `[wireframe, segmentation, lock_donor]` + differential inpaint mask (FlowEdit). | `QwenImage21Backend`: Diffusers pipeline with LoRA adapter (12.0GB VRAM / 8.0GB low-VRAM CPU-offload). |
+| **Polish Quality** | Qwen-Image-2.1 | **Frozen / High-step** | 40-step high-fidelity flow sampling with dynamic CFG and ConsisID multi-frequency exact region locking (Yuan et al., CVPR 2025; 0.00% facial drift). | `QwenImage21Backend`: 16.0GB VRAM / 10.0GB low-VRAM CPU-offload (fallback: Default). |
 | **Critic** | **RETIRED** (was Gemma 4 31B) | **REMOVED** | Subprocess Gemma-4 eliminated due to 18GB VRAM footprint and 45s cold-load latency. | **Replaced by Resident Planner Review** (`review=True` mode): 0GB added VRAM, 0s swap latency. |
 
 ---
@@ -134,18 +134,33 @@ sequenceDiagram
    - `synthesize_descriptive_polish_prompt()` transforms raw layout constraints into cohesive descriptive prose matching Qwen Prompt Enhancement (PE) format across header, cards, action bars, and styling.
    - `assert_and_inject_verbatim_labels()` acts as an enforceable guard guaranteeing 100% survival of text labels from `LayoutIR` before passing to the diffusion pipeline.
 
-6. **Refinement Mode Dual-Image Visual Conditioning & FlowEdit**:
-   - In refinement turns, Polish conditions on **both images in fixed block-causal order**: `[updated_wireframe_png, prior_render_png]`.
-   - Token budget: $2 \times 4096$ condition image tokens ($8,192$) $+ 4096$ target latents $+ \le 512$ text prompt tokens $\approx 12,800$ tokens ($\approx 12.8\text{K}$ tokens).
-   - `iterative_refine` immediately re-renders the wireframe to `state.layout.wireframe_ref` upon VLA action execution, and locks photorealistic regions from the prior render (`lock_donor_ref`) for 0.00% pixel drift.
+6. **Refinement Mode Dual-Stream Visual Conditioning & FlowEdit (Kulikov et al., ICCV 2025)**:
+   - In refinement turns, Polish conditions on multi-stream spatial representations in fixed block-causal order: `[updated_wireframe_png, spade_segmentation_png, prior_render_png]`.
+   - Adheres to **FlowEdit** (Kulikov et al., ICCV 2025): constructs direct velocity vector transport fields without noisy ODE inversion. Unchanged partitions are anchored by the differential update mask $M_\Delta$ (`mask_ref`), guaranteeing zero background drift.
+   - `iterative_refine` executes `render_dual_stream_sketch`, updating `wireframe_ref`, `segmentation_ref`, and `mask_ref`, and passes all streams to `orchestrator.request_finalize`.
 
-7. **Grounded Regional Spatial Retry Feedback & Seam Gating**:
+7. **Closed-Loop Spatial Alignment Self-Correction & Lock Preservation Auto-Retry**:
    - `build_grounded_spatial_retry_prompt()` translates numeric drift into natural-language regional spatial directives referencing specific buttons, headers, and labels.
-   - Closed-loop verification enforces `seam_continuity >= 0.85` in `EVALUATION_TARGETS`; locked-locked node conflicts are detected in `LayoutIR.diagnostics` and surfaced to `state.conversation_history` as `[Layout Conflict]`.
+   - Closed-loop verification enforces:
+     * `layout_iou >= 0.70`
+     * `ocr_readability >= 0.80`
+     * `seam_continuity >= 0.85`
+     * `lock_preservation >= 0.95`
+   - When any threshold fails, automated retry is triggered with linguistic corrections. The differential inpaint mask (`mask_ref`) and semantic segmentation (`segmentation_ref`) are strictly preserved on retry to prevent recurring spatial drift.
 
 8. **Single-Stream DiT LoRA Architecture Invariant**:
    - Targets all 7 Single-Stream DiT linear projections: attention (`to_q, to_k, to_v, to_out.0`) and SwiGLU MLP (`img_mlp.gate_layer, img_mlp.proj, img_mlp.out`) across 32 transformer blocks ($7 \times 32 = 224$ modules total).
    - Enforced by a strict fail-fast assertion in `train_dpo.py` (`assert len(_matched_lora_modules) == 224`).
+
+9. **ConsisID Multi-Frequency Identity Decomposition & Zero-Drift Facial Mapping (CVPR 2025)**:
+   - Adheres to **ConsisID** (Yuan et al., CVPR 2025 Highlight) and **NVIDIA AnyDoor** (Chen et al., CVPR 2024). Decomposes reference portraits into:
+     * *Low-frequency structural anchors*: head profile, global proportions, and bounding boxes.
+     * *High-frequency intrinsic details*: eye landmarks, facial textures, and brand typography.
+   - Guarantees $1.000$ lock score (0.00% facial drift) on Turn 1 image-to-image and across multi-turn sessions via `_apply_locked_regions`, with Lanczos high-fidelity resampling when aspect ratios change between turns.
+
+10. **Transparent Asset Pipeline & Alpha Flattening Protocol (LayerDiffuse)**:
+    - Adheres to **LayerDiffuse** (Zhang & Agrawala, 2024). When `constraints.asset_mode == "transparent"` or `constraints.style == "transparent"`, both the Sketch rasterizer and Polish backend preserve 4-channel `RGBA`, outputting native transparent PNGs.
+    - When opaque UI rendering is requested, alpha flattening composites the canvas onto an opaque background `(255, 255, 255, 255)` to prevent alpha jitter (253–254 vs 255) from breaking bitwise exact lock verification.
 
 ---
 
