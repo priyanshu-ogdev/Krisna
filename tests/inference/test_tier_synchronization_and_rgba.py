@@ -1377,3 +1377,133 @@ async def test_image_to_image_spatial_conditioning_receipts(tmp_path, monkeypatc
     assert receipt["mask_used"] is True
     assert receipt["spatial_conditioning_mode"] == "NVIDIA_SPADE_MultiStream"
 
+
+@pytest.mark.asyncio
+async def test_vlm_screenshot_decompilation_end_to_end(tmp_path, monkeypatch):
+    """Verify that decompile_screenshot feeds raster image into Planner VLM and synchronizes Sketch."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator.model_registry import MockBackend, ModelSpec, Tier
+    from krisna_inference.orchestrator import flows
+
+    store = BlobStore(root=tmp_path / "blobs")
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+
+    db_store = DesignStateStore(db_path=tmp_path / "sessions.db")
+    state = db_store.create(DesignState())
+
+    # Create dummy screenshot image
+    screenshot = Image.new("RGB", (800, 600), color=(30, 41, 59))
+    img_ref = store.save_image(screenshot, prefix="screenshot")
+
+    def mock_factory(spec: ModelSpec) -> MockBackend:
+        return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
+
+    orch = SwapOrchestrator(backend_factory=mock_factory, envelope_gb=24.0)
+    await orch.start()
+
+    updated = await flows.decompile_screenshot(
+        orchestrator=orch,
+        store=db_store,
+        session_id=state.session_id,
+        image_ref=img_ref,
+        instruction="Decompile UI screenshot into structured layout",
+    )
+
+    assert updated.stage == SessionStage.SKETCHING
+    assert updated.constraints.reference_image_ref == img_ref
+    assert updated.layout.wireframe_ref is not None
+    assert updated.layout.layout_ref is not None
+    assert updated.layout.revision >= 1
+
+    await orch.shutdown()
+    db_store.close()
+
+
+@pytest.mark.asyncio
+async def test_image_to_image_turn1_face_preservation(tmp_path, monkeypatch):
+    """Verify Turn 1 Image-to-Image preserves locked face pixels from reference_image_ref without drift."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import DesignState, LockedRegion
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator.model_registry import Tier, REGISTRY
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.backends.layout_backend import LayoutBackend
+    from krisna_inference.orchestrator import flows
+
+    store = BlobStore(root=tmp_path / "blobs")
+    import krisna_inference.backends.blob_store_singleton as bss
+    bss.set_blob_store(store)
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: store)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+
+    db_store = DesignStateStore(db_path=tmp_path / "sessions_face.db")
+    state = db_store.create(DesignState())
+
+    # 1. Create a reference portrait photo with a distinctive red patch on the face (center [0.35, 0.35, 0.3, 0.3])
+    ref_photo = Image.new("RGB", (512, 512), color=(100, 150, 200))
+    for x in range(180, 330):
+        for y in range(180, 330):
+            ref_photo.putpixel((x, y), (255, 0, 0))  # Bright red facial test pixels
+    ref_photo_ref = store.save_image(ref_photo, prefix="donor_photo")
+
+    # Set up orchestrator with LayoutBackend and QwenImage21Backend
+    def backend_factory(spec):
+        if spec.tier == Tier.SKETCH:
+            return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
+        elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
+            return QwenImage21Backend(spec)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec, load_latency_s=0.0, unload_latency_s=0.0)
+
+    orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
+    await orch.start()
+
+    # Turn 1: User submits portrait image with instruction to refine style
+    updated = await flows.conversational_turn(
+        orchestrator=orch,
+        store=db_store,
+        session_id=state.session_id,
+        user_message="Portrait photo edit: apply cinematic lighting while locking face",
+        image_ref=ref_photo_ref,
+    )
+    assert updated.constraints.reference_image_ref == ref_photo_ref
+
+    # Lock the facial region
+    cur_rev = updated.revision
+    updated.constraints.locked_regions = [
+        LockedRegion(bbox=[0.35, 0.35, 0.30, 0.30], reason="Preserve original face")
+    ]
+    updated.touch()
+    db_store.save(updated, expected_revision=cur_rev)
+
+    # Finalize Turn 1 Image-to-Image
+    finalized = await flows.finalize(
+        orchestrator=orch,
+        store=db_store,
+        session_id=state.session_id,
+        prompt="Cinematic studio lighting portrait",
+    )
+
+    assert finalized.finalize_output.image_ref is not None
+    assert finalized.finalize_output.image_ref.startswith("blob://")
+
+    # Load output render and verify the locked face pixels (at center of locked region cx=0.50, cy=0.50) are EXACTLY (255, 0, 0)
+    out_img = store.load_image(finalized.finalize_output.image_ref)
+    cx, cy = int(0.50 * out_img.width), int(0.50 * out_img.height)
+    pixel = out_img.getpixel((cx, cy))
+    # Red channel must be 255, green and blue 0 (bitwise exact match from donor photo)
+    assert pixel[0] == 255
+    assert pixel[1] == 0
+    assert pixel[2] == 0
+
+    await orch.shutdown()
+    db_store.close()
+
+

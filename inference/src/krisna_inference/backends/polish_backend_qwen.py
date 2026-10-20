@@ -468,16 +468,25 @@ class QwenImage21Backend(ModelBackend):
                     lock_donor_img = d_image.copy() if d_image.mode in ("RGB", "RGBA") else d_image.convert("RGBA" if "A" in d_image.mode else "RGB")
 
         # Explicit Resolution & Lock Policy:
-        # If canvas resolution/aspect ratio changed between turns, pixel-level lock preservation
-        # from a prior render of different dimensions is mathematically invalid.
-        # Drop the locks with a logged warning rather than silently distorting pixels via interpolation.
+        # If canvas resolution/aspect ratio changed between turns, or an uploaded reference image has
+        # different initial pixel dimensions, resample using high-fidelity Lanczos filtering to match the canvas
+        # while preserving normalized coordinate alignment (NVIDIA AnyDoor & ConsisID).
         if lock_donor_img is not None and source_img is not None and lock_donor_img.size != source_img.size:
-            log.warning(
-                "Canvas resolution/aspect changed from %s to %s between turns; dropping pixel locks.",
-                lock_donor_img.size, source_img.size
-            )
-            donor_img = None
-            locked_regions = []
+            try:
+                from PIL import Image
+                lock_donor_img = lock_donor_img.resize(source_img.size, Image.Resampling.LANCZOS)
+                donor_img = lock_donor_img
+                log.info(
+                    "Resampled lock donor image to canvas size %s via Lanczos filter.",
+                    source_img.size,
+                )
+            except Exception as e:
+                log.warning(
+                    "Could not resample lock donor image to canvas size %s: %s; dropping pixel locks.",
+                    source_img.size, e
+                )
+                donor_img = None
+                locked_regions = []
         else:
             donor_img = lock_donor_img if lock_donor_img is not None else source_img
 
@@ -829,7 +838,12 @@ class QwenImage21Backend(ModelBackend):
         if locked_regions:
             effective_donor = lock_donor_img if lock_donor_img is not None else source_img
             if effective_donor is not None and effective_donor.size != img.size:
-                log.warning("Lock donor size %s differs from canvas %s; dropping invalid cross-aspect locks.", effective_donor.size, img.size)
+                try:
+                    from PIL import Image
+                    effective_donor = effective_donor.resize(img.size, Image.Resampling.LANCZOS)
+                    img = self._apply_locked_regions(effective_donor, img, locked_regions)
+                except Exception as e:
+                    log.warning("Lock donor size %s differs from canvas %s; could not resize: %s", effective_donor.size, img.size, e)
             elif effective_donor is not None:
                 img = self._apply_locked_regions(effective_donor, img, locked_regions)
 

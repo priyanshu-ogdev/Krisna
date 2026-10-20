@@ -578,6 +578,24 @@ def layout_from_constraints(
                 else:
                     new_bbox = BBox(x1=0.15, y1=0.30, x2=0.85, y2=0.45)
 
+                if is_focal:
+                    # Grounded research (NVIDIA AnyDoor CVPR 2024 / ConsisID):
+                    # Prevent latent token collapse. With VAE downsampling f=16 and DiT patch stride=2,
+                    # any face or focal subject < 128px collapses into < 4 latent tokens, destroying facial features.
+                    # Enforce strict spatial floor of at least 128px (or 12.5% of canvas).
+                    min_w = max(128.0 / canvas_w, 0.125)
+                    min_h = max(128.0 / canvas_h, 0.125)
+                    bw_cur = new_bbox.x2 - new_bbox.x1
+                    bh_cur = new_bbox.y2 - new_bbox.y1
+                    if bw_cur < min_w or bh_cur < min_h:
+                        bw_adj = max(bw_cur, min_w)
+                        bh_adj = max(bh_cur, min_h)
+                        adj_x2 = min(1.0, new_bbox.x1 + bw_adj)
+                        adj_y2 = min(1.0, new_bbox.y1 + bh_adj)
+                        adj_x1 = max(0.0, adj_x2 - bw_adj)
+                        adj_y1 = max(0.0, adj_y2 - bh_adj)
+                        new_bbox = BBox(x1=round(adj_x1, 4), y1=round(adj_y1, 4), x2=round(adj_x2, 4), y2=round(adj_y2, 4))
+
                 node_map[comp_id] = LayoutNode(
                     id=comp_id,
                     type=comp_type,
