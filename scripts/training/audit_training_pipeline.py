@@ -77,12 +77,12 @@ def collect() -> dict[str, Any]:
                 backend, r'KRISNA_POLISH_MODEL_ID",\s*"([^"]+)"', "Qwen/Qwen-Image-2.1"
             ),
             "planner_gguf_repository": _regex(
-                planner_download, r'KRISNA_PLANNER_GGUF_REPO",\s*"([^"]+)"', "Qwen/Qwen2.5-VL-7B-Instruct-GGUF"
+                planner_download, r'KRISNA_PLANNER_GGUF_REPO",\s*"([^"]+)"', "unsloth/Qwen3.5-9B-GGUF"
             ),
         },
         "trainability": {
-            "planner": "frozen (Qwen3.5-9B canonical / Qwen2.5-VL-7B baseline + UICrit RAG, PRD §6 no-RLHF)",
-            "layout": "deterministic baseline (krisna.layout.v1 Layout IR); MaskGIT retired",
+            "planner": "frozen (Qwen3.5-9B canonical + UICrit RAG, PRD §6 no-RLHF)",
+            "layout": "deterministic baseline (krisna.layout.v1 Layout IR); LayoutFlow/MaskGIT retired",
             "polish_default": "intended LoRA/DoRA; trainer contract pinned to Qwen-Image-2.1",
             "polish_quality": "intended frozen; verify no adapter is injected",
             "polish_dpo": "active Flow-Matching DPO preference alignment (Wallace et al. 2024; Kim et al. 2024)",
@@ -92,9 +92,9 @@ def collect() -> dict[str, Any]:
             "qwen_pair_builder": _exists("training/src/krisna_training/polish/prepare_dataset.py"),
             "qwen_trainer_contract": _exists("training/src/krisna_training/polish/qwen_trainer_contract.py"),
             "external_qwen_trainer": qwen_trainer.exists(),
-            "layout_model_primitive": _exists("training/src/krisna_training/layout/model.py"),
-            "layout_trainer": _exists("training/src/krisna_training/layout/train.py"),
-            "sketch_trainer": _exists("training/src/krisna_training/sketch/train.py"),
+            "layout_model_primitive": False,
+            "layout_trainer": False,
+            "sketch_trainer": False,
             "dpo_loss_source": _exists("training/src/krisna_training/polish/dpo_loss.py"),
             "dpo_trainer": _exists("training/src/krisna_training/polish/train_dpo.py"),
             "cfm_loss_source": _exists("training/src/krisna_training/polish/cfm_loss.py"),

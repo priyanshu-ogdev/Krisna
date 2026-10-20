@@ -28,13 +28,13 @@ log = logging.getLogger("krisna_inference.backends.model_loader")
 
 PLANNER_GGUF_FILENAMES = [
     "Qwen3.5-9B-Instruct-Q4_K_M.gguf",
+    "Qwen3.5-9B-Instruct-Q5_K_M.gguf",
     "Qwen3.5-9B-Q4_K_M.gguf",
-    "Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf",
 ]
 PLANNER_MMPROJ_FILENAMES = [
     "Qwen3.5-9B-Instruct-mmproj-f16.gguf",
     "Qwen3.5-9B-mmproj-f16.gguf",
-    "Qwen2.5-VL-7B-Instruct-mmproj-f16.gguf",
+    "mmproj-Qwen3.5-9B-f16.gguf",
 ]
 
 PLANNER_GGUF_FILENAME = PLANNER_GGUF_FILENAMES[0]

@@ -110,7 +110,7 @@ class PlannerBackendLlama(ModelBackend):
             raise BackendLoadError(
                 "No verified Planner GGUF artifact found. "
                 "Download weights using: python scripts/inference/download_planner_models.py "
-                "--repo-id Qwen/Qwen2.5-VL-7B-Instruct-GGUF --filename Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf"
+                "--repo-id unsloth/Qwen3.5-9B-GGUF --filename Qwen3.5-9B-Instruct-Q4_K_M.gguf"
             )
 
         self.model_path = str(resolved_path)
