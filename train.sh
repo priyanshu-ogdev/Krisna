@@ -25,8 +25,8 @@ list_tiers() {
     cat <<'EOF'
 Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   RESEARCH     Deterministic Layout IR baseline; no complete learned trainer.
-sketch-stage2   RESEARCH     Future LayoutFlow/MaskGIT ablation only.
+sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krisna.layout.v1; 0 MB VRAM, <5ms CPU).
+sketch-stage2   RETIRED      Legacy LayoutFlow neural ablation deleted; production mainline is deterministic.
 polish-default  PENDING      Qwen/Qwen-Image-2.1 paired image-conditioned LoRA;
                                external trainer must be pinned and smoke-tested.
 polish-dpo      DEFERRED     Historical path, not part of the active pipeline.

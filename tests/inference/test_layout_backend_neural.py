@@ -1,8 +1,9 @@
-"""Tests for LayoutBackend Neuro-Symbolic Neural Mode vs Baseline Ablation.
+"""Tests for LayoutBackend Neuro-Symbolic Production Engine.
 
 Grounding:
-- Guerreiro, J. A., et al. (ECCV 2024). "LayoutFlow: Flow Matching for Layout Generation."
-- Tan, Z., et al. (IEEE TPAMI 2025). "InstructLayout: Instruction-Driven Graphic Layout Generation via Semantic Graph Priors."
+- Badros, G. J., et al. (ACM TOCHI 2001). "The Cassowary Linear Arithmetic Constraint Solving Algorithm."
+- Huang, C., et al. (NeurIPS 2023). "Composer: Creative and Controllable Image Synthesis with Composable Conditions."
+- Park, T., et al. (IEEE/CVF CVPR 2019 Oral). "Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE)."
 """
 
 from __future__ import annotations
@@ -18,14 +19,11 @@ from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
 @pytest.mark.asyncio
-async def test_layout_backend_neural_flow_execution(tmp_path):
-    """Verify LayoutBackend executes real neural ODE flow matching and outputs live flow metrics."""
-    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutFlow", vram_gb=0.0, quantization="none")
-    backend = LayoutBackend(spec, output_dir=str(tmp_path), engine_mode="neural")
+async def test_layout_backend_production_execution(tmp_path):
+    """Verify LayoutBackend executes deterministic constraint satisfaction and outputs valid LayoutIR and wireframe."""
+    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
+    backend = LayoutBackend(spec, output_dir=str(tmp_path))
     await backend.load()
-
-    assert backend._sampler is not None
-    assert backend._model is not None
 
     constraints = {
         "style": "clean dark",
@@ -51,18 +49,15 @@ async def test_layout_backend_neural_flow_execution(tmp_path):
         planner_output={},
         constraints=constraints,
         message="A SaaS dashboard with analytics",
-        session_id="neural_test_sess",
+        session_id="test_sess",
         turn_id="turn_1",
     )
 
-    assert result["mode"] == "neural_layout_flow"
+    assert result["mode"] == "layout_baseline"
     assert "flow_metrics" in result
     metrics = result["flow_metrics"]
 
-    # In neural mode, vector field norm and trajectory steps are genuine live computations
-    assert metrics["trajectory_steps"] == 10
-    assert metrics["vector_field_norm"] >= 0.0
-    assert metrics["displacement_mean"] >= 0.0
+    assert metrics["trajectory_steps"] == 1
     assert metrics["element_count"] > 0
 
     # Verify LayoutIR integrity
@@ -84,13 +79,11 @@ async def test_layout_backend_neural_flow_execution(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_layout_backend_baseline_ablation_mode(tmp_path):
-    """Verify LayoutBackend in baseline mode provides a clean comparative ablation."""
+async def test_layout_backend_baseline_mode(tmp_path):
+    """Verify LayoutBackend provides deterministic layout with zero displacement."""
     spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
-    backend = LayoutBackend(spec, output_dir=str(tmp_path), engine_mode="baseline")
+    backend = LayoutBackend(spec, output_dir=str(tmp_path))
     await backend.load()
-
-    assert backend._sampler is None
 
     result = await backend.run(
         planner_output={},
@@ -107,10 +100,10 @@ async def test_layout_backend_baseline_ablation_mode(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_layout_backend_neural_with_transparent_asset_mode(tmp_path):
-    """Verify neural LayoutBackend preserves native RGBA mode end-to-end."""
-    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutFlow", vram_gb=0.0, quantization="none")
-    backend = LayoutBackend(spec, output_dir=str(tmp_path), engine_mode="neural")
+async def test_layout_backend_with_transparent_asset_mode(tmp_path):
+    """Verify LayoutBackend preserves native RGBA mode end-to-end for transparent asset requests."""
+    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
+    backend = LayoutBackend(spec, output_dir=str(tmp_path))
     await backend.load()
 
     result = await backend.run(
@@ -131,8 +124,8 @@ async def test_layout_backend_generates_and_persists_segmentation_map(tmp_path):
     """Verify LayoutBackend produces a canonical semantic segmentation map in BlobStore (NVIDIA SPADE style)."""
     from krisna_inference.layout_renderer import UI_SEMANTIC_PALETTE
 
-    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutFlow", vram_gb=0.0, quantization="none")
-    backend = LayoutBackend(spec, output_dir=str(tmp_path), engine_mode="neural")
+    spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
+    backend = LayoutBackend(spec, output_dir=str(tmp_path))
     await backend.load()
 
     result = await backend.run(
@@ -173,8 +166,8 @@ async def test_polish_backend_consumes_segmentation_map(tmp_path):
     """Verify QwenImage21Backend consumes segmentation_ref and logs NVIDIA SPADE multi-stream telemetry."""
     from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
 
-    spec_sketch = ModelSpec(tier=Tier.SKETCH, name="LayoutFlow", vram_gb=0.0, quantization="none")
-    sketch_backend = LayoutBackend(spec_sketch, output_dir=str(tmp_path), engine_mode="neural")
+    spec_sketch = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
+    sketch_backend = LayoutBackend(spec_sketch, output_dir=str(tmp_path))
     await sketch_backend.load()
 
     sketch_result = await sketch_backend.run(
@@ -201,4 +194,3 @@ async def test_polish_backend_consumes_segmentation_map(tmp_path):
     assert receipt["segmentation_used"] is True
     assert receipt["segmentation_ref"] == sketch_result["segmentation_ref"]
     assert receipt["spatial_conditioning_mode"] == "NVIDIA_SPADE_MultiStream"
-

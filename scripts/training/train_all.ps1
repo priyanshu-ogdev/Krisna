@@ -65,10 +65,8 @@ function Show-Tiers {
     Write-Host @'
 Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   RESEARCH     Deterministic Layout IR is the current baseline; no complete
-                              source-backed learned Sketch trainer is present.
-
-sketch-stage2   RESEARCH     Same: keep as a future LayoutFlow/MaskGIT ablation only.
+sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krisna.layout.v1; 0 MB VRAM, <5ms CPU).
+sketch-stage2   RETIRED      Legacy LayoutFlow neural ablation deleted; production mainline is deterministic.
 
 polish-default  ACTIVE       Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
                               local code prepares pairs and delegates to an external

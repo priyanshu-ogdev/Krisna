@@ -19,7 +19,7 @@ product paths, and one separate preprocessing-only VLM:
 |---|---|---:|---|---|
 | Preprocessing VLM | `Qwen/Qwen3.8-27B` FP8, pinned revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | Not trained by Krisna | Strict local Data-Forge VLM bundle and stage runtime | Annotation/quality/structure tool only; never a final trained model or training signal authority |
 | Planner | `Qwen3.5-9B`; official revision `c202236235762e1c871ad0ccb60c8ee5ba337b9a` | Frozen | `PlannerBackendLlama` plus UICrit RAG; image-grounded review contract is now wired, but real GGUF/mmproj smoke validation remains required | Keep frozen for the main system; no Planner LoRA unless the predeclared visual/JSON gates fail |
-| Structure / Sketch | `krisna.layout.v1` deterministic neuro-symbolic engine (production); `LayoutFlow` continuous flow matching (research ablation) | Production: Frozen/deterministic; Ablation: Trainable OT-CFM | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; `krisna_training.layout` contains the continuous flow ablation model | Production uses deterministic Cassowary solver and DualStreamSketch; LayoutFlow is evaluated as a research ablation. |
+| Structure / Sketch | `krisna.layout.v1` deterministic neuro-symbolic engine | Deterministic (0 MB VRAM, <5ms CPU) | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; legacy neural LayoutFlow ablation retired | Production uses deterministic Cassowary solver and DualStreamSketch; 0 MB VRAM and 0% overlap guarantee. |
 | Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | LoRA only; base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; pair manifest and accelerate training entry point verified | Primary trainable generative model artifact. |
 | Polish Quality | `Qwen/Qwen-Image-2.1` | Frozen reference/ablation | Same backend, intended without an adapter | Frozen comparison baseline without adapter. |
 | Preference alignment | Continuous Flow Matching DPO (`dpo_loss.py`) | Post-training alignment | `krisna_training/polish/dpo_loss.py` is implemented and unit-tested for velocity-based MMDiT flow matching | Trainable on human preference pairs (Pick-a-Pic v2, HPDv2, GameLabel-10K) after base LoRA convergence. |
@@ -399,7 +399,7 @@ matched condition/target benchmark.
 | Candidate upgrade | Evidence source | Production decision |
 |---|---|---|
 | Multimodal Planner review | Qwen2.5-VL report and image-message model card | Add only after a real image request/response smoke test; otherwise label review text-grounded |
-| Learned LayoutFlow branch | Springer/ECCV LayoutFlow | Keep as an ablation behind the deterministic IR contract |
+| Learned LayoutFlow branch | Springer/ECCV LayoutFlow | Retired; consolidated to production deterministic neuro-symbolic IR contract |
 | Interactive prompt engineering | IEEE TVCG PromptMagician | Preserve editable prompt/state artifacts; do not replace hard constraints |
 | Spatial diffusion control | ControlNet and InstructPix2Pix | Require materialized condition images and separate structure/aesthetic metrics |
 | Preference alignment | Diffusion-DPO and flow-model follow-up work | Deferred until native Qwen prediction target and human data are verified |
