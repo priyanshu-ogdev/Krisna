@@ -233,7 +233,7 @@ def check_gpu_cuda_match(
             if low_vram and status.total_ram_gb > 0 and status.total_ram_gb < 32.0:
                 status.warnings.append(
                     f"System RAM ({status.total_ram_gb:.1f} GB) is modest for low-VRAM mode. "
-                    "CPU offload for Polish and Critic models functions best with >= 32GB (ideally 64-128GB)."
+                    "CPU offload for Polish models functions best with >= 16-32GB."
                 )
         else:
             if has_nvidia_smi:

@@ -974,6 +974,12 @@ async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
     blob_store = get_blob_store()
     img = blob_store.load_image(wireframe_ref)
     assert img.mode == "RGBA"
+    assert "segmentation_ref" in result
+    assert "mask_ref" in result
+    assert result["mask_ref"] is not None
+    assert result["canvas_width"] % 32 == 0
+    assert result["canvas_height"] % 32 == 0
+    assert result["mode"] in ("layout_baseline", "neural_layout_flow") or result["mode"].startswith("krisna.layout.v1.")
 
 
 def test_layout_from_constraints_preserves_and_mutates_current_layout():
@@ -1017,9 +1023,357 @@ def test_layout_from_constraints_preserves_and_mutates_current_layout():
     assert node_dict["sub_caption"].text == "No credit card required"
 
 
+def test_render_dual_stream_sketch_quantization_and_synchronization(tmp_path):
+    """Verify render_dual_stream_sketch produces synchronized wireframe, SPADE segmentation, and mask with multiple-of-32 dimensions."""
+    from krisna_inference.layout_renderer import render_dual_stream_sketch, render_spatial_alpha_mask, DualStreamSketch
+    from krisna_inference.layout_baseline import layout_from_constraints
+
+    constraints = {
+        "style": "clean dark modern",
+        "actions": [
+            AddComponentAction(component_type="header", bbox=[0.05, 0.05, 0.90, 0.15], target_id="hdr", props={"label": "Control Center"}),
+            AddComponentAction(component_type="button", bbox=[0.10, 0.30, 0.40, 0.12], target_id="btn", props={"label": "Deploy"}),
+            LockRegionAction(target_id="hdr"),
+        ]
+    }
+    ir = layout_from_constraints(constraints, text="Test dual stream")
+
+    # Request non-multiple of 32 (1010 x 750)
+    dual_sketch = render_dual_stream_sketch(
+        ir,
+        canvas_width=1010,
+        canvas_height=750,
+        output_dir=tmp_path / "dual_stream_out",
+        prefix="preflight_test"
+    )
+
+    assert isinstance(dual_sketch, DualStreamSketch)
+    # Dimensions must be multiples of 32 (1010 -> 1024, 750 -> 768)
+    assert dual_sketch.width % 32 == 0
+    assert dual_sketch.height % 32 == 0
+    assert dual_sketch.width == 1024
+    assert dual_sketch.height == 736
+
+    assert dual_sketch.wireframe.size == (1024, 736)
+    assert dual_sketch.segmentation.size == (1024, 736)
+    assert dual_sketch.mask is not None
+    assert dual_sketch.mask.size == (1024, 736)
+
+    # Wireframe mode RGB, segmentation RGB, mask L
+    assert dual_sketch.wireframe.mode == "RGB"
+    assert dual_sketch.segmentation.mode == "RGB"
+    assert dual_sketch.mask.mode == "L"
+
+    # Files must be written to disk
+    assert Path(dual_sketch.wireframe_path).is_file()
+    assert Path(dual_sketch.segmentation_path).is_file()
+    assert Path(dual_sketch.mask_path).is_file()
 
 
+def test_render_spatial_alpha_mask_values():
+    """Verify render_spatial_alpha_mask assigns 0 to locked regions and 255 to mutable areas."""
+    from krisna_inference.layout_renderer import render_spatial_alpha_mask
+    from krisna_inference.layout_baseline import layout_from_constraints
+    import numpy as np
+
+    constraints = {
+        "style": "cyberpunk",
+        "actions": [
+            AddComponentAction(component_type="card", bbox=[0.2, 0.2, 0.6, 0.6], target_id="locked_card"),
+            LockRegionAction(target_id="locked_card"),
+        ]
+    }
+    ir = layout_from_constraints(constraints, text="Mask test")
+    mask = render_spatial_alpha_mask(ir, width=1024, height=1024)
+
+    assert mask.size == (1024, 1024)
+    arr = np.array(mask)
+
+    # Center of locked card (x=512, y=512) must be 0 (locked donor)
+    assert arr[512, 512] == 0
+
+    # Margin near corner (x=50, y=50) must be 255 (mutable background)
+    assert arr[50, 50] == 255
 
 
+def test_universal_node_types_and_spade_palette(tmp_path):
+    """Verify that universal graphic design nodes survive schema validation and render discrete SPADE classes."""
+    from krisna_inference.layout_ir import LayoutIR, LayoutNode, BBox, NODE_TYPES
+    from krisna_inference.layout_renderer import render_segmentation_map, UNIVERSAL_SEMANTIC_PALETTE
+    import numpy as np
 
+    # 1. Verify schema includes universal design nodes
+    universal_sample = ["badge", "headline", "illustration", "product", "banner", "shape"]
+    for t in universal_sample:
+        assert t in NODE_TYPES
+        assert t in UNIVERSAL_SEMANTIC_PALETTE
+
+    # 2. Build layout with universal nodes
+    nodes = [
+        LayoutNode(id="root", type="container", bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0)),
+        LayoutNode(id="hero_badge", type="badge", bbox=BBox(x1=0.1, y1=0.1, x2=0.3, y2=0.16), text="New Release"),
+        LayoutNode(id="head", type="headline", bbox=BBox(x1=0.1, y1=0.18, x2=0.9, y2=0.28), text="Next-Gen AI Canvas"),
+        LayoutNode(id="prod", type="product", bbox=BBox(x1=0.1, y1=0.32, x2=0.5, y2=0.75), text="Hero Product"),
+        LayoutNode(id="graphic", type="shape", bbox=BBox(x1=0.55, y1=0.32, x2=0.9, y2=0.75)),
+    ]
+    ir = LayoutIR(canvas_width=1024, canvas_height=1024, nodes=nodes)
+    seg_png = tmp_path / "universal_seg.png"
+    render_segmentation_map(ir, seg_png)
+
+    assert seg_png.is_file()
+    with Image.open(seg_png) as img:
+        arr = np.array(img)
+        # Check badge color (234, 179, 8) in arr
+        badge_pixel = arr[int(0.13 * 1024), int(0.20 * 1024)]
+        assert tuple(badge_pixel) == UNIVERSAL_SEMANTIC_PALETTE["badge"]
+        # Check product/focal subject color (34, 197, 94) in arr
+        prod_pixel = arr[int(0.50 * 1024), int(0.30 * 1024)]
+        assert tuple(prod_pixel) == UNIVERSAL_SEMANTIC_PALETTE["product"]
+        # Check decorative shape color (236, 72, 153)
+        shape_pixel = arr[int(0.50 * 1024), int(0.70 * 1024)]
+        assert tuple(shape_pixel) == UNIVERSAL_SEMANTIC_PALETTE["shape"]
+
+
+def test_compute_differential_mask_isolates_partition_edits(tmp_path):
+    """Verify compute_differential_mask isolates edited partition and preserves untouched partitions."""
+    from krisna_inference.layout_ir import LayoutIR, LayoutNode, BBox
+    from krisna_inference.layout_renderer import compute_differential_mask
+    import numpy as np
+
+    # Turn 1: Navbar at top, Card A on left, Card B on right
+    turn1_nodes = [
+        LayoutNode(id="root", type="container", bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0)),
+        LayoutNode(id="nav", type="navbar", bbox=BBox(x1=0.05, y1=0.05, x2=0.95, y2=0.15), text="Brand Nav"),
+        LayoutNode(id="card_left", type="card", bbox=BBox(x1=0.05, y1=0.25, x2=0.45, y2=0.75), text="Original Left"),
+        LayoutNode(id="card_right", type="card", bbox=BBox(x1=0.55, y1=0.25, x2=0.95, y2=0.75), text="Original Right"),
+    ]
+    layout_t1 = LayoutIR(canvas_width=1024, canvas_height=1024, nodes=turn1_nodes)
+
+    # Turn 2: User says "Change right card to 3 pricing tiers". Left card and nav are completely UNTOUCHED.
+    turn2_nodes = [
+        LayoutNode(id="root", type="container", bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0)),
+        LayoutNode(id="nav", type="navbar", bbox=BBox(x1=0.05, y1=0.05, x2=0.95, y2=0.15), text="Brand Nav"),
+        LayoutNode(id="card_left", type="card", bbox=BBox(x1=0.05, y1=0.25, x2=0.45, y2=0.75), text="Original Left"),
+        LayoutNode(id="card_right", type="card", bbox=BBox(x1=0.55, y1=0.25, x2=0.95, y2=0.75), text="Updated 3-Tier Pricing Table"),
+    ]
+    layout_t2 = LayoutIR(canvas_width=1024, canvas_height=1024, nodes=turn2_nodes)
+
+    mask = compute_differential_mask(layout_t1, layout_t2, canvas_width=1024, canvas_height=1024, dilation_radius=16)
+    arr = np.array(mask)
+
+    # 1. Untouched navbar (y=100, x=500) must be 0 (immutable photoreal donor preserved)
+    assert arr[100, 500] == 0
+
+    # 2. Untouched left card (y=500, x=250) must be 0 (immutable photoreal donor preserved)
+    assert arr[500, 250] == 0
+
+    # 3. Modified right card (y=500, x=750) must be 255 (active generation zone for Qwen flow matching)
+    assert arr[500, 750] == 255
+
+
+def test_multi_column_spatial_prompt_synthesis(tmp_path):
+    """Verify synthesize_descriptive_polish_prompt emits 2D multi-column partition coordinates."""
+    import json
+    from krisna_inference.orchestrator.design_state import DesignState
+    from krisna_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
+
+    state = DesignState()
+    state.constraints.style = "modern SaaS"
+    layout_data = {
+        "nodes": [
+            {"id": "root", "type": "container", "bbox": {"x1": 0.0, "y1": 0.0, "x2": 1.0, "y2": 1.0}},
+            {"id": "title", "type": "headline", "text": "Pricing Plans", "bbox": {"x1": 0.1, "y1": 0.08, "x2": 0.9, "y2": 0.18}},
+            {"id": "tier_1", "type": "card", "text": "Starter Plan", "bbox": {"x1": 0.10, "y1": 0.28, "x2": 0.35, "y2": 0.75}},
+            {"id": "tier_2", "type": "card", "text": "Pro Plan", "bbox": {"x1": 0.38, "y1": 0.28, "x2": 0.63, "y2": 0.75}},
+            {"id": "tier_3", "type": "card", "text": "Enterprise Plan", "bbox": {"x1": 0.66, "y1": 0.28, "x2": 0.91, "y2": 0.75}},
+        ]
+    }
+    lf = tmp_path / "multicol_layout.json"
+    lf.write_text(json.dumps(layout_data), encoding="utf-8")
+    state.layout.layout_ref = str(lf)
+
+    prose = synthesize_descriptive_polish_prompt(state)
+
+    # Asserts 2D multi-column awareness and exact verbatim quoting
+    assert "structured multi-column partition" in prose
+    assert "column 1 [x: 0.10]" in prose
+    assert "Starter Plan" in prose
+    assert "column 2 [x: 0.38]" in prose
+    assert "Pro Plan" in prose
+    assert "column 3 [x: 0.66]" in prose
+    assert "Enterprise Plan" in prose
+
+
+def test_portrait_character_archetype_and_facial_mapping(tmp_path):
+    """Verify portrait archetype detection, starter nodes with facial landmarks, and polish prompt prose."""
+    import json
+    from krisna_inference.layout_ir import SceneArchetype, LayoutIR
+    from krisna_inference.layout_baseline import detect_scene_archetype, layout_from_constraints
+    from krisna_inference.layout_renderer import render_wireframe, render_segmentation_map
+    from krisna_inference.orchestrator.design_state import DesignState
+    from krisna_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
+
+    prompt = "Create a dramatic cyberpunk female warrior character portrait with glowing neon eyes and intricate cyberware"
+    archetype = detect_scene_archetype(prompt)
+    assert archetype == SceneArchetype.PORTRAIT_CHARACTER
+
+    layout = layout_from_constraints({"style": "cyberpunk portrait"}, text=prompt)
+    assert layout.scene_archetype == SceneArchetype.PORTRAIT_CHARACTER.value
+
+    # Verify nodes: must contain focal subject with facial landmarks, no generic UI buttons
+    node_types = [n.type for n in layout.nodes]
+    assert "focal_subject" in node_types
+    assert "button" not in node_types
+
+    focal_nodes = [n for n in layout.nodes if n.is_focal_subject or n.type == "focal_subject"]
+    assert len(focal_nodes) >= 1
+    focal = focal_nodes[0]
+    assert focal.facial_landmarks is not None
+    assert "eyes" in focal.facial_landmarks
+    assert "mouth" in focal.facial_landmarks
+
+    # Render wireframe and segmentation to verify no rendering crashes
+    wf_path = tmp_path / "portrait_wf.png"
+    render_wireframe(layout, wf_path)
+    assert wf_path.exists() and wf_path.stat().st_size > 0
+
+    seg_path = tmp_path / "portrait_seg.png"
+    render_segmentation_map(layout, seg_path)
+    assert seg_path.exists() and seg_path.stat().st_size > 0
+
+    # Test prompt synthesis emits facial mapping instructions
+    state = DesignState()
+    state.constraints.style = "cyberpunk"
+    lf = tmp_path / "portrait_layout.json"
+    lf.write_text(json.dumps(layout.model_dump()), encoding="utf-8")
+    state.layout.layout_ref = str(lf)
+
+    prose = synthesize_descriptive_polish_prompt(state)
+    assert "character portrait" in prose
+    assert "facial mapping" in prose
+    assert "expressive eyes" in prose
+
+
+def test_graphic_poster_z_index_overlay_stacking():
+    """Verify nodes on distinct z-index layers or parent-child containment do not collide or get split."""
+    from krisna_inference.layout_ir import SceneArchetype, LayoutNode, BBox
+    from krisna_inference.layout_baseline import layout_from_constraints, detect_scene_archetype
+
+    prompt = "Design a retro music festival poster headline with typography overlay on background art"
+    archetype = detect_scene_archetype(prompt)
+    assert archetype == SceneArchetype.GRAPHIC_POSTER
+
+    # Feed custom overlapping nodes on different z-index layers
+    nodes = [
+        LayoutNode(
+            id="bg_artwork",
+            type="illustration",
+            bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+            z_index=0,
+        ),
+        LayoutNode(
+            id="main_headline",
+            type="headline",
+            text="SUMMER FESTIVAL 2026",
+            bbox=BBox(x1=0.1, y1=0.15, x2=0.9, y2=0.35),
+            z_index=1,
+        ),
+        LayoutNode(
+            id="badge",
+            type="badge",
+            text="LIVE AT SUNSET",
+            bbox=BBox(x1=0.6, y1=0.25, x2=0.85, y2=0.32),
+            z_index=2,
+        ),
+    ]
+
+    layout = layout_from_constraints({
+        "scene_archetype": SceneArchetype.GRAPHIC_POSTER.value,
+        "nodes": [n.model_dump() for n in nodes],
+    })
+
+    # Assert that all 3 nodes retained their exact bounding boxes without being split or retiled
+    node_map = {n.id: n for n in layout.nodes}
+    assert "bg_artwork" in node_map
+    assert "main_headline" in node_map
+    assert "badge" in node_map
+
+    assert node_map["bg_artwork"].bbox.x1 == 0.0 and node_map["bg_artwork"].bbox.x2 == 1.0
+    assert node_map["main_headline"].bbox.x1 == 0.1 and node_map["main_headline"].bbox.x2 == 0.9
+    assert node_map["badge"].bbox.x1 == 0.6 and node_map["badge"].bbox.x2 == 0.85
+
+
+def test_facial_scale_floor_enforcement():
+    """Verify facial/focal subject dimensions are clamped to >= 128px floor to prevent VAE collapse."""
+    from krisna_inference.layout_ir import LayoutNode, BBox
+    from krisna_inference.layout_baseline import layout_from_constraints
+
+    # Pass a tiny face node (50x50 on a 1024x1024 canvas = 0.0488x0.0488)
+    tiny_focal = LayoutNode(
+        id="avatar_face",
+        type="focal_subject",
+        is_focal_subject=True,
+        facial_landmarks={"eyes": [0.02, 0.02]},
+        bbox=BBox(x1=0.45, y1=0.45, x2=0.49, y2=0.49),
+    )
+
+    layout = layout_from_constraints(
+        {"nodes": [tiny_focal.model_dump()]},
+        canvas_width=1024,
+        canvas_height=1024,
+    )
+
+    resolved_focal = next(n for n in layout.nodes if n.id == "avatar_face")
+    # Width and height in pixels must be >= 128
+    w_px = (resolved_focal.bbox.x2 - resolved_focal.bbox.x1) * layout.canvas_width
+    h_px = (resolved_focal.bbox.y2 - resolved_focal.bbox.y1) * layout.canvas_height
+    assert w_px >= 127.9
+    assert h_px >= 127.9
+
+
+@pytest.mark.asyncio
+async def test_image_to_image_spatial_conditioning_receipts(tmp_path, monkeypatch):
+    """Verify QwenImage21Backend multi-stream spatial conditioning (SPADE + inpaint mask)."""
+    from PIL import Image
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+
+    store = BlobStore(root=tmp_path / "blobs")
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+
+    # 1. Source wireframe
+    source = Image.new("RGB", (512, 512), (240, 240, 245))
+    src_ref = store.save_image(source, prefix="wf")
+
+    # 2. Semantic segmentation map
+    seg = Image.new("RGB", (512, 512), (236, 72, 153))
+    seg_ref = store.save_image(seg, prefix="seg")
+
+    # 3. Differential mask
+    mask = Image.new("L", (512, 512), 255)
+    mask_ref = store.save_image(mask, prefix="mask")
+
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=4.5,
+        quantization="BF16",
+        always_resident=False,
+    )
+    backend = QwenImage21Backend(spec)
+    await backend.load()
+
+    result = await backend.run(
+        handoff_image_ref=src_ref,
+        segmentation_ref=seg_ref,
+        mask_ref=mask_ref,
+        prompt="Cyberpunk female character portrait",
+    )
+
+    receipt = result["receipt"]
+    assert receipt["segmentation_used"] is True
+    assert receipt["mask_used"] is True
+    assert receipt["spatial_conditioning_mode"] == "NVIDIA_SPADE_MultiStream"
 

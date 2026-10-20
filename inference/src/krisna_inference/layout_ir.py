@@ -12,8 +12,33 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from enum import Enum
+
+
+class SceneArchetype(str, Enum):
+    UI_LAYOUT = "ui_layout"
+    GRAPHIC_POSTER = "graphic_poster"
+    E_COMMERCE = "e_commerce"
+    PORTRAIT_CHARACTER = "portrait_character"
+    LANDSCAPE_SCENE = "landscape_scene"
+    FREEFORM_ART = "freeform_art"
+
+
 LAYOUT_SCHEMA_VERSION = "krisna.layout.v1"
-NODE_TYPES = {"container", "text", "image", "button", "input", "list", "card", "icon", "divider", "other"}
+NODE_TYPES = {
+    # Structural & Layout Containers
+    "container", "card", "region", "canvas_zone", "modal", "background",
+    # Typography & Textual Spans
+    "text", "headline", "subhead", "body_text", "caption", "quote", "label",
+    # Visual Media & Subjects
+    "image", "focal_subject", "illustration", "character", "product", "photo_frame",
+    # Functional & Interactive Elements
+    "button", "input", "list", "table", "navbar", "footer", "sidebar",
+    # Graphic Design, Accents & Brand Assets
+    "badge", "icon", "logo", "divider", "shape", "banner", "decorative",
+    # Freeform & Custom
+    "sketch", "contour", "overlay", "other",
+}
 
 
 class BBox(BaseModel):
@@ -69,6 +94,10 @@ class LayoutNode(BaseModel):
     text: str | None = Field(default=None, max_length=4096)
     content_ref: str | None = None
     locked: bool = False
+    is_focal_subject: bool = False
+    facial_landmarks: dict[str, Any] | None = None
+    identity_lock: bool = False
+    props: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("type")
     @classmethod
@@ -88,6 +117,7 @@ class LayoutIR(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: str = LAYOUT_SCHEMA_VERSION
+    scene_archetype: str = "ui_layout"
     canvas_width: int = Field(default=1024, ge=1, le=8192)
     canvas_height: int = Field(default=1024, ge=1, le=8192)
     nodes: list[LayoutNode] = Field(default_factory=list, max_length=64)

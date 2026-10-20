@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from krisna_inference.layout_ir import BBox, LayoutIR, LayoutNode, project_layout
+from krisna_inference.layout_ir import BBox, LayoutIR, LayoutNode, SceneArchetype, project_layout
 
 log = logging.getLogger("krisna_inference.layout_baseline")
 
@@ -21,10 +21,12 @@ def _resolve_flex_layout(
     canvas_h: int = 1024,
     conflicts: list[str] | None = None,
 ) -> dict[str, LayoutNode]:
-    """Deterministic Box-Model Collision Partitioner.
+    """Deterministic Box-Model Collision Partitioner with Layer-Aware Z-Index Stacking.
     
     Applies deterministic 1D axis partitioning and logical 8pt UI grid snapping to resolve colliding sibling nodes.
     Locked nodes (node.locked is True) are strictly IMMUTABLE and exempt from being moved.
+    Layer-Aware: Nodes on different z_index planes or with parent-child relationships are treated as layered
+    and exempt from collision separation (allowing graphic design overlays, badges, stickers, and text over art).
     """
     direction = str(constraints.get("layout_direction") or "row").lower()
     grid_x = 8.0 / canvas_w
@@ -44,6 +46,30 @@ def _resolve_flex_layout(
         if not node.locked and nid not in structural_container_ids
     ]
 
+    # Enforce minimum dimension floor for facial/focal subject nodes (>= 128px on canvas)
+    # Grounding: AnyDoor (CVPR 2024), PhotoMaker (CVPR 2024).
+    # Faces smaller than 128px span < 4x4 DiT tokens and suffer irreversible spatial annihilation in 16x VAE.
+    min_face_w = 128.0 / canvas_w
+    min_face_h = 128.0 / canvas_h
+    for mid in mutable_ids:
+        cur_node = node_map[mid]
+        if cur_node.is_focal_subject or cur_node.type in ("focal_subject", "character", "photo_frame"):
+            nb = cur_node.bbox
+            nw = nb.x2 - nb.x1
+            nh = nb.y2 - nb.y1
+            if nw < min_face_w or nh < min_face_h:
+                new_w = max(nw, min_face_w)
+                new_h = max(nh, min_face_h)
+                cx = (nb.x1 + nb.x2) / 2.0
+                cy = (nb.y1 + nb.y2) / 2.0
+                nx1 = _snap_x(max(0.02, min(0.98 - new_w, cx - new_w / 2.0)))
+                ny1 = _snap_y(max(0.02, min(0.98 - new_h, cy - new_h / 2.0)))
+                nx2 = _snap_x(min(0.98, nx1 + new_w))
+                ny2 = _snap_y(min(0.98, ny1 + new_h))
+                node_map[mid] = cur_node.model_copy(
+                    update={"bbox": BBox(x1=nx1, y1=ny1, x2=nx2, y2=ny2), "is_focal_subject": True}
+                )
+
     # 2a. Check locked-vs-locked collisions: neither can move; surface conflict diagnostic to Planner
     locked_list = sorted(list(locked_ids))
     for i, lid1 in enumerate(locked_list):
@@ -61,6 +87,9 @@ def _resolve_flex_layout(
         mb = node_map[mid].bbox
         for lid in locked_ids:
             lb = node_map[lid].bbox
+            # If mutable node is at a higher z_index intended to overlay the locked element, allow layer stacking
+            if node_map[mid].z_index > node_map[lid].z_index:
+                continue
             if mb.iou(lb) > 0.0 or (mb.x1 < lb.x2 and mb.x2 > lb.x1 and mb.y1 < lb.y2 and mb.y2 > lb.y1):
                 avail_below = 0.96 - (lb.y2 + 0.016)
                 avail_above = (lb.y1 - 0.016) - 0.04
@@ -82,7 +111,7 @@ def _resolve_flex_layout(
                     clamped_y1 = _snap_y(max(0.04, 0.96 - min(0.08, mb.y2 - mb.y1)))
                     node_map[mid] = node_map[mid].model_copy(update={"bbox": BBox(x1=mb.x1, y1=clamped_y1, x2=mb.x2, y2=0.96)})
 
-    # 3. Identify colliding clusters among mutable nodes (IoU > 0.05 or bounding box overlap)
+    # 3. Identify colliding clusters among mutable nodes (IoU > 0.05 on the SAME z-index plane)
     colliding_clusters: list[list[str]] = []
     visited: set[str] = set()
 
@@ -91,8 +120,16 @@ def _resolve_flex_layout(
             continue
         cluster = [nid1]
         b1 = node_map[nid1].bbox
+        z1 = node_map[nid1].z_index
         for nid2 in mutable_ids[i + 1:]:
             if nid2 in visited:
+                continue
+            # Layer-Aware Z-Index Stacking: elements on different z-planes are layered overlays, NOT collisions
+            z2 = node_map[nid2].z_index
+            if z1 != z2:
+                continue
+            # Parent-child containment: nested elements inside a container do not collide with parent
+            if node_map[nid1].parent == nid2 or node_map[nid2].parent == nid1:
                 continue
             b2 = node_map[nid2].bbox
             if b1.iou(b2) > 0.05 or (b1.x1 < b2.x2 and b1.x2 > b2.x1 and b1.y1 < b2.y2 and b1.y2 > b2.y1):
@@ -155,30 +192,96 @@ def _resolve_flex_layout(
     return node_map
 
 
-def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
+def detect_scene_archetype(constraints: dict | str | None = None, text: str = "") -> SceneArchetype:
+    """Infer scene archetype from constraints or intent text."""
+    if isinstance(constraints, str):
+        text = f"{text} {constraints}".strip()
+        constraints = {}
+    elif constraints is None:
+        constraints = {}
+
+    if constraints.get("scene_archetype"):
+        val = str(constraints["scene_archetype"]).lower()
+        for arch in SceneArchetype:
+            if arch.value == val or arch.name.lower() == val:
+                return arch
+
+    combined = f"{text} {constraints.get('style', '')} {constraints.get('layout_hints', '')}".lower()
+
+    portrait_terms = (
+        "portrait", "character", "person", "avatar", "face", "warrior", "hero",
+        "model", "woman", "man", "girl", "boy", "cosplay", "figure", "headshot",
+        "close-up face", "selfie", "protagonist", "knight", "wizard", "facial"
+    )
+    if any(term in combined for term in portrait_terms):
+        return SceneArchetype.PORTRAIT_CHARACTER
+
+    poster_terms = (
+        "poster", "banner", "flyer", "announcement", "cover", "album",
+        "typography poster", "movie poster", "event poster", "festival"
+    )
+    if any(term in combined for term in poster_terms):
+        return SceneArchetype.GRAPHIC_POSTER
+
+    ecommerce_terms = (
+        "product", "shoe", "sneaker", "perfume", "bottle", "watch",
+        "gadget", "ecommerce", "e-commerce", "packaging", "commercial", "showcase"
+    )
+    if any(term in combined for term in ecommerce_terms):
+        return SceneArchetype.E_COMMERCE
+
+    landscape_terms = (
+        "landscape", "scenery", "mountain", "nature", "forest", "cityscape",
+        "ocean", "skyline", "environment", "sunset", "valley", "panoramic"
+    )
+    if any(term in combined for term in landscape_terms):
+        return SceneArchetype.LANDSCAPE_SCENE
+
+    art_terms = (
+        "sketch", "drawing", "illustration", "concept art", "digital painting",
+        "oil painting", "watercolor", "anime", "manga", "doodle", "line art"
+    )
+    if any(term in combined for term in art_terms):
+        return SceneArchetype.FREEFORM_ART
+
+    return SceneArchetype.UI_LAYOUT
+
+
+def layout_from_constraints(
+    constraints: dict,
+    *,
+    text: str = "",
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
+) -> LayoutIR:
     """Build a deterministic LayoutIR synchronized with Planner constraints and DesignActions.
 
     Research grounding:
     - ShowUI (Lin et al., CVPR 2025): Action-token grammar for GUI elements.
     - InstructLayout (Wen et al., IEEE TPAMI 2025): Multi-modal instruction tuning for UI layout updates.
     - Cassowary (Badros et al., ACM TOCHI): Deterministic layout constraint resolution.
+    - AnyDoor (Chen et al., CVPR 2024): Open-domain focal subject and facial mapping.
     """
     style = constraints.get("style")
     palette = constraints.get("palette")
+    archetype = detect_scene_archetype(constraints, text=text)
 
-    # Determine canvas dimensions from aspect_ratio or target_device (multiples of 32 for DiT)
-    aspect_ratio = str(constraints.get("aspect_ratio") or constraints.get("target_device") or "").lower()
-    if "mobile" in aspect_ratio or "9:16" in aspect_ratio or "phone" in aspect_ratio:
-        canvas_w, canvas_h = 768, 1344
-    elif "desktop" in aspect_ratio or "16:9" in aspect_ratio or "wide" in aspect_ratio:
-        canvas_w, canvas_h = 1344, 768
-    elif "tablet" in aspect_ratio or "4:3" in aspect_ratio or "ipad" in aspect_ratio:
-        canvas_w, canvas_h = 1152, 864
+    # Determine canvas dimensions from explicit args, aspect_ratio or target_device (multiples of 32 for DiT)
+    if canvas_width is not None and canvas_height is not None:
+        canvas_w, canvas_h = canvas_width, canvas_height
     else:
-        canvas_w, canvas_h = 1024, 1024
+        aspect_ratio = str(constraints.get("aspect_ratio") or constraints.get("target_device") or "").lower()
+        if "mobile" in aspect_ratio or "9:16" in aspect_ratio or "phone" in aspect_ratio:
+            canvas_w, canvas_h = 768, 1344
+        elif "desktop" in aspect_ratio or "16:9" in aspect_ratio or "wide" in aspect_ratio:
+            canvas_w, canvas_h = 1344, 768
+        elif "tablet" in aspect_ratio or "4:3" in aspect_ratio or "ipad" in aspect_ratio:
+            canvas_w, canvas_h = 1152, 864
+        else:
+            canvas_w, canvas_h = 1024, 1024
 
-    # Initialize node_map from prior turn's current_layout if present, preserving multi-turn state
-    current_layout = constraints.get("current_layout")
+    # Initialize node_map from prior turn's current_layout or supplied nodes if present, preserving multi-turn state
+    current_layout = constraints.get("current_layout") or constraints.get("nodes")
     if current_layout and isinstance(current_layout, list):
         root_node = LayoutNode(
             id="root",
@@ -221,49 +324,215 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
             else:
                 bbox = BBox(x1=0.1, y1=0.1, x2=0.9, y2=0.3)
 
+            is_focal = bool(item.get("is_focal_subject") or ntype in ("focal_subject", "character", "photo_frame"))
             node_map[nid] = LayoutNode(
                 id=nid,
                 type=ntype,
                 bbox=bbox,
                 parent=item.get("parent", "root"),
+                z_index=int(item.get("z_index", 0)),
                 text=item.get("text"),
                 locked=bool(item.get("locked", False)),
+                is_focal_subject=is_focal,
+                facial_landmarks=item.get("facial_landmarks"),
+                identity_lock=bool(item.get("identity_lock", is_focal)),
             )
     else:
-        # Start with baseline foundation hierarchy for new session
-        starter_nodes = [
-            LayoutNode(
-                id="root",
-                type="container",
-                bbox=BBox(x1=0.04, y1=0.04, x2=0.96, y2=0.96),
-                style_tokens={
-                    "style": style,
-                    "palette": palette,
-                    "asset_mode": constraints.get("asset_mode"),
-                },
-            ),
-            LayoutNode(
-                id="title",
-                type="text",
-                bbox=BBox(x1=0.10, y1=0.10, x2=0.90, y2=0.20),
-                parent="root",
-                text=text[:240] or "Title",
-                locked=False,
-            ),
-            LayoutNode(
-                id="content",
-                type="container",
-                bbox=BBox(x1=0.10, y1=0.26, x2=0.90, y2=0.82),
-                parent="root",
-            ),
-            LayoutNode(
-                id="action",
-                type="button",
-                bbox=BBox(x1=0.10, y1=0.86, x2=0.34, y2=0.94),
-                parent="root",
-                text="Continue",
-            ),
-        ]
+        # Archetype-Aware Foundation Initialization:
+        # Avoid imposing web flexbox / "Continue" buttons onto portraits, posters, products, and landscapes!
+        if archetype == SceneArchetype.PORTRAIT_CHARACTER:
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    props={"style": style, "palette": palette, "asset_mode": constraints.get("asset_mode")},
+                ),
+                LayoutNode(
+                    id="focal_subject",
+                    type="focal_subject",
+                    bbox=BBox(x1=0.15, y1=0.10, x2=0.85, y2=0.85),
+                    parent="root",
+                    z_index=0,
+                    text=text[:240] or "Character Portrait",
+                    is_focal_subject=True,
+                    facial_landmarks={
+                        "eyes": [0.50, 0.38],
+                        "nose": [0.50, 0.48],
+                        "mouth": [0.50, 0.60],
+                    },
+                    identity_lock=True,
+                    locked=False,
+                ),
+            ]
+            if text and len(text.strip()) > 0:
+                starter_nodes.append(
+                    LayoutNode(
+                        id="caption",
+                        type="caption",
+                        bbox=BBox(x1=0.10, y1=0.88, x2=0.90, y2=0.96),
+                        parent="root",
+                        z_index=1,
+                        text=text[:120],
+                        locked=False,
+                    )
+                )
+        elif archetype == SceneArchetype.GRAPHIC_POSTER:
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    props={"style": style, "palette": palette, "asset_mode": constraints.get("asset_mode")},
+                ),
+                LayoutNode(
+                    id="headline",
+                    type="headline",
+                    bbox=BBox(x1=0.08, y1=0.08, x2=0.92, y2=0.22),
+                    parent="root",
+                    z_index=1,
+                    text=text[:120] or "FEATURED POSTER",
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="focal_subject",
+                    type="illustration",
+                    bbox=BBox(x1=0.10, y1=0.24, x2=0.90, y2=0.82),
+                    parent="root",
+                    z_index=0,
+                    is_focal_subject=True,
+                    text=text[:240],
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="subhead",
+                    type="subhead",
+                    bbox=BBox(x1=0.15, y1=0.85, x2=0.85, y2=0.93),
+                    parent="root",
+                    z_index=1,
+                    text="Special Edition",
+                    locked=False,
+                ),
+            ]
+        elif archetype == SceneArchetype.E_COMMERCE:
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    props={"style": style, "palette": palette, "asset_mode": constraints.get("asset_mode")},
+                ),
+                LayoutNode(
+                    id="product",
+                    type="product",
+                    bbox=BBox(x1=0.15, y1=0.12, x2=0.85, y2=0.72),
+                    parent="root",
+                    z_index=0,
+                    is_focal_subject=True,
+                    text=text[:240] or "Product Showcase",
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="badge",
+                    type="badge",
+                    bbox=BBox(x1=0.08, y1=0.08, x2=0.32, y2=0.16),
+                    parent="root",
+                    z_index=1,
+                    text="Featured",
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="title",
+                    type="headline",
+                    bbox=BBox(x1=0.10, y1=0.75, x2=0.60, y2=0.85),
+                    parent="root",
+                    z_index=1,
+                    text=text[:120] or "Premium Selection",
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="action",
+                    type="button",
+                    bbox=BBox(x1=0.65, y1=0.85, x2=0.92, y2=0.93),
+                    parent="root",
+                    z_index=1,
+                    text="Order Now",
+                    locked=False,
+                ),
+            ]
+        elif archetype == SceneArchetype.LANDSCAPE_SCENE:
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    props={"style": style, "palette": palette, "asset_mode": constraints.get("asset_mode")},
+                ),
+                LayoutNode(
+                    id="focal_subject",
+                    type="focal_subject",
+                    bbox=BBox(x1=0.05, y1=0.08, x2=0.95, y2=0.92),
+                    parent="root",
+                    z_index=0,
+                    is_focal_subject=True,
+                    text=text[:240] or "Environmental Landscape Scene",
+                    locked=False,
+                ),
+            ]
+        elif archetype == SceneArchetype.FREEFORM_ART:
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    props={"style": style, "palette": palette, "asset_mode": constraints.get("asset_mode")},
+                ),
+                LayoutNode(
+                    id="focal_subject",
+                    type="sketch",
+                    bbox=BBox(x1=0.05, y1=0.05, x2=0.95, y2=0.95),
+                    parent="root",
+                    z_index=0,
+                    is_focal_subject=True,
+                    text=text[:240] or "Artistic Composition",
+                    locked=False,
+                ),
+            ]
+        else:
+            # Default UI layout
+            starter_nodes = [
+                LayoutNode(
+                    id="root",
+                    type="container",
+                    bbox=BBox(x1=0.04, y1=0.04, x2=0.96, y2=0.96),
+                    style_tokens={
+                        "style": style,
+                        "palette": palette,
+                        "asset_mode": constraints.get("asset_mode"),
+                    },
+                ),
+                LayoutNode(
+                    id="title",
+                    type="text",
+                    bbox=BBox(x1=0.10, y1=0.10, x2=0.90, y2=0.20),
+                    parent="root",
+                    text=text[:240] or "Title",
+                    locked=False,
+                ),
+                LayoutNode(
+                    id="content",
+                    type="container",
+                    bbox=BBox(x1=0.10, y1=0.26, x2=0.90, y2=0.82),
+                    parent="root",
+                ),
+                LayoutNode(
+                    id="action",
+                    type="button",
+                    bbox=BBox(x1=0.10, y1=0.86, x2=0.34, y2=0.94),
+                    parent="root",
+                    text="Continue",
+                ),
+            ]
         node_map = {node.id: node for node in starter_nodes}
 
     # Apply VLA DesignAction elements from Planner delta
@@ -281,6 +550,13 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
                 props = act_dict.get("props") or params.get("props") or {}
                 text_content = act_dict.get("text_content") or props.get("label") or params.get("text_content")
                 comp_id = target_id or f"{comp_type}_{len(node_map)}"
+                z_idx = int(act_dict.get("z_index") or params.get("z_index") or props.get("z_index", 0))
+
+                is_focal = bool(
+                    act_dict.get("is_focal_subject")
+                    or params.get("is_focal_subject")
+                    or comp_type in ("focal_subject", "character", "photo_frame", "product")
+                )
 
                 if bbox_raw and len(bbox_raw) == 4:
                     try:
@@ -307,7 +583,11 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
                     type=comp_type,
                     bbox=new_bbox,
                     parent="root",
+                    z_index=z_idx,
                     text=text_content,
+                    is_focal_subject=is_focal,
+                    facial_landmarks=act_dict.get("facial_landmarks") or params.get("facial_landmarks"),
+                    identity_lock=bool(act_dict.get("identity_lock") or params.get("identity_lock", is_focal)),
                 )
 
             elif act_type == "REMOVE_COMPONENT":
@@ -370,6 +650,7 @@ def layout_from_constraints(constraints: dict, *, text: str = "") -> LayoutIR:
 
     return project_layout(
         LayoutIR(
+            scene_archetype=archetype.value,
             canvas_width=canvas_w,
             canvas_height=canvas_h,
             nodes=list(node_map.values()),

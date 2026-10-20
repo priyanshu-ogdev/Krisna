@@ -420,9 +420,29 @@ class QwenImage21Backend(ModelBackend):
                 except (OSError, ValueError, RuntimeError) as e:
                     log.warning("Failed to load handoff blob image %s: %s", handoff_ref, e)
             elif isinstance(handoff_ref, (str, Path)) and Path(handoff_ref).exists():
-                from PIL import Image
-                with Image.open(handoff_ref) as image:
-                    source_img = image.copy() if image.mode in ("RGB", "RGBA") else image.convert("RGBA" if "A" in image.mode else "RGB")
+                handoff_path = Path(handoff_ref)
+                if handoff_path.suffix.lower() == ".json":
+                    try:
+                        from krisna_inference.layout_ir import LayoutIR
+                        from krisna_inference.layout_renderer import render_wireframe, render_segmentation_map
+                        layout_data = json.loads(handoff_path.read_text(encoding="utf-8"))
+                        layout_obj = LayoutIR(**layout_data)
+                        tmp_wf_png = handoff_path.with_suffix(".png")
+                        render_wireframe(layout_obj, tmp_wf_png)
+                        from PIL import Image
+                        with Image.open(tmp_wf_png) as image:
+                            source_img = image.copy() if image.mode in ("RGB", "RGBA") else image.convert("RGBA" if "A" in image.mode else "RGB")
+                        if segmentation_ref is None:
+                            tmp_seg_png = handoff_path.with_name(f"{handoff_path.stem}_seg.png")
+                            render_segmentation_map(layout_obj, tmp_seg_png)
+                            with Image.open(tmp_seg_png) as s_image:
+                                segmentation_img = s_image.convert("RGB")
+                    except Exception as e:
+                        log.warning("Failed to render wireframe from LayoutIR JSON %s: %s", handoff_ref, e)
+                else:
+                    from PIL import Image
+                    with Image.open(handoff_ref) as image:
+                        source_img = image.copy() if image.mode in ("RGB", "RGBA") else image.convert("RGBA" if "A" in image.mode else "RGB")
 
         if source_img is None:
             if self.strict:
@@ -456,7 +476,7 @@ class QwenImage21Backend(ModelBackend):
                 "Canvas resolution/aspect changed from %s to %s between turns; dropping pixel locks.",
                 lock_donor_img.size, source_img.size
             )
-            donor_img = source_img
+            donor_img = None
             locked_regions = []
         else:
             donor_img = lock_donor_img if lock_donor_img is not None else source_img
@@ -475,6 +495,21 @@ class QwenImage21Backend(ModelBackend):
                 from PIL import Image
                 with Image.open(segmentation_ref) as s_image:
                     segmentation_img = s_image.convert("RGB")
+
+        # Resolve spatial alpha / differential inpaint mask (LayerDiffuse / FlowEdit)
+        mask_ref = kwargs.get("mask_ref")
+        mask_img = None
+        if mask_ref:
+            if isinstance(mask_ref, str) and mask_ref.startswith("blob://"):
+                try:
+                    loaded_m = blobs.load_image(mask_ref)
+                    mask_img = loaded_m.convert("L")
+                except Exception as e:
+                    log.warning("Failed to load mask blob image %s: %s", mask_ref, e)
+            elif isinstance(mask_ref, (str, Path)) and Path(mask_ref).exists():
+                from PIL import Image
+                with Image.open(mask_ref) as m_image:
+                    mask_img = m_image.convert("L")
 
         def _generate():
             if self._pipeline is None and self.strict:
@@ -552,7 +587,7 @@ class QwenImage21Backend(ModelBackend):
                         )
 
                     # Apply region locking from donor_img (preserving prior polished pixels, not wireframe)
-                    if locked_regions:
+                    if locked_regions and donor_img is not None:
                         rendered = self._apply_locked_regions(donor_img, rendered, locked_regions)
                     return rendered, True, None
                 except Exception as e:
@@ -567,7 +602,17 @@ class QwenImage21Backend(ModelBackend):
                 fallback_reason = "real pipeline unavailable"
 
             # Synthetic high-quality render fallback for test / CPU environments
-            return self._synthesize_render(source_img, prompt, constraints, locked_regions, scheduler, lock_donor_img=donor_img, segmentation_img=segmentation_img), False, fallback_reason
+            return self._synthesize_render(
+                source_img,
+                prompt,
+                constraints,
+                locked_regions,
+                scheduler,
+                lock_donor_img=donor_img,
+                segmentation_img=segmentation_img,
+                is_refine=is_refine,
+                mode=mode,
+            ), False, fallback_reason
 
         rendered_image, used_real, fallback_reason = await asyncio.to_thread(_generate)
         output_ref = blobs.save_image(rendered_image, prefix="polish_qwen")
@@ -596,6 +641,8 @@ class QwenImage21Backend(ModelBackend):
             "native_api_source": QWEN_IMAGE_21_API_SOURCE,
             "segmentation_used": segmentation_img is not None,
             "segmentation_ref": str(segmentation_ref) if segmentation_ref else None,
+            "mask_used": mask_img is not None,
+            "mask_ref": str(mask_ref) if mask_ref else None,
             "spatial_conditioning_mode": "NVIDIA_SPADE_MultiStream" if segmentation_img is not None else "single_stream_wireframe",
         }
         return {
@@ -614,6 +661,7 @@ class QwenImage21Backend(ModelBackend):
             "synthetic": is_synthetic,
             "runtime_mode": "synthetic" if is_synthetic else "real",
             "run_receipt": receipt,
+            "receipt": receipt,
             "verifier_scores": {
                 # These are deterministic test-mode placeholders only. Real
                 # scores are attached by flows.finalize() after VerifierStack
@@ -755,6 +803,7 @@ class QwenImage21Backend(ModelBackend):
         scheduler: FlowODEScheduler,
         lock_donor_img: Any = None,
         segmentation_img: Any = None,
+        **kwargs: Any,
     ) -> Any:
         """Synthetic render fallback providing realistic visual polishing, SPADE alignment, and region locking."""
         from PIL import ImageDraw, ImageEnhance
@@ -781,7 +830,7 @@ class QwenImage21Backend(ModelBackend):
             effective_donor = lock_donor_img if lock_donor_img is not None else source_img
             if effective_donor is not None and effective_donor.size != img.size:
                 log.warning("Lock donor size %s differs from canvas %s; dropping invalid cross-aspect locks.", effective_donor.size, img.size)
-            else:
+            elif effective_donor is not None:
                 img = self._apply_locked_regions(effective_donor, img, locked_regions)
 
         return img

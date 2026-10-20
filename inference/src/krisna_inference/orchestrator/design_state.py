@@ -63,8 +63,10 @@ class Constraints(BaseModel):
 
 class LayoutDraft(BaseModel):
     layout_ref: str | None = None
+    prior_layout_ref: str | None = None
     wireframe_ref: str | None = None
     segmentation_ref: str | None = None
+    mask_ref: str | None = None
     revision: int = 0
 
 

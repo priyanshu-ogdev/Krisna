@@ -13,12 +13,34 @@ Citations & Research Grounding:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from krisna_inference.layout_ir import LayoutIR, project_layout
 
 import hashlib
+
+
+@dataclass
+class DualStreamSketch:
+    """Encapsulates the dual-stream spatial conditioning output produced by the Sketch tier.
+
+    Grounding:
+    - Huang et al. (NeurIPS 2023). "Composer: Creative and Controllable Image Synthesis with Composable Conditions."
+    - Park et al. (CVPR 2019 Oral). "SPADE: Semantic Image Synthesis with Spatially-Adaptive Normalization."
+    - Zhang & Agrawala (CVPR 2024). "LayerDiffuse: Transparent Image Layer Diffusion."
+    """
+
+    wireframe: Any
+    segmentation: Any
+    mask: Any | None = None
+    wireframe_path: Path | None = None
+    segmentation_path: Path | None = None
+    mask_path: Path | None = None
+    width: int = 1024
+    height: int = 1024
+
 
 def _compute_renderer_hash() -> str:
     """Computes SHA-256 hash across bundled font assets and renderer specification."""
@@ -202,8 +224,8 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
         raise RuntimeError("Pillow is required for wireframe rendering") from exc
 
     report = project_layout(layout)
-    canvas_w = layout.canvas_width
-    canvas_h = layout.canvas_height
+    canvas_w = max(512, round(layout.canvas_width / 32) * 32)
+    canvas_h = max(512, round(layout.canvas_height / 32) * 32)
 
     # Extract palette and style tokens from root or layout constraints
     root_tokens = {}
@@ -260,11 +282,14 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
         h = max(1, y2 - y1)
         node_type = str(node.type).lower()
 
-        # 1. Card / Content Container with Elevation Drop Shadow
+        # 1. Card / Content Container with Elevation Drop Shadow (NVIDIA Composer style)
         if node_type in ("card", "container", "list"):
-            # Multi-layer ambient and directional drop shadows in RGB luminance
+            # Multi-layer ambient and directional drop shadows in RGB luminance scaled by z_index
             if w > 16 and h > 16:
-                draw.rounded_rectangle((x1 + 1, y1 + 3, x2 + 1, y2 + 5), radius=10, fill=shadow_color)
+                elevation = max(1, min(5, int(getattr(node, "z_index", 0)) + 1))
+                shadow_offset_y = 2 + elevation * 2
+                shadow_radius = 8 + elevation * 2
+                draw.rounded_rectangle((x1 + 1, y1 + shadow_offset_y, x2 + 1, y2 + shadow_offset_y + 2), radius=shadow_radius, fill=shadow_color)
                 draw.rounded_rectangle((x1, y1, x2, y2), radius=8, fill=surface_color, outline=border_color, width=1)
             else:
                 draw.rectangle((x1, y1, x2, y2), fill=surface_color, outline=border_color, width=1)
@@ -288,6 +313,15 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
             draw.text((tx, ty), label[:40], fill=btn_text_fill, font=btn_font)
             continue
 
+        # 2b. Badge / Banner Archetype (Promotional pill, tag, highlight ribbon)
+        elif node_type in ("badge", "banner"):
+            radius = min(6, max(2, h // 2))
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=surface_color, outline=accent_color, width=1)
+            label = node.text or "New"
+            badge_font = fonts["badge"]
+            draw.text((x1 + 6, y1 + max(2, (h - 12) // 2)), label[:30], fill=accent_color, font=badge_font)
+            continue
+
         # 3. Input Field Archetype
         elif node_type == "input":
             draw.rounded_rectangle((x1, y1, x2, y2), radius=4, fill=surface_color, outline=border_color, width=1)
@@ -302,6 +336,30 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
             draw.line((x1, mid_y, x2, mid_y), fill=border_color, width=1)
             continue
 
+        # 4b. Shape / Decorative Graphic Artwork
+        elif node_type in ("shape", "decorative"):
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=8, outline=accent_color, width=2)
+            continue
+
+        # 4c. Focal Subject / Character Portrait / Hero Product
+        elif node_type in ("focal_subject", "character", "photo_frame", "product") or getattr(node, "is_focal_subject", False):
+            # Render elevation and focal framing with subtle grounding reticles (AnyDoor, PhotoMaker)
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=12, fill=surface_color, outline=accent_color, width=2)
+            r_len = min(16, max(4, min(w // 4, h // 4)))
+            draw.line((x1 + 4, y1 + 4, x1 + 4 + r_len, y1 + 4), fill=accent_color, width=2)
+            draw.line((x1 + 4, y1 + 4, x1 + 4, y1 + 4 + r_len), fill=accent_color, width=2)
+            draw.line((x2 - 4, y1 + 4, x2 - 4 - r_len, y1 + 4), fill=accent_color, width=2)
+            draw.line((x2 - 4, y1 + 4, x2 - 4, y1 + 4 + r_len), fill=accent_color, width=2)
+            draw.line((x1 + 4, y2 - 4, x1 + 4 + r_len, y2 - 4), fill=accent_color, width=2)
+            draw.line((x1 + 4, y2 - 4, x1 + 4, y2 - 4 - r_len), fill=accent_color, width=2)
+            draw.line((x2 - 4, y2 - 4, x2 - 4 - r_len, y2 - 4), fill=accent_color, width=2)
+            draw.line((x2 - 4, y2 - 4, x2 - 4, y2 - 4 - r_len), fill=accent_color, width=2)
+            # If portrait or character: render eye-line alignment guideline for facial grounding
+            if node_type in ("character", "focal_subject") and h >= 64:
+                eye_y = y1 + int(h * 0.35)
+                guide_margin = int(w * 0.2)
+                draw.line((x1 + guide_margin, eye_y, x2 - guide_margin, eye_y), fill=border_color, width=1)
+
         # 5. Generic Node / Outline Fallback
         else:
             colors = {"gray": "#D1D5DB", "type": "#93C5FD", "dark": "#374151"}
@@ -309,18 +367,20 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
             draw.rectangle((x1, y1, x2, y2), outline=stroke, width=3 if node.locked else 2)
 
         # Render Typographic Silhouette for Text / Labels with TrueType Hierarchy
-        label = node.text or node.content_ref or (node.type if node_type not in ("container", "card") else "")
+        label = node.text or node.content_ref or (node.type if node_type not in ("container", "card", "region") else "")
         if label:
             avail_w = max(16, w - 16)
             # Dynamic typographic scaling with bounded hierarchy protection:
-            # - Title/Display: bounds to Title(22pt)->Header(18pt). Never degrades to body or caption!
-            # - Card/Container: bounds to Header(18pt)->Body(14pt).
-            # - Generic text: bounds to Body(14pt)->Caption(12pt).
+            # - Title/Headline: bounds to Display(30pt)->Title(22pt)->Header(18pt).
+            # - Card/Container/Subhead: bounds to Header(18pt)->Body(14pt).
+            # - Badge/Caption: bounds to Caption(12pt)->Badge(12pt).
             # All glyphs remain strictly >= 12px to survive 16x VAE latent downsampling.
-            if node.id == "title" or y1 < int(0.22 * canvas_h):
-                font_candidates = [fonts["title"], fonts["header"]]
-            elif node_type in ("card", "container"):
+            if node.id == "title" or node_type in ("headline", "title") or y1 < int(0.22 * canvas_h):
+                font_candidates = [fonts["display"], fonts["title"], fonts["header"]]
+            elif node_type in ("card", "container", "subhead", "region"):
                 font_candidates = [fonts["header"], fonts["body"]]
+            elif node_type in ("badge", "caption"):
+                font_candidates = [fonts["caption"], fonts["badge"]]
             else:
                 font_candidates = [fonts["body"], fonts["caption"]]
 
@@ -364,24 +424,63 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
     return path
 
 
-UI_SEMANTIC_PALETTE: dict[str, tuple[int, int, int]] = {
-    "background": (15, 23, 42),       # Class 0: Dark slate background
-    "container": (30, 41, 59),        # Class 1: Generic structural container
-    "card": (51, 65, 85),             # Class 2: Card container / surface
-    "text": (56, 189, 248),           # Class 3: Typographic text block
-    "button": (99, 102, 241),         # Class 4: Interactive CTA / button
-    "input": (168, 85, 247),          # Class 5: Text input field / search
-    "image": (34, 197, 94),           # Class 6: Media / image placeholder
-    "icon": (234, 179, 8),            # Class 7: Icon / badge
-    "divider": (100, 116, 139),       # Class 8: Divider rule / boundary
-    "list": (71, 85, 105),            # Class 9: List / repeating items
-    "other": (148, 163, 184),         # Class 10: Other misc elements
-    "locked": (239, 68, 68),          # Class 11: Frozen / immutable locked region
+UNIVERSAL_SEMANTIC_PALETTE: dict[str, tuple[int, int, int]] = {
+    # Class 0: Dark slate background / canvas plate
+    "background": (15, 23, 42),
+    # Class 1: Generic structural container / panel / region
+    "container": (30, 41, 59),
+    "region": (30, 41, 59),
+    "canvas_zone": (30, 41, 59),
+    # Class 2: Card container / elevated surface
+    "card": (51, 65, 85),
+    # Class 3: Typographic text block / copy / headlines
+    "text": (56, 189, 248),
+    "headline": (56, 189, 248),
+    "subhead": (56, 189, 248),
+    "quote": (56, 189, 248),
+    "label": (56, 189, 248),
+    "caption": (148, 163, 184),
+    "body_text": (56, 189, 248),
+    # Class 4: Interactive CTA / button / action
+    "button": (99, 102, 241),
+    # Class 5: Text input field / search bar
+    "input": (168, 85, 247),
+    # Class 6: Media / image placeholder / focal visual subject
+    "image": (34, 197, 94),
+    "focal_subject": (34, 197, 94),
+    "illustration": (34, 197, 94),
+    "product": (34, 197, 94),
+    "photo_frame": (34, 197, 94),
+    "character": (34, 197, 94),
+    # Class 7: Icon / badge / promotional ribbon
+    "icon": (234, 179, 8),
+    "badge": (234, 179, 8),
+    "banner": (245, 158, 11),
+    "logo": (234, 179, 8),
+    # Class 8: Divider rule / boundary / separator
+    "divider": (100, 116, 139),
+    # Class 9: List / repeating items / structured table
+    "list": (71, 85, 105),
+    "table": (71, 85, 105),
+    # Class 10: Shape / decorative geometric artwork
+    "shape": (236, 72, 153),
+    "decorative": (236, 72, 153),
+    # Class 11: Floating modal dialog / overlay sheet
+    "modal": (124, 58, 237),
+    "overlay": (124, 58, 237),
+    # Class 12: Freehand sketch line art / contour
+    "sketch": (20, 184, 166),
+    "contour": (20, 184, 166),
+    # Class 13: Other misc elements
+    "other": (148, 163, 184),
+    # Class 14: Frozen / immutable locked donor region
+    "locked": (239, 68, 68),
 }
+UI_SEMANTIC_PALETTE = UNIVERSAL_SEMANTIC_PALETTE
 
 
 def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
-    """Render canonical UI semantic segmentation map for spatially-adaptive flow conditioning.
+    """Render canonical universal semantic segmentation map for spatially-adaptive flow conditioning.
 
     Research Grounding:
     - Park, T., et al. (CVPR 2019 Oral). "Semantic Image Synthesis with Spatially-Adaptive Normalization (SPADE)."
@@ -397,8 +496,8 @@ def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
         raise RuntimeError("Pillow is required for segmentation rendering") from exc
 
     report = project_layout(layout)
-    canvas_w = layout.canvas_width
-    canvas_h = layout.canvas_height
+    canvas_w = max(512, round(layout.canvas_width / 32) * 32)
+    canvas_h = max(512, round(layout.canvas_height / 32) * 32)
 
     # Initialize canvas with background class
     bg_color = UI_SEMANTIC_PALETTE["background"]
@@ -417,6 +516,8 @@ def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
         node_type = str(node.type).lower()
         if node.locked:
             fill_color = UI_SEMANTIC_PALETTE["locked"]
+        elif getattr(node, "is_focal_subject", False):
+            fill_color = UI_SEMANTIC_PALETTE["focal_subject"]
         else:
             fill_color = UI_SEMANTIC_PALETTE.get(node_type, UI_SEMANTIC_PALETTE["other"])
 
@@ -424,7 +525,13 @@ def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
         if node_type == "button":
             radius = min(8, max(0, min((x2 - x1) // 2, (y2 - y1) // 2)))
             draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
-        elif node_type in ("card", "container", "list"):
+        elif node_type in ("badge", "banner"):
+            radius = min(6, max(0, min((x2 - x1) // 2, (y2 - y1) // 2)))
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
+        elif node_type in ("focal_subject", "character", "photo_frame", "product") or getattr(node, "is_focal_subject", False):
+            radius = min(12, max(0, min((x2 - x1) // 4, (y2 - y1) // 4)))
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
+        elif node_type in ("card", "container", "list", "region", "table"):
             radius = min(6, max(0, min((x2 - x1) // 2, (y2 - y1) // 2)))
             draw.rounded_rectangle((x1, y1, x2, y2), radius=radius, fill=fill_color)
             # If container contains a text label, render inner text zone
@@ -443,4 +550,307 @@ def render_segmentation_map(layout: LayoutIR, output_path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
     return path
+
+
+def render_spatial_alpha_mask(
+    layout: LayoutIR,
+    output_path: str | Path | None = None,
+    *,
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> Any:
+    """Renders an 8-bit spatial alpha / inpaint mask isolating locked and active regions.
+
+    Grounding:
+    - LayerDiffuse (Zhang & Agrawala, CVPR 2024): Latent transparency and multi-layer decomposition.
+    - Blended Latent Diffusion (Avrahami et al., CVPR 2022): Regional spatial mask guidance.
+    - Composer (Huang et al., NeurIPS 2023): Explicit masked image representations.
+
+    Returns:
+        PIL Image in mode "L", where 255 represents editable active regions and 0 represents
+        immutable locked donor regions.
+    """
+    from PIL import Image, ImageDraw
+
+    report = project_layout(layout)
+    req_w = canvas_width or width or layout.canvas_width
+    req_h = canvas_height or height or layout.canvas_height
+    canvas_w = max(512, round(req_w / 32) * 32)
+    canvas_h = max(512, round(req_h / 32) * 32)
+
+    # Default: canvas is completely editable (255)
+    mask = Image.new("L", (canvas_w, canvas_h), 255)
+    draw = ImageDraw.Draw(mask)
+
+    for node in report.layout.nodes:
+        if node.id == "root" and node.parent is None:
+            continue
+        if node.locked:
+            x1 = max(0, min(canvas_w - 2, int(node.bbox.x1 * canvas_w)))
+            y1 = max(0, min(canvas_h - 2, int(node.bbox.y1 * canvas_h)))
+            x2 = max(x1 + 1, min(canvas_w, int(node.bbox.x2 * canvas_w)))
+            y2 = max(y1 + 1, min(canvas_h, int(node.bbox.y2 * canvas_h)))
+            draw.rectangle((x1, y1, x2, y2), fill=0)
+
+    if output_path:
+        p = Path(output_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        mask.save(p)
+    return mask
+
+
+def compute_differential_mask(
+    prior_layout: LayoutIR | dict | None,
+    new_layout: LayoutIR | dict,
+    output_path: str | Path | None = None,
+    *,
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
+    dilation_radius: int = 16,
+) -> Any:
+    """Computes an automated 8-bit differential update mask (M_Delta) between turns.
+
+    Research Grounding:
+    - Kulikov et al. (IEEE/CVF ICCV 2025): "FlowEdit: Inversion-Free Text-Based Image Editing with Flow Matching."
+      Eq. 4: Isolates velocity integration trajectory to active edit zones via differential masking.
+    - Brooks et al. (IEEE/CVF CVPR 2023): "InstructPix2Pix: Learning to Follow Image Editing Instructions."
+    - Zhang & Agrawala (CVPR 2024): "LayerDiffuse: Transparent Image Layer Diffusion."
+      Dilation radius (16px) accounts for elevation drop shadows, antialiased borders, and ambient occlusion.
+
+    Returns:
+        PIL Image in mode "L", where 255 represents active zones to be regenerated / upgraded,
+        and 0 represents untouched invariant partitions preserved from the prior photoreal donor.
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+
+    def _to_nodes(l_obj: Any) -> tuple[int, int, list[Any]]:
+        if l_obj is None:
+            return 1024, 1024, []
+        if isinstance(l_obj, dict):
+            cw = l_obj.get("canvas_width", 1024)
+            ch = l_obj.get("canvas_height", 1024)
+            nodes = l_obj.get("nodes", [])
+            return cw, ch, nodes
+        cw = getattr(l_obj, "canvas_width", 1024)
+        ch = getattr(l_obj, "canvas_height", 1024)
+        nodes = getattr(l_obj, "nodes", [])
+        return cw, ch, nodes
+
+    p_w, p_h, prior_nodes = _to_nodes(prior_layout)
+    n_w, n_h, new_nodes = _to_nodes(new_layout)
+
+    req_w = canvas_width or n_w
+    req_h = canvas_height or n_h
+    canvas_w = max(512, round(req_w / 32) * 32)
+    canvas_h = max(512, round(req_h / 32) * 32)
+
+    # If no prior layout exists: entire canvas is active
+    if not prior_nodes:
+        mask = Image.new("L", (canvas_w, canvas_h), 255)
+        if output_path:
+            p = Path(output_path)
+            p.parent.mkdir(parents=True, exist_ok=True)
+            mask.save(p)
+        return mask
+
+    def _node_to_dict(n: Any) -> dict:
+        if isinstance(n, dict):
+            return n
+        if hasattr(n, "model_dump"):
+            return n.model_dump()
+        return getattr(n, "__dict__", {})
+
+    prior_map = {
+        _node_to_dict(n).get("id"): _node_to_dict(n)
+        for n in prior_nodes
+        if _node_to_dict(n).get("id") and _node_to_dict(n).get("id") != "root"
+    }
+    new_map = {
+        _node_to_dict(n).get("id"): _node_to_dict(n)
+        for n in new_nodes
+        if _node_to_dict(n).get("id") and _node_to_dict(n).get("id") != "root"
+    }
+
+    delta_boxes: list[tuple[float, float, float, float]] = []
+
+    # 1. Check newly added or modified nodes in new_map
+    for nid, n in new_map.items():
+        bbox = n.get("bbox") or {}
+        if isinstance(bbox, dict):
+            x1, y1, x2, y2 = bbox.get("x1", 0.0), bbox.get("y1", 0.0), bbox.get("x2", 1.0), bbox.get("y2", 1.0)
+        elif isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            x1, y1, x2, y2 = bbox[0], bbox[1], bbox[2], bbox[3]
+        else:
+            x1, y1, x2, y2 = 0.0, 0.0, 1.0, 1.0
+
+        if nid not in prior_map:
+            delta_boxes.append((x1, y1, x2, y2))
+        else:
+            pn = prior_map[nid]
+            p_bbox = pn.get("bbox") or {}
+            if isinstance(p_bbox, dict):
+                px1, py1, px2, py2 = p_bbox.get("x1", 0.0), p_bbox.get("y1", 0.0), p_bbox.get("x2", 1.0), p_bbox.get("y2", 1.0)
+            elif isinstance(p_bbox, (list, tuple)) and len(p_bbox) == 4:
+                px1, py1, px2, py2 = p_bbox[0], p_bbox[1], p_bbox[2], p_bbox[3]
+            else:
+                px1, py1, px2, py2 = x1, y1, x2, y2
+
+            displaced = (abs(x1 - px1) > 0.005 or abs(y1 - py1) > 0.005 or
+                         abs(x2 - px2) > 0.005 or abs(y2 - py2) > 0.005)
+            text_changed = str(n.get("text") or "").strip() != str(pn.get("text") or "").strip()
+            type_changed = str(n.get("type")) != str(pn.get("type"))
+
+            if displaced or text_changed or type_changed:
+                delta_boxes.append((x1, y1, x2, y2))
+                delta_boxes.append((px1, py1, px2, py2))
+
+    # 2. Check removed nodes in prior_map
+    for nid, pn in prior_map.items():
+        if nid not in new_map:
+            p_bbox = pn.get("bbox") or {}
+            if isinstance(p_bbox, dict):
+                px1, py1, px2, py2 = p_bbox.get("x1", 0.0), p_bbox.get("y1", 0.0), p_bbox.get("x2", 1.0), p_bbox.get("y2", 1.0)
+            elif isinstance(p_bbox, (list, tuple)) and len(p_bbox) == 4:
+                px1, py1, px2, py2 = p_bbox[0], p_bbox[1], p_bbox[2], p_bbox[3]
+            else:
+                continue
+            delta_boxes.append((px1, py1, px2, py2))
+
+    # Draw active regions on an initially invariant (0) canvas
+    mask = Image.new("L", (canvas_w, canvas_h), 0)
+    draw = ImageDraw.Draw(mask)
+
+    for b in delta_boxes:
+        bx1 = max(0, min(canvas_w - 2, int(b[0] * canvas_w)))
+        by1 = max(0, min(canvas_h - 2, int(b[1] * canvas_h)))
+        bx2 = max(bx1 + 1, min(canvas_w, int(b[2] * canvas_w)))
+        by2 = max(by1 + 1, min(canvas_h, int(b[3] * canvas_h)))
+        draw.rectangle((bx1, by1, bx2, by2), fill=255)
+
+    # 3. Apply Dilation Radius (16px) to accommodate elevation drop-shadows and border glows
+    if dilation_radius > 0 and delta_boxes:
+        filter_size = max(3, 2 * (dilation_radius // 2) + 1)
+        mask = mask.filter(ImageFilter.MaxFilter(size=filter_size))
+
+    # 4. Strictly re-enforce immutable user locks: locked nodes are NEVER active
+    re_draw = ImageDraw.Draw(mask)
+    for n in new_nodes:
+        nd = _node_to_dict(n)
+        if nd.get("locked"):
+            bbox = nd.get("bbox") or {}
+            if isinstance(bbox, dict):
+                lx1, ly1, lx2, ly2 = bbox.get("x1", 0.0), bbox.get("y1", 0.0), bbox.get("x2", 1.0), bbox.get("y2", 1.0)
+            elif isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+                lx1, ly1, lx2, ly2 = bbox[0], bbox[1], bbox[2], bbox[3]
+            else:
+                continue
+            lbx1 = max(0, min(canvas_w - 2, int(lx1 * canvas_w)))
+            lby1 = max(0, min(canvas_h - 2, int(ly1 * canvas_h)))
+            lbx2 = max(lbx1 + 1, min(canvas_w, int(lx2 * canvas_w)))
+            lby2 = max(lby1 + 1, min(canvas_h, int(ly2 * canvas_h)))
+            re_draw.rectangle((lbx1, lby1, lbx2, lby2), fill=0)
+
+    if output_path:
+        p = Path(output_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        mask.save(p)
+    return mask
+
+
+def render_dual_stream_sketch(
+    layout: LayoutIR,
+    output_dir: str | Path | None = None,
+    *,
+    prior_layout: LayoutIR | dict | None = None,
+    style: str = "dark",
+    asset_mode: str = "opaque",
+    canvas_width: int | None = None,
+    canvas_height: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    prefix: str = "sketch",
+) -> DualStreamSketch:
+    """Unified dual-stream Sketch tier rasterizer producing wireframe, SPADE map, and spatial mask.
+
+    Grounding:
+    - NVIDIA Composer (Huang et al., NeurIPS 2023): Composable condition stream decomposition.
+    - NVIDIA SPADE / GauGAN (Park et al., CVPR 2019 Oral): Spatially-adaptive semantic map modulation.
+    - Cassowary (Badros et al., ACM TOCHI 2001): Deterministic layout constraint preservation.
+    - Kulikov et al. (ICCV 2025): FlowEdit automated differential update masking.
+
+    Guarantees:
+    - Multiple-of-32 canvas dimensions aligning with 16x VAE downsampler and 2x2 patch stride.
+    - Synchronized spatial bounds between wireframe glyphs and semantic segmentation classes.
+    - Native 4-channel RGBA wireframe if asset_mode == "transparent" or style == "transparent".
+    - Automated differential mask M_Delta when prior_layout is supplied.
+    """
+    from PIL import Image
+
+    req_w = canvas_width or width or layout.canvas_width
+    req_h = canvas_height or height or layout.canvas_height
+    canvas_w = max(512, round(req_w / 32) * 32)
+    canvas_h = max(512, round(req_h / 32) * 32)
+
+    # Mutate layout dimensions if custom width/height requested so sub-renderers align
+    if req_w != layout.canvas_width or req_h != layout.canvas_height:
+        layout.canvas_width = canvas_w
+        layout.canvas_height = canvas_h
+
+    wf_path: Path | None = None
+    seg_path: Path | None = None
+    mask_path: Path | None = None
+
+    if output_dir:
+        out_p = Path(output_dir)
+        out_p.mkdir(parents=True, exist_ok=True)
+        wf_path = out_p / f"{prefix}_wireframe.png"
+        seg_path = out_p / f"{prefix}_segmentation.png"
+        mask_path = out_p / f"{prefix}_spatial_mask.png"
+    else:
+        import tempfile
+
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        wf_path = Path(tmp.name)
+        seg_path = wf_path.with_name(f"{wf_path.stem}_seg.png")
+        mask_path = wf_path.with_name(f"{wf_path.stem}_mask.png")
+
+    actual_style = "transparent" if asset_mode == "transparent" else style
+    render_wireframe(layout, wf_path, style=actual_style)
+    render_segmentation_map(layout, seg_path)
+
+    if prior_layout is not None:
+        mask_img = compute_differential_mask(
+            prior_layout,
+            layout,
+            mask_path,
+            canvas_width=canvas_w,
+            canvas_height=canvas_h,
+            dilation_radius=16,
+        )
+    else:
+        mask_img = render_spatial_alpha_mask(
+            layout,
+            mask_path,
+            canvas_width=canvas_w,
+            canvas_height=canvas_h,
+        )
+
+    with Image.open(wf_path) as wf_img:
+        wireframe_img = wf_img.copy()
+    with Image.open(seg_path) as sg_img:
+        segmentation_img = sg_img.copy()
+
+    return DualStreamSketch(
+        wireframe=wireframe_img,
+        segmentation=segmentation_img,
+        mask=mask_img,
+        wireframe_path=wf_path,
+        segmentation_path=seg_path,
+        mask_path=mask_path,
+        width=canvas_w,
+        height=canvas_h,
+    )
+
 

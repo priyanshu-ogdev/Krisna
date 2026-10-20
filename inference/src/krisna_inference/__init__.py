@@ -1,7 +1,7 @@
 """Krisna Inference: Swap Orchestrator, Design State Manager, and Verifiers.
 
 Subsystem for executing multi-tier agentic UI generation flows across
-Planner, Sketch, Polish, and Critic models within declared VRAM envelopes.
+Planner, Sketch, and Polish models with resident review within declared VRAM envelopes.
 """
 
 from __future__ import annotations

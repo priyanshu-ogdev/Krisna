@@ -2,7 +2,7 @@
 # tier, and both Polish tiers (Z-Image-Turbo, Qwen-Image-Edit-2511).
 #
 # The Critic tier (Gemma 4 31B + Unsloth) is DELIBERATELY NOT in this file —
-# UPDATED reasoning (docs/review/28_docker_dependency_isolation_verified.md):
+# UPDATED reasoning (docs/review/28_docker_isolation_and_hardware_preflight.md):
 # NOT because of a Qwen3.5-needs-git-main conflict (that was true when this
 # file was first written, but is stale now — line 10 below already reflects
 # the fix; this header comment previously didn't, a real self-contradiction

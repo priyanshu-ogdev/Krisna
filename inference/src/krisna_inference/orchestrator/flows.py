@@ -134,9 +134,11 @@ async def conversational_turn(
     sketch_out = result.get("sketch", {})
     new_layout_ref = sketch_out.get("layout_ref")
     if new_layout_ref:
+        state.layout.prior_layout_ref = state.layout.layout_ref
         state.layout.layout_ref = new_layout_ref
         state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
         state.layout.segmentation_ref = sketch_out.get("segmentation_ref")
+        state.layout.mask_ref = sketch_out.get("mask_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
 
@@ -226,6 +228,7 @@ async def planner_self_review(
         state.layout.layout_ref = new_layout_ref
         state.layout.wireframe_ref = sketch_out.get("wireframe_ref")
         state.layout.segmentation_ref = sketch_out.get("segmentation_ref")
+        state.layout.mask_ref = sketch_out.get("mask_ref")
         state.layout.revision += 1
         state.stage = SessionStage.SKETCHING
 
@@ -293,10 +296,12 @@ async def finalize(
     handoff_input = state.layout.wireframe_ref or state.layout.layout_ref
     pixel_ref = handoff_hook(handoff_input) if handoff_hook else handoff_input
     segmentation_ref = state.layout.segmentation_ref
+    mask_ref = state.layout.mask_ref
 
     # UPGRADE: Wireframe-as-lock-donor resolution
-    # If a prior finalized render exists, it is the photorealistic lock donor; otherwise fallback to pixel_ref
-    lock_donor_ref = state.finalize_output.image_ref if state.finalize_output.image_ref else (pixel_ref if isinstance(pixel_ref, str) else None)
+    # Only use a lock donor if a prior photorealistic render actually exists!
+    # On Turn 1, there is no prior render; using the wireframe as donor corrupts the render with low-fi pixels.
+    lock_donor_ref = state.finalize_output.image_ref if state.finalize_output.image_ref else None
 
     # Synthesize prompt from conversational intent, constraints, and LayoutIR components/labels.
     effective_prompt = prompt if prompt else synthesize_polish_prompt(state)
@@ -313,6 +318,7 @@ async def finalize(
         handoff_image_ref=pixel_ref,
         lock_donor_ref=lock_donor_ref,
         segmentation_ref=segmentation_ref,
+        mask_ref=mask_ref,
         prompt=effective_prompt,
         constraints=state.constraints.model_dump(),
         locked_regions=[r.model_dump() for r in state.constraints.locked_regions],
@@ -1055,50 +1061,132 @@ def synthesize_descriptive_polish_prompt(state: DesignState) -> str:
             comp_type = str(node.get("type", "element"))
             text = str(node.get("text") or "").strip()
             bbox = node.get("bbox") or {}
-            y1 = bbox.get("y1", 0.5) if isinstance(bbox, dict) else (bbox[1] if isinstance(bbox, (list, tuple)) and len(bbox) > 1 else 0.5)
+            if isinstance(bbox, dict):
+                x1 = bbox.get("x1", 0.0)
+                y1 = bbox.get("y1", 0.5)
+            elif isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
+                x1, y1 = bbox[0], bbox[1]
+            else:
+                x1, y1 = 0.0, 0.5
 
-            item = {"id": node.get("id"), "type": comp_type, "text": text}
-            if y1 < 0.22 or node.get("id") in ("title", "header", "nav"):
+            item = {"id": node.get("id"), "type": comp_type, "text": text, "x1": x1, "y1": y1, "bbox": bbox}
+            if y1 < 0.22 or node.get("id") in ("title", "header", "nav") or comp_type in ("navbar", "header"):
                 header_nodes.append(item)
-            elif y1 > 0.80 or comp_type == "button":
+            elif y1 > 0.80 or comp_type in ("button", "footer"):
                 action_nodes.append(item)
             else:
                 main_nodes.append(item)
 
         prose_parts = []
-        # Opening intent
         style_desc = state.constraints.style or "modern clean"
-        prose_parts.append(f"A polished, production-grade UI design with {style_desc} aesthetic.")
+        archetype = str(payload.get("scene_archetype") or getattr(state.layout, "scene_archetype", "ui_layout")).lower()
 
-        # Header description
-        if header_nodes:
-            header_strs = []
-            for h in header_nodes[:3]:
-                if h["text"]:
-                    header_strs.append(f"{h['type']} displaying '{h['text']}'")
-                else:
-                    header_strs.append(f"{h['type']}")
-            prose_parts.append(f"At the top header region, there is a clean layout featuring {', '.join(header_strs)}.")
+        if archetype == "portrait_character":
+            focal_node = next(
+                (n for n in nodes if n.get("is_focal_subject") or n.get("type") in ("focal_subject", "character")),
+                None,
+            )
+            focal_desc = str(focal_node.get("text") or "character portrait").strip() if focal_node else "character portrait"
+            prose_parts.append(
+                f"A breathtaking, high-fidelity character portrait of {focal_desc} with {style_desc} aesthetic."
+            )
+            prose_parts.append(
+                "Featuring intricate, realistic facial mapping, natural skin textures, expressive eyes, and fine hair details with sharp focal depth and balanced lighting."
+            )
+            other_labels = [
+                f"{n.get('type')}: '{n['text']}'"
+                for n in nodes
+                if n.get("id") != "root" and n.get("text") and n != focal_node
+            ]
+            if other_labels:
+                prose_parts.append(f"Subtle visual typography elements present: {', '.join(other_labels)}.")
 
-        # Main section description
-        if main_nodes:
-            main_strs = []
-            for m in main_nodes[:5]:
-                if m["text"]:
-                    main_strs.append(f"{m['type']} containing '{m['text']}'")
-                else:
-                    main_strs.append(f"{m['type']}")
-            prose_parts.append(f"The central main section presents {', '.join(main_strs)} with structured visual hierarchy.")
+        elif archetype == "graphic_poster":
+            headline_node = next((n for n in nodes if n.get("type") == "headline"), None)
+            hl_text = f"displaying '{headline_node['text']}'" if headline_node and headline_node.get("text") else "bold typography"
+            focal_node = next(
+                (n for n in nodes if n.get("is_focal_subject") or n.get("type") in ("illustration", "focal_subject")),
+                None,
+            )
+            focal_text = f"featuring {focal_node['text']}" if focal_node and focal_node.get("text") else "striking central illustration"
+            prose_parts.append(f"A dynamic, production-grade graphic poster design with {style_desc} aesthetic.")
+            prose_parts.append(
+                f"The composition showcases {hl_text} anchored by {focal_text} with balanced visual hierarchy and poster aesthetics."
+            )
 
-        # Actions section description
-        if action_nodes:
-            act_strs = []
-            for a in action_nodes[:3]:
-                if a["text"]:
-                    act_strs.append(f"{a['type']} labeled '{a['text']}'")
+        elif archetype == "landscape_scene":
+            focal_node = next((n for n in nodes if n.get("is_focal_subject")), None)
+            focal_text = f"highlighting {focal_node['text']}" if focal_node and focal_node.get("text") else "natural vista"
+            prose_parts.append(
+                f"An expansive, atmospheric environmental landscape scene with {style_desc} aesthetic."
+            )
+            prose_parts.append(
+                f"Featuring rich environmental depth, {focal_text}, natural atmospheric perspective, realistic lighting, and detailed textures across the canvas."
+            )
+
+        elif archetype == "e_commerce":
+            prod_node = next((n for n in nodes if n.get("type") == "product" or n.get("is_focal_subject")), None)
+            prod_text = f"highlighting {prod_node['text']}" if prod_node and prod_node.get("text") else "featured product"
+            prose_parts.append(f"A commercial-grade product showcase with {style_desc} aesthetic.")
+            prose_parts.append(
+                f"Presenting a pristine hero product composition {prod_text} with studio lighting, sharp reflections, and premium catalog visual balance."
+            )
+
+        elif archetype == "freeform_art":
+            focal_node = next((n for n in nodes if n.get("is_focal_subject")), None)
+            focal_text = f"expressing {focal_node['text']}" if focal_node and focal_node.get("text") else "artistic subject"
+            prose_parts.append(f"An expressive artistic composition with {style_desc} aesthetic.")
+            prose_parts.append(
+                f"Featuring rich artistic textures, dynamic contours {focal_text}, and cohesive visual composition."
+            )
+
+        else:
+            # Default UI layout prose
+            prose_parts.append(f"A polished, production-grade UI design with {style_desc} aesthetic.")
+
+            # Header description
+            if header_nodes:
+                header_strs = []
+                for h in header_nodes[:3]:
+                    if h["text"]:
+                        header_strs.append(f"{h['type']} displaying '{h['text']}'")
+                    else:
+                        header_strs.append(f"{h['type']}")
+                prose_parts.append(f"At the top header region, there is a clean layout featuring {', '.join(header_strs)}.")
+
+            # Main section description (2D Multi-Column & Spatial Partition Awareness)
+            if main_nodes:
+                sorted_main = sorted(main_nodes, key=lambda m: m["x1"])
+                is_multicol = (
+                    len(sorted_main) >= 2
+                    and any(abs(sorted_main[i]["x1"] - sorted_main[i-1]["x1"]) > 0.15 for i in range(1, len(sorted_main)))
+                )
+                if is_multicol:
+                    col_strs = []
+                    for c_idx, m in enumerate(sorted_main[:4], start=1):
+                        if m["text"]:
+                            col_strs.append(f"column {c_idx} [x: {m['x1']:.2f}] containing {m['type']} with '{m['text']}'")
+                        else:
+                            col_strs.append(f"column {c_idx} [x: {m['x1']:.2f}] with {m['type']}")
+                    prose_parts.append(f"The central main section presents a structured multi-column partition featuring {', '.join(col_strs)} with balanced visual hierarchy.")
                 else:
-                    act_strs.append(f"{a['type']}")
-            prose_parts.append(f"In the lower action area, there is {', '.join(act_strs)} prominently placed.")
+                    main_strs = []
+                    for m in main_nodes[:5]:
+                        if m["text"]:
+                            main_strs.append(f"{m['type']} containing '{m['text']}'")
+                        else:
+                            main_strs.append(f"{m['type']}")
+                    prose_parts.append(f"The central main section presents {', '.join(main_strs)} with structured visual hierarchy.")
+
+            # Actions section description
+            if action_nodes:
+                act_strs = []
+                for a in action_nodes[:3]:
+                    if a["text"]:
+                        act_strs.append(f"{a['type']} labeled '{a['text']}'")
+                    else:
+                        act_strs.append(f"{a['type']}")
+                prose_parts.append(f"In the lower action area, there is {', '.join(act_strs)} prominently placed.")
 
         # Visual styling and palette
         if state.constraints.palette:

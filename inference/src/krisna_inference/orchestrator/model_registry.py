@@ -90,43 +90,14 @@ SWAPPABLE_TIERS = tuple(t for t, s in REGISTRY.items() if not s.always_resident)
 # Low-VRAM / CPU-offload registry — targets a 12-16GB GPU instead of the
 # PRD §3 default 16-24GB envelope, offloading the rest to system RAM.
 #
-# THREE real offload mechanisms are in play here (was two — Polish
-# Default's is new, added alongside the vram_gb correction above), with
-# very different RAM-cost implications — conflating them would give a
-# misleading picture of what this actually costs:
+# Offload mechanisms in play:
+# Diffusion pipelines (Polish Default/Quality/Fast) use diffusers'
+# `enable_model_cpu_offload()` — moving submodules (text encoder, VAE,
+# transformer) between GPU/CPU, keeping their already-quantized dtype
+# intact while idle on CPU.
 #
-# 1. Diffusion pipelines (Polish Default/Quality) use diffusers'
-#    `enable_model_cpu_offload()` — CONFIRMED safe with bnb NF4 (unlike
-#    `enable_sequential_cpu_offload()`, which has a documented
-#    incompatibility with bnb 4-bit: "Blockwise quantization only
-#    supports 16/32-bit floats, but got torch.uint8" — diffusers GH
-#    issue #10800). This moves whole submodules (text encoder, VAE,
-#    transformer) between GPU/CPU, keeping their already-quantized dtype
-#    intact while idle on CPU — vram_gb + ram_gb below sums to
-#    approximately the original full-VRAM number, not more.
-#    Polish Default is bf16, not NF4 (see REGISTRY entry above) — the
-#    GH #10800 incompatibility is specific to bnb 4-bit tensors and does
-#    not apply to this tier, but `enable_model_cpu_offload()` is used
-#    here regardless, for consistency with Polish Quality's mechanism
-#    rather than introducing a second, differently-justified offload
-#    path for one tier only (see polish_default_backend.py's comment).
-#
-# 2. The Critic (Gemma 4, loaded via plain transformers+bitsandbytes when
-#    offloading — NOT unsloth's FastModel, which has no documented/
-#    verified CPU-offload support) uses `max_memory={0: "...GiB", "cpu":
-#    "...GiB"}` + `llm_int8_enable_fp32_cpu_offload=True`. bitsandbytes'
-#    own documented behavior for this path stores the CPU-resident
-#    portion in FP32, not 4-bit — an 8x per-parameter size increase
-#    relative to NF4. For Gemma 4 31B Dense (~30.7B params), offloading
-#    enough to bring GPU residency down to ~12GB (roughly a third of the
-#    ~18GB NF4 total) means ~10B params living on the CPU side at FP32:
-#    10B params x 4 bytes = ~40GB of system RAM — NOT a small number, and
-#    NOT proportional to the VRAM saved. This is a real, load-bearing
-#    cost to plan capacity around, not a rough guess pulled from nowhere;
-#    see the RAMLedger admission in swap_orchestrator.py, which will
-#    correctly refuse to admit the Critic tier on a RAM-constrained host
-#    rather than silently OOMing system memory instead of GPU memory.
-#
+# Note: The legacy Gemma 4 Critic tier was retired in favor of Resident
+# Planner Review, eliminating the 40GB system RAM offload requirement.
 # The Planner and Sketch tiers are small enough already (4.2GB + 0.2GB =
 # 4.4GB combined) that no offload is applied to either even in low-VRAM
 # mode — there's nothing to gain and every offload adds real latency.
