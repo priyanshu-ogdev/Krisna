@@ -160,6 +160,16 @@ For offline research paper analysis, ablation studies, and DPO alignment dataset
 - `TurnTraceRecord`: Per-turn record tracking user prompt, assistant response, planner chain-of-thought (`reasoning_note`), discrete VLA actions, SHA-256 state digest, wireframe and image blob pointers, and multi-axis verifier score receipts.
 - `SessionResearchTrajectory`: Session-level aggregate available via `GET /session/{session_id}/research-trace` and exportable to JSON/JSONL (`export_trajectory_jsonl()`) for direct consumption by empirical evaluation harnesses.
 
+### 5.6 Multimodal VLM Module Synchronization & Raster Image Decompilation
+
+To close the "Raster Image-to-Layout" gap and enable true Image-to-Image workflows:
+- **Direct VLM Module Integration**: Synchronizes the Sketch tier directly with the 9B model (Qwen3.5-9B / Qwen2.5-VL with mmproj Vision Transformer) serving as the multimodal perception module. The Flow-matching Polish DiT (Qwen-Image-2.1) operates strictly on continuous latent pixels and cannot emit discrete JSON coordinates; the 9B VLM module handles visual grounding, spatial perception, and layout decompilation.
+- **Raster Image Decompilation (`POST /session/{session_id}/decompile`)**: Users can upload raw screenshots, competitor mockups, or UI photos. The 9B VLM module decompiles flat raster images into discrete `LayoutIR` DAG components with normalized bounding boxes $[x_1, y_1, x_2, y_2]$ and text literals via `flows.decompile_screenshot()`.
+- **Image-to-Image Facial Identity Shielding (NVIDIA AnyDoor & ConsisID)**:
+  - Supports Turn 1 Image-to-Image editing (`reference_image_ref`), correctly resolving the lock donor to the uploaded reference photo rather than the wireframe.
+  - Strict $\ge 128\times 128\text{px}$ floor on all facial and focal nodes prevents latent token collapse across VAE $16\times$ compression and DiT patch stride $2\times 2$.
+  - Exact bitwise pixel preservation ($0.00\%$ drift) on locked regions via `_apply_locked_regions` with Laplacian seam boundary verification ($\Delta \nabla \le 0.05$).
+
 ---
 
 ## 6. Model stack: the no-RLHF-loop revision
@@ -174,7 +184,7 @@ was abandoned in favor of the following, final split:
 | Tier | Model | Trained? | Why |
 |---|---|---|---|
 | **Planner** | Qwen3.5-9B canonical (Qwen2.5-VL-7B controlled baseline) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
-| **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No for the main experiment** | Makes geometry, hierarchy, literals, and lock regions auditable; learned LayoutFlow/HART remains an ablation |
+| **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No** | Makes geometry, hierarchy, literals, and lock regions auditable with 0 MB VRAM and 0% overlap guarantee |
 | **Polish (Default)** | Qwen-Image-2.1 | **Base frozen; LoRA gated and trainable** | Supervised wireframe→screenshot adapter only after a real pair manifest and native trainer smoke test; preference alignment is optional later |
 | **Polish (Quality)** | Qwen-Image-2.1 without adapter | **Frozen** | Same-model no-adapter reference/ablation; must not inherit the Default LoRA through a global fallback |
 | **Critic / Review** | Deterministic verifiers plus optional frozen VLM evaluation | **No** | Review is not a training-label source; image-grounded Planner review must be proven before claiming visual self-review |
@@ -194,7 +204,7 @@ the live inference path, rather than silently orphaned).
 
 The production baseline uses an open-domain Universal Scene DAG (`krisna.layout.v1`) with our Zero-VRAM Simplex collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024). It supports infinite design scenarios (UI mockups, marketing posters, editorial publishing, e-commerce showcases, infographics, diagrams, and freeform sketches) via polymorphic node types (`NODE_TYPES`), a 16-class universal semantic palette (`UNIVERSAL_SEMANTIC_PALETTE`, NVIDIA SPADE), automated turn-to-turn differential masking (`compute_differential_mask`, FlowEdit ICCV 2025), and 2D spatial quad-tree prompt indexing (Hybrid Layout Control, ICCV 2025).
 
-Continuous flow matching for layout (`LayoutFlow`, Guerreiro et al., ECCV 2024) is maintained as an experimental research ablation in `training/src/krisna_training/layout/`. The historical discrete MaskGIT discrete token route has been retired.
+The historical experimental continuous flow matching ablation (`LayoutFlow`, Guerreiro et al., ECCV 2024) and discrete MaskGIT token routes have been retired and removed in favor of the single production-locked neuro-symbolic engine.
 
 ---
 

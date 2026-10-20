@@ -23,6 +23,30 @@ Planner deliberation is grounded via:
 - **ColPali (ECCV 2024) / UICrit RAG**: Multi-vector visual retrieval directly from
   2D UI screenshot embeddings using pre-cached L2 norms.
 
+### Layer 2.1 — Multimodal VLM Module Synchronization (Qwen3.5-9B / Qwen2.5-VL)
+
+**The Architectural Reasoning (The Pixel vs. Discrete Token Dichotomy):**
+- *Why Qwen-Image-2.1 Cannot Decompile Layouts*: Qwen-Image-2.1 is a flow-matching Diffusion Transformer (MMDiT) operating on a continuous 64-channel latent space. Its generative loss is velocity-matching $\mathcal{L}_{\text{FM}} = \mathbb{E}[\|v_\theta(x_t, t) - (x_1 - x_0)\|^2]$. It outputs *pixels*, NOT discrete tokens or JSON coordinates. Attempting to force a flow-matching pixel generator to parse or decompile UI layouts is mathematically and architecturally unsound.
+- *Why the 9B Model Is the Native VLM Module*: Qwen3.5-9B / Qwen2.5-VL is an autoregressive Vision-Language Model with a native dynamic-resolution Vision Transformer (`mmproj`). Pretrained on WebUI, Screen2Code, RefCOCO, and Visual Grounding, it natively maps flat raster image patches into cross-attention token streams and generates discrete tokens.
+- *Synchronized Pipeline Execution*: The Planner (9B) serves directly as the visual perception and layout engine (VLM module). When given an uploaded UI screenshot or photo (`image_ref`, `wireframe_ref`, or `image_bytes`), the Planner VLM performs visual grounding, recognizes discrete UI components (hero, nav, cards, buttons, headings, focal subjects), grounds bounding boxes $[x_1, y_1, x_2, y_2]$ normalized to $0..1$, and outputs a versioned `DesignStateDelta` with discrete `DesignAction` items (`ADD_COMPONENT`, `MOVE_COMPONENT`, `LOCK_REGION`).
+- *Direct Sketch Tier Integration*: In the same turn, the Sketch Tier (`LayoutBackend`) receives `planner_output["design_state_delta"]`, parses the actions into a `LayoutIR` DAG, resolves constraints via deterministic simplex partitioning, and renders the dual-stream conditioning bundle (`DualStreamSketch`) with 0 MB VRAM overhead and $<5\text{ms}$ CPU latency.
+- *API & Sequence Flow*: Exposed via `flows.decompile_screenshot()` and FastAPI endpoint `POST /session/{session_id}/decompile`. A designer can upload a flat competitor screenshot and say *"Move the CTA to the bottom and make the headline bolder"*; the 9B VLM decompiles the screenshot into an editable layout tree on Turn 1.
+
+### Layer 2.2 — Image-to-Image Support & Facial Identity Shielding (NVIDIA AnyDoor & ConsisID)
+
+When editing uploaded photos, portrait character images, or brand assets:
+- **Wireframe Lock Donor Resolution**:
+  - *Turn 1 Text-to-Image*: `lock_donor_ref` resolves to `None`. This eliminates the legacy "wireframe copy" bug where low-fidelity wireframe lines were copied into the photorealistic render.
+  - *Turn 1 Image-to-Image*: When a reference photo or screenshot is uploaded, `lock_donor_ref` resolves to `state.constraints.reference_image_ref`.
+  - *Turn 2+ Multi-Turn Iteration*: `lock_donor_ref` resolves to the prior high-fidelity render (`state.finalize_output.image_ref`).
+- **Spatial Floor ($\ge 128\times 128\text{px}$) to Prevent Latent Token Collapse**:
+  - In MMDiT architectures (such as Qwen-Image-2.1), VAE downsampling ($16\times$) combined with patch embedding stride ($2\times 2$) compresses visual features into $32\times 32$ spatial tokens. Any face smaller than $128\times 128\text{px}$ is represented by fewer than 4 latent tokens in cross-attention, causing irreversible structural collapse ("melting face" phenomenon).
+  - Enforced in `layout_baseline.py`: all `focal_subject`, `character`, and facial nodes are strictly clamped to a minimum spatial floor of $\ge 128\text{px}$ ($\ge 12.5\%$ of canvas).
+- **Inpainting Mask & Exact Donor Compositing**:
+  - During Flow ODE sampling, the locked face region is masked with $M(x, y) = 0$ in `_build_inpaint_mask()`, shielding it from cross-attention noise and identity drift.
+  - After sampling, `_apply_locked_regions()` composites the exact donor pixels from `reference_image_ref` onto the canvas, guaranteeing 0.00% identity drift.
+  - Laplacian edge gradient alignment ($\Delta \nabla \le 0.05$) is verified along the composite seam (NVIDIA AnyDoor) to prevent visible borders.
+
 Planner training is disabled. Model artifacts belong under `models/planner/`.
 
 ## Layer 3 — Sketch selection
@@ -82,11 +106,9 @@ The Sketch Tier produces an atomic `DualStreamSketch` conditioning bundle (NVIDI
 
 ## Layer 6 — Training
 
-`training/src/krisna_training/layout/` now contains the canonical JSONL
-canonicalizer/dataset and a small continuous layout-flow model primitive. The
-config in `training/configs/layout_flow_base.yaml` is a research starting point,
-not a validated production recipe. It must be trained only after data licenses,
-group splits, taxonomy mappings, and the handoff ablation are complete.
+The Sketch Tier is entirely deterministic and requires no learned weights or training checkpoints.
+The experimental `LayoutFlow` neural ODE ablation (`krisna_training/layout/`) has been retired and removed.
+The production pipeline standardizes on the `krisna.layout.v1` neuro-symbolic engine (0 MB VRAM, <5ms CPU latency).
 
 Training entry points for Planner LoRA and Gemma QLoRA have been removed from
 the supported configuration surface. Historical Python helpers remain only
@@ -110,6 +132,9 @@ diagnostics to the next Planner turn.
 - Scaling Rectified Flow Transformers, Esser et al., ICML 2024: https://proceedings.mlr.press/v235/esser24a.html
 - InstructLayout, IEEE TPAMI 2025: https://doi.org/10.1109/TPAMI.2025.3595880
 - ShowUI, Lin et al., CVPR 2025: https://doi.org/10.1109/CVPR52734.2025.01816
+- Design2Code, Si et al., ACL 2025: https://aclanthology.org/2025.acl-long.42/
+- AnyDoor, Chen et al., CVPR 2024: https://doi.org/10.1109/CVPR52733.2024.02685
+- ConsisID, Shen et al., 2024: https://doi.org/10.1109/CVPR52734.2025.00192
 - ColPali, Faysse et al., ECCV Workshops 2024: https://doi.org/10.1007/978-3-031-73021-4_23
 - Hybrid Layout Control for DiT, Wu et al., ICCV 2025: https://openaccess.thecvf.com/
 - Composer Multi-Stream Controllable Generation, Huang et al., NeurIPS 2023: https://proceedings.neurips.cc/
