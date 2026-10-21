@@ -41,10 +41,9 @@ not two or three independently trained models. The accurate answer is:
 
 - Qwen model ID and columns: `training/configs/polish_qwen_image21_lora.yaml`.
 - Pair builder: `training/src/krisna_training/polish/prepare_dataset.py`.
-- External trainer construction: `scripts/training/train_polish_default_lora.sh`.
-- Planner freeze guard: `training/src/krisna_training/planner/train.py`.
-- Deterministic structure path: `inference/src/krisna_inference/layout_baseline.py`
-  and `inference/src/krisna_inference/backends/layout_backend.py`.
+- Planner freeze guard: `training/src/krisna_training/planner/__init__.py` (sealed frozen VLA).
+- Deterministic structure path: `inference/src/krisna_inference/layout_baseline.py`,
+  `training/src/krisna_training/sketch/__init__.py`, and `inference/src/krisna_inference/backends/layout_backend.py`.
 - Registry and inference model selection:
   `inference/src/krisna_inference/orchestrator/model_registry.py` and
   `inference/src/krisna_inference/backends/factory.py`.

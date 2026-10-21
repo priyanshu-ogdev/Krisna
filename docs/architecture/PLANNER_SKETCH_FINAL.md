@@ -145,10 +145,10 @@ The Sketch Tier is entirely deterministic and requires no learned weights or tra
 The experimental `LayoutFlow` neural ODE ablation (`krisna_training/layout/`) has been retired and removed.
 The production pipeline standardizes on the `krisna.layout.v1` neuro-symbolic engine (0 MB VRAM, <5ms CPU latency).
 
-Training entry points for Planner LoRA and Gemma QLoRA have been removed from
-the supported configuration surface. Historical Python helpers remain only
-because old tests import pure masking/dataset code; no launcher or training
-config remains.
+Training entry points for Planner LoRA and Gemma QLoRA have been completely purged from the repository.
+The Planner is 100% frozen (`training/src/krisna_training/planner/__init__.py`), grounded via UICrit RAG and pushdown automata CFG grammars.
+The Sketch tier is 100% deterministic (`training/src/krisna_training/sketch/__init__.py`), running on CPU with 0 MB VRAM.
+All legacy training scripts and unused helper remnants have been cleanly removed from the codebase.
 
 ## Layer 7 — Evaluation
 

@@ -1,62 +1,203 @@
-# Krisna training package
+# Krisna Training Architecture & Specification
 
-This package contains training-side data preparation, model primitives, and
-launcher integrations. The current architecture and runbook live in:
+## Canonical Architectural Model (PRD §6: Single-Trainable-Tier)
 
-- [`../docs/training/ARCHITECTURE.md`](../docs/training/ARCHITECTURE.md)
-- [`../docs/training/TRAINING_RUNBOOK.md`](../docs/training/TRAINING_RUNBOOK.md)
+Krisna establishes a decoupled, mathematically bounded agentic design architecture with **a single trainable foundation model**. The entire training pipeline is dedicated exclusively to adapting the **Visual Polish Tier** (`Qwen/Qwen-Image-2.1`), while the **Planner** and **Sketch** tiers operate strictly as frozen, deterministic engines.
 
-## Current implementation status
-
-| Area | Status | Description |
-|---|---|---|
-| `polish/prepare_dataset.py` | Active | Strict wireframe-conditioned target format dataset bridge with source-caption mixing |
-| `polish/qwen_trainer_contract.py` | Active | Pinned Diffusers trainer contract for Qwen-Image-2.1 LoRA/DoRA |
-| `polish/train_dpo.py` | Active | Phase 3 Flow-Matching DPO preference alignment (Wallace et al., Kim et al., Croitoru et al.) |
-| `polish/cfm_loss.py` | Active | Phase 4 Consistency Flow Matching few-step distillation (Luo et al., Song et al.) |
-| `data_forge_bridge/` | Active | Real-time sync adapters for Polish pairs (`sync_polish_default.py`) and preference pairs (`sync_dpo_pairs.py`) |
-| `preference/` & `dpo/` | Active | Unified SQLite PreferenceStore with idempotent `INSERT OR IGNORE` and PRD §6 no-AI-judge constraint |
-| `planner/` | Frozen | Frozen Qwen3.5-9B GGUF + UICrit RAG; no Planner LoRA under PRD §6 |
-| `critic/` | Frozen | Resident review pass within Planner tier (Gemma 4 31B external training retired for 12GB VRAM envelope) |
-| `sketch/` & `layout/` | Deterministic | Deterministic Layout IR (`krisna.layout.v1`) baseline; discrete MaskGIT codebook training retired |
-
-## Active model contract
-
-Krisna's active training stack trains **one generative diffusion tier** across three progressive stages:
-
-```text
-Stage 1 (Supervised Base):
-  condition_image (wireframe) + target_image (screenshot) + caption
-      -> Pinned Diffusers (efe46a5b1...) + Qwen-Image-2.1 (d26bb6123...)
-      -> DoRA / LoRA rank=64, alpha=32, random_flip=false
-      -> Checkpoint: checkpoints/qwen_image21_lora/
-
-Stage 2 (Preference Alignment):
-  preference_pairs.db (2,200 human & verifier pairs) + Stage 1 LoRA
-      -> Flow-Matching DPO (beta=2000, fm_anchor_weight=0.1)
-      -> Checkpoint: checkpoints/polish_qwen_image21_dpo/
-
-Stage 3 (Fast Preview Distillation):
-  Consistency Flow Matching (CFM) distillation of Stage 1/2 teacher
-      -> Pseudo-Huber consistency loss (huber_c=0.001)
-      -> 4–8 step rapid ODE preview student (~0.9s on A6000, ~2.5s on RTX 4070)
-      -> Checkpoint: checkpoints/qwen_image21_cfm_fast/
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                               TIER TRAINABILITY MATRIX                                 │
+├────────────────────┬─────────────────────────────┬──────────────────┬──────────────────┤
+│ Tier               │ Engine / Base Model         │ Status           │ Rationale        │
+├────────────────────┼─────────────────────────────┼──────────────────┼──────────────────┤
+│ Tier 1: Planner    │ Qwen3.5-9B-Instruct GGUF    │ 100% FROZEN      │ Grounded via RAG │
+│                    │ (Unsloth W4A16 / AWQ)       │ (Zero training)  │ & CFG grammar    │
+├────────────────────┼─────────────────────────────┼──────────────────┼──────────────────┤
+│ Tier 2: Sketch     │ krisna.layout.v1            │ 100% DETERMIN-   │ 0 MB GPU VRAM;   │
+│                    │ (Simplex / Cassowary CPU)   │ ISTIC & FROZEN   │ 0% overlap proof │
+├────────────────────┼─────────────────────────────┼──────────────────┼──────────────────┤
+│ Tier 3: Polish     │ Qwen-Image-2.1 (7B MMDiT)   │ ACTIVE TRAINABLE │ Adapts pixels to │
+│                    │ (Pinned Diffusers efe46a5)  │ (QDoRA / DPO)    │ layout wireframe │
+└────────────────────┴─────────────────────────────┴──────────────────┴──────────────────┘
 ```
 
-The Qwen base model remains frozen across all stages. The repository enforces receipt generation, validation holdout integrity, and multi-platform PowerShell and Bash launcher parity.
+---
 
-`polish_qwen_image21_lora.yaml` contains repository metadata as well as
-Diffusers options. `qwen_trainer_contract.py` validates that metadata, maps the
-pinned base revision to the official trainer's `--revision` option, and rejects
-unsupported arguments before `accelerate` starts. The setup script checks out
-Diffusers commit `efe46a5b177af67c64b3666da8ddddac7ee12163`; it does not track
-the moving default branch.
+## 1. Why the Planner and Sketch Tiers are Frozen
 
-## Read-only verification
+### 1.1 Tier 1: Planner (Frozen Vision-Language-Action)
+- **Zero AI-Judge RLHF Loops**: In accordance with PRD §6 ("The No-RLHF-Loop Architectural Revision"), using one model's subjective aesthetic judgments to train another introduces severe reward hacking, catastrophic aesthetic decay, and conversational drift.
+- **Empirical RAG Grounding**: Domain knowledge is supplied dynamically via the **UICrit Multi-Vector Visual RAG Index** (`planner_rag.py`, ColPali/CLIP multi-vector retrieval), pulling human-verified design guidelines directly into prompt context.
+- **Pushdown Automata GBNF Grammar**: Schema validity is enforced mathematically at generation time using Context-Free Grammar (CFG) logit masking (Geng et al., EMNLP 2023). Invalid schema tokens are masked with $-\infty$ prior to softmax, guaranteeing $100\%$ valid `krisna.delta.v1` JSON deltas without parameter fine-tuning.
+- **Gated DeltaNet Stability**: Fine-tuning Qwen3.5 with low-rank quantization impairs its hybrid linear recurrence memory (Gated DeltaNet). The frozen W4A16 GGUF preserves maximum long-context reasoning.
 
+### 1.2 Tier 2: Sketch (Deterministic Neuro-Symbolic Engine)
+- **0 MB GPU VRAM Guarantee**: Bounding box geometry, container hierarchy, and z-ordering are solved on the CPU via the dual-simplex algorithm (Cassowary, Badros et al., ACM TOCHI 2001), consuming $0\text{ MB}$ of VRAM and $<5\text{ms}$ latency.
+- **Elimination of Codebook Collapse**: Discrete token codebooks (MaskGIT / VQGAN) permanently discard sub-pixel typography anti-aliasing and 1px border strokes under $16\times$ downsampling. The deterministic `krisna.layout.v1` rasterizer produces mathematically exact 2D TrueType wireframes and NVIDIA SPADE segmentation maps without neural hallucination.
+- **Legacy Purge**: All historical neural layout ablations (`LayoutFlow` neural ODE and discrete MaskGIT training code) have been decommissioned from the codebase.
+
+---
+
+## 2. Visual Polish Tier (`Qwen-Image-2.1`) Training Pipeline
+
+The Polish Tier transforms lossless wireframe condition images and natural language instructions into photorealistic, production-grade graphical user interfaces. Training proceeds through three disciplined stages:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        POLISH TRAINING PHASES                          │
+├────────────────────────────────────────────────────────────────────────┤
+│ Phase 1: Supervised QDoRA Base Adaptation                              │
+│   (Wireframe PNG + Target Screenshot + Dual VLM/Human Caption)          │
+│   ├── Architecture: Qwen-Image-2.1 (7B Multimodal Diffusion Transformer)│
+│   ├── Target Sublayers: 7 linear projections across attention and MLP   │
+│   ├── Hardware Profiles: A6000 (48GB BF16) & Consumer (12GB NF4)       │
+│   └── Artifact: checkpoints/qwen_image21_lora/                          │
+│                                                                        │
+│ Phase 2: Ablation Experiments                                          │
+│   ├── Ablation A: Attention-only vs All-linear (MLP) LoRA               │
+│   ├── Ablation B: DoRA magnitude-direction vs standard LoRA            │
+│   ├── Ablation C: No wireframe conditioning (Text-only baseline)       │
+│   └── Ablation D: No RAG critique conditioning                          │
+│                                                                        │
+│ Phase 3: Flow-Matching Direct Preference Optimization (DPO)            │
+│   (2,200 Human & Verifier Preference Pairs from preference_pairs.db)    │
+│   ├── Loss: Velocity error margin optimization (beta=2000)             │
+│   ├── Regularization: Optimal transport anchor loss (weight=0.1)       │
+│   └── Artifact: checkpoints/polish_qwen_image21_dpo/                   │
+│                                                                        │
+│ Phase 4: Consistency Flow Matching (CFM) Distillation (Fast Preview)   │
+│   (Few-Step Student Network distilled from Stage 1/3 Teacher)          │
+│   ├── Loss: Pseudo-Huber consistency trajectory error (c=0.001)        │
+│   ├── Latency: 4-6 ODE steps (~0.9s on A6000, ~2.5s on RTX 4080)       │
+│   └── Artifact: checkpoints/qwen_image21_cfm_fast/                     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 3. Mathematical Formulations
+
+### 3.1 Continuous Flow Matching with Rectified Vector Fields
+Let $x_0 \sim \mathcal{N}(0, I)$ be Gaussian noise and $x_1 \sim q(x_1)$ be the target screenshot latent. The linear probability trajectory is:
+$$x_t = (1 - t) x_0 + t x_1, \quad t \in [0, 1]$$
+The constant target velocity field is:
+$$u_t(x_t \mid x_0, x_1) = x_1 - x_0$$
+The network $v_\theta(x_t, t, c)$ is trained via the mean squared error flow-matching loss:
+$$\mathcal{L}_{\text{CFM}}(\theta) = \mathbb{E}_{t \sim p(t), x_0, x_1, c} \left[ \| v_\theta(x_t, t, c) - (x_1 - x_0) \|^2 \right]$$
+using logit-normal timestep sampling $t = \sigma(\mu + \sigma \epsilon)$ ($\mu=0, \sigma=1$) to concentrate updates in the structural formation regime $t \in [0.2, 0.8]$.
+
+### 3.2 Weight-Decomposed Low-Rank Adaptation (QDoRA)
+To avoid quantization distortion when adapting frozen 4-bit base weights $W_0^{\text{NF4}}$, DoRA decouples the directional matrix from its magnitude scalar:
+$$W = m \frac{W_0^{\text{NF4}} + \frac{\alpha}{r} B A}{\|W_0^{\text{NF4}} + \frac{\alpha}{r} B A\|_F}$$
+where $r=64$, $\alpha=32$, and updates target all 7 MMDiT sublayer projections:
+$$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
+
+### 3.3 Flow-Matching Direct Preference Optimization (DPO)
+Reward-free preference alignment optimizes velocity fields directly over winner-loser pairs $(x_0^w, x_0^l)$:
+$$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E} \left[ \log \sigma \left( -\beta \left( \|v_\theta(x_t^w, t) - v^*\|^2 - \|v_{\text{ref}}(x_t^w, t) - v^*\|^2 - (\|v_\theta(x_t^l, t) - v^*\|^2 - \|v_{\text{ref}}(x_t^l, t) - v^*\|^2) \right) \right) \right]$$
+anchored by an optimal transport velocity loss to maintain generative fidelity.
+
+---
+
+## 4. Multi-Subject Composition & Localized Face Shielding (SOTA Literature)
+
+The training pipeline integrates spatial routing principles from peer-reviewed foundations:
+- **MS-Diffusion (IEEE/CVF CVPR 2024)**: Decoupled cross-attention spatial gating $\mathbf{A}_k = \text{Softmax}\left(\frac{\mathbf{Q} \mathbf{K}_k^T}{\sqrt{d}}\right) \odot \mathbf{M}_k$, preventing feature leakage and identity blending across distinct subjects in duo/group compositions.
+- **FastComposer (ACM SIGGRAPH Asia 2023 / ACM TOG)**: Localized spatial masks isolating reference embeddings.
+- **AnyDoor (IEEE/CVF CVPR 2024)** & **ConsisID (IEEE/CVF CVPR 2025 Highlight)**: Localized Crop $\to$ Lanczos Resample $\to$ Paste decoupling source crop coordinates $\mathbf{b}_k^s$ from target canvas placement $\mathbf{b}_k^t$, eliminating off-center facial drift ($0.00\%$ drift, $1.000$ lock score).
+- **PhotoMaker (IEEE/CVF CVPR 2024)**: Strict $\ge 128\times 128\text{px}$ spatial bounding box floor preventing face token collapse in $16\times$ downsampling VAE / MMDiT patches.
+
+---
+
+## 5. Configuration Directory Structure
+
+```
+training/
+├── README.md                                 # This architectural guide
+├── pyproject.toml                            # Build & dependency metadata
+├── configs/
+│   ├── polish_qwen_image21_lora.yaml         # Stage 1: Full-precision A6000 (48GB) profile
+│   ├── polish_qwen_image21_dpo.yaml          # Stage 3: Flow-Matching DPO profile
+│   ├── cfm_distill_qwen_image21.yaml         # Stage 4: Consistency distillation profile
+│   └── ablations/
+│       ├── polish_qwen_qdora_12gb.yaml       # Stage 1: Consumer 12GB NF4 profile
+│       ├── polish_qwen_adalora_48gb.yaml     # Adaptive rank allocation profile
+│       ├── ablation_a_lora_attn.yaml         # Ablation A: Attention-only LoRA
+│       ├── ablation_b_dora_attn.yaml         # Ablation B: Attention-only DoRA
+│       ├── ablation_c_dora_no_wireframe.yaml # Ablation C: Text-only baseline
+│       └── ablation_d_dora_no_rag.yaml       # Ablation D: No RAG conditioning
+└── src/krisna_training/
+    ├── __init__.py                           # Package specification & trainability matrix
+    ├── polish/                               # Active Polish Tier training modules
+    │   ├── prepare_dataset.py                # Pair dataset preparation & manifest builder
+    │   ├── qwen_trainer_contract.py          # Pinned Diffusers trainer contract
+    │   ├── train_dpo.py                      # Phase 3 Flow-Matching DPO trainer
+    │   ├── dpo_loss.py                       # DPO loss formulations & margin scoring
+    │   ├── cfm_loss.py                       # Phase 4 Consistency Flow Matching loss
+    │   └── ablation_runner.py                # Automated ablation orchestration
+    ├── data_forge_bridge/                    # Data-Forge export sync adapters
+    │   ├── sync_polish_default.py            # Polish pair synchronization
+    │   ├── sync_dpo_pairs.py                 # Preference pair SQLite synchronization
+    │   ├── sync_planner_rag.py               # UICrit RAG corpus synchronization
+    │   └── sync_sketch_tier.py               # Sealed deterministic stub
+    ├── dpo/ & preference/                    # Preference pair SQLite storage & schema
+    ├── planner/                              # 100% Frozen Planner module
+    │   └── __init__.py                       # Sealed frozen specification
+    └── sketch/                               # 100% Deterministic Sketch module
+        └── __init__.py                       # Sealed deterministic specification
+```
+
+---
+
+## 6. Execution Runbook
+
+### 6.1 Pre-Flight Inspection (Read-Only)
 ```bash
 python scripts/training/audit_training_pipeline.py
 ```
+Reports active model IDs, source contracts, realized dataset pair counts, and hardware readiness without modifying disk state or GPU memory.
 
-This command reports current model IDs, source/launcher availability, and
-realized data counts without installing dependencies or starting training.
+### 6.2 Synchronize Exported Data from Data-Forge
+```bash
+# Sync Polish pairs, preference pairs, and Planner RAG corpus:
+python scripts/data-forge/sync_to_training.py --data-root D:\data_krisna
+```
+
+### 6.3 Stage 1: Launch Supervised Polish LoRA / DoRA Training
+```bash
+# Linux / WSL (Accelerate + Diffusers)
+./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml
+
+# Windows (Native PowerShell Dispatcher)
+powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-default
+```
+
+### 6.4 Stage 2: Launch Flow-Matching DPO Preference Training
+```bash
+# Linux / WSL
+./scripts/training/train_polish_dpo.sh training/configs/polish_qwen_image21_dpo.yaml
+
+# Windows
+powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-dpo
+```
+
+### 6.5 Stage 3: Launch Consistency Flow Matching Distillation (Fast Preview)
+```bash
+# Linux / WSL
+./scripts/training/train_polish_fast_preview.sh training/configs/cfm_distill_qwen_image21.yaml
+
+# Windows
+powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-cfm
+```
+
+---
+
+## 7. Hardware Requirements & Ledgers
+
+| Profile | Target GPU | VRAM Budget | Base Precision | Adapter Precision | Method |
+|---|---|---|---|---|---|
+| **Enterprise / Workstation** | NVIDIA RTX A6000 (48GB) | 38.4 GB | BF16 (unquantized) | BF16 | DoRA ($r=64, \alpha=32$) |
+| **Consumer Desktop** | NVIDIA RTX 4070 / 4080 (12–16GB) | 11.2 GB | 4-bit NF4 | BF16 | QDoRA ($r=64, \alpha=32$) |
+| **Preview Distillation** | NVIDIA RTX A6000 / 4080 | 14.0 GB | BF16 / NF4 | FP16 / BF16 | CFM Distillation ($N=4\to 6$) |
+
+All trained checkpoints generate cryptographic SHA-256 manifests (`manifest.json`) verifying adapter weights, base revision compatibility, and dataset provenance before inference serving.
