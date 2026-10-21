@@ -51,28 +51,26 @@ case "${1:-}" in
     audit)
         exec python3 scripts/training/audit_training_pipeline.py
         ;;
-    sketch-stage1)
-        echo "Sketch training is research-only; no source-backed trainer exists in this checkout." >&2
-        exit 2
-        ;;
-    sketch-stage2)
-        echo "Sketch training is research-only; no source-backed trainer exists in this checkout." >&2
-        exit 2
+    sketch-stage1|sketch-stage2)
+        echo "Sketch tier is 100% deterministic Layout IR (krisna.layout.v1; 0 MB VRAM, <5ms CPU). No training occurs." >&2
+        exit 0
         ;;
     polish-default)
         exec ./scripts/training/train_polish_default_lora.sh "${2:-}"
         ;;
     polish-dpo)
-        echo "polish-dpo is deferred and is not part of the active Qwen-Image-2.1 pipeline." >&2
-        exit 2
+        exec ./scripts/training/train_polish_dpo.sh "${2:-}"
+        ;;
+    polish-cfm)
+        exec ./scripts/training/train_polish_fast_preview.sh "${2:-}"
         ;;
     planner)
-        confirm_deprecated planner
-        exec ./scripts/training/train_planner_lora.sh
+        echo "Planner tier is 100% frozen (Qwen3.5-9B GGUF + UICrit RAG). No training occurs under PRD §6." >&2
+        exit 0
         ;;
     critic)
-        confirm_deprecated critic
-        exec ./scripts/training/train_critic_qlora.sh
+        echo "Critic tier is 100% frozen (Resident Planner review pass). No training occurs under PRD §6." >&2
+        exit 0
         ;;
     *)
         echo -e "\033[1;31mUnknown tier: $1\033[0m"

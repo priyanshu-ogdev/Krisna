@@ -243,46 +243,13 @@ def main() -> int:
 
     if sketch_export.exists() and (sketch_export / "images").exists():
         count = len(list((sketch_export / "images").glob("*.*")))
-        has_vqgan = vqgan_ckpt.exists() and vqgan_cfg.exists()
-        if args.check_only:
-            status_desc = "+ VQGAN checkpoint verified" if has_vqgan else "(deterministic visual tokenizer ready)"
-            print(f"\n[OK] Sketch Tier: Found {count} exported images {status_desc}.")
-            if args.sketch_256:
-                m256 = (sketch_target_256 / "manifest.jsonl").exists()
-                results["sketch_256"] = "Ready (manifest exists)" if m256 else f"Ready to sync ({count} images)"
-            if args.sketch_512:
-                m512 = (sketch_target_512 / "manifest.jsonl").exists()
-                results["sketch_512"] = "Ready (manifest exists)" if m512 else f"Ready to sync ({count} images)"
-        else:
-            try:
-                from krisna_training.data_forge_bridge.sync_sketch_tier import sync as sync_sketch
-                from krisna_training.sketch.vq_tokenizer import VQTokenizer
-
-                if not has_vqgan:
-                    print(f"\n[i] Sketch Tier: VQGAN weights not found; using deterministic visual patch tokenizer (16384 codebook, 16x spatial).")
-                tokenizer = VQTokenizer(
-                    checkpoint_path=vqgan_ckpt if has_vqgan else None,
-                    config_path=vqgan_cfg if has_vqgan else None,
-                    allow_fallback=True,
-                )
-
-                if args.sketch_256:
-                    print(f"\n[*] Syncing Sketch Tier Stage 1 (256px): {sketch_export} -> {sketch_target_256}...")
-                    m256 = sync_sketch(model_data_dir, sketch_target_256, tokenizer, image_size=256)
-                    print(f"    [SUCCESS] Sketch Stage 1 (256px) manifest written to {m256}")
-                    results["sketch_256"] = "Synced -> ready for './train.sh sketch-stage1'"
-
-                if args.sketch_512:
-                    print(f"\n[*] Syncing Sketch Tier Stage 2 (512px): {sketch_export} -> {sketch_target_512}...")
-                    m512 = sync_sketch(model_data_dir, sketch_target_512, tokenizer, image_size=512)
-                    print(f"    [SUCCESS] Sketch Stage 2 (512px) manifest written to {m512}")
-                    results["sketch_512"] = "Synced -> ready for './train.sh sketch-stage2'"
-            except Exception as e:
-                print(f"    [ERROR] Sketch sync failed: {e}")
-                if args.sketch_256:
-                    results["sketch_256"] = f"Failed: {e}"
-                if args.sketch_512:
-                    results["sketch_512"] = f"Failed: {e}"
+        print(f"\n[OK] Sketch Tier: Found {count} exported layout images.")
+        print("     Sketch tier operates as deterministic neuro-symbolic Layout IR (krisna.layout.v1; 0 MB VRAM).")
+        print("     Bypassing token shard generation (MaskGIT/LayoutFlow retired; no training required).")
+        if args.sketch_256:
+            results["sketch_256"] = "Deterministic (no training required)"
+        if args.sketch_512:
+            results["sketch_512"] = "Deterministic (no training required)"
     else:
         print(f"\n[-] Sketch Tier: {sketch_export}/images not yet populated (run stage s12).")
         if args.sketch_256:

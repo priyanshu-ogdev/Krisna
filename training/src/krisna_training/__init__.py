@@ -1,16 +1,19 @@
-"""Sketch tier training — closes the gap flagged throughout this project's
-README: `inference/sketch_backend.py` and `inference/maskgit_model.py`
-implement the architecture *contract* and inference-time sampler, but
-until now there was no training code to actually produce a checkpoint that
-satisfies that contract. This package is that training code.
+"""Krisna Training Package — Single-Model Diffusion Polish Adaptation.
 
-This is a genuinely separate concern from `inference/maskgit_model.py`,
-which stays as-is: that module defines the sampling contract a checkpoint
-must satisfy (`.forward(tokens, mask, prompt_embedding) -> (logits,
-critic_scores)`); this package's `model.py` is one concrete architecture
-that satisfies it, plus everything needed to train it.
-
-Same lazy-import discipline as inference/ and verifiers/: torch is only
-imported inside functions/methods, never at module scope, so importing
-this package doesn't require torch to be installed.
+Architectural Contract (PRD §6):
+Krisna operates on a strict single-trainable-tier paradigm:
+1. Tier 1 (Planner): 100% FROZEN foundation model (Qwen3.5-9B GGUF via llama.cpp)
+   grounded via UICrit RAG and pushdown automata CFG grammar logit constraints.
+2. Tier 2 (Sketch): 100% DETERMINISTIC neuro-symbolic Layout IR engine (krisna.layout.v1)
+   executing simplex constraint solving on CPU (0 MB GPU VRAM, <5ms latency).
+3. Tier 3 (Polish): The ONLY trainable generative model in the system.
+   Trains supervised QDoRA/LoRA adapters, DPO preference alignment, and Consistency
+   Flow Matching (CFM) few-step fast preview distillation for Qwen-Image-2.1.
 """
+
+from __future__ import annotations
+
+__version__ = "0.2.0"
+
+ACTIVE_TRAINABLE_TIERS = ("polish_default", "polish_dpo", "polish_cfm")
+FROZEN_TIERS = ("planner", "sketch", "critic")

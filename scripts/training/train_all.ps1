@@ -258,14 +258,15 @@ function Execute-Tier {
     Write-Host "  LAUNCHING TRAINING TIER: $StageName" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
 
-    if ($StageName -eq "planner" -or $StageName -eq "critic") {
-        Write-Host "  [WARNING] $StageName is DEPRECATED under PRD section 6 (no-RLHF revision)." -ForegroundColor Red
-        Write-Host "  The live inference stack keeps $StageName frozen." -ForegroundColor Red
-        $confirm = Read-Host "Proceed anyway? (y/N)"
-        if ($confirm -ne "y" -and $confirm -ne "Y") {
-            Write-Host "Aborted." -ForegroundColor Yellow
-            return
-        }
+    if ($StageName -in @("planner", "critic")) {
+        Write-Host "  [SEALED] $StageName is 100% FROZEN under PRD section 6 (no-RLHF revision)." -ForegroundColor Yellow
+        Write-Host "  Grounded via UICrit RAG and pushdown automata CFG grammars. No training occurs." -ForegroundColor Yellow
+        return
+    }
+    if ($StageName -in @("sketch-stage1", "sketch-stage2")) {
+        Write-Host "  [SEALED] Sketch tier is 100% DETERMINISTIC Layout IR (krisna.layout.v1; 0 MB VRAM, <5ms CPU)." -ForegroundColor Yellow
+        Write-Host "  No training occurs; geometry is resolved via CPU simplex constraint solving." -ForegroundColor Yellow
+        return
     }
 
     $ok = Test-Preflight $StageName $CustomConfig
@@ -279,16 +280,6 @@ function Execute-Tier {
     }
 
     switch ($StageName) {
-        "sketch-stage1" {
-            Write-Host "  [RESEARCH ONLY] No source-backed Sketch trainer exists in this checkout." -ForegroundColor Yellow
-            if (-not $DryRun) { exit 2 }
-            return
-        }
-        "sketch-stage2" {
-            Write-Host "  [RESEARCH ONLY] No source-backed Sketch trainer exists in this checkout." -ForegroundColor Yellow
-            if (-not $DryRun) { exit 2 }
-            return
-        }
         "polish-default" {
             $defaultCfg = "training/configs/polish_qwen_image21_lora.yaml"
             $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }

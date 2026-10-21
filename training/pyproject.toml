@@ -5,13 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "krisna-training"
 version = "0.2.0"
-description = "Krisna Training — Sketch Tier (from scratch) and Z-Image-Turbo (LoRA + Diffusion-DPO) training code, the data-forge sync bridge, and DPO preference-pair tooling. Planner/Critic training code is DEPRECATED under the final no-RLHF-loop PRD revision (kept for reference — see krisna_training.planner/.critic's __init__.py docstrings). Split out of krisna-orchestrator v0.1.0 — see docs/training/ARCHITECTURE.md."
+description = "Krisna Training — Diffusion Polish Tier (Qwen-Image-2.1 Supervised LoRA/DoRA, Flow-Matching DPO, and Consistency Flow Matching Distillation), Data-Forge sync bridge, and preference tooling. Planner and Sketch tiers are 100% frozen."
 requires-python = ">=3.11"
 dependencies = [
-    # krisna_training.sketch.train imports krisna_inference.verifiers.common
-    # for a shared CLIP embedder utility — real, intentional cross-package
-    # dependency, not accidental coupling. See docs/architecture/
-    # DIRECTORY_LAYOUT.md's "why training depends on inference" note.
     "krisna-inference",
 ]
 
@@ -20,12 +16,14 @@ dev = [
     "pytest>=8.2",
     "pytest-asyncio>=0.23",
 ]
-# Real training — GPU required. Split from dev since most of this
-# package's own logic (masking, dataset collation, lora target-module
-# discovery) is deliberately pure-Python/testable without these.
-sketch = ["torch>=2.11.0", "pillow>=10.4"]
-polish = ["torch>=2.11.0", "transformers>=5.17.0", "diffusers>=0.41.0,<=0.42.0", "peft>=0.13", "pillow>=10.4"]
-layout = ["torch>=2.11.0", "pillow>=10.4", "pyyaml>=6.0"]
+polish = [
+    "torch>=2.11.0",
+    "transformers>=5.17.0",
+    "diffusers>=0.41.0,<=0.42.0",
+    "peft>=0.13",
+    "pillow>=10.4",
+    "pyyaml>=6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
