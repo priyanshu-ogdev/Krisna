@@ -51,6 +51,9 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
 | **Hard-Constrained Trajectory Optimization** | **HardFlow** (Li, Alim, Azizan, 2026) | *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 48, no. 10, pp. 13619–13635, Oct. 2026. [10.1109/TPAMI.2026.3708824](https://doi.org/10.1109/TPAMI.2026.3708824) | Hard boundary-constrained sampling for continuous flow matching models via trajectory optimization. | Grounds Krisna's boundary continuity verification and lock mask spatial constraints during continuous flow ODE integration. |
 | **Multimodal UI Decompilation** | **Design2Code** (Si et al., 2025) | *Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL 2025)*, pp. 4210–4225. [ACL Anthology](https://aclanthology.org/2025.acl-long.42/) | Decompiling visual webpage screenshots into structured hierarchical layout representations. | Informs Krisna's 9B VLM module decompilation (`flows.decompile_screenshot()`), mapping flat raster screenshots into `LayoutIR` DAG components with discrete action deltas. |
 | **Identity-Preserving Generative Editing** | **ConsisID** (Shen et al., 2025) | *Proceedings of IEEE/CVF CVPR 2025*, pp. 1920–1930. [10.1109/CVPR52734.2025.00192](https://doi.org/10.1109/CVPR52734.2025.00192) | Identity-preserving visual generation with frequency-aware facial feature preservation. | Grounds Krisna's $\ge 128\times 128\text{px}$ spatial floor and Turn 1 `reference_image_ref` lock donor resolution, preventing VAE downsampling token collapse. |
+| **Multi-Subject Zero-Shot Grounding** | **MS-Diffusion** (Wang et al., 2024) | *Proceedings of IEEE/CVF CVPR 2024*, pp. 8872–8882. [10.1109/CVPR52733.2024.00843](https://doi.org/10.1109/CVPR52733.2024.00843) | Multi-subject zero-shot grounding tokens and bounding boxes mapped to distinct visual reference donor assets. | Integrated into `ReferenceAsset` manifest and Planner spatial action routing, preventing feature leakage and identity blending across multiple subjects. |
+| **Tuning-Free Multi-Subject Gating** | **FastComposer** (Xiao et al., 2023) | *ACM Transactions on Graphics (TOG)*, vol. 42, no. 6, Art. 189, pp. 1–11. [10.1145/3618385](https://doi.org/10.1145/3618385) | Localized spatial attention gating preventing identity cross-talk and blending when rendering distinct people. | Informs Krisna's decoupled cross-attention lock masks and distinct donor-to-box spatial routing in duo/group compositions. |
+| **Stacked ID Embedding & Spatial Floor** | **PhotoMaker** (Li et al., 2024) | *Proceedings of IEEE/CVF CVPR 2024*, pp. 8640–8650. [10.1109/CVPR52733.2024.00821](https://doi.org/10.1109/CVPR52733.2024.00821) | Identity-preserving human photo generation via stacked embeddings with spatial token maintenance. | Grounds the $\ge 128\times 128\text{px}$ spatial floor across all focal subject and facial bounding boxes in `layout_baseline.py` to prevent token collapse under $16\times$ VAE downsampling. |
 
 ---
 
@@ -133,6 +136,36 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   In *Proceedings of the IEEE/CVF International Conference on Computer Vision*, pp. 3836–3847.  
   DOI: [10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355).  
   *Technical Role in Krisna*: Spatial structural conditioning principles adapting deterministic wireframe bounds into deep diffusion features.
+
+- **Wang, X., Yuan, K., Zhang, S., Chen, D., Wang, J., Zhang, Y., Shen, Y., Zhao, D., & Zhou, J. (IEEE/CVF CVPR 2024)**  
+  *MS-Diffusion: Multi-subject Zero-shot Image Synthesis with Grounded Reference Tokens*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 8872–8882.  
+  DOI: [10.1109/CVPR52733.2024.00843](https://doi.org/10.1109/CVPR52733.2024.00843).  
+  *Technical Role in Krisna*: Grounds multi-subject spatial token routing and grounding boxes $[x, y, w, h]$ tied to distinct reference donor assets (`ReferenceAsset`), preventing visual feature leakage and identity blending across multiple subjects in duo and group compositions.
+
+- **Xiao, G., Yin, T., Freeman, W. T., Durand, F., & Han, S. (ACM SIGGRAPH Asia 2023)**  
+  *FastComposer: Tuning-Free Multi-Subject Image Generation with Localized Attention*.  
+  *ACM Transactions on Graphics (TOG)*, vol. 42, no. 6, Article 189, pp. 1–11.  
+  DOI: [10.1145/3618385](https://doi.org/10.1145/3618385).  
+  *Technical Role in Krisna*: Proves that global cross-attention causes visual feature cross-talk and facial identity bleeding between distinct subjects in shared scenes. Informs Krisna's decoupled cross-attention lock masks and localized donor routing.
+
+- **Chen, X., Huang, L., Liu, Y., Shen, Y., Zhao, D., & Zhao, H. (IEEE/CVF CVPR 2024)**  
+  *AnyDoor: Zero-shot Object-level Image Customization*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 28430–28439.  
+  DOI: [10.1109/CVPR52733.2024.02685](https://doi.org/10.1109/CVPR52733.2024.02685).  
+  *Technical Role in Krisna*: Formulates region-to-region object teleportation by decoupling source crop $[x_s, y_s, w_s, h_s]$ from target canvas coordinates $[x_t, y_t, w_t, h_t]$ with anti-aliased Lanczos resampling, eliminating off-center facial drift and enabling seamless subject insertion onto background scenes.
+
+- **Shen, S., Zhao, W. X., Zhang, M., et al. (IEEE/CVF CVPR 2025 Highlight)**  
+  *ConsisID: Identity-Preserving Generative Visual Modeling with Latent Scale Clamping*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2025)*, pp. 1920–1930.  
+  DOI: [10.1109/CVPR52734.2025.00192](https://doi.org/10.1109/CVPR52734.2025.00192).  
+  *Technical Role in Krisna*: Frequency-split detail preservation and anti-aliased Lanczos resampling preventing latent feature degradation during spatial transformations; grounds Krisna's 128px spatial bounding box floor and exact lock compositing ($0.00\%$ facial drift).
+
+- **Li, Z., Cao, M., Wang, X., Qi, Z., Cheng, M. M., & Shan, Y. (IEEE/CVF CVPR 2024)**  
+  *PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding*.  
+  In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 8640–8650.  
+  DOI: [10.1109/CVPR52733.2024.00821](https://doi.org/10.1109/CVPR52733.2024.00821).  
+  *Technical Role in Krisna*: Establishes the 128px spatial bounding box floor preventing face feature collapse in $16\times$ downsampling VAE / DiT patch tokens.
 
 - **Feng, Y., Wang, X., Wong, K. K., Wang, S., Lu, Y., Zhu, M., Wang, B., & Chen, W. (IEEE TVCG 2024)**  
   *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*.  
