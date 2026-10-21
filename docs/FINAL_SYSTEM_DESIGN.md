@@ -339,9 +339,10 @@ The following datasets were systematically quarantined and purged from Krisna's 
 ### 7.1 Single-Model QDoRA Adaptation Architecture
 To train on a single 48GB NVIDIA RTX A6000 GPU without out-of-memory (OOM) crashes, Krisna implements **Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024)** combined with NF4 quantization:
 $$W = m \frac{W_0 + \Delta W}{\| W_0 + \Delta W \|_c} = m \frac{W_0 + \frac{\alpha}{r} B A}{\| W_0 + \frac{\alpha}{r} B A \|_c}$$
-- Base weights $W_0$ are frozen in NormalFloat4 (NF4) with double dequantization.
+- Base weights $W_0$ are frozen in NormalFloat4 (NF4) with double dequantization (or full BF16 on 48GB A6000).
 - Directional adapter matrices $B \in \mathbb{R}^{d \times r}, A \in \mathbb{R}^{r \times k}$ are trained with rank $r=64$ and scaling factor $\alpha=32$.
-- Target Modules: All linear projections in the 32 MMDiT self-attention and cross-attention blocks (`q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj`).
+- Target Modules: All 7 linear projections across attention and SwiGLU feedforward blocks in the 32 MMDiT layers (224 total modules):
+  $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
 
 ### 7.2 Exact Hyperparameters for A6000 (48GB)
 
@@ -352,42 +353,32 @@ training:
     gpu: "NVIDIA RTX A6000 (48GB GDDR6)"
     gradient_checkpointing: true
     mixed_precision: "bf16"
-    torch_compile: false # Disabled to preserve custom flow-matching hooks
   
   optimization:
     optimizer: "AdamW"
     learning_rate: 1.0e-4
-    lr_scheduler: "cosine_with_warmup"
-    warmup_ratio: 0.03
-    weight_decay: 0.01
-    adam_beta1: 0.90
-    adam_beta2: 0.999
-    adam_epsilon: 1.0e-8
-    max_grad_norm: 1.0
+    lr_scheduler: "cosine"
+    lr_warmup_steps: 200
+    seed: 0
   
   batch_and_steps:
-    per_device_train_batch_size: 1
-    gradient_accumulation_steps: 8
-    effective_batch_size: 8
-    max_train_steps: 120000
-    save_steps: 5000
-    checkpoint_limit: 3
+    train_batch_size: 4
+    gradient_accumulation_steps: 4
+    effective_batch_size: 16
+    max_train_steps: 5000 # Scaled across realized dataset passes
   
-  flow_matching:
-    timestep_sampling: "logit_normal"
-    logit_normal_mean: 0.0
-    logit_normal_std: 1.0
-    velocity_loss_weight: 1.0
-  
-  conditioning_dropout:
-    cfg_dropout_probability: 0.10 # 10% unconditional text dropout
-    wireframe_dropout_probability: 0.05 # 5% wireframe dropout for free-form fallback
+  lora:
+    rank: 64
+    lora_alpha: 32
+    use_dora: true
+    base_weights_frozen: true
+    lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
 ```
 
-### 7.3 Direct Preference Optimization (DPO) Continuation
-Following base QDoRA convergence, Krisna executes Diffusion Direct Preference Optimization (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024) using human preference pairs from **GameLabel-10K** and curated internal UI ratings:
+### 7.3 Direct Preference Optimization (DPO) Continuation (Deferred Extension)
+In accordance with **Gate 5 of FINAL_ARCHITECTURE_VERDICT.md** and **PRD §6**, preference alignment is an optional post-convergence research extension rather than a mandatory baseline training phase. Following supervised base QDoRA convergence and empirical validation of pair provenance, Krisna executes Continuous Flow-Matching DPO (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024) using human preference pairs from **GameLabel-10K** and verified UI ratings:
 $$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x_w, x_l, c)} \left[ \ln \sigma \left( \beta \left( \mathcal{L}_{\text{CFM}}^{\text{ref}}(x_l, c) - \mathcal{L}_{\text{CFM}}^\theta(x_l, c) \right) - \beta \left( \mathcal{L}_{\text{CFM}}^{\text{ref}}(x_w, c) - \mathcal{L}_{\text{CFM}}^\theta(x_w, c) \right) \right) \right]$$
-where $x_w$ is the winning UI design, $x_l$ is the losing UI design, and $\beta = 500.0$.
+where $x_w$ is the winning UI design, $x_l$ is the losing UI design, and $\beta = 2000.0$.
 
 ---
 
