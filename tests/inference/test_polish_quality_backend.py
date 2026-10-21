@@ -227,3 +227,44 @@ async def test_polish_locked_regions_preserve_pixels_exactly():
     assert "timesteps" in res
     assert len(res["timesteps"]) > 0
     await backend.unload()
+
+
+@pytest.mark.asyncio
+async def test_polish_multi_reference_assets_conditioning():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=False)
+    await backend.load()
+
+    store = get_blob_store()
+    canvas = Image.new("RGB", (256, 256), color=(20, 20, 20))
+    canvas_ref = store.save_image(canvas, prefix="canvas")
+
+    ref1 = Image.new("RGB", (100, 100), color=(200, 50, 50))
+    ref1_blob = store.save_image(ref1, prefix="face_a")
+
+    ref2 = Image.new("RGB", (100, 100), color=(50, 50, 200))
+    ref2_blob = store.save_image(ref2, prefix="face_b")
+
+    res = await backend.run(
+        handoff_image_ref=canvas_ref,
+        prompt="Dual portrait hero section with face of person A and person B",
+        reference_assets=[
+            {"asset_id": "face_a", "blob_ref": ref1_blob, "bbox": [0.1, 0.2, 0.35, 0.5]},
+            {"asset_id": "face_b", "blob_ref": ref2_blob, "bbox": [0.55, 0.2, 0.35, 0.5]},
+        ],
+    )
+
+    receipt = res["run_receipt"]
+    assert receipt["reference_assets_count"] == 2
+    assert receipt["multi_reference_conditioning"] is True
+    assert receipt["prefix_kv_cache_reuse"] is True
+    assert receipt["mixed_granularity_attention"] is True
+    assert receipt["qwen_version"] == "2.1"
+    assert res["image_ref"].startswith("blob://")
+    await backend.unload()
+

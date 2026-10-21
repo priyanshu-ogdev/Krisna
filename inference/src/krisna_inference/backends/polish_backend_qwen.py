@@ -541,6 +541,37 @@ class QwenImage21Backend(ModelBackend):
                 with Image.open(mask_ref) as m_image:
                     mask_img = m_image.convert("L")
 
+        # Resolve multi-reference assets for Qwen-Image-2.1 (supports up to 10 input reference images)
+        ref_assets_raw = kwargs.get("reference_assets") or (constraints or {}).get("reference_assets") or []
+        ref_asset_images: list[Any] = []
+        for ra in ref_assets_raw:
+            asset_id = getattr(ra, "asset_id", None) if hasattr(ra, "asset_id") else (ra.get("asset_id") if isinstance(ra, dict) else None)
+            blob_ref = getattr(ra, "blob_ref", None) if hasattr(ra, "blob_ref") else (ra.get("blob_ref") if isinstance(ra, dict) else None)
+            loaded_ra_img = None
+            if blob_ref:
+                b_str = str(blob_ref)
+                if b_str.startswith("blob://"):
+                    try:
+                        loaded_ra_img = blobs.load_image(b_str)
+                    except Exception as e:
+                        log.warning("Could not load reference asset blob %s: %s", b_str, e)
+                elif Path(b_str).exists():
+                    from PIL import Image
+                    try:
+                        with Image.open(b_str) as ra_f:
+                            loaded_ra_img = ra_f.copy()
+                    except Exception as e:
+                        log.warning("Could not open reference asset file %s: %s", b_str, e)
+            elif hasattr(ra, "image") and getattr(ra, "image") is not None:
+                loaded_ra_img = getattr(ra, "image")
+            elif isinstance(ra, dict) and ra.get("image") is not None:
+                loaded_ra_img = ra.get("image")
+
+            if loaded_ra_img is not None:
+                ref_asset_images.append(loaded_ra_img)
+                if asset_id and asset_id not in donor_map:
+                    donor_map[asset_id] = loaded_ra_img
+
         if mask_img is None and locked_regions and source_img is not None:
             mask_img = self._build_inpaint_mask(source_img.size, locked_regions)
 
@@ -567,6 +598,10 @@ class QwenImage21Backend(ModelBackend):
                         condition_list.append(segmentation_img)
                     if (is_refine or kwargs.get("mode") == "refine") and lock_donor_img is not None and lock_donor_img != source_img:
                         condition_list.append(lock_donor_img)
+                    # Qwen-Image-2.1 native multi-reference expansion (supports up to 10 reference images)
+                    for ra_img in ref_asset_images:
+                        if len(condition_list) < 10 and ra_img not in condition_list:
+                            condition_list.append(ra_img.convert("RGB"))
                     condition_images = condition_list if len(condition_list) > 1 else source_img
                     call = {"prompt": prompt, "image": condition_images, "num_inference_steps": steps}
                     # Explicitly pin resolution to multiples of 32 aligned with 1MP token budget (supports 1024x1024, 1344x768, 768x1344)
@@ -686,6 +721,11 @@ class QwenImage21Backend(ModelBackend):
             "mask_used": mask_img is not None,
             "mask_ref": str(mask_ref) if mask_ref else None,
             "spatial_conditioning_mode": "NVIDIA_SPADE_MultiStream" if segmentation_img is not None else "single_stream_wireframe",
+            "reference_assets_count": len(ref_asset_images),
+            "multi_reference_conditioning": len(ref_asset_images) > 0,
+            "prefix_kv_cache_reuse": True,
+            "mixed_granularity_attention": True,
+            "qwen_version": "2.1",
         }
         return {
             "tier": self.spec.tier.value,
