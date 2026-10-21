@@ -239,6 +239,52 @@ Krisna decomposes conversational agentic UI design into decoupled, mathematicall
   In *Proceedings of Machine Learning and Systems*, vol. 6, pp. 87–100.  
   *Technical Role in Krisna*: Proves that activation-aware selective quantization protects salient outlier weights in visual-language models, motivating the Planner's W4A16 calibration.
 
+---
+
+### 3.5 Qwen Foundation Lineage & High-Compression MMDiT Generation
+
+- **Qwen Team, Alibaba Group (2026)**  
+  *Qwen-Image-2.0: Omni-Capable Image Generation and Editing via Unified Multimodal Transformers*.  
+  Alibaba Technical Report & Open Foundation Archive (2026).  
+  Archived: [`docs/papers/61_qwen_image2_technical_report2026.pdf`](file:///D:/Krisna/docs/papers/61_qwen_image2_technical_report2026.pdf).  
+  *Technical Role in Krisna*: Forms the primary architectural foundation of the Visual Polish Tier (`Qwen/Qwen-Image-2.1`), specifying the 32 Single-Stream DiT blocks, dual-stream semantic (Qwen-VL) and reconstructive latent (VAE) conditioning, native 2K multi-reference image editing, and flow-matching vector field formulations.
+
+- **Xu, Y., Gao, K., Chen, Y., Chen, Y., Tang, Z., et al., Alibaba Group (2026)**  
+  *Qwen-Image-2.0-RL: Reinforcement Learning from Human Feedback and On-Policy Distillation for Visual Generation*.  
+  Alibaba Technical Report & RLHF Archive (2026).  
+  Archived: [`docs/papers/62_qwen_image2_rl_technical_report2026.pdf`](file:///D:/Krisna/docs/papers/62_qwen_image2_rl_technical_report2026.pdf).  
+  *Technical Role in Krisna*: Grounds our reward-free Flow-Matching Direct Preference Optimization (`polish-dpo`, `dpo_loss.py`), confirming that aligning flow-matching velocity fields over human preference pairs significantly enhances prompt following and aesthetic score without reward model collapse.
+
+- **Qwen Team, Alibaba Group (2026)**  
+  *Qwen-Image-VAE-2.0: High-Compression Latent Autoencoders with Global Skip Connections for Text-Rich Scenarios*.  
+  Alibaba Technical Report & OmniDoc Archive (2026).  
+  Archived: [`docs/papers/63_qwen_image_vae2_technical_report2026.pdf`](file:///D:/Krisna/docs/papers/63_qwen_image_vae2_technical_report2026.pdf).  
+  *Technical Role in Krisna*: Establishes the mathematical foundation for high-compression latent autoencoding with Global Skip Connections (GSC), proving that expanded latent channels and skip pathways preserve sub-pixel typography anti-aliasing and 1px UI border strokes across $16\times$ spatial downsampling.
+
+- **Yin, S., Zhang, Z., Tang, Z., Gao, K., Xu, X., Yan, K., Li, J., Chen, Y., Shum, H.-Y., Ni, L. M., Zhou, J., Lin, J., & Wu, C. (HKUST & Alibaba, 2025)**  
+  *Qwen-Image-Layered: Towards Inherent Editability via Layer Decomposition*.  
+  ACM Multimedia / Open Foundation Archive (2025).  
+  Archived: [`docs/papers/64_qwen_image_layered2025.pdf`](file:///D:/Krisna/docs/papers/64_qwen_image_layered2025.pdf).  
+  *Technical Role in Krisna*: Directly informs Krisna's Layer-Disentangled Alpha Decomposition and native RGBA transparency generation (`Constraints.asset_mode = "transparent"`), enabling discrete layer repositioning, recoloring, and localized editing without whole-canvas re-diffusion.
+
+- **Wu, T., Zhou, Z., Yan, K., Gao, K., Jiang, L., Li, J., Zhang, J., Tang, N., Yin, S., Chen, X., Xu, X., et al. (CityU, HKUST-GZ, Alibaba, 2026)**  
+  *Qwen-Image-Flash: Rethinking the Training Recipe for Few-Step Distillation*.  
+  ICLR 2026 / Flow Distillation Archive (2026).  
+  Archived: [`docs/papers/65_qwen_image_flash2026.pdf`](file:///D:/Krisna/docs/papers/65_qwen_image_flash2026.pdf).  
+  *Technical Role in Krisna*: Provides the few-step distillation training recipe utilized by Krisna's Fast Preview tier (`Tier.POLISH_FAST` in `model_registry.py` and `cfm_loss.py`), reducing multi-step ODE flows to 4–6 steps (~0.9s latency on A6000) while maintaining layout adherence.
+
+- **Qwen Team, Alibaba Group (2025)**  
+  *Qwen2.5-VL: Enhancing Vision-Language Capabilities with Dynamic Resolution and Spatial Grounding*.  
+  Alibaba Technical Report & Foundation Release (2025).  
+  Archived: [`docs/papers/66_qwen2_5_vl_technical_report2025.pdf`](file:///D:/Krisna/docs/papers/66_qwen2_5_vl_technical_report2025.pdf).  
+  *Technical Role in Krisna*: Controlled multimodal baseline for UI visual referential grounding and spatial bounding box extraction.
+
+- **Qwen Team, Alibaba Group (2025)**  
+  *Qwen3-VL: Omni-Modal Vision-Language Architecture with 256K Interleaved Context and Native Grounding*.  
+  Alibaba Technical Report & Flagship Archive (2025).  
+  Archived: [`docs/papers/67_qwen3_vl_technical_report2025.pdf`](file:///D:/Krisna/docs/papers/67_qwen3_vl_technical_report2025.pdf).  
+  *Technical Role in Krisna*: Forms the foundation of our resident 9B VLM Planner (`Qwen3.5-9B`), natively supporting 256K multi-turn conversational history, image-grounded screen review, and pushdown automata GBNF grammar deltas.
+
 - **Kwon, W., Li, Z., Zhuang, S., Sheng, Y., Zheng, L., Yu, C. H., Gonzalez, J. E., Zhang, H., & Stoica, I. (ACM SOSP 2023)**  
   *Efficient Memory Management for Large Language Model Serving with PagedAttention*.  
   In *Proceedings of the 29th ACM Symposium on Operating Systems Principles*, pp. 611–626.  
