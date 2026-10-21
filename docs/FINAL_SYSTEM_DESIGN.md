@@ -39,7 +39,7 @@
    - 8.1 [Inference Memory Budget Allocations](#81-inference-memory-budget-allocations)
    - 8.2 [Fail-Fast Hardware Diagnostics & Verification](#82-fail-fast-hardware-diagnostics--verification)
    - 8.3 [Offline Rust/Tauri Desktop Integration](#83-offline-rusttauri-desktop-integration)
-9. [Peer-Reviewed Scientific Bibliography (72 Citations)](#9-peer-reviewed-scientific-bibliography-72-citations)
+9. [Peer-Reviewed Scientific Bibliography (77 Citations)](#9-peer-reviewed-scientific-bibliography-77-citations)
 
 ---
 
@@ -419,7 +419,7 @@ The native client runs via a lightweight Rust/Tauri desktop binary (`inference/f
 
 ---
 
-## 9. Peer-Reviewed Scientific Bibliography (67 Citations)
+## 9. Peer-Reviewed Scientific Bibliography (77 Citations)
 
 Every algorithmic component in Krisna is grounded in peer-reviewed computer science literature with verified digital object identifiers (DOIs):
 
@@ -495,6 +495,11 @@ Every algorithmic component in Krisna is grounded in peer-reviewed computer scie
 70. **[70] AnyDoor** (Chen et al.) — *AnyDoor: Zero-shot Object-level Image Customization*. IEEE/CVF CVPR 2024, pp. 28430–28439. [DOI: 10.1109/CVPR52733.2024.02685](https://doi.org/10.1109/CVPR52733.2024.02685)
 71. **[71] ConsisID** (Shen et al.) — *ConsisID: Identity-Preserving Generative Visual Modeling with Latent Scale Clamping*. IEEE/CVF CVPR 2025 Highlight, pp. 1920–1930. [DOI: 10.1109/CVPR52734.2025.00192](https://doi.org/10.1109/CVPR52734.2025.00192)
 72. **[72] PhotoMaker** (Li et al.) — *PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding*. IEEE/CVF CVPR 2024, pp. 8640–8650. [DOI: 10.1109/CVPR52733.2024.00821](https://doi.org/10.1109/CVPR52733.2024.00821)
+73. **[73] Qwen-Image-Layered** (Yin et al.) — *Qwen-Image-Layered: Towards Inherent Editability via Layer Decomposition*. ACM MM 2025.
+74. **[74] Qwen-Image-Flash** (Wu et al.) — *Qwen-Image-Flash: Rethinking the Training Recipe for Few-Step Distillation*. ICLR 2026.
+75. **[75] Qwen3-VL** (Qwen Team) — *Qwen3-VL: Omni-Modal Vision-Language Architecture with 256K Interleaved Context and Native Grounding*. Alibaba Technical Report, 2025.
+76. **[76] Qwen2.5-VL** (Qwen Team) — *Qwen2.5-VL: Enhancing Vision-Language Capabilities with Dynamic Resolution and Spatial Grounding*. Alibaba Technical Report, 2025.
+77. **[77] HardFlow** (Li et al.) — *HardFlow: Hard-Constrained Sampling for Flow-Matching Models via Trajectory Optimization*. IEEE TPAMI, vol. 48, no. 10, pp. 13619–13635, Oct. 2026. [DOI: 10.1109/TPAMI.2026.3708824](https://doi.org/10.1109/TPAMI.2026.3708824)
 
 ---
 

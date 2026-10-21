@@ -59,6 +59,7 @@ docs/
 - **Volume III: Systems Serving, Latency Foundations & Verification**: See [research/PROGRESS_AND_SYSTEMS_VOLUME_3.md](research/PROGRESS_AND_SYSTEMS_VOLUME_3.md).
 - **Data-Forge Academic Literature Survey & Prior Research Attribution**: See [data-forge/LITERATURE_SURVEY.md](data-forge/LITERATURE_SURVEY.md).
 - **Canonical Peer-Reviewed Citations Matrix (Zero arXiv)**: See [citations.md](citations.md).
+- **Qwen-Image-2.1 Foundations & Finalization Roadmap**: See [research/QWEN_IMAGE_2_1_RESEARCH_FOUNDATIONS.md](research/QWEN_IMAGE_2_1_RESEARCH_FOUNDATIONS.md).
 - **Hardware Runbook (RTX A6000 48GB)**: See [training/TRAINING_RUNBOOK.md](training/TRAINING_RUNBOOK.md).
 
 

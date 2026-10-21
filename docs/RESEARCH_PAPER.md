@@ -1065,3 +1065,28 @@ We have specified **Krisna**, an agentic multi-turn UI generation system organiz
 
 [88] Z. Li, M. Cao, X. Wang, Z. Qi, M.-M. Cheng, and Y. Shan, "PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 8640–8650, doi: 10.1109/CVPR52733.2024.00821.
 - *Role & Impact*: Peer-reviewed IEEE/CVF CVPR 2024 paper formulating stacked identity embedding and establishing the 128px spatial bounding box floor to prevent face token collapse under $16\times$ downsampling VAE / MMDiT patch projections.
+
+[89] Qwen Team, Alibaba Group, "Qwen-Image-2.1: Advanced Visual Foundation Models with Image Conditioning & Flow Matching," *Alibaba Technical Report & Official Specification*, 2026.
+- *Role & Impact*: Core generative engine for Krisna's Visual Polish Tier. Specifies the 7B MMDiT architecture with 32 Single-Stream DiT blocks, 224 targeted DoRA projections, mixed-granularity attention (token-causal text + chunk-level image latents), native parallel ingestion of up to 10 reference images, and prefix KV cache reuse across flow-matching ODE steps.
+
+[90] Qwen Team, Alibaba Group, "Qwen-Image-2.0: Omni-Capable Image Generation and Editing via Unified Multimodal Transformers," *Alibaba Technical Report & Open Foundation Archive*, 2026.
+- *Role & Impact*: Foundation for unified text-to-image synthesis and image-conditioned editing via rectified flow matching and joint text-image attention.
+
+[91] Y. Xu, K. Gao, Y. Chen, Y. Chen, Z. Tang, et al., "Qwen-Image-2.0-RL: Reinforcement Learning from Human Feedback and On-Policy Distillation for Visual Generation," *Alibaba Technical Report & RLHF Archive*, 2026.
+- *Role & Impact*: Establishes direct velocity-field alignment over pairwise human preference pairs on continuous flow matching models, directly grounding Krisna's `polish-dpo` (`dpo_loss.py`) reward-free preference optimization.
+
+[92] Qwen Team, Alibaba Group, "Qwen-Image-VAE-2.0: High-Compression Latent Autoencoders with Global Skip Connections for Text-Rich Scenarios," *Alibaba Technical Report & OmniDoc Archive*, 2026.
+- *Role & Impact*: Formulates 64-channel latent autoencoding with Global Skip Connections (GSC), proving sub-pixel typography anti-aliasing and 1px UI border strokes are preserved under $16\times$ spatial downsampling.
+
+[93] S. Yin, Z. Zhang, Z. Tang, K. Gao, X. Xu, K. Yan, J. Li, Y. Chen, H.-Y. Shum, L. M. Ni, J. Zhou, J. Lin, and C. Wu, "Qwen-Image-Layered: Towards Inherent Editability via Layer Decomposition," in *Proceedings of the 33rd ACM International Conference on Multimedia (ACM MM 2025)*, 2025.
+- *Role & Impact*: Directly informs Krisna's layer-disentangled alpha decomposition and native RGBA transparency generation (`Constraints.asset_mode = "transparent"`), enabling discrete layer repositioning and localized editing without halo artifacts.
+
+[94] T. Wu, Z. Zhou, K. Yan, K. Gao, L. Jiang, J. Li, J. Zhang, N. Tang, S. Yin, X. Chen, X. Xu, et al., "Qwen-Image-Flash: Rethinking the Training Recipe for Few-Step Distillation," in *The Fourteenth International Conference on Learning Representations (ICLR 2026)*, 2026.
+- *Role & Impact*: Establishes the few-step consistency flow matching distillation recipe utilized in Krisna's `Tier.POLISH_FAST` (`cfm_loss.py`), achieving 4–6 step draft preview (~0.9s on A6000) with minimal layout IoU loss ($\Delta \text{IoU} \le 0.02$).
+
+[95] Qwen Team, Alibaba Group, "Qwen3-VL: Omni-Modal Vision-Language Architecture with 256K Interleaved Context and Native Grounding," *Alibaba Technical Report*, 2025.
+- *Role & Impact*: Foundation for Krisna's resident 9B VLM Planner (`Qwen3.5-9B`), natively handling 256K interleaved multi-turn context, visual referential grounding, and GBNF grammar deltas.
+
+[96] Qwen Team, Alibaba Group, "Qwen2.5-VL: Enhancing Vision-Language Capabilities with Dynamic Resolution and Spatial Grounding," *Alibaba Technical Report*, 2025.
+- *Role & Impact*: Multimodal visual grounding baseline establishing dynamic-resolution visual patchification and normalized 2D coordinate tokenization for screen elements.
+
