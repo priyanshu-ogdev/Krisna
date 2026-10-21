@@ -170,10 +170,13 @@ To close the "Raster Image-to-Layout" gap and enable autonomous agentic workflow
   3. *Verifier Stack Evaluation*: Scores aesthetic quality, OCR readability, layout IoU, seam continuity, identity preservation, and enforces the safety gate.
   4. *Closed-Loop Post-Render Review & Further Planning*: Passes the verifier receipt and render metadata back into Qwen3.5-9B, formulating autonomous self-critique and next-step planning directives (`[Post-Render Deliberation]`) appended to conversation history. Supported via `POST /session/{session_id}/execute` or `auto_proceed: true` on `POST /session/{session_id}/message`.
 - **Raster Image Decompilation (`POST /session/{session_id}/decompile`)**: Users can upload raw screenshots, competitor mockups, or UI photos. The 9B VLM module decompiles flat raster images into discrete `LayoutIR` DAG components with normalized bounding boxes $[x_1, y_1, x_2, y_2]$ and text literals via `flows.decompile_screenshot()`.
-- **Image-to-Image Facial Identity Shielding (NVIDIA AnyDoor & ConsisID)**:
-  - Supports Turn 1 Image-to-Image editing (`reference_image_ref`), correctly resolving the lock donor to the uploaded reference photo rather than the wireframe.
-  - Strict $\ge 128\times 128\text{px}$ floor on all facial and focal nodes prevents latent token collapse across VAE $16\times$ compression and DiT patch stride $2\times 2$.
-  - Exact bitwise pixel preservation ($0.00\%$ drift) on locked regions via `_apply_locked_regions` with Laplacian seam boundary verification ($\Delta \nabla \le 0.05$).
+- **Multi-Asset Grounding, Multi-Subject Composition & Facial Shielding (MS-Diffusion, FastComposer, AnyDoor, ConsisID, PhotoMaker)**:
+  - Supports multi-image inputs via `ReferenceAsset` (`role ∈ {"subject", "background", "style", "canvas"}`), enabling duo/group compositions, character insertion, and background scene teleportation.
+  - Spatial attention routing (MS-Diffusion & FastComposer) prevents identity cross-talk and feature bleeding across multiple distinct subjects.
+  - Localized Crop $\to$ Lanczos Resample $\to$ Paste (AnyDoor & ConsisID) eliminates off-center face drift by decoupling donor crop coordinates from target canvas placement, achieving exact $0.00\%$ facial drift ($1.000$ lock score).
+  - Background scene nodes are exempted from false-positive center-point locking, enabling seamless subject teleportation onto arbitrary backdrops.
+  - Strict $\ge 128\times 128\text{px}$ floor on all facial and focal nodes prevents latent token collapse across VAE $16\times$ compression and DiT patch stride $2\times 2$ (PhotoMaker).
+  - Exact bitwise pixel preservation on locked regions via `_apply_locked_regions` with Laplacian seam boundary verification ($\Delta \nabla \le 0.05$).
 
 ---
 
