@@ -52,6 +52,11 @@ class ModelSpec:
                                   # when this spec comes from get_registry(low_vram=True)
                                   # — 0.0 in the default (full-VRAM) registry, where
                                   # nothing is offloaded and RAMLedger is a no-op.
+    is_trainable: bool = False   # True only for tiers with active adapter training (Polish)
+
+    @property
+    def is_frozen(self) -> bool:
+        return not self.is_trainable
 
 
 # VRAM figures are declared budget estimates (4-bit/NF4 as specified in §6),
@@ -62,23 +67,28 @@ REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=4.2,
         quantization="Q4_K_M GGUF via llama.cpp (calibrated Gated DeltaNet attention)",
         always_resident=True,
+        is_trainable=False,
     ),
     Tier.SKETCH: ModelSpec(
         tier=Tier.SKETCH, name="Krisna structured Layout IR",
         vram_gb=0.2, quantization="deterministic renderer; no learned weights",
         always_resident=True,
+        is_trainable=False,
     ),
     Tier.POLISH_FAST: ModelSpec(
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
         quantization="bf16 (4-8 step Consistency Flow Matching distillation)",
+        is_trainable=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
         quantization="bf16 (DreamBooth LoRA adapter)",
+        is_trainable=True,
     ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
         quantization="bf16 (high-fidelity 40-step sampling)",
+        is_trainable=False,
     ),
 }
 
@@ -109,16 +119,19 @@ LOW_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast",
         vram_gb=4.5, ram_gb=6.0,
         quantization="4-bit NF4 + diffusers enable_model_cpu_offload()",
+        is_trainable=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1",
         vram_gb=8.0, ram_gb=8.0,
         quantization="bf16 + diffusers enable_model_cpu_offload()",
+        is_trainable=True,
     ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1",
         vram_gb=10.0, ram_gb=10.0,
         quantization="bf16 + diffusers enable_model_cpu_offload()",
+        is_trainable=False,
     ),
 }
 
@@ -135,16 +148,19 @@ HIGH_VRAM_REGISTRY: dict[Tier, ModelSpec] = {
         tier=Tier.POLISH_FAST, name="Qwen-Image-2.1 CFM Fast", vram_gb=10.0,
         quantization="bf16 (4-8 step Consistency Flow Matching, resident)",
         always_resident=True,
+        is_trainable=True,
     ),
     Tier.POLISH_DEFAULT: ModelSpec(
         tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=12.0,
         quantization="bf16 (DreamBooth/DoRA adapter, resident)",
         always_resident=True,
+        is_trainable=True,
     ),
     Tier.POLISH_QUALITY: ModelSpec(
         tier=Tier.POLISH_QUALITY, name="Qwen-Image-2.1", vram_gb=16.0,
         quantization="bf16 (high-fidelity 40-step sampling, resident)",
         always_resident=True,
+        is_trainable=False,
     ),
 }
 
@@ -178,6 +194,14 @@ class ModelBackend(abc.ABC):
     @property
     def is_loaded(self) -> bool:
         return self._loaded
+
+    @property
+    def is_frozen(self) -> bool:
+        return getattr(self.spec, "is_frozen", True)
+
+    @property
+    def is_trainable(self) -> bool:
+        return getattr(self.spec, "is_trainable", False)
 
     @abc.abstractmethod
     async def load(self) -> None:

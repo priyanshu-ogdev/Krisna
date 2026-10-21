@@ -67,6 +67,8 @@ class PlannerBackendLlama(ModelBackend):
     """High-performance, frozen Planner backend running under llama.cpp."""
 
     runtime_name = "llama.cpp"
+    is_trainable: bool = False
+    is_frozen: bool = True
 
     def __init__(
         self,

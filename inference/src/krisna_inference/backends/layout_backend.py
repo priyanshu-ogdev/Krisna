@@ -40,6 +40,9 @@ class LayoutBackend(ModelBackend):
     The experimental LayoutFlow neural ODE ablation has been deprecated and removed.
     """
 
+    is_trainable: bool = False
+    is_frozen: bool = True
+
     def __init__(self, spec, output_dir: str | None = None, engine_mode: str | None = None):
         super().__init__(spec)
         self.output_dir = Path(output_dir or os.environ.get("KRISNA_LAYOUT_OUTPUT_DIR", "models/sketch/layout_runs"))
