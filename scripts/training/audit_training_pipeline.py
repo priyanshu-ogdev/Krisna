@@ -132,10 +132,13 @@ def collect() -> dict[str, Any]:
         )
 
     report["verdict"] = {
+        "canonical_architecture": "Single-Trainable-Tier (PRD §6 & FINAL_ARCHITECTURE_VERDICT.md)",
         "active_trainable_models": [
-            "Qwen/Qwen-Image-2.1 Supervised LoRA/DoRA (Phase 1)",
-            "Qwen/Qwen-Image-2.1 Flow-Matching DPO (Phase 3)",
-            "Qwen/Qwen-Image-2.1 Consistency Flow Matching Distillation (Phase 4)",
+            "Qwen/Qwen-Image-2.1 Supervised LoRA/DoRA (polish-default: Primary Production Target)",
+        ],
+        "deferred_research_extensions": [
+            "Qwen/Qwen-Image-2.1 Flow-Matching DPO (polish-dpo: Deferred post-convergence alignment)",
+            "Qwen/Qwen-Image-2.1 Consistency Flow Matching Distillation (polish-cfm: Experimental fast preview)",
         ],
         "planner_trained": False,
         "learned_sketch_trained": False,
@@ -162,8 +165,11 @@ def main() -> int:
 
     print("Krisna training pipeline audit (read-only)")
     print(f"Repository: {report['repository']}")
-    print("Active trainable tiers:")
+    print("Primary trainable tier (PRD §6 Single-Trainable-Tier):")
     for m in report['verdict']['active_trainable_models']:
+        print(f"  - {m}")
+    print("Deferred / Experimental research extensions:")
+    for m in report['verdict'].get('deferred_research_extensions', []):
         print(f"  - {m}")
     print(f"Qwen trainer contract present: {report['source_entry_points']['qwen_trainer_contract']}")
     print(f"DPO trainer present: {report['source_entry_points']['dpo_trainer']}")

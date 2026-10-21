@@ -38,39 +38,40 @@ Krisna establishes a decoupled, mathematically bounded agentic design architectu
 
 ---
 
-## 2. Visual Polish Tier (`Qwen-Image-2.1`) Training Pipeline
+## 2. Visual Polish Tier (`Qwen-Image-2.1`) Training Architecture
 
-The Polish Tier transforms lossless wireframe condition images and natural language instructions into photorealistic, production-grade graphical user interfaces. Training proceeds through three disciplined stages:
+In strict accordance with **PRD §6 ("Single-Trainable-Tier")** and **FINAL_ARCHITECTURE_VERDICT.md (§1, §2)**, Krisna does **NOT** require a complex 4-phase sequential training regimen. There is **EXACTLY ONE canonical production training target**: the **Supervised Polish LoRA/DoRA adapter (`polish-default`)**.
+
+The other modules in `training/src/krisna_training/polish/` represent **offline scientific ablations** and **optional/deferred post-convergence research branches**:
 
 ```text
-┌────────────────────────────────────────────────────────────────────────┐
-│                        POLISH TRAINING PHASES                          │
-├────────────────────────────────────────────────────────────────────────┤
-│ Phase 1: Supervised QDoRA Base Adaptation                              │
-│   (Wireframe PNG + Target Screenshot + Dual VLM/Human Caption)          │
-│   ├── Architecture: Qwen-Image-2.1 (7B Multimodal Diffusion Transformer)│
-│   ├── Target Sublayers: 7 linear projections across attention and MLP   │
-│   ├── Hardware Profiles: A6000 (48GB BF16) & Consumer (12GB NF4)       │
-│   └── Artifact: checkpoints/qwen_image21_lora/                          │
-│                                                                        │
-│ Phase 2: Ablation Experiments                                          │
-│   ├── Ablation A: Attention-only vs All-linear (MLP) LoRA               │
-│   ├── Ablation B: DoRA magnitude-direction vs standard LoRA            │
-│   ├── Ablation C: No wireframe conditioning (Text-only baseline)       │
-│   └── Ablation D: No RAG critique conditioning                          │
-│                                                                        │
-│ Phase 3: Flow-Matching Direct Preference Optimization (DPO)            │
-│   (2,200 Human & Verifier Preference Pairs from preference_pairs.db)    │
-│   ├── Loss: Velocity error margin optimization (beta=2000)             │
-│   ├── Regularization: Optimal transport anchor loss (weight=0.1)       │
-│   └── Artifact: checkpoints/polish_qwen_image21_dpo/                   │
-│                                                                        │
-│ Phase 4: Consistency Flow Matching (CFM) Distillation (Fast Preview)   │
-│   (Few-Step Student Network distilled from Stage 1/3 Teacher)          │
-│   ├── Loss: Pseudo-Huber consistency trajectory error (c=0.001)        │
-│   ├── Latency: 4-6 ODE steps (~0.9s on A6000, ~2.5s on RTX 4080)       │
-│   └── Artifact: checkpoints/qwen_image21_cfm_fast/                     │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                      CANONICAL PRODUCTION TRAINING TARGET                              │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ Primary Target: Supervised QDoRA Base Adaptation (`polish-default`)                   │
+│   (Wireframe PNG + Target Screenshot + Dual VLM/Human Caption)                         │
+│   ├── Architecture: Qwen-Image-2.1 (7B Multimodal Diffusion Transformer)               │
+│   ├── Supervision: Flow-matching velocity MSE on paired wireframe -> screenshot data  │
+│   ├── Target Sublayers: 7 linear projections across attention and MLP                  │
+│   ├── Hardware Profiles: A6000 (48GB BF16) & Consumer (12GB NF4)                      │
+│   └── Artifact: checkpoints/qwen_image21_lora/                                         │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│                OPTIONAL / DEFERRED POST-CONVERGENCE RESEARCH BRANCHES                  │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ Benchmark Suite: Ablation Evaluation Matrix (`ablation_runner.py`)                     │
+│   ├── Status: Scientific benchmark evaluation (NOT a sequential training phase)        │
+│   └── Compares: Standard LoRA vs DoRA, MLP layers, +/- wireframe, +/- RAG              │
+│                                                                                        │
+│ Extension A: Flow-Matching Direct Preference Optimization (`polish-dpo`)              │
+│   ├── Status: DEFERRED (Gate 5 in FINAL_ARCHITECTURE_VERDICT.md; PRD §6 optional)      │
+│   ├── Data: 2,200 Human & Verifier Preference Pairs from preference_pairs.db           │
+│   └── Formulation: Velocity error margin optimization (beta=2000, anchor=0.1)          │
+│                                                                                        │
+│ Extension B: Consistency Flow Matching (CFM) Distillation (`polish-cfm`)               │
+│   ├── Status: EXPERIMENTAL FAST PREVIEW (Few-step student distillation)                │
+│   ├── Goal: Distill 30 ODE steps down to 4-6 steps (~0.9s on A6000) for preview UI     │
+│   └── Formulation: Pseudo-Huber consistency trajectory error (Song et al., ICLR 2024)  │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -116,11 +117,11 @@ training/
 ├── README.md                                 # This architectural guide
 ├── pyproject.toml                            # Build & dependency metadata
 ├── configs/
-│   ├── polish_qwen_image21_lora.yaml         # Stage 1: Full-precision A6000 (48GB) profile
-│   ├── polish_qwen_image21_dpo.yaml          # Stage 3: Flow-Matching DPO profile
-│   ├── cfm_distill_qwen_image21.yaml         # Stage 4: Consistency distillation profile
+│   ├── polish_qwen_image21_lora.yaml         # Primary Production: Full-precision A6000 (48GB) profile
+│   ├── polish_qwen_image21_dpo.yaml          # Deferred Extension: Flow-Matching DPO profile
+│   ├── cfm_distill_qwen_image21.yaml         # Fast Preview Extension: Consistency distillation profile
 │   └── ablations/
-│       ├── polish_qwen_qdora_12gb.yaml       # Stage 1: Consumer 12GB NF4 profile
+│       ├── polish_qwen_qdora_12gb.yaml       # Primary Production: Consumer 12GB NF4 profile
 │       ├── polish_qwen_adalora_48gb.yaml     # Adaptive rank allocation profile
 │       ├── ablation_a_lora_attn.yaml         # Ablation A: Attention-only LoRA
 │       ├── ablation_b_dora_attn.yaml         # Ablation B: Attention-only DoRA
@@ -131,10 +132,10 @@ training/
     ├── polish/                               # Active Polish Tier training modules
     │   ├── prepare_dataset.py                # Pair dataset preparation & manifest builder
     │   ├── qwen_trainer_contract.py          # Pinned Diffusers trainer contract
-    │   ├── train_dpo.py                      # Phase 3 Flow-Matching DPO trainer
+    │   ├── train_dpo.py                      # Flow-Matching DPO trainer (deferred extension)
     │   ├── dpo_loss.py                       # DPO loss formulations & margin scoring
-    │   ├── cfm_loss.py                       # Phase 4 Consistency Flow Matching loss
-    │   └── ablation_runner.py                # Automated ablation orchestration
+    │   ├── cfm_loss.py                       # Consistency Flow Matching distillation loss
+    │   └── ablation_runner.py                # Automated ablation benchmark runner
     ├── data_forge_bridge/                    # Data-Forge export sync adapters
     │   ├── sync_polish_default.py            # Polish pair synchronization
     │   ├── sync_dpo_pairs.py                 # Preference pair SQLite synchronization
@@ -163,7 +164,7 @@ Reports active model IDs, source contracts, realized dataset pair counts, and ha
 python scripts/data-forge/sync_to_training.py --data-root D:\data_krisna
 ```
 
-### 6.3 Stage 1: Launch Supervised Polish LoRA / DoRA Training
+### 6.3 Primary Production Target: Launch Supervised Polish LoRA / DoRA Training
 ```bash
 # Linux / WSL (Accelerate + Diffusers)
 ./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml
@@ -172,7 +173,7 @@ python scripts/data-forge/sync_to_training.py --data-root D:\data_krisna
 powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-default
 ```
 
-### 6.4 Stage 2: Launch Flow-Matching DPO Preference Training
+### 6.4 Deferred Research Extension: Launch Flow-Matching DPO Preference Training
 ```bash
 # Linux / WSL
 ./scripts/training/train_polish_dpo.sh training/configs/polish_qwen_image21_dpo.yaml
@@ -181,13 +182,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier 
 powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-dpo
 ```
 
-### 6.5 Stage 3: Launch Consistency Flow Matching Distillation (Fast Preview)
+### 6.5 Fast Preview Research Extension: Launch Consistency Flow Matching Distillation
 ```bash
 # Linux / WSL
 ./scripts/training/train_polish_fast_preview.sh training/configs/cfm_distill_qwen_image21.yaml
 
 # Windows
 powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-cfm
+```
+
+### 6.6 Run Empirical Ablation Benchmark Matrix
+```bash
+python -m krisna_training.polish.ablation_runner --all
 ```
 
 ---
