@@ -462,8 +462,17 @@ class PlannerBackendLlama(ModelBackend):
 
         if reference_assets:
             for idx, asset in enumerate(reference_assets):
-                blob_ref = getattr(asset, "blob_ref", None) or (asset.get("blob_ref") if isinstance(asset, dict) else None)
-                asset_id = getattr(asset, "id", None) or (asset.get("id") if isinstance(asset, dict) else f"asset_{idx}")
+                if isinstance(asset, (str, Path)):
+                    blob_ref = str(asset)
+                    asset_id = Path(str(asset)).stem if not str(asset).startswith("blob://") else f"asset_{idx}"
+                else:
+                    blob_ref = getattr(asset, "blob_ref", None) or (asset.get("blob_ref") if isinstance(asset, dict) else None)
+                    asset_id = (
+                        getattr(asset, "asset_id", None)
+                        or getattr(asset, "id", None)
+                        or (asset.get("asset_id") or asset.get("id") if isinstance(asset, dict) else None)
+                        or f"asset_{idx}"
+                    )
                 if blob_ref and blob_ref not in seen:
                     seen.add(blob_ref)
                     try:

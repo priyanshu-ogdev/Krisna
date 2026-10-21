@@ -65,6 +65,7 @@ class VerifierStack:
         expected_texts: list[str] | None = None,
         locked_regions: list[dict] | None = None,
         lock_donor_image=None,
+        donor_map: dict | None = None,
     ) -> dict:
         """Returns a dict with exactly design_state.VerifierScores' fields:
         clip_alignment, ocr_readability, layout_iou, aesthetic,
@@ -83,7 +84,7 @@ class VerifierStack:
             ),
             ("aesthetic", lambda: self.aesthetic.score(polished_image)),
             ("handoff_consistency", lambda: self._handoff_score(polished_image, sketch_image)),
-            ("lock_preservation", lambda: self.lock_preservation.score(source_donor, polished_image, locked_regions)),
+            ("lock_preservation", lambda: self.lock_preservation.score(source_donor, polished_image, locked_regions, donor_map=donor_map)),
             ("seam_continuity", lambda: self.lock_preservation.seam_score(polished_image, locked_regions)),
         ):
             try:
@@ -104,6 +105,7 @@ class VerifierStack:
         locked_regions: list[dict] | None = None,
         safety_score: float | None = None,
         lock_donor_image=None,
+        donor_map: dict | None = None,
     ) -> dict:
         """Return a reproducible multi-metric evaluation receipt.
 
@@ -120,6 +122,7 @@ class VerifierStack:
             expected_texts=expected_texts,
             locked_regions=locked_regions,
             lock_donor_image=lock_donor_image,
+            donor_map=donor_map,
         )
         available = {name: value for name, value in metrics.items() if value is not None}
         missing = sorted(set(EVALUATION_TARGETS) - set(available))

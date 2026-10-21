@@ -69,31 +69,33 @@ class LockPreservationVerifier:
             src_asset_id = region.get("source_asset_id") if isinstance(region, dict) else getattr(region, "source_asset_id", None)
             src_crop = region.get("source_crop_bbox") if isinstance(region, dict) else getattr(region, "source_crop_bbox", None)
 
-            if src_crop and len(src_crop) == 4:
-                donor = None
-                if donor_map and src_asset_id and src_asset_id in donor_map:
-                    donor = donor_map[src_asset_id]
-                elif donor_map and "default" in donor_map:
-                    donor = donor_map["default"]
-                elif donor_map and len(donor_map) == 1:
-                    donor = next(iter(donor_map.values()))
-                elif source_image is not None:
-                    donor = source_image
+            donor = None
+            if donor_map and src_asset_id and src_asset_id in donor_map:
+                donor = donor_map[src_asset_id]
+            elif donor_map and "default" in donor_map and src_crop:
+                donor = donor_map["default"]
+            elif donor_map and len(donor_map) == 1 and src_crop:
+                donor = next(iter(donor_map.values()))
+            elif (src_crop and len(src_crop) == 4) and source_image is not None:
+                donor = source_image
 
-                if donor is not None:
-                    dw, dh = donor.size
+            if donor is not None:
+                dw, dh = donor.size
+                if src_crop and len(src_crop) == 4:
                     sbx, sby, sbw, sbh = [float(v) for v in src_crop]
-                    sx0 = max(0, min(dw - 1, round(sbx * dw if sbx <= 1.0 else sbx)))
-                    sy0 = max(0, min(dh - 1, round(sby * dh if sby <= 1.0 else sby)))
-                    sx1 = max(sx0 + 1, min(dw, round((sbx + sbw) * dw if sbx <= 1.0 and sbw <= 1.0 else sbx + sbw)))
-                    sy1 = max(sy0 + 1, min(dh, round((sby + sbh) * dh if sby <= 1.0 and sbh <= 1.0 else sby + sbh)))
+                else:
+                    sbx, sby, sbw, sbh = (0.0, 0.0, 1.0, 1.0)
+                sx0 = max(0, min(dw - 1, round(sbx * dw if sbx <= 1.0 else sbx)))
+                sy0 = max(0, min(dh - 1, round(sby * dh if sby <= 1.0 else sby)))
+                sx1 = max(sx0 + 1, min(dw, round((sbx + sbw) * dw if sbx <= 1.0 and sbw <= 1.0 else sbx + sbw)))
+                sy1 = max(sy0 + 1, min(dh, round((sby + sbh) * dh if sby <= 1.0 and sbh <= 1.0 else sby + sbh)))
 
-                    cropped = donor.crop((sx0, sy0, sx1, sy1)).convert("RGB")
-                    resampled = cropped.resize((x1 - x0, y1 - y0), Image.Resampling.LANCZOS)
-                    patch_arr = np.asarray(resampled, dtype=np.float32)
-                    diff = float(np.abs(patch_arr - rendered_arr[y0:y1, x0:x1]).mean())
-                    diffs.append(diff)
-                    continue
+                cropped = donor.crop((sx0, sy0, sx1, sy1)).convert("RGB")
+                resampled = cropped.resize((x1 - x0, y1 - y0), Image.Resampling.LANCZOS)
+                patch_arr = np.asarray(resampled, dtype=np.float32)
+                diff = float(np.abs(patch_arr - rendered_arr[y0:y1, x0:x1]).mean())
+                diffs.append(diff)
+                continue
 
             if source_arr is not None:
                 diff = float(np.abs(source_arr[y0:y1, x0:x1] - rendered_arr[y0:y1, x0:x1]).mean())

@@ -90,3 +90,33 @@ def test_store_wal_mode_and_concurrency(tmp_path):
         assert mode.lower() == "wal"
     finally:
         store.close()
+
+
+def test_planner_reference_assets_payload_extraction(tmp_path):
+    from pathlib import Path
+    from PIL import Image
+    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+
+    img1_path = tmp_path / "subject1.png"
+    Image.new("RGB", (32, 32), color=(255, 0, 0)).save(img1_path)
+
+    img2_path = tmp_path / "subject2.png"
+    Image.new("RGB", (32, 32), color=(0, 255, 0)).save(img2_path)
+
+    # Mixed inputs: raw Path, raw string, and dict with asset_id
+    ref_assets = [
+        img1_path,
+        str(img2_path),
+        {"asset_id": "custom_logo", "blob_ref": str(img1_path)},
+    ]
+
+    payloads = PlannerBackendLlama._load_multi_image_payloads(
+        reference_assets=ref_assets
+    )
+
+    # img1_path is in seen set after first load, so unique paths are loaded
+    assert len(payloads) == 2
+    asset_ids = [item[2] for item in payloads]
+    assert "subject1" in asset_ids
+    assert "subject2" in asset_ids
+

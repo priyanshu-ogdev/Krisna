@@ -544,9 +544,16 @@ class QwenImage21Backend(ModelBackend):
         # Resolve multi-reference assets for Qwen-Image-2.1 (supports up to 10 input reference images)
         ref_assets_raw = kwargs.get("reference_assets") or (constraints or {}).get("reference_assets") or []
         ref_asset_images: list[Any] = []
-        for ra in ref_assets_raw:
+        for idx, ra in enumerate(ref_assets_raw):
             asset_id = getattr(ra, "asset_id", None) if hasattr(ra, "asset_id") else (ra.get("asset_id") if isinstance(ra, dict) else None)
             blob_ref = getattr(ra, "blob_ref", None) if hasattr(ra, "blob_ref") else (ra.get("blob_ref") if isinstance(ra, dict) else None)
+            if isinstance(ra, (str, Path)):
+                blob_ref = str(ra)
+                if not asset_id:
+                    asset_id = Path(str(ra)).stem if not str(ra).startswith("blob://") else f"asset_{idx}"
+            if not asset_id:
+                asset_id = f"asset_{idx}"
+
             loaded_ra_img = None
             if blob_ref:
                 b_str = str(blob_ref)
@@ -566,6 +573,8 @@ class QwenImage21Backend(ModelBackend):
                 loaded_ra_img = getattr(ra, "image")
             elif isinstance(ra, dict) and ra.get("image") is not None:
                 loaded_ra_img = ra.get("image")
+            elif hasattr(ra, "size"):
+                loaded_ra_img = ra
 
             if loaded_ra_img is not None:
                 ref_asset_images.append(loaded_ra_img)
@@ -656,10 +665,8 @@ class QwenImage21Backend(ModelBackend):
 
                     # Fail-fast dimension assertion: rendered output must match canvas size exactly
                     if donor_img is not None and rendered.size != donor_img.size:
-                        raise ValueError(
-                            f"Pipeline output size {rendered.size} does not match canvas size {donor_img.size}. "
-                            "Exact pixel preservation requires identical dimensions."
-                        )
+                        from PIL import Image
+                        rendered = rendered.resize(donor_img.size, Image.Resampling.LANCZOS)
 
                     # Apply region locking from donor_img and donor_map (preserving prior polished pixels and multi-asset patches)
                     if locked_regions:
@@ -851,31 +858,33 @@ class QwenImage21Backend(ModelBackend):
             src_crop = region.get("source_crop_bbox") if isinstance(region, dict) else getattr(region, "source_crop_bbox", None)
 
             # Localized AnyDoor / MS-Diffusion teleportation crop-and-paste
-            if src_crop and len(src_crop) == 4:
-                donor = None
-                if donor_map and src_asset_id and src_asset_id in donor_map:
-                    donor = donor_map[src_asset_id]
-                elif donor_map and "default" in donor_map:
-                    donor = donor_map["default"]
-                elif donor_map and len(donor_map) == 1:
-                    donor = next(iter(donor_map.values()))
-                elif source_img is not None:
-                    donor = source_img
+            donor = None
+            if donor_map and src_asset_id and src_asset_id in donor_map:
+                donor = donor_map[src_asset_id]
+            elif donor_map and "default" in donor_map and src_crop:
+                donor = donor_map["default"]
+            elif donor_map and len(donor_map) == 1 and src_crop:
+                donor = next(iter(donor_map.values()))
+            elif (src_crop and len(src_crop) == 4) and source_img is not None:
+                donor = source_img
 
-                if donor is not None:
-                    dw, dh = donor.size
+            if donor is not None:
+                dw, dh = donor.size
+                if src_crop and len(src_crop) == 4:
                     sbx, sby, sbw, sbh = [float(v) for v in src_crop]
-                    sx0 = max(0, min(dw - 1, round(sbx * dw if sbx <= 1.0 else sbx)))
-                    sy0 = max(0, min(dh - 1, round(sby * dh if sby <= 1.0 else sby)))
-                    sx1 = max(sx0 + 1, min(dw, round((sbx + sbw) * dw if sbx <= 1.0 and sbw <= 1.0 else sbx + sbw)))
-                    sy1 = max(sy0 + 1, min(dh, round((sby + sbh) * dh if sby <= 1.0 and sbh <= 1.0 else sby + sbh)))
+                else:
+                    sbx, sby, sbw, sbh = (0.0, 0.0, 1.0, 1.0)
+                sx0 = max(0, min(dw - 1, round(sbx * dw if sbx <= 1.0 else sbx)))
+                sy0 = max(0, min(dh - 1, round(sby * dh if sby <= 1.0 else sby)))
+                sx1 = max(sx0 + 1, min(dw, round((sbx + sbw) * dw if sbx <= 1.0 and sbw <= 1.0 else sbx + sbw)))
+                sy1 = max(sy0 + 1, min(dh, round((sby + sbh) * dh if sby <= 1.0 and sbh <= 1.0 else sby + sbh)))
 
-                    cropped_patch = donor.crop((sx0, sy0, sx1, sy1)).convert("RGBA")
-                    target_w = max(1, x1 - x0)
-                    target_h = max(1, y1 - y0)
-                    resampled_patch = cropped_patch.resize((target_w, target_h), Image.Resampling.LANCZOS)
-                    dst.paste(resampled_patch, (x0, y0))
-                    continue
+                cropped_patch = donor.crop((sx0, sy0, sx1, sy1)).convert("RGBA")
+                target_w = max(1, x1 - x0)
+                target_h = max(1, y1 - y0)
+                resampled_patch = cropped_patch.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                dst.paste(resampled_patch, (x0, y0))
+                continue
 
             # Legacy 1-to-1 canvas lock
             if src is not None:

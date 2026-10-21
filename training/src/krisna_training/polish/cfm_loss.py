@@ -128,14 +128,17 @@ def consistency_distillation_loss(
         v_teacher = teacher_v_fn(x_next, t_next)
         x_curr_teacher = consistency_flow_step(x_next, t_next, t_curr, v_teacher)
 
+    # Dynamic timestep broadcasting matching latent tensor dimensions (4D spatial or 3D sequence)
+    t_shape = (bsz,) + (1,) * (clean_latent.ndim - 1)
+
     # Student evaluates at (x_next, t_next)
-    t_next_tensor = torch.full((bsz, 1, 1, 1), t_next, device=device, dtype=dtype)
+    t_next_tensor = torch.full(t_shape, t_next, device=device, dtype=dtype)
     c_skip_next, c_out_next = consistency_scaling(t_next_tensor)
     f_student = c_skip_next * x_next + c_out_next * student_net(x_next, t_next_tensor)
 
     # Target EMA network evaluates at (x_curr_teacher, t_curr)
     with torch.no_grad():
-        t_curr_tensor = torch.full((bsz, 1, 1, 1), t_curr, device=device, dtype=dtype)
+        t_curr_tensor = torch.full(t_shape, t_curr, device=device, dtype=dtype)
         c_skip_curr, c_out_curr = consistency_scaling(t_curr_tensor)
         f_target = c_skip_curr * x_curr_teacher + c_out_curr * target_net(x_curr_teacher, t_curr_tensor)
 

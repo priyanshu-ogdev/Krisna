@@ -268,3 +268,84 @@ async def test_polish_multi_reference_assets_conditioning():
     assert res["image_ref"].startswith("blob://")
     await backend.unload()
 
+
+@pytest.mark.asyncio
+async def test_polish_reference_assets_raw_strings_and_pil():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=False)
+    await backend.load()
+
+    store = get_blob_store()
+    canvas = Image.new("RGB", (256, 256), color=(20, 20, 20))
+    canvas_ref = store.save_image(canvas, prefix="canvas_raw")
+
+    ref1 = Image.new("RGB", (80, 80), color=(220, 30, 30))
+    ref1_blob = store.save_image(ref1, prefix="raw_blob")
+
+    raw_pil_img = Image.new("RGB", (60, 60), color=(30, 220, 30))
+
+    # Test mixed list: one string blob_ref, one raw PIL image
+    res = await backend.run(
+        handoff_image_ref=canvas_ref,
+        prompt="Mixed raw assets conditioning",
+        reference_assets=[ref1_blob, raw_pil_img],
+    )
+
+    receipt = res["run_receipt"]
+    assert receipt["reference_assets_count"] == 2
+    assert receipt["multi_reference_conditioning"] is True
+    await backend.unload()
+
+
+@pytest.mark.asyncio
+async def test_polish_full_donor_pasting_without_crop():
+    spec = ModelSpec(
+        tier=Tier.POLISH_DEFAULT,
+        name="Qwen-Image-2.1",
+        vram_gb=12.0,
+        quantization="bf16",
+    )
+    backend = QwenImage21Backend(spec, strict=False)
+    await backend.load()
+
+    store = get_blob_store()
+    canvas = Image.new("RGB", (256, 256), color=(0, 0, 0))
+    canvas_ref = store.save_image(canvas, prefix="black_canvas")
+
+    donor = Image.new("RGB", (64, 64), color=(255, 0, 0))
+    donor_blob = store.save_image(donor, prefix="red_donor")
+
+    # Supply source_asset_id with NO source_crop_bbox -> defaults to full donor pasting
+    res = await backend.run(
+        handoff_image_ref=canvas_ref,
+        prompt="Full donor paste test",
+        reference_assets=[{"asset_id": "red_box", "blob_ref": donor_blob}],
+        locked_regions=[
+            {"source_asset_id": "red_box", "bbox": [0.25, 0.25, 0.5, 0.5]}
+        ],
+    )
+
+    out_img = store.load_image(res["image_ref"]).convert("RGB")
+    # The center of the 50% box (e.g. at pixel 128, 128) should be red (255, 0, 0)
+    center_pixel = out_img.getpixel((128, 128))
+    assert center_pixel[0] == 255 and center_pixel[1] == 0 and center_pixel[2] == 0
+
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    verifier = LockPreservationVerifier()
+    donor_map = {"red_box": donor}
+    score = verifier.score(
+        canvas,
+        out_img,
+        locked_regions=[{"source_asset_id": "red_box", "bbox": [0.25, 0.25, 0.5, 0.5]}],
+        donor_map=donor_map,
+    )
+    assert score is not None
+    assert score >= 0.99, f"Expected near-perfect lock score, got {score}"
+
+    await backend.unload()
+

@@ -167,3 +167,56 @@ class TestPhase4RuntimeTierAndFlowIntegration:
         finally:
             await orchestrator.shutdown()
             store.close()
+
+
+class TestCFMLossBroadcasting:
+    def test_cfm_loss_4d_and_3d_tensor_broadcasting(self):
+        import torch
+        from krisna_training.polish.cfm_loss import (
+            consistency_distillation_loss,
+            consistency_scaling,
+            pseudo_huber_loss,
+        )
+
+        # 1. Test 4D spatial latents: (Batch, Channels, Height, Width)
+        bsz = 2
+        clean_4d = torch.randn(bsz, 16, 32, 32)
+        noise_4d = torch.randn_like(clean_4d)
+
+        def mock_net(x, t):
+            return x * 0.95
+
+        def mock_teacher_v(x, t):
+            return torch.zeros_like(x)
+
+        out_4d = consistency_distillation_loss(
+            student_net=mock_net,
+            target_net=mock_net,
+            teacher_v_fn=mock_teacher_v,
+            clean_latent=clean_4d,
+            noise=noise_4d,
+            t_next=0.8,
+            t_curr=0.4,
+            huber_c=0.001,
+        )
+        assert out_4d.loss.ndim == 0
+        assert not torch.isnan(out_4d.loss)
+        assert float(out_4d.loss) > 0.0
+
+        # 2. Test 3D sequence token latents: (Batch, Seq_Len, Dim)
+        clean_3d = torch.randn(bsz, 256, 64)
+        noise_3d = torch.randn_like(clean_3d)
+
+        out_3d = consistency_distillation_loss(
+            student_net=mock_net,
+            target_net=mock_net,
+            teacher_v_fn=mock_teacher_v,
+            clean_latent=clean_3d,
+            noise=noise_3d,
+            t_next=0.8,
+            t_curr=0.4,
+            huber_c=0.001,
+        )
+        assert out_3d.loss.ndim == 0
+        assert not torch.isnan(out_3d.loss)
+        assert float(out_3d.loss) > 0.0
