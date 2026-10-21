@@ -245,13 +245,18 @@ class PlannerBackendLlama(ModelBackend):
         wireframe_ref: str | os.PathLike[str] | bytes | bytearray | memoryview | None = None,
         image_bytes: bytes | bytearray | memoryview | None = None,
         layout_tree: Any = None,
+        image_refs: list[Any] | None = None,
+        reference_assets: list[Any] | None = None,
     ) -> tuple[list[dict[str, Any]], list[Any]]:
         """Construct constrained system and conversation messages with multimodal UICrit RAG and InstructLayout prefix."""
-        image_payload = self._load_image_payload(
+        multi_payloads = self._load_multi_image_payloads(
             image_ref=image_ref,
             wireframe_ref=wireframe_ref,
             image_bytes=image_bytes,
+            image_refs=image_refs,
+            reference_assets=reference_assets,
         )
+        image_payload = multi_payloads[0][:2] if multi_payloads else None
 
         # Dual-encoder / Multimodal visual RAG retrieval
         visual_src = (image_payload[0] if image_payload else None) or image_ref or wireframe_ref
@@ -276,7 +281,15 @@ class PlannerBackendLlama(ModelBackend):
             system += " Prior review: " + str(critique)
         if retrieved:
             system += " Human UICrit design grounding: " + " | ".join(r.note for r in retrieved)
-        if image_payload is not None:
+        if len(multi_payloads) > 1:
+            system += (
+                "\n\n[Multi-Subject Composition Mode (MS-Diffusion CVPR 2024 / FastComposer SIGGRAPH Asia 2023 / AnyDoor CVPR 2024)]:\n"
+                "You have received multiple reference image assets. To prevent identity blending, synthesize a harmonious composition "
+                "where each subject or scene element is localized to distinct bounding boxes [x1, y1, x2, y2]. Emit ADD_COMPONENT actions with: "
+                "target_id, component_type, bbox, source_asset_id (identifying which reference asset it is drawn from), source_crop_bbox [x, y, w, h] "
+                "in that source asset, and identity_lock=True."
+            )
+        elif image_payload is not None:
             system += (
                 "\n\n[Multimodal VLM Layout Decompilation Mode (Design2Code / ShowUI / InstructLayout)]:\n"
                 "You have received a reference image. Analyze its spatial structure, identify discrete visual components "
@@ -311,25 +324,21 @@ class PlannerBackendLlama(ModelBackend):
                 messages.append({"role": "user", "content": content})
 
         user_content = message or ("Audit and review the active design state." if review else "Continue the design.")
-        if image_payload is None:
+        if not multi_payloads:
             messages.append({"role": "user", "content": user_content})
         else:
-            raw_image, mime_type = image_payload
-            encoded_image = base64.b64encode(raw_image).decode("ascii")
-            messages.append(
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": user_content},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:{mime_type};base64,{encoded_image}",
-                            },
+            content_items: list[dict[str, Any]] = [{"type": "text", "text": user_content}]
+            for raw_image, mime_type, asset_id in multi_payloads:
+                encoded_image = base64.b64encode(raw_image).decode("ascii")
+                content_items.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime_type};base64,{encoded_image}",
                         },
-                    ],
-                }
-            )
+                    }
+                )
+            messages.append({"role": "user", "content": content_items})
         return messages, retrieved
 
     @staticmethod
@@ -392,22 +401,8 @@ class PlannerBackendLlama(ModelBackend):
         return payload, mime_type
 
     @classmethod
-    def _load_image_payload(
-        cls,
-        *,
-        image_ref: str | os.PathLike[str] | bytes | bytearray | memoryview | None,
-        wireframe_ref: str | os.PathLike[str] | bytes | bytearray | memoryview | None,
-        image_bytes: bytes | bytearray | memoryview | None,
-    ) -> tuple[bytes, str] | None:
-        """Resolve a blob/local reference or byte payload without accepting URLs."""
-        source = cls._image_source(
-            image_ref=image_ref,
-            wireframe_ref=wireframe_ref,
-            image_bytes=image_bytes,
-        )
-        if source is None:
-            return None
-
+    def _load_single_source(cls, source: Any) -> tuple[bytes, str]:
+        """Loads and validates a single blob/local/byte source."""
         if isinstance(source, (bytes, bytearray, memoryview)):
             payload = bytes(source)
         else:
@@ -430,6 +425,72 @@ class PlannerBackendLlama(ModelBackend):
                 payload = cls._read_file_bytes(candidate)
 
         return cls._validate_image_bytes(payload)
+
+    @classmethod
+    def _load_image_payload(
+        cls,
+        *,
+        image_ref: str | os.PathLike[str] | bytes | bytearray | memoryview | None,
+        wireframe_ref: str | os.PathLike[str] | bytes | bytearray | memoryview | None,
+        image_bytes: bytes | bytearray | memoryview | None,
+    ) -> tuple[bytes, str] | None:
+        """Resolve a blob/local reference or byte payload without accepting URLs."""
+        source = cls._image_source(
+            image_ref=image_ref,
+            wireframe_ref=wireframe_ref,
+            image_bytes=image_bytes,
+        )
+        if source is None:
+            return None
+        return cls._load_single_source(source)
+
+    @classmethod
+    def _load_multi_image_payloads(
+        cls,
+        *,
+        image_ref: Any = None,
+        wireframe_ref: Any = None,
+        image_bytes: Any = None,
+        image_refs: list[Any] | None = None,
+        reference_assets: list[Any] | None = None,
+    ) -> list[tuple[bytes, str, str]]:
+        """Load multiple reference assets / images into a list of (bytes, mime, asset_id)."""
+        payloads: list[tuple[bytes, str, str]] = []
+        seen: set[str] = set()
+
+        if reference_assets:
+            for idx, asset in enumerate(reference_assets):
+                blob_ref = getattr(asset, "blob_ref", None) or (asset.get("blob_ref") if isinstance(asset, dict) else None)
+                asset_id = getattr(asset, "id", None) or (asset.get("id") if isinstance(asset, dict) else f"asset_{idx}")
+                if blob_ref and blob_ref not in seen:
+                    seen.add(blob_ref)
+                    try:
+                        p, mime = cls._load_single_source(blob_ref)
+                        payloads.append((p, mime, str(asset_id)))
+                    except Exception as e:
+                        log.warning("Could not load reference asset %s: %s", asset_id, e)
+
+        if image_refs:
+            for idx, ref in enumerate(image_refs):
+                ref_str = str(ref)
+                if ref_str and ref_str not in seen:
+                    seen.add(ref_str)
+                    try:
+                        p, mime = cls._load_single_source(ref)
+                        payloads.append((p, mime, f"ref_{idx}"))
+                    except Exception as e:
+                        log.warning("Could not load image_ref %s: %s", ref, e)
+
+        if not payloads:
+            single = cls._load_image_payload(
+                image_ref=image_ref,
+                wireframe_ref=wireframe_ref,
+                image_bytes=image_bytes,
+            )
+            if single is not None:
+                payloads.append((single[0], single[1], "default"))
+
+        return payloads
 
     def _require_strict_visual_review(self, *, image_ref: Any, wireframe_ref: Any, image_bytes: Any) -> None:
         """Reject a text-only fallback when production review claims visual grounding."""
@@ -482,6 +543,8 @@ class PlannerBackendLlama(ModelBackend):
             wireframe_ref=wireframe_ref,
             image_bytes=image_bytes,
             layout_tree=kwargs.get("layout_tree"),
+            image_refs=kwargs.get("image_refs"),
+            reference_assets=kwargs.get("reference_assets") or (constraints or {}).get("reference_assets"),
         )
 
         def _generate():
@@ -494,58 +557,134 @@ class PlannerBackendLlama(ModelBackend):
                 )
 
                 delta_actions = []
-                img_src = (
-                    image_ref
-                    or wireframe_ref
-                    or image_bytes
-                    or (constraints or {}).get("reference_image_ref")
-                )
-                if img_src:
-                    msg_lower = (message or "").lower()
-                    if "face" in msg_lower or "portrait" in msg_lower or "photo" in msg_lower:
+                ref_assets = (constraints or {}).get("reference_assets") or kwargs.get("reference_assets") or []
+                multi_refs = kwargs.get("image_refs") or []
+
+                if len(ref_assets) > 1 or len(multi_refs) > 1:
+                    raw_assets = ref_assets if len(ref_assets) > 1 else [
+                        {"id": f"asset_{i}", "blob_ref": r, "role": "subject"} for i, r in enumerate(multi_refs)
+                    ]
+                    bg_asset = next(
+                        (a for a in raw_assets if getattr(a, "role", None) == "background" or (isinstance(a, dict) and a.get("role") == "background")),
+                        None
+                    )
+                    subject_assets = [a for a in raw_assets if a != bg_asset]
+                    if bg_asset is not None:
+                        bg_id = getattr(bg_asset, "id", None) or (bg_asset.get("id") if isinstance(bg_asset, dict) else "asset_bg")
                         delta_actions.append(
                             AddComponentAction(
                                 action_type="ADD_COMPONENT",
-                                target_id="portrait_face",
-                                component_type="focal_subject",
-                                bbox=[0.2, 0.15, 0.8, 0.75],
-                                text_content="Detected Portrait Subject",
-                                props={"is_focal_subject": True, "identity_lock": True},
-                                parameters={
-                                    "is_focal_subject": True,
-                                    "identity_lock": True,
-                                    "facial_landmarks": {
-                                        "eyes": [0.5, 0.38],
-                                        "nose": [0.5, 0.48],
-                                        "mouth": [0.5, 0.6],
-                                    },
-                                },
+                                target_id="bg_scene",
+                                component_type="background",
+                                bbox=[0.0, 0.0, 1.0, 1.0],
+                                source_asset_id=bg_id,
+                                source_crop_bbox=[0.0, 0.0, 1.0, 1.0],
+                                text_content="Background Scene",
                             )
                         )
+                        for idx, sa in enumerate(subject_assets):
+                            sa_id = getattr(sa, "id", None) or (sa.get("id") if isinstance(sa, dict) else f"subject_{idx}")
+                            delta_actions.append(
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id=f"portrait_subject_{idx}",
+                                    component_type="focal_subject",
+                                    bbox=[0.25, 0.15, 0.50, 0.75],
+                                    source_asset_id=sa_id,
+                                    source_crop_bbox=[0.20, 0.15, 0.60, 0.70],
+                                    text_content=f"Subject {idx + 1}",
+                                    props={"is_focal_subject": True, "identity_lock": True},
+                                    parameters={
+                                        "is_focal_subject": True,
+                                        "identity_lock": True,
+                                        "source_asset_id": sa_id,
+                                        "source_crop_bbox": [0.20, 0.15, 0.60, 0.70],
+                                    },
+                                )
+                            )
                     else:
-                        delta_actions.extend([
-                            AddComponentAction(
-                                action_type="ADD_COMPONENT",
-                                target_id="decompiled_nav",
-                                component_type="navbar",
-                                bbox=[0.05, 0.05, 0.95, 0.15],
-                                text_content="Navigation",
-                            ),
-                            AddComponentAction(
-                                action_type="ADD_COMPONENT",
-                                target_id="decompiled_hero",
-                                component_type="heading",
-                                bbox=[0.10, 0.20, 0.90, 0.40],
-                                text_content="Decompiled Hero Title",
-                            ),
-                            AddComponentAction(
-                                action_type="ADD_COMPONENT",
-                                target_id="decompiled_cta",
-                                component_type="button",
-                                bbox=[0.10, 0.45, 0.40, 0.55],
-                                text_content="Action Button",
-                            ),
-                        ])
+                        n_subjects = max(1, len(subject_assets))
+                        item_w = min(0.42, 0.85 / n_subjects)
+                        gap = 0.05
+                        for idx, sa in enumerate(subject_assets):
+                            sa_id = getattr(sa, "id", None) or (sa.get("id") if isinstance(sa, dict) else f"subject_{idx}")
+                            x1 = 0.08 + idx * (item_w + gap)
+                            delta_actions.append(
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id=f"subject_{sa_id}",
+                                    component_type="focal_subject",
+                                    bbox=[round(x1, 3), 0.15, round(item_w, 3), 0.70],
+                                    source_asset_id=sa_id,
+                                    source_crop_bbox=[0.15, 0.10, 0.70, 0.75],
+                                    text_content=f"Subject {sa_id}",
+                                    props={"is_focal_subject": True, "identity_lock": True},
+                                    parameters={
+                                        "is_focal_subject": True,
+                                        "identity_lock": True,
+                                        "source_asset_id": sa_id,
+                                        "source_crop_bbox": [0.15, 0.10, 0.70, 0.75],
+                                    },
+                                )
+                            )
+                else:
+                    img_src = (
+                        image_ref
+                        or wireframe_ref
+                        or image_bytes
+                        or (constraints or {}).get("reference_image_ref")
+                        or (ref_assets[0].blob_ref if ref_assets and hasattr(ref_assets[0], "blob_ref") else None)
+                    )
+                    if img_src:
+                        msg_lower = (message or "").lower()
+                        if "face" in msg_lower or "portrait" in msg_lower or "photo" in msg_lower:
+                            delta_actions.append(
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id="portrait_face",
+                                    component_type="focal_subject",
+                                    bbox=[0.2, 0.15, 0.8, 0.75],
+                                    text_content="Detected Portrait Subject",
+                                    source_asset_id="default",
+                                    source_crop_bbox=[0.2, 0.15, 0.6, 0.6],
+                                    props={"is_focal_subject": True, "identity_lock": True},
+                                    parameters={
+                                        "is_focal_subject": True,
+                                        "identity_lock": True,
+                                        "source_asset_id": "default",
+                                        "source_crop_bbox": [0.2, 0.15, 0.6, 0.6],
+                                        "facial_landmarks": {
+                                            "eyes": [0.5, 0.38],
+                                            "nose": [0.5, 0.48],
+                                            "mouth": [0.5, 0.6],
+                                        },
+                                    },
+                                )
+                            )
+                        else:
+                            delta_actions.extend([
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id="decompiled_nav",
+                                    component_type="navbar",
+                                    bbox=[0.05, 0.05, 0.95, 0.15],
+                                    text_content="Navigation",
+                                ),
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id="decompiled_hero",
+                                    component_type="heading",
+                                    bbox=[0.10, 0.20, 0.90, 0.40],
+                                    text_content="Decompiled Hero Title",
+                                ),
+                                AddComponentAction(
+                                    action_type="ADD_COMPONENT",
+                                    target_id="decompiled_cta",
+                                    component_type="button",
+                                    bbox=[0.10, 0.45, 0.40, 0.55],
+                                    text_content="Action Button",
+                                ),
+                            ])
 
                 synthetic_resp = {
                     "schema_version": SCHEMA_VERSION,

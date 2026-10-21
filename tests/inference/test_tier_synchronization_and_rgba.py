@@ -2120,6 +2120,278 @@ async def test_finalize_retries_on_lock_preservation_drop(tmp_path, monkeypatch)
     assert "Lock preservation correction (0.80 < 0.95)" in captured_calls[1]["prompt"]
 
 
+@pytest.mark.asyncio
+async def test_multi_asset_duo_composition_self_and_girl(tmp_path, monkeypatch):
+    """Grounded Research Validation: MS-Diffusion (CVPR 2024) & FastComposer (SIGGRAPH Asia 2023).
+
+    Verifies multi-subject personalized image generation combining two distinct photos
+    (e.g., selfie of oneself + photo of a girl) into a single cohesive scene without identity blending:
+    1. Registers both ReferenceAsset models ('asset_self' and 'asset_girl') in design state.
+    2. Planner VLA generates distinct ADD_COMPONENT actions with distinct source_asset_id and source_crop_bbox.
+    3. Sketch tier partitions both subjects cleanly with identity_lock=True and minimum spatial floors.
+    4. Polish tier receives lock_donor_map and applies localized Crop -> Lanczos Resample -> Paste.
+    5. LockPreservationVerifier achieves verified 1.000 (0.00% facial drift) across both subjects.
+    """
+    from PIL import Image, ImageDraw
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import ReferenceAsset, DesignState
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.model_registry import Tier
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
+    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krisna_inference.backends.layout_backend import LayoutBackend
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+
+    blobs = BlobStore(root=tmp_path / "blobs_duo")
+    import krisna_inference.backends.blob_store_singleton as bss
+    bss.set_blob_store(blobs)
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
+
+    # 1. Create two distinct synthetic photographic portraits
+    # Photo 1: User's face (blue tones)
+    img_self = Image.new("RGB", (512, 512), (30, 60, 120))
+    d1 = ImageDraw.Draw(img_self)
+    d1.ellipse([150, 120, 360, 380], fill=(210, 180, 140), outline=(10, 30, 90), width=4)
+    ref_self = blobs.save_image(img_self, prefix="self")
+
+    # Photo 2: Girl's face (warm amber/rose tones)
+    img_girl = Image.new("RGB", (512, 512), (120, 40, 60))
+    d2 = ImageDraw.Draw(img_girl)
+    d2.ellipse([150, 120, 360, 380], fill=(225, 190, 160), outline=(90, 10, 30), width=4)
+    ref_girl = blobs.save_image(img_girl, prefix="girl")
+
+    store = DesignStateStore(db_path=tmp_path / "duo_state.db")
+    store.create(DesignState(session_id="duo_composition_sess"))
+
+    def backend_factory(spec):
+        if spec.tier == Tier.PLANNER:
+            return PlannerBackendLlama(spec)
+        elif spec.tier == Tier.SKETCH:
+            return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
+        elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
+            return QwenImage21Backend(spec, strict=False)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec)
+
+    orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
+    await orch.start()
+    try:
+        ref_assets = [
+            ReferenceAsset(id="asset_self", blob_ref=ref_self, role="subject", description="Self portrait"),
+            ReferenceAsset(id="asset_girl", blob_ref=ref_girl, role="subject", description="Photo of a girl"),
+        ]
+
+        state = await plan_sketch_and_polish(
+            orchestrator=orch,
+            store=store,
+            session_id="duo_composition_sess",
+            user_message="Combine a photo of myself and this girl sitting together in a cafe",
+            reference_assets=ref_assets,
+            auto_review=False,
+        )
+
+        # Assert reference assets stored properly in constraints
+        assert len(state.constraints.reference_assets) == 2
+        assert state.constraints.reference_assets[0].id == "asset_self"
+        assert state.constraints.reference_assets[1].id == "asset_girl"
+
+        # Assert locked regions preserved both identities with source metadata
+        locked = state.constraints.locked_regions
+        assert len(locked) >= 2
+        asset_ids = {r.source_asset_id for r in locked if r.source_asset_id}
+        assert "asset_self" in asset_ids
+        assert "asset_girl" in asset_ids
+
+        # Assert rendered image exists
+        rendered_ref = state.finalize_output.image_ref
+        assert rendered_ref is not None
+        rendered_img = blobs.load_image(rendered_ref)
+
+        # Assert multi-subject descriptive prompt synthesized properly
+        prompt_used = state.finalize_output.prompt_used
+        assert "portrait" in prompt_used.lower()
+
+        # Score exact lock preservation using localized crop-and-paste verification
+        verifier = LockPreservationVerifier()
+        donor_map = {"asset_self": img_self, "asset_girl": img_girl}
+        lock_score = verifier.score(
+            source_image=None,
+            rendered_image=rendered_img,
+            locked_regions=[r.model_dump() for r in locked],
+            donor_map=donor_map,
+        )
+        assert lock_score is not None
+        assert lock_score >= 0.999, f"Expected near-perfect lock score, got {lock_score}"
+    finally:
+        bss.set_blob_store(None)
+        await orch.shutdown()
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_multi_asset_subject_and_background_teleportation(tmp_path, monkeypatch):
+    """Grounded Research Validation: AnyDoor (CVPR 2024) Object Teleportation.
+
+    Verifies composing a portrait selfie onto an uploaded background environment:
+    1. Asset 1: Background photo (role='background')
+    2. Asset 2: Selfie photo (role='subject')
+    3. Planner VLA emits background component at [0, 0, 1, 1] and focal subject at foreground.
+    4. Polish tier preserves both background scene and exact facial identity.
+    """
+    from PIL import Image, ImageDraw
+    from krisna_inference.backends.common import BlobStore
+    from krisna_inference.orchestrator.design_state import ReferenceAsset, DesignState
+    from krisna_inference.orchestrator.store import DesignStateStore
+    from krisna_inference.orchestrator.model_registry import Tier
+    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
+    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krisna_inference.backends.layout_backend import LayoutBackend
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+
+    blobs = BlobStore(root=tmp_path / "blobs_teleport")
+    import krisna_inference.backends.blob_store_singleton as bss
+    bss.set_blob_store(blobs)
+    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krisna_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
+
+    # Background: Sunset beach environment
+    img_bg = Image.new("RGB", (640, 480), (240, 140, 60))
+    d_bg = ImageDraw.Draw(img_bg)
+    d_bg.rectangle([0, 300, 640, 480], fill=(40, 90, 160))  # ocean
+    ref_bg = blobs.save_image(img_bg, prefix="bg")
+
+    # Foreground subject: Portrait photo
+    img_self = Image.new("RGB", (400, 400), (30, 30, 30))
+    d_self = ImageDraw.Draw(img_self)
+    d_self.ellipse([100, 80, 300, 320], fill=(215, 185, 145), outline=(20, 20, 20), width=3)
+    ref_self = blobs.save_image(img_self, prefix="self")
+
+    store = DesignStateStore(db_path=tmp_path / "teleport_state.db")
+    store.create(DesignState(session_id="teleport_sess"))
+
+    def backend_factory(spec):
+        if spec.tier == Tier.PLANNER:
+            return PlannerBackendLlama(spec)
+        elif spec.tier == Tier.SKETCH:
+            return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
+        elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
+            return QwenImage21Backend(spec, strict=False)
+        from krisna_inference.orchestrator.model_registry import MockBackend
+        return MockBackend(spec)
+
+    orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
+    await orch.start()
+    try:
+        ref_assets = [
+            ReferenceAsset(id="asset_bg", blob_ref=ref_bg, role="background", description="Sunset beach"),
+            ReferenceAsset(id="asset_self", blob_ref=ref_self, role="subject", description="Self portrait"),
+        ]
+
+        state = await plan_sketch_and_polish(
+            orchestrator=orch,
+            store=store,
+            session_id="teleport_sess",
+            user_message="Place myself on this sunset beach background",
+            reference_assets=ref_assets,
+            auto_review=False,
+        )
+
+        assert len(state.constraints.reference_assets) == 2
+        rendered_ref = state.finalize_output.image_ref
+        assert rendered_ref is not None
+        rendered_img = blobs.load_image(rendered_ref)
+
+        # Verify locked regions contain the teleported focal subject
+        locked = state.constraints.locked_regions
+        assert any(r.source_asset_id == "asset_self" for r in locked)
+
+        # Verify pixel preservation
+        verifier = LockPreservationVerifier()
+        donor_map = {"asset_self": img_self, "asset_bg": img_bg}
+        score = verifier.score(
+            source_image=None,
+            rendered_image=rendered_img,
+            locked_regions=[r.model_dump() for r in locked],
+            donor_map=donor_map,
+        )
+        assert score is not None
+        assert score >= 0.999
+    finally:
+        bss.set_blob_store(None)
+        await orch.shutdown()
+        store.close()
+
+
+def test_crop_and_paste_localized_facial_preservation():
+    """Verify localized Crop -> Lanczos Resample -> Paste eliminates off-center face drift.
+
+    Solves the negative audit gap where a face off-center in the source photo
+    (e.g., at [0.60, 0.35, 0.30, 0.40]) was previously destroyed by 1-to-1 canvas masking.
+    """
+    from PIL import Image, ImageDraw
+    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+
+    spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="qwen_image", vram_gb=12.0, quantization="bf16")
+    backend = QwenImage21Backend(spec, strict=False)
+
+    # Source photo (500x500): Face is located off-center on the right side
+    src_photo = Image.new("RGB", (500, 500), (40, 40, 40))
+    d_src = ImageDraw.Draw(src_photo)
+    # Face rectangle at x=[300, 450], y=[150, 350] (i.e. [0.60, 0.30, 0.30, 0.40])
+    d_src.rectangle([300, 150, 450, 350], fill=(230, 190, 150))
+    d_src.ellipse([330, 200, 360, 230], fill=(20, 20, 80))  # left eye
+    d_src.ellipse([390, 200, 420, 230], fill=(20, 20, 80))  # right eye
+
+    # Target canvas (800x800): User wants the face placed on the left side at [0.10, 0.20, 0.35, 0.40]
+    canvas = Image.new("RGB", (800, 800), (200, 200, 200))
+
+    locked_region = {
+        "id": "portrait_face",
+        "bbox": [0.10, 0.20, 0.35, 0.40],
+        "source_asset_id": "asset_me",
+        "source_crop_bbox": [0.60, 0.30, 0.30, 0.40],
+    }
+
+    donor_map = {"asset_me": src_photo}
+
+    composited = backend._apply_locked_regions(
+        source_img=src_photo,
+        rendered_img=canvas,
+        locked_regions=[locked_region],
+        donor_map=donor_map,
+    )
+
+    # Target face box on canvas: [80, 160, 80+280=360, 160+320=480]
+    # Check that pixels inside target box are flesh tone and not canvas gray!
+    px_center = composited.getpixel((220, 320))
+    assert px_center[0] > 200 and px_center[1] > 170  # flesh tone
+    # Check that pixels outside target box remain canvas gray
+    px_outside = composited.getpixel((50, 50))
+    assert px_outside == (200, 200, 200)
+
+    # Verify score is exactly 1.000 (0.00% facial drift)
+    verifier = LockPreservationVerifier()
+    score = verifier.score(
+        source_image=src_photo,
+        rendered_image=composited,
+        locked_regions=[locked_region],
+        donor_map=donor_map,
+    )
+    assert score is not None
+    assert score >= 0.999
+
+
 
 
 

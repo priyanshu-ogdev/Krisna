@@ -467,6 +467,27 @@ class QwenImage21Backend(ModelBackend):
                 with Image.open(lock_donor_ref) as d_image:
                     lock_donor_img = d_image.copy() if d_image.mode in ("RGB", "RGBA") else d_image.convert("RGBA" if "A" in d_image.mode else "RGB")
 
+        # Resolve multi-asset lock donor map (MS-Diffusion CVPR 2024 / AnyDoor CVPR 2024)
+        lock_donor_map_raw = kwargs.get("lock_donor_map")
+        donor_map: dict[str, Any] = {}
+        if isinstance(lock_donor_map_raw, dict):
+            for k, v in lock_donor_map_raw.items():
+                if isinstance(v, (str, Path)):
+                    v_str = str(v)
+                    if v_str.startswith("blob://"):
+                        try:
+                            donor_map[k] = blobs.load_image(v_str)
+                        except Exception as e:
+                            log.warning("Could not load donor map blob %s for %s: %s", v_str, k, e)
+                    elif Path(v_str).exists():
+                        from PIL import Image
+                        with Image.open(v_str) as d_image:
+                            donor_map[k] = d_image.copy()
+                elif hasattr(v, "size"):
+                    donor_map[k] = v
+        if lock_donor_img is not None and "default" not in donor_map:
+            donor_map["default"] = lock_donor_img
+
         # Explicit Resolution & Lock Policy:
         # If canvas resolution/aspect ratio changed between turns, or an uploaded reference image has
         # different initial pixel dimensions, resample using high-fidelity Lanczos filtering to match the canvas
@@ -605,9 +626,9 @@ class QwenImage21Backend(ModelBackend):
                             "Exact pixel preservation requires identical dimensions."
                         )
 
-                    # Apply region locking from donor_img (preserving prior polished pixels, not wireframe)
-                    if locked_regions and donor_img is not None:
-                        rendered = self._apply_locked_regions(donor_img, rendered, locked_regions)
+                    # Apply region locking from donor_img and donor_map (preserving prior polished pixels and multi-asset patches)
+                    if locked_regions:
+                        rendered = self._apply_locked_regions(donor_img, rendered, locked_regions, donor_map=donor_map)
                     return rendered, True, None
                 except Exception as e:
                     if self.strict:
@@ -632,6 +653,7 @@ class QwenImage21Backend(ModelBackend):
                 mask_img=mask_img,
                 is_refine=is_refine,
                 mode=mode,
+                donor_map=donor_map,
             ), False, fallback_reason
 
         rendered_image, used_real, fallback_reason = await asyncio.to_thread(_generate)
@@ -711,21 +733,40 @@ class QwenImage21Backend(ModelBackend):
         except (TypeError, ValueError):
             return None
 
-    def _apply_locked_regions(self, source_img: Any, rendered_img: Any, locked_regions: list[dict]) -> Any:
-        """Copy locked source pixels exactly into the rendered image."""
+    def _apply_locked_regions(
+        self,
+        source_img: Any,
+        rendered_img: Any,
+        locked_regions: list[dict],
+        donor_map: dict[str, Any] | None = None,
+    ) -> Any:
+        """Copy locked source pixels exactly into the rendered image.
+        
+        Supports both:
+        1. Localized Crop -> Lanczos Resample -> Paste for multi-subject reference teleportation
+           (NVIDIA AnyDoor CVPR 2024 / MS-Diffusion CVPR 2024) across arbitrary dimensions and donor assets.
+        2. Bitwise exact 1-to-1 canvas pixel composite for multi-turn conversational edits.
+        """
         from PIL import Image
 
-        if source_img.size != rendered_img.size:
+        has_crop_locks = any(
+            (isinstance(r, dict) and r.get("source_crop_bbox")) or getattr(r, "source_crop_bbox", None)
+            for r in locked_regions
+        )
+
+        if not has_crop_locks and source_img is not None and source_img.size != rendered_img.size:
             raise ValueError(
                 "locked-region exact pixel preservation requires source and rendered images to have identical sizes"
             )
-        target_mode = "RGBA" if (source_img.mode == "RGBA" or rendered_img.mode == "RGBA") else "RGB"
-        src = source_img.convert("RGBA")
-        dst = rendered_img.convert("RGBA")
 
-        # Create binary mask of locked regions
+        target_mode = "RGBA" if ((source_img and source_img.mode == "RGBA") or rendered_img.mode == "RGBA") else "RGB"
+        dst = rendered_img.convert("RGBA")
+        src = source_img.convert("RGBA") if (source_img and source_img.size == dst.size) else None
+
+        # Create binary mask of locked regions for 1-to-1 compositing
         mask = Image.new("L", dst.size, color=0)
         w, h = dst.size
+        has_legacy_1to1_locks = False
 
         for region in locked_regions:
             if isinstance(region, dict) and "bbox" in region:
@@ -765,14 +806,46 @@ class QwenImage21Backend(ModelBackend):
                 x1, y1 = round(bx + bw), round(by + bh)
             if not (0 <= x0 < x1 <= w and 0 <= y0 < y1 <= h):
                 raise ValueError("locked region is outside the image or empty")
-            # PIL's rectangle endpoint is inclusive; slicing is half-open and
-            # therefore matches the verifier's [x0:x1, y0:y1] contract.
-            mask.paste(255, (x0, y0, x1, y1))
 
-        # A binary mask is intentional: feathering would alter pixels inside a
-        # protected region and violate the lock contract.
-        blended = Image.composite(src, dst, mask)
-        return blended.convert(target_mode)
+            src_asset_id = region.get("source_asset_id") if isinstance(region, dict) else getattr(region, "source_asset_id", None)
+            src_crop = region.get("source_crop_bbox") if isinstance(region, dict) else getattr(region, "source_crop_bbox", None)
+
+            # Localized AnyDoor / MS-Diffusion teleportation crop-and-paste
+            if src_crop and len(src_crop) == 4:
+                donor = None
+                if donor_map and src_asset_id and src_asset_id in donor_map:
+                    donor = donor_map[src_asset_id]
+                elif donor_map and "default" in donor_map:
+                    donor = donor_map["default"]
+                elif donor_map and len(donor_map) == 1:
+                    donor = next(iter(donor_map.values()))
+                elif source_img is not None:
+                    donor = source_img
+
+                if donor is not None:
+                    dw, dh = donor.size
+                    sbx, sby, sbw, sbh = [float(v) for v in src_crop]
+                    sx0 = max(0, min(dw - 1, round(sbx * dw if sbx <= 1.0 else sbx)))
+                    sy0 = max(0, min(dh - 1, round(sby * dh if sby <= 1.0 else sby)))
+                    sx1 = max(sx0 + 1, min(dw, round((sbx + sbw) * dw if sbx <= 1.0 and sbw <= 1.0 else sbx + sbw)))
+                    sy1 = max(sy0 + 1, min(dh, round((sby + sbh) * dh if sby <= 1.0 and sbh <= 1.0 else sby + sbh)))
+
+                    cropped_patch = donor.crop((sx0, sy0, sx1, sy1)).convert("RGBA")
+                    target_w = max(1, x1 - x0)
+                    target_h = max(1, y1 - y0)
+                    resampled_patch = cropped_patch.resize((target_w, target_h), Image.Resampling.LANCZOS)
+                    dst.paste(resampled_patch, (x0, y0))
+                    continue
+
+            # Legacy 1-to-1 canvas lock
+            if src is not None:
+                mask.paste(255, (x0, y0, x1, y1))
+                has_legacy_1to1_locks = True
+
+        if has_legacy_1to1_locks and src is not None:
+            dst = Image.composite(src, dst, mask)
+
+        return dst.convert(target_mode)
 
     def _build_inpaint_mask(self, size: tuple[int, int], locked_regions: list[Any]) -> Any:
         """Constructs an inverted binary inpaint mask (L-mode PIL Image).
@@ -875,8 +948,8 @@ class QwenImage21Backend(ModelBackend):
                     log.warning("Could not composite using mask_img: %s", e)
 
             if locked_regions:
-                img = self._apply_locked_regions(effective_donor, img, locked_regions)
+                img = self._apply_locked_regions(effective_donor, img, locked_regions, donor_map=kwargs.get("donor_map"))
         elif locked_regions:
-            img = self._apply_locked_regions(source_img, img, locked_regions)
+            img = self._apply_locked_regions(source_img, img, locked_regions, donor_map=kwargs.get("donor_map"))
 
         return img

@@ -54,6 +54,8 @@ class DesignAction(BaseModel):
     text_content: str | None = None
     layout_direction: str | None = None
     hierarchy_position: str | None = None
+    source_asset_id: str | None = None
+    source_crop_bbox: list[float] | None = None
     props: dict[str, Any] = Field(default_factory=dict)
     parameters: dict[str, Any] = Field(default_factory=dict)
 

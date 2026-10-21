@@ -538,6 +538,15 @@ def layout_from_constraints(
     # Apply VLA DesignAction elements from Planner delta
     actions = constraints.get("actions") or []
     if isinstance(actions, list):
+        has_custom_focal = any(
+            (isinstance(a, dict) and (a.get("source_asset_id") or a.get("component_type") in ("focal_subject", "character", "background")))
+            or (hasattr(a, "source_asset_id") and getattr(a, "source_asset_id"))
+            or (hasattr(a, "component_type") and getattr(a, "component_type") in ("focal_subject", "character", "background"))
+            for a in actions
+        )
+        if has_custom_focal and "focal_subject" in node_map and node_map["focal_subject"].source_asset_id is None:
+            del node_map["focal_subject"]
+
         for act in actions:
             act_dict = act.model_dump() if hasattr(act, "model_dump") else (act if isinstance(act, dict) else {})
             act_type = str(act_dict.get("action_type") or "").upper()
@@ -603,6 +612,10 @@ def layout_from_constraints(
                     or params.get("identity_lock")
                     or is_focal
                 )
+                src_asset_id = act_dict.get("source_asset_id") or params.get("source_asset_id")
+                raw_src_crop = act_dict.get("source_crop_bbox") or params.get("source_crop_bbox")
+                src_crop = tuple(float(v) for v in raw_src_crop) if raw_src_crop and len(raw_src_crop) == 4 else None
+
                 node_map[comp_id] = LayoutNode(
                     id=comp_id,
                     type=comp_type,
@@ -614,6 +627,8 @@ def layout_from_constraints(
                     is_focal_subject=is_focal,
                     facial_landmarks=act_dict.get("facial_landmarks") or params.get("facial_landmarks"),
                     identity_lock=bool(act_dict.get("identity_lock") or params.get("identity_lock", is_focal)),
+                    source_asset_id=src_asset_id,
+                    source_crop_bbox=src_crop,
                 )
 
             elif act_type == "REMOVE_COMPONENT":
@@ -648,8 +663,17 @@ def layout_from_constraints(
                         node_map[target_id] = node_map[target_id].model_copy(update={"text": new_txt})
 
             elif act_type == "LOCK_REGION":
+                src_asset_id = act_dict.get("source_asset_id") or params.get("source_asset_id")
+                raw_src_crop = act_dict.get("source_crop_bbox") or params.get("source_crop_bbox")
+                src_crop = tuple(float(v) for v in raw_src_crop) if raw_src_crop and len(raw_src_crop) == 4 else None
+                updates: dict[str, Any] = {"locked": True, "identity_lock": True}
+                if src_asset_id:
+                    updates["source_asset_id"] = src_asset_id
+                if src_crop:
+                    updates["source_crop_bbox"] = src_crop
+
                 if target_id and target_id in node_map:
-                    node_map[target_id] = node_map[target_id].model_copy(update={"locked": True, "identity_lock": True})
+                    node_map[target_id] = node_map[target_id].model_copy(update=updates)
                 bbox_raw = act_dict.get("bbox") or params.get("bbox")
                 if bbox_raw and len(bbox_raw) == 4:
                     try:
@@ -660,7 +684,7 @@ def layout_from_constraints(
                             nb = node.bbox
                             ncx, ncy = (nb.x1 + nb.x2) / 2.0, (nb.y1 + nb.y2) / 2.0
                             if bx <= ncx <= (bx + bw) and by <= ncy <= (by + bh):
-                                node_map[nid] = node.model_copy(update={"locked": True, "identity_lock": True})
+                                node_map[nid] = node.model_copy(update=updates)
                     except Exception:
                         pass
 
@@ -706,17 +730,19 @@ def layout_from_constraints(
     locked_regions = constraints.get("locked_regions") or []
     if isinstance(locked_regions, list):
         for lr in locked_regions:
+            lr_id = lr.get("id") if isinstance(lr, dict) else getattr(lr, "id", None)
             bbox_raw = lr.get("bbox") if isinstance(lr, dict) else getattr(lr, "bbox", None)
-            if bbox_raw and len(bbox_raw) == 4:
+            if lr_id and lr_id in node_map and node_map[lr_id].type not in ("background", "container"):
+                node_map[lr_id] = node_map[lr_id].model_copy(update={"locked": True, "identity_lock": True})
+            elif bbox_raw and len(bbox_raw) == 4:
                 try:
                     bx, by, bw, bh = [float(v) for v in bbox_raw]
-                    # Check overlap with any existing node
                     for nid, node in list(node_map.items()):
-                        if nid == "root":
+                        if nid == "root" or node.type in ("background", "container"):
                             continue
                         nb = node.bbox
-                        ncx, ncy = (nb.x1 + nb.x2) / 2.0, (nb.y1 + nb.y2) / 2.0
-                        if bx <= ncx <= (bx + bw) and by <= ncy <= (by + bh):
+                        cur_w, cur_h = nb.x2 - nb.x1, nb.y2 - nb.y1
+                        if abs(nb.x1 - bx) < 0.10 and abs(nb.y1 - by) < 0.10 and abs(cur_w - bw) < 0.20 and abs(cur_h - bh) < 0.20:
                             node_map[nid] = node.model_copy(update={"locked": True, "identity_lock": True})
                 except Exception:
                     pass
@@ -726,8 +752,25 @@ def layout_from_constraints(
     for nid, node in node_map.items():
         if nid != "root" and (node.locked or getattr(node, "identity_lock", False)):
             box_coords = [round(node.bbox.x1, 4), round(node.bbox.y1, 4), round(node.bbox.x2 - node.bbox.x1, 4), round(node.bbox.y2 - node.bbox.y1, 4)]
-            if not any(r.get("bbox") == box_coords for r in final_locked_regions if isinstance(r, dict)):
-                final_locked_regions.append({"bbox": box_coords, "reason": f"Lock for {nid} ({node.type})"})
+            match = None
+            for r in final_locked_regions:
+                r_box = r.get("bbox") if isinstance(r, dict) else getattr(r, "bbox", None)
+                if r_box == box_coords or (isinstance(r, dict) and r.get("id") == nid) or getattr(r, "id", None) == nid:
+                    match = r
+                    break
+            if match is None:
+                final_locked_regions.append({
+                    "id": nid,
+                    "bbox": box_coords,
+                    "reason": f"Lock for {nid} ({node.type})",
+                    "source_asset_id": getattr(node, "source_asset_id", None),
+                    "source_crop_bbox": getattr(node, "source_crop_bbox", None),
+                })
+            elif isinstance(match, dict):
+                if not match.get("source_asset_id") and getattr(node, "source_asset_id", None):
+                    match["source_asset_id"] = getattr(node, "source_asset_id", None)
+                if not match.get("source_crop_bbox") and getattr(node, "source_crop_bbox", None):
+                    match["source_crop_bbox"] = getattr(node, "source_crop_bbox", None)
     constraints["locked_regions"] = final_locked_regions
 
     # Apply deterministic Flexbox partitioner (with strict locked-node exemption and 8pt grid snapping)

@@ -47,9 +47,23 @@ class ConversationTurn(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class ReferenceAsset(BaseModel):
+    """Multi-asset input descriptor for multi-subject / multi-reference composition (MS-Diffusion & AnyDoor)."""
+
+    id: str  # e.g., "asset_self", "asset_girl", "asset_bg"
+    blob_ref: str
+    role: Literal["subject", "background", "style", "canvas"] = "subject"
+    description: str = ""
+    source_crop_bbox: tuple[float, float, float, float] | None = None  # Normalized [x, y, w, h] in source image
+    facial_landmarks: dict[str, Any] | None = None
+
+
 class LockedRegion(BaseModel):
-    bbox: tuple[float, float, float, float]  # x, y, w, h
+    bbox: tuple[float, float, float, float]  # target canvas normalized x, y, w, h
     reason: str
+    id: str | None = None
+    source_asset_id: str | None = None  # Points to specific ReferenceAsset (e.g. "asset_self" vs "asset_girl")
+    source_crop_bbox: tuple[float, float, float, float] | None = None  # Crop box in source asset [x, y, w, h]
 
 
 class Constraints(BaseModel):
@@ -58,8 +72,17 @@ class Constraints(BaseModel):
     layout_hints: str | None = None
     locked_regions: list[LockedRegion] = Field(default_factory=list)
     original_intent: str | None = None  # D2: preserves original user intent across long conversations
-    reference_image_ref: str | None = None  # Uploaded image reference for visual VLM layout extraction & lock donor
+    reference_image_ref: str | None = None  # Backward-compatible single image reference
+    reference_assets: list[ReferenceAsset] = Field(default_factory=list)  # SOTA multi-asset manifest
     asset_mode: Literal["opaque", "transparent"] = "opaque"
+
+    def get_reference_assets(self) -> list[ReferenceAsset]:
+        """Resolves active reference assets, ensuring backward-compatibility with single reference_image_ref."""
+        if self.reference_assets:
+            return self.reference_assets
+        if self.reference_image_ref:
+            return [ReferenceAsset(id="default", blob_ref=self.reference_image_ref, role="subject")]
+        return []
 
 
 class LayoutDraft(BaseModel):

@@ -97,6 +97,8 @@ class LayoutNode(BaseModel):
     is_focal_subject: bool = False
     facial_landmarks: dict[str, Any] | None = None
     identity_lock: bool = False
+    source_asset_id: str | None = None
+    source_crop_bbox: tuple[float, float, float, float] | None = None
     props: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("type")

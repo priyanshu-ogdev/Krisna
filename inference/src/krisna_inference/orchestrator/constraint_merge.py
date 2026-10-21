@@ -67,12 +67,34 @@ def _apply_single_action(merged: dict, action) -> None:
     elif act_type == "LOCK_REGION":
         bbox = action_dict.get("bbox") or params.get("bbox")
         reason = action_dict.get("reason") or params.get("reason") or "Action lock"
+        src_asset_id = action_dict.get("source_asset_id") or params.get("source_asset_id")
+        src_crop = action_dict.get("source_crop_bbox") or params.get("source_crop_bbox")
+        action_id = action_dict.get("id") or params.get("id") or action_dict.get("target_id")
         clamped = _normalize_and_clamp_bbox(bbox)
+        clamped_crop = _normalize_and_clamp_bbox(src_crop) if src_crop else None
         if clamped is not None:
             current_locked = list(merged.get("locked_regions") or [])
-            if not any(r.get("bbox") == clamped for r in current_locked if isinstance(r, dict)):
-                current_locked.append({"bbox": clamped, "reason": str(reason)})
-                merged["locked_regions"] = current_locked
+            matched = False
+            for item in current_locked:
+                if isinstance(item, dict) and item.get("bbox") == clamped:
+                    matched = True
+                    if src_asset_id and not item.get("source_asset_id"):
+                        item["source_asset_id"] = src_asset_id
+                    if clamped_crop and not item.get("source_crop_bbox"):
+                        item["source_crop_bbox"] = clamped_crop
+                    if action_id and not item.get("id"):
+                        item["id"] = action_id
+                    break
+            if not matched:
+                entry = {"bbox": clamped, "reason": str(reason)}
+                if action_id is not None:
+                    entry["id"] = action_id
+                if src_asset_id is not None:
+                    entry["source_asset_id"] = src_asset_id
+                if clamped_crop is not None:
+                    entry["source_crop_bbox"] = clamped_crop
+                current_locked.append(entry)
+            merged["locked_regions"] = current_locked
         target = action_dict.get("target_id") or params.get("target_id")
         if target:
             existing_hints = merged.get("layout_hints") or ""
@@ -110,11 +132,33 @@ def _apply_single_action(merged: dict, action) -> None:
             or str(comp_type).lower() in ("focal_subject", "character")
         )
         if is_focal and clamped:
+            src_asset_id = action_dict.get("source_asset_id") or params.get("source_asset_id")
+            src_crop = action_dict.get("source_crop_bbox") or params.get("source_crop_bbox")
+            action_id = action_dict.get("id") or params.get("id") or action_dict.get("target_id")
+            clamped_crop = _normalize_and_clamp_bbox(src_crop) if src_crop else None
             current_locked = list(merged.get("locked_regions") or [])
             reason = action_dict.get("reason") or f"Identity lock for {comp_type}"
-            if not any(r.get("bbox") == clamped for r in current_locked if isinstance(r, dict)):
-                current_locked.append({"bbox": clamped, "reason": str(reason)})
-                merged["locked_regions"] = current_locked
+            matched = False
+            for item in current_locked:
+                if isinstance(item, dict) and item.get("bbox") == clamped:
+                    matched = True
+                    if src_asset_id and not item.get("source_asset_id"):
+                        item["source_asset_id"] = src_asset_id
+                    if clamped_crop and not item.get("source_crop_bbox"):
+                        item["source_crop_bbox"] = clamped_crop
+                    if action_id and not item.get("id"):
+                        item["id"] = action_id
+                    break
+            if not matched:
+                entry = {"bbox": clamped, "reason": str(reason)}
+                if action_id is not None:
+                    entry["id"] = action_id
+                if src_asset_id is not None:
+                    entry["source_asset_id"] = src_asset_id
+                if clamped_crop is not None:
+                    entry["source_crop_bbox"] = clamped_crop
+                current_locked.append(entry)
+            merged["locked_regions"] = current_locked
 
     elif act_type == "REMOVE_COMPONENT":
         target = action_dict.get("target_id") or params.get("target_id")
@@ -198,8 +242,22 @@ def apply_constraint_updates(constraints: dict, constraint_updates) -> dict:
             if isinstance(item, dict) and "bbox" in item:
                 clamped_box = _normalize_and_clamp_bbox(item["bbox"])
                 if clamped_box is not None:
-                    entry = {"bbox": clamped_box, "reason": str(item.get("reason", "Locked region"))}
-                    if not any(existing.get("bbox") == clamped_box for existing in merged_locked if isinstance(existing, dict)):
+                    clamped_crop = _normalize_and_clamp_bbox(item.get("source_crop_bbox")) if item.get("source_crop_bbox") else None
+                    matched = False
+                    for existing in merged_locked:
+                        if isinstance(existing, dict) and existing.get("bbox") == clamped_box:
+                            matched = True
+                            if item.get("source_asset_id") and not existing.get("source_asset_id"):
+                                existing["source_asset_id"] = item.get("source_asset_id")
+                            if clamped_crop and not existing.get("source_crop_bbox"):
+                                existing["source_crop_bbox"] = clamped_crop
+                            if item.get("id") and not existing.get("id"):
+                                existing["id"] = item.get("id")
+                            break
+                    if not matched:
+                        entry = dict(item)
+                        if "reason" not in entry:
+                            entry["reason"] = "Locked region"
                         merged_locked.append(entry)
         merged["locked_regions"] = merged_locked
 

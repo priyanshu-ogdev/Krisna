@@ -59,13 +59,35 @@ async def conversational_turn(
     session_id: str,
     user_message: str,
     image_ref: str | None = None,
+    image_refs: list[str] | None = None,
+    reference_assets: list[Any] | None = None,
 ) -> DesignState:
     """§5.3 'Conversational turn' — the common, cheap, no-swap path."""
     state = store.get(session_id)
     expected_rev = state.revision
 
-    if image_ref:
+    from krisna_inference.orchestrator.design_state import ReferenceAsset
+
+    if reference_assets:
+        state.constraints.reference_assets = [
+            ra if isinstance(ra, ReferenceAsset) else ReferenceAsset(**ra)
+            for ra in reference_assets
+        ]
+        if not state.constraints.reference_image_ref and state.constraints.reference_assets:
+            state.constraints.reference_image_ref = state.constraints.reference_assets[0].blob_ref
+    elif image_refs:
+        state.constraints.reference_assets = [
+            ReferenceAsset(id=f"asset_{i}", blob_ref=ref, role="subject")
+            for i, ref in enumerate(image_refs)
+        ]
+        if not state.constraints.reference_image_ref and state.constraints.reference_assets:
+            state.constraints.reference_image_ref = state.constraints.reference_assets[0].blob_ref
+    elif image_ref:
         state.constraints.reference_image_ref = image_ref
+        if not state.constraints.reference_assets:
+            state.constraints.reference_assets = [
+                ReferenceAsset(id="default", blob_ref=image_ref, role="subject")
+            ]
 
     # Multi-turn context: pass prior dialog history and any prior critique
     history = [turn.model_dump() for turn in state.conversation_history]
@@ -94,6 +116,8 @@ async def conversational_turn(
         conversation_history=history,
         prior_critique=prior_critique,
         image_ref=image_ref,
+        image_refs=image_refs,
+        reference_assets=[a.model_dump() for a in state.constraints.get_reference_assets()],
     )
 
     planner_out = result.get("planner", {})
@@ -153,15 +177,32 @@ async def conversational_turn(
     sketch_locked = sketch_out.get("locked_regions") or []
     if sketch_locked:
         from krisna_inference.orchestrator.design_state import LockedRegion
-        existing_boxes = [list(r.bbox) for r in state.constraints.locked_regions]
         for slr in sketch_locked:
             slr_dict = slr if isinstance(slr, dict) else slr.model_dump()
             box = slr_dict.get("bbox")
-            if box and list(box) not in existing_boxes:
+            if not box:
+                continue
+            matched = False
+            for existing in state.constraints.locked_regions:
+                if list(existing.bbox) == list(box) or (slr_dict.get("id") and existing.id == slr_dict.get("id")):
+                    matched = True
+                    if slr_dict.get("source_asset_id") and not existing.source_asset_id:
+                        existing.source_asset_id = slr_dict.get("source_asset_id")
+                    if slr_dict.get("source_crop_bbox") and not existing.source_crop_bbox:
+                        existing.source_crop_bbox = tuple(slr_dict["source_crop_bbox"])
+                    if slr_dict.get("id") and not existing.id:
+                        existing.id = slr_dict.get("id")
+                    break
+            if not matched:
                 state.constraints.locked_regions.append(
-                    LockedRegion(bbox=tuple(box), reason=slr_dict.get("reason", "Sketch lock"))
+                    LockedRegion(
+                        id=slr_dict.get("id"),
+                        bbox=tuple(box),
+                        reason=slr_dict.get("reason", "Sketch lock"),
+                        source_asset_id=slr_dict.get("source_asset_id"),
+                        source_crop_bbox=tuple(slr_dict["source_crop_bbox"]) if slr_dict.get("source_crop_bbox") else None,
+                    )
                 )
-                existing_boxes.append(list(box))
 
     if state.refinement.exhausted:
         state.refinement.reset_cycle()
@@ -348,6 +389,14 @@ async def finalize(
     # On Image-to-Image (or portrait editing), lock_donor_ref resolves to the original reference photo (state.constraints.reference_image_ref),
     # guaranteeing 0.00% facial drift for locked identity regions (NVIDIA AnyDoor & ConsisID).
     lock_donor_ref = state.finalize_output.image_ref or getattr(state.constraints, "reference_image_ref", None)
+    lock_donor_map: dict[str, str] = {}
+    for asset in state.constraints.get_reference_assets():
+        if asset.blob_ref:
+            lock_donor_map[asset.id] = asset.blob_ref
+    if state.finalize_output.image_ref:
+        lock_donor_map["canvas"] = state.finalize_output.image_ref
+    if lock_donor_ref and "default" not in lock_donor_map:
+        lock_donor_map["default"] = lock_donor_ref
 
     # Synthesize prompt from conversational intent, constraints, and LayoutIR components/labels.
     effective_prompt = prompt if prompt else synthesize_polish_prompt(state)
@@ -363,6 +412,7 @@ async def finalize(
         session_id=session_id,
         handoff_image_ref=pixel_ref,
         lock_donor_ref=lock_donor_ref,
+        lock_donor_map=lock_donor_map,
         segmentation_ref=segmentation_ref,
         mask_ref=mask_ref,
         prompt=effective_prompt,
@@ -540,6 +590,8 @@ async def plan_sketch_and_polish(
     session_id: str,
     user_message: str,
     image_ref: str | None = None,
+    image_refs: list[str] | None = None,
+    reference_assets: list[Any] | None = None,
     quality: bool = False,
     fast: bool = False,
     prompt: str | None = None,
@@ -573,6 +625,8 @@ async def plan_sketch_and_polish(
         session_id=session_id,
         user_message=user_message,
         image_ref=image_ref,
+        image_refs=image_refs,
+        reference_assets=reference_assets,
     )
 
     # Step 2: Direct Polish progression
@@ -1265,24 +1319,40 @@ def synthesize_descriptive_polish_prompt(state: DesignState) -> str:
         archetype = str(payload.get("scene_archetype") or getattr(state.layout, "scene_archetype", "ui_layout")).lower()
 
         if archetype == "portrait_character":
-            focal_node = next(
-                (n for n in nodes if n.get("is_focal_subject") or n.get("type") in ("focal_subject", "character")),
-                None,
-            )
-            focal_desc = str(focal_node.get("text") or "character portrait").strip() if focal_node else "character portrait"
-            prose_parts.append(
-                f"A breathtaking, high-fidelity character portrait of {focal_desc} with {style_desc} aesthetic."
-            )
-            prose_parts.append(
-                "Featuring intricate, realistic facial mapping, natural skin textures, expressive eyes, and fine hair details with sharp focal depth and balanced lighting."
-            )
-            other_labels = [
-                f"{n.get('type')}: '{n['text']}'"
-                for n in nodes
-                if n.get("id") != "root" and n.get("text") and n != focal_node
+            focal_nodes = [
+                n for n in nodes if n.get("is_focal_subject") or n.get("type") in ("focal_subject", "character")
             ]
-            if other_labels:
-                prose_parts.append(f"Subtle visual typography elements present: {', '.join(other_labels)}.")
+            if len(focal_nodes) > 1:
+                focal_descs = [str(n.get("text") or n.get("id") or "character").strip() for n in focal_nodes]
+                prose_parts.append(
+                    f"A stunning, harmonious dual-subject portrait featuring {' and '.join(focal_descs)} together in the scene with {style_desc} aesthetic."
+                )
+                prose_parts.append(
+                    "Masterfully composed multi-subject portrait with distinct facial identities preserved, natural interaction, balanced skin tones, and cohesive unified lighting and depth of field."
+                )
+                other_labels = [
+                    f"{n.get('type')}: '{n['text']}'"
+                    for n in nodes
+                    if n.get("id") != "root" and n.get("text") and n not in focal_nodes
+                ]
+                if other_labels:
+                    prose_parts.append(f"Subtle visual typography elements present: {', '.join(other_labels)}.")
+            else:
+                focal_node = focal_nodes[0] if focal_nodes else None
+                focal_desc = str(focal_node.get("text") or "character portrait").strip() if focal_node else "character portrait"
+                prose_parts.append(
+                    f"A breathtaking, high-fidelity character portrait of {focal_desc} with {style_desc} aesthetic."
+                )
+                prose_parts.append(
+                    "Featuring intricate, realistic facial mapping, natural skin textures, expressive eyes, and fine hair details with sharp focal depth and balanced lighting."
+                )
+                other_labels = [
+                    f"{n.get('type')}: '{n['text']}'"
+                    for n in nodes
+                    if n.get("id") != "root" and n.get("text") and n != focal_node
+                ]
+                if other_labels:
+                    prose_parts.append(f"Subtle visual typography elements present: {', '.join(other_labels)}.")
 
         elif archetype == "graphic_poster":
             headline_node = next((n for n in nodes if n.get("type") == "headline"), None)
