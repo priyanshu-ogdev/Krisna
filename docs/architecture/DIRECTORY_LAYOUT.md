@@ -31,8 +31,8 @@ krivex/
 
 ## Why training/inference is a real package split, not just folders
 
-The original `krivex-orchestrator` had `training/` and `inference/` as
-subpackages of one `krisna_orchestrator` package. That was fine when it
+The original repository had `training/` and `inference/` as
+subpackages of one single package. That was fine when it
 was one deployable unit, but it conflates two things with genuinely
 different runtime requirements:
 
@@ -51,7 +51,7 @@ inference split, not just naming hygiene.
 
 ## Package → package mapping (old → new)
 
-| Old (`krisna_orchestrator.`) | New | Notes |
+| Legacy Module Path | New Package Path | Notes |
 |---|---|---|
 | `swap_orchestrator`, `state_machine`, `model_registry`, `vram_budget`, `design_state`, `flows`, `service`, `store`, `exceptions`, `logging_setup` | `krivex_inference.orchestrator.*` | Coordination layer — no GPU code, fully testable with `MockBackend` |
 | `inference.*` (backends, factory, planner_rag, common, blob_store_singleton, maskgit_model, sketch_handoff) | `krivex_inference.backends.*` | Real model-loading code |
@@ -89,8 +89,7 @@ same files.
 ## What moved where, mechanically
 
 This was a real restructuring, not a relabeling: every import statement
-across ~150 Python files was rewritten (`from krisna_orchestrator.X import
-Y` → the correct new package path per the table above), every shell
+across ~150 Python files was rewritten to the correct new package path per the table above, every shell
 script's path assumptions were fixed for the new root, and the full test
 suite (355 tests across all three packages) was run and confirmed passing
 from the new root before this restructuring was considered complete — not

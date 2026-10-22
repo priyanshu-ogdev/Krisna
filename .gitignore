@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Krisna repository ignore policy
+# Krivex repository ignore policy
 # Generated state, secrets, downloaded dependencies, model artifacts, datasets,
 # local databases, and build products must never enter a commit.
 # -----------------------------------------------------------------------------

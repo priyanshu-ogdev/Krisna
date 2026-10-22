@@ -150,7 +150,7 @@ The following components were intentionally removed based on empirical findings 
 
 ### 3.4 Orchestrator & Multi-Turn State Machine
 
-- **Implementation**: `inference/src/krisna_orchestrator/`
+- **Implementation**: `inference/src/krivex_inference/`
 - **State Schema (`DesignState`)**:
   - `session_id: str`
   - `stage: SessionStage` (`CONVERSING` $\to$ `SKETCHING` $\to$ `REFINING` $\to$ `FINALIZING` $\to$ `FINALIZED`)
