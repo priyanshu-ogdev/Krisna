@@ -116,11 +116,7 @@ def _load_pipeline_config(
     from data_forge.config import load_config
 
     configs_dir = _find_configs_dir()
-    if profile == "local-vlm":
-        default_pipeline = configs_dir / "pipeline_local.yaml"
-        default_models = configs_dir / "models_local.yaml"
-        default_datasets = configs_dir / "datasets.yaml"
-    elif profile == "default":
+    if profile in ("default", "local-vlm"):
         default_pipeline = configs_dir / "pipeline.yaml"
         default_models = configs_dir / "models.yaml"
         default_datasets = configs_dir / "datasets.yaml"
@@ -200,8 +196,8 @@ def main() -> None:
 @main.command()
 @click.option("--dry-run", is_flag=True, help="Validate config and walk stages without inference")
 @click.option("--resume/--no-resume", default=True, help="Resume from checkpoints")
-@click.option("--profile", type=click.Choice(["local-vlm", "default"]), default="local-vlm", show_default=True,
-              help="Configuration profile; default is the strict Qwen3.8-27B GPU profile")
+@click.option("--profile", type=click.Choice(["default", "local-vlm"]), default="default", show_default=True,
+              help="Configuration profile; default is the server Qwen3.8-27B GPU pipeline profile")
 @click.option("--stages", default=None, help="Comma-separated stage numbers to run (e.g., '0,1,2')")
 @click.option("--chunk-size", default=None, type=int, help="Override chunk size from config")
 @click.option("--limit", default=None, type=int, help="Cap total records processed this run (smoke tests)")

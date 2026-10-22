@@ -13,5 +13,4 @@ models/planner/
 
 Use `scripts/inference/download_planner_models.py` with an exact publisher
 filename. The downloader refuses accidental overwrites and records hashes.
-Training outputs retain their existing subdirectories (`sketch_tier/`,
-`polish_default_lora/`, and `dpo_checkpoints/`).
+Training outputs retain their subdirectories (`polish_default_lora/` and `dpo_checkpoints/`; the Sketch tier is deterministic layout code and requires no weights).

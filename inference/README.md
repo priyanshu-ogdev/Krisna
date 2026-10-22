@@ -10,13 +10,7 @@
 Swap Orchestrator + Design State Manager for **Krisna's Agentic Design
 System** — the coordination backbone described in §5.1 (Design State
 object), §5.2 (Critique Adapter contract), §5.3 (sequence flows), and
-§7.4 (formal swap-orchestration state machine). This README targets the
-pyproject.toml-labeled "PRD v10" baseline plus the **final, no-RLHF-loop
-PRD revision** on top of it: the Planner, Qwen-Image-Edit-2511, and
-Gemma-4 Critic all ship **frozen**; only the Sketch Tier (from scratch)
-and Z-Image-Turbo (LoRA + Diffusion-DPO) are actually trained. Sections
-below are labeled FROZEN / TRAINED accordingly — if you're looking for
-"which tiers does this project fine-tune," that's the fast answer.
+§7.4 (formal swap-orchestration state machine). This README reflects the **final, canonical architecture**: the Planner (`Qwen3.5-9B`) ships **frozen** (RAG + GBNF grammar); the Sketch Tier (`krisna.layout.v1`) is **100% deterministic** (Cassowary/Simplex CPU solver, 0 MB GPU VRAM, 0% overlap proof); and the Visual Polish Tier (`Qwen/Qwen-Image-2.1` 7B MMDiT with DoRA adapter) is the **single active trainable foundation model**. Sections below are labeled FROZEN / DETERMINISTIC / TRAINED accordingly.
 
 ## What this is (and isn't)
 

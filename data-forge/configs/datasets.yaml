@@ -212,14 +212,14 @@ datasets:
       image_column: image
       sample_size: 66000
   pickapic_v2:
-    enabled: false
+    enabled: true
     display_name: Pick-a-Pic v2
     source_type: huggingface
     repo_id: liuhuohuo2/pick-a-pic-v2
     revision: f602d48e244a68f04e9bcb6ca2a9ed5bcb578576
     category: dpo_preference_general
     expected_record_count: 500000
-    training_eligible: false
+    training_eligible: true
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/liuhuohuo2/pick-a-pic-v2
@@ -231,7 +231,7 @@ datasets:
     license_notes: 'Real, web-collected human preference comparisons (pickapic.io), MIT license per the PickScore repo. General text-to-image domain, not UI-specific â€” this is Stage-1 DPO signal (broad aesthetic alignment), not a substitute for the UI-domain datasets below. Image bytes are embedded directly in columns jpg_0/jpg_1 per the dataset card â€” no external URL fetch needed.
 
       '
-    note: "Quarantined: preference data is deferred and cannot supervise the Qwen condition-image to target-image contract."
+    note: "Approved for server run: human preference pairwise comparisons (pickapic.io) for Phase 2 continuous flow DPO alignment."
     fetch_config:
       file_patterns:
         - '*.parquet'
@@ -241,16 +241,16 @@ datasets:
       prompt_column: caption
       label_column: label_0
       label_convention: index
-      sample_size: 60000
+      sample_size: 50000
   hpdv2:
-    enabled: false
+    enabled: true
     display_name: HPDv2 (Human Preference Dataset v2)
     source_type: huggingface
     repo_id: ymhao/HPDv2
     revision: bb0f2563e451e11c3f376b2ba93615db00e042e1
     category: dpo_preference_general
     expected_record_count: 798000
-    training_eligible: false
+    training_eligible: true
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/ymhao/HPDv2
@@ -260,11 +260,11 @@ datasets:
     license_url: https://www.apache.org/licenses/LICENSE-2.0
     license_status: verified
     license_notes: Apache 2.0, confirmed on the dataset card. Real human annotator rankings, general T2I domain.
-    note: "Quarantined: general text-to-image preference rankings are outside the active UI-polish objective."
+    note: "Approved for server run: human annotator preference rankings for Phase 2 continuous flow DPO alignment."
     fetch_config:
       download_mode: hpdv2_ranked_list
       annotation_file: train.json
-      sample_size: 60000
+      sample_size: 50000
   figma2code:
     enabled: true
     display_name: Figma2Code (Community Figma Designs)
@@ -542,18 +542,17 @@ datasets:
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
     quality_tier: gold
-    training_targets:
-      - dpo_alignment
+    training_targets: []
     license_url: https://huggingface.co/datasets/Jonathan-Zhou/GameLabel-10k
     license_status: verified
     license_notes: 'Apache 2.0, confirmed on the live dataset card. Real crowdsourced human preference votes (mobile-game players, rewarded with in-game currency â€” arXiv:2409.19830), NOT AI-judge/synthetic labeling. General T2I domain (game-style/illustrative prompts), same category as Pick-a-Pic/HPDv2 above â€” supplements Stage-1 general DPO signal, does not close the Stage-2 UI-domain gap (designsense_10k/designpref below remain unreleased for that).
 
       '
-    note: "Quarantined: general game-image preference data is deferred and irrelevant to supervised UI pair training."
+    note: "Quarantined per forensic negative audit: mobile-game player fantasy art voting is out-of-domain and adversarial to clean UI/UX design aesthetics."
     fetch_config:
       download_mode: gamelabel_csv
       parquet_revision: 1ed0ee6ebe28faefcd3f640ad7ad1bb9017c10cd
-      sample_size: 20000
+      sample_size: 9800
   uicrit:
     enabled: false
     display_name: UICrit (UI Critique Dataset)

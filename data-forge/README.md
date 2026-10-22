@@ -16,13 +16,16 @@
 
 | Output | Feeds | Data source |
 |---|---|---|
-| `model_data/sketch_tier_maskgit/` | Sketch Tier, trained from scratch | RICO, CLAY, Enrico, WebUI (real UI screenshots) |
-| `model_data/polish_zimage_turbo/` | Z-Image-Turbo, LoRA/QLoRA fine-tune | PD12M, CC12M + the UI sources above |
-| `model_data/polish_qwen_image21/` | Qwen-Image-2.1 paired image-conditioned LoRA | Only policy-approved UI sources with renderer-produced condition images |
-| `model_data/dpo_alignment/general/` | Z-Image-Turbo, Diffusion-DPO Stage 1 | Pick-a-Pic v2, HPDv2 (real human preference pairs) |
-| `model_data/dpo_alignment/domain/` | Z-Image-Turbo, Diffusion-DPO Stage 2 | DesignSense-10k, DesignPref (real human-designer preference pairs — **not yet publicly released**, see below) |
+| `model_data/polish_qwen_image21/` | Qwen-Image-2.1 paired image-conditioned LoRA (DoRA) | Only policy-approved UI/graphic design sources with renderer-produced condition wireframes |
+| `model_data/dpo_alignment/general/` | Flow-Matching DPO (deferred research branch) | Pick-a-Pic v2, HPDv2 (real human preference pairs) |
 | `model_data/planner_rag_corpus/` | Product-side RAG index (not a training set) | UICrit (real human critique text) |
-| `model_data/eval_external/` | Held-out evaluation only | TASTE, PartiPrompts — structurally unreachable from any training path |
+| `model_data/eval_external/` | Held-out evaluation only | TASTE, UI-Vision, ScreenSpot, PartiPrompts — structurally unreachable from any training path |
+
+> [!NOTE]
+> **Decommissioned Historical Paths**:
+> - `model_data/sketch_tier_maskgit/`: Retired. Sketch is now 100% deterministic (`krisna.layout.v1` Cassowary CPU solver, 0 MB GPU VRAM, 0% overlap proof).
+> - `model_data/polish_zimage_turbo/`: Retired. The visual polish tier is unified on `Qwen/Qwen-Image-2.1` (7B MMDiT).
+> - Stock photography downloads (PD12M, CC12M): Quarantined. Base foundation weights remain frozen (`base_weights_frozen: true`), guaranteeing natural manifold retention without downloading unconditioned stock photos.
 
 ## What this pipeline does NOT train
 
@@ -110,7 +113,7 @@ not through Stage 12.
 - **Python**: 3.10 or 3.11
 - **GPU**: 48GB VRAM (e.g., RTX 6000 Ada, A6000, L40S)
 - **RAM**: 128GB system RAM recommended
-- **Disk**: >=3TB at `DATA_ROOT`
+- **Disk**: >=1.0TB NVMe at `DATA_ROOT` (calibrated portfolio is ~480 GB, preserving >500 GB safe headroom)
 
 ## Setup & Verification
 
@@ -238,19 +241,27 @@ Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 | 09 | Heldout Carve | -- | Stratified eval split; rejects encoding-incomplete records first |
 | 10 | Audit Pass | Tier-1 + Tier-2 | VLM-as-judge on 2-5% sample |
 | 11 | Registry Watch | -- | Model/dataset release polling, including explicit watches for DesignSense-10k/DesignPref |
-| 12 | Model Data Export | -- | Segments into `model_data/`: `sketch_tier_maskgit/`, `polish_zimage_turbo/`, `dpo_alignment/{general,domain}/`, `planner_rag_corpus/`, `eval_external/` |
+| 12 | Model Data Export | -- | Segments into `model_data/`: `polish_qwen_image21/` (paired wireframe -> screenshot records), `dpo_alignment/general/` (Pick-a-Pic / HPDv2), `planner_rag_corpus/` (UICrit), and `eval_external/` (TASTE, UI-Vision, ScreenSpot, PartiPrompts) |
 
 ## Source Registry Summary
 
 See `../docs/data-forge/DATA_SOURCES.md` and
 `../docs/research/DATASET_ACCEPTANCE_MATRIX.md` for the full evidence table.
-The registry includes the following source families:
+The production portfolio consists of **13 active sources (356,721 total records / ~480 GB)**:
 
-- **Foundation (real images, trained on directly):** PD12M, CC12M, RICO (core + semantic), CLAY, Enrico, WebUI, Screen2Words
-- **DPO alignment (real human preference pairs):** Pick-a-Pic v2, HPDv2 (general); DesignSense-10k, DesignPref (UI/design-domain — **DesignPref is confirmed not yet publicly released**; DesignSense-10k has no confirmed public repo and a confirmed CC BY-NC-ND 4.0 license that would need separate legal sign-off even once released)
-- **RAG corpus (not trained on):** UICrit
-- **Evaluation only, structurally unreachable from training:** TASTE, PartiPrompts
-- **New structure/design candidates with explicit adapters:** Figma2Code and MobileViews
+- **Supervised UI & Design Pairs (329,317 records):**
+  - Editorial & Multi-Column Publishing: `doclaynet` (80,000)
+  - Mobile Application View Hierarchies: `rico_semantic` (66,000)
+  - Graphic Design & Marketing: `crello` (25,000), `pku_poster` (10,000), `abo_ecommerce` (35,000)
+  - Localized Instruction Inpainting: `magicbrush` (10,500)
+  - Production Web UI Components: `figma2code` (2,817)
+  - Human Aesthetic Preference Pairs: `pickapic_v2` (50,000), `hpdv2` (50,000)
+- **Held-Out Evaluation Benchmarks (27,404 records):**
+  - Design Aesthetics & Quality: `taste` (14,500)
+  - Visual GUI Grounding: `ui_vision` (10,000), `screenspot` (1,272)
+  - Typography & Composition Prompts: `partiprompts` (1,632)
+- **Quarantined & Purged Sources:**
+  - `pd12m`, `publaynet`, `docbank`, `websight`, `atomblock_webui` — general web crawl or synthetic scrapings irrelevant to UI generation and unnecessary given frozen base weights (`base_weights_frozen: true`).
 
 ## Known Issues, Fixed This Revision (v16)
 

@@ -47,9 +47,9 @@ npm start                 # http://127.0.0.1:3100
 ```
 
 **First run** (nothing installed yet): the Setup tab is where you land.
-Fill in options, optionally point at your trained Sketch checkpoint /
-Polish LoRA (or leave blank — both auto-discover from the real training
-output paths, see below), click **Start install**, watch it download.
+Fill in options, optionally point at your trained Polish LoRA adapter
+(or leave blank — auto-discovers from the real training output path;
+the Sketch tier is deterministic and requires no checkpoint), click **Start install**, watch it download.
 The moment it finishes, this same process starts the real backend
 automatically — the **Backend** panel's status pill flips to
 "running (real backend)" with no further action.

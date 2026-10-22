@@ -55,7 +55,7 @@ docs/
 - **Deferred preference alignment**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md#36-flow-matching-and-preference-alignment).
 - **Master Review Archive & 71-Gate Mapping**: See [review/README.md](review/README.md).
 - **Volume I: Tier Architecture Evolution & Ablation Studies**: See [research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md](research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md).
-- **Volume II: Data-Forge 22-Stage Pipeline & 2.68TB Portfolio**: See [research/PROGRESS_AND_DATAFORGE_VOLUME_2.md](research/PROGRESS_AND_DATAFORGE_VOLUME_2.md).
+- **Volume II: Data-Forge 22-Stage Pipeline & ~480GB Calibrated Portfolio (356,721 Records)**: See [research/PROGRESS_AND_DATAFORGE_VOLUME_2.md](research/PROGRESS_AND_DATAFORGE_VOLUME_2.md).
 - **Volume III: Systems Serving, Latency Foundations & Verification**: See [research/PROGRESS_AND_SYSTEMS_VOLUME_3.md](research/PROGRESS_AND_SYSTEMS_VOLUME_3.md).
 - **Data-Forge Academic Literature Survey & Prior Research Attribution**: See [data-forge/LITERATURE_SURVEY.md](data-forge/LITERATURE_SURVEY.md).
 - **Canonical Peer-Reviewed Citations Matrix (Zero arXiv)**: See [citations.md](citations.md).

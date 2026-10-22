@@ -22,6 +22,7 @@ GPU smoke test, adapter receipt, and evaluation receipt exist.
 
 Canonical decisions and evidence:
 
+- [Master Final System Design](docs/FINAL_SYSTEM_DESIGN.md)
 - [Final architecture verdict](docs/research/FINAL_ARCHITECTURE_VERDICT.md)
 - [Flow-matching upgrade plan](docs/research/FLOW_MATCHING_UPGRADE_PLAN.md)
 - [SOTA audit](docs/research/SOTA_AUDIT_2026-10.md)

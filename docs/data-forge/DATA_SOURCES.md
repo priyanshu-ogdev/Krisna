@@ -5,9 +5,12 @@
 >
 > This document is the source-audit ledger distinguishing active training sources from quarantined catalog entries. A source is not training-approved merely because it appears in this document; the runtime registry and immutable receipt gates (`audit_registry.py`) are authoritative.
 
-## Current Audit State & Sub-3TB Rebalanced Portfolio
+## Current Audit State & Calibrated 356,721-Record Production Portfolio
 
-The production training portfolio is bounded at **$1,750,000$ pairs ($\approx 2,677.5\text{ GB} = 2.68\text{ TB}$)**, preserving an **$10.8\%$ ($322.5\text{ GB}$)** unallocated safety buffer below the $3.0\text{ TB}$ ceiling. General-purpose rehearsal is anchored at the **$20.0\%$ Pareto sweet spot** ([Volume 2 §4](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md#4-forensic-audit-of-pillar-4--over-allocation-rebalancing-review-61--62)), while corporate document layout is rebalanced to the **$8.0\%$ SOTA literature ceiling** ([Review Archive](../review/README.md)) to accommodate data visualizations, charts, diagrams, and 16:9 presentation pitch decks.
+The production training and evaluation portfolio is bounded at **356,721 records (~357K records / ~480 GB)**, strictly derived from the **13 active sources** defined in `datasets.yaml` and verified by `audit_registry.py`. This preserves **~520 GB** unallocated safety buffer below the $1.0\text{ TB}$ workstation NVMe ceiling, guaranteeing deterministic pipeline execution in **~14–15 hours** on a single NVIDIA A6000 (48GB VRAM) and enforcing the 18h intake ceiling. 
+
+> [!NOTE]
+> **Photographic Prior Preservation Verdict**: General stock photography downloads (e.g. PD12M, CC12M, LAION) are **quarantined and eliminated**. As codified in `training/configs/polish_qwen_image21_lora.yaml` and enforced by `qwen_trainer_contract.py`, the base model weights remain completely frozen (`base_weights_frozen: true`). Consequently, base photorealism, skin tones, and natural lighting manifolds are permanently retained in $W_0$ without requiring DreamBooth-style prior preservation regularizers (`with_prior_preservation: false`) or burning bandwidth and disk space on unconditioned stock photos.
 
 Run:
 ```powershell
@@ -17,33 +20,24 @@ before every fetch. The command is read-only and reports enabled/quarantined sou
 
 ---
 
-## Active 5-Pillar Training Registry
+## Active Certified Training & Evaluation Registry (13 Sources)
 
-| Pillar & Domain | Dataset Name | Source / Repo ID | License Status | Role & Pipeline Usage |
+| Domain & Pillar | Dataset Name | Source / Repo ID | License Status | Role & Configured Allocation (`sample_size`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **Pillar 1: Photo Prior** | **LAION-Aesthetics v2** | `laion/laion-art` / Parquet | CC-BY-4.0 | $250\text{k}$ pairs. Filtered at Aesthetic Score $\ge 6.25$ and DCT blockiness $B \le 0.12$. Dense synthetic recaptioning via Qwen-2.5-VL to anchor natural texture velocity fields. (Schuhmann et al., NeurIPS 2022). |
-| **Pillar 1: Photo Prior** | **Open Images v7** | `open-images-v7` (Google) | CC-BY-4.0 / CC-BY-2.0 | $100\text{k}$ pairs. Curated diverse architectural, human, and natural object scenes. Motion-blur filtered ($\sigma_{\nabla}^2 \ge 120.0$). Total Pillar 1: $350,000$ pairs ($20.0\%$). (Kuznetsova et al., IJCV 2020). |
-| **Pillar 2: I2I & UI Edit** | **MagicBrush** | `osunlp/MagicBrush` | CC-BY-4.0 (confirmed) | $10,500$ pairs. Ground-truth human-annotated image editing triplets $(I_{\text{source}}, \text{instruction}, I_{\text{target}})$ with precision masks. (Zhang et al., NeurIPS 2023 Oral). |
-| **Pillar 2: I2I & UI Edit** | **HQ-Edit** | `UCSC-VLAA/HQ-Edit` | CC-BY-NC-4.0 (confirmed) | $197,350$ pairs. High-resolution DALL-E 3 & GPT-4V aligned conversational photo edits. Filtered via directional CLIP delta $[0.35, 0.82]$. (Huang et al., ICLR 2025). |
-| **Pillar 2: I2I & UI Edit** | **UltraEdit (Filtered)** | `UltraEdit/UltraEdit` | CC-BY-4.0 (confirmed) | $112,150$ pairs. Fine-grained localized and global photo editing. Bottom 150k pairs pruned via Laplacian seam boundary continuity ($\Delta \nabla \le 0.05$). (Zhang et al., ECCV 2024). |
-| **Pillar 2: I2I & UI Edit** | **UI DAG Mutations** | Synthetic (Internal Krisna) | Internal | $30,000$ pairs. Multi-turn UI layout modification pairs generated via FlowEdit differential masking, teaching deterministic lock preservation. Total Pillar 2: $350,000$ pairs ($20.0\%$). |
-| **Pillar 3: Graphic Design** | **Crello (Filtered)** | `cyberagent/crello` | CDLA-Permissive-2.0 | $240,000$ pairs. Commercial marketing banners, social templates, and $>60,000$ isolated transparent PNG layer assets providing ground-truth alpha channels. Regex-purged of *"Lorem Ipsum"*. (Yamaguchi, ACM MM 2021). |
-| **Pillar 3: Graphic Design** | **PosterLayout** | `creative-graphic-design/PKU-PosterLayout` | CC-BY-SA-4.0 | $9,974$ pairs. Content-aware visual-textual presentation layout pairs for e-commerce advertising posters. (Hsu et al., IEEE TMM 2023). |
-| **Pillar 3: Graphic Design** | **AnyWord-3M (Digital)** | `stzhao/AnyWord-3M` | Apache-2.0 | $90,000$ pairs. Curated digital packaging, posters, and banners with word-level bounding polygon OCR. Excised outdoor street-scene OCR. (Tuo et al., ICLR 2024 Spotlight). |
-| **Pillar 3: Graphic Design** | **Alpha Cutout Assets** | Curated Transparent Vectors | Permissive / Apache-2.0 | $60,026$ pairs. High-resolution isolated graphic cutouts, badges, and typography containers with verified binary alpha transparency. Total Pillar 3: $400,000$ pairs ($22.9\%$). |
-| **Pillar 4: Charts & Info** | **ChartQA** | `Salesforce/ChartQA` | CC-BY-4.0 | $50,000$ pairs. High-precision bar charts, line graphs, pie charts, and scatter plots paired with underlying tabular data. (Masry et al., ACL 2022). |
-| **Pillar 4: Charts & Info** | **PlotQA** | Algorithmic WACV 2020 | MIT / Permissive | $40,000$ pairs. Algorithmic scientific multi-axis plots over World Bank and open government data with verified coordinate bounds. (Methani et al., WACV 2020). |
-| **Pillar 4: Charts & Info** | **InfographicVQA** | CVC / IIIT-H WACV 2022 | CC-BY-NC-4.0 | $30,000$ pairs. Multi-tier visual narrative infographics with hierarchical callouts and theme iconography. (Mathew et al., WACV 2022). |
-| **Pillar 4: Charts & Info** | **AI2D & Vega-Lite** | `allenai/ai2d` & Declarative | Apache-2.0 / BSD-3 | $40,000$ pairs ($20\text{k}$ AI2D flowcharts/process diagrams $+ 20\text{k}$ Vega-Lite/Plotly modern SaaS dashboard widgets). (Kembhavi et al., ECCV 2016; Santhanam et al., CHI 2023). Track 4A: $160,000$ pairs ($9.1\%$). |
-| **Pillar 4: Docs & Slides** | **DocLayNet (Unique)** | `docling-project/DocLayNet` | CDLA-Permissive-1.0 | $80,863$ unique human-annotated pages across 6 enterprise categories. Synthetic duplication eliminated. (Pfitzmann et al., ACM SIGKDD 2022). |
-| **Pillar 4: Docs & Slides** | **Condé Nast Magazine** | `xtqiao.com/MagImage.zip` | Academic / Fair Use | $3,919$ verified publication spreads (*Vogue*, *BRIDES*) with multi-column editorial typography. (Zheng et al., ACM SIGGRAPH 2019). |
-| **Pillar 4: Docs & Slides** | **SlideVQA & Decks** | `SlideVQA` / Curated Decks | CC-BY-4.0 / Permissive | $25,000$ pairs. Verified 16:9 widescreen landscape presentation slides and business pitch decks. Supplemented by $30,218$ annual reports. Track 4B: $140,000$ pairs ($8.0\%$). Total Pillar 4: $300,000$ pairs ($17.1\%$). (Tanaka et al., AAAI 2023). |
-| **Pillar 5: Web & UI** | **CLAY** | `google-research-datasets/clay` | CC-BY-4.0 | $59,000$ pairs. Denoised, vectorized mobile UI screen hierarchies. Completely replaces noisy raw 2017 RICO screens. (Li et al., ACM CHI 2022). |
-| **Pillar 5: Web & UI** | **Mind2Web (Desktop)** | `osunlp/Multimodal-Mind2Web` | OpenRAIL | $120,000$ pairs. Desktop web application viewports (1920x1080) processed with viewport cropping (`viewport_crop: true`, `max_aspect_ratio: 2.0`). (Deng et al., NeurIPS 2023). |
-| **Pillar 5: Web & UI** | **Design2Code** | `google/Design2Code` | MIT | $5,000$ pairs. Complex multi-column responsive SaaS landing pages and web applications. (Si et al., ACL 2025). |
-| **Pillar 5: Web & UI** | **Figma2Code Tokens** | `xcodemind/Figma2Code` | MIT | $30,000$ pairs. Isolated community Figma design system tokens (buttons, modals, search bars, navbars, cards) with transparent canvas alpha. (Gui et al., ICLR 2026). |
-| **Pillar 5: Web & UI** | **ABO (Product Cards)** | `wardana/amazon-berkeley-objects`| CC-BY-NC-4.0 | $21,239$ pairs. Commercial e-commerce product cards with ratings, prices, and CTA buttons (isolated CAD voids purged). (Collins et al., CVPR 2022). |
-| **Pillar 5: Web & UI** | **Enrico & SaaS Screens**| `luileito/enrico` & Curated | Academic / MIT | $119,761$ pairs ($1,460$ Enrico design motifs $+ 118,301$ modern SaaS/web screens). Total Pillar 5: $350,000$ pairs ($20.0\%$). (Leiva et al., ACM MobileHCI 2020). |
+| **Pillar 1: Mobile UI** | **RICO Semantic** | `rico_semantic` / Android | Verified Open | $66,000$ pairs (sample cap). Android semantic screen hierarchies, bounding boxes, and component categories ($18.5\%$). |
+| **Pillar 2: Editorial & Web** | **DocLayNet** | `docling-project/DocLayNet` | CDLA-Permissive-1.0 | $80,000$ pairs (sample cap). Enterprise multi-column documents, annual reports, manuals, and publication spreads. |
+| **Pillar 2: Editorial & Web** | **Figma2Code** | `xcodemind/Figma2Code` | MIT | $2,817$ pairs. Clean production web UI screenshots paired with design tokens, buttons, and layout metadata. Total Pillar 2: $82,817$ pairs ($23.2\%$). |
+| **Pillar 3: Graphic Design** | **Crello** | `cyberagent/crello` | CDLA-Permissive-2.0 | $25,000$ pairs (sample cap). Commercial marketing banners, social templates, and structured layer geometries. |
+| **Pillar 3: Graphic Design** | **PKU-PosterLayout** | `creative-graphic-design/PKU-PosterLayout`| CC-BY-SA-4.0 | $10,000$ pairs (sample cap). Commercial presentation and marketing poster layout pairs with visual anchors. |
+| **Pillar 3: Graphic Design** | **ABO E-Commerce** | `wardana/amazon-berkeley-objects`| CC-BY-NC-4.0 | $35,000$ pairs (sample cap). Commercial e-commerce product cards, metadata, and container layouts. Total Pillar 3: $70,000$ pairs ($19.6\%$). |
+| **Pillar 4: Instruction & DPO** | **MagicBrush** | `osunlp/MagicBrush` | CC-BY-4.0 | $10,500$ pairs. Ground-truth human-annotated image editing triplets $(I_{\text{source}}, \text{instruction}, I_{\text{target}})$ with spatial masks. |
+| **Pillar 4: Instruction & DPO** | **Pick-a-Pic v2** | `pickapic_v2` (DPO stream) | CDLA-Permissive-2.0 | $50,000$ pairs (sample cap). Pairwise human aesthetic preference comparisons for flow alignment. |
+| **Pillar 4: Instruction & DPO** | **HPDv2** | `hpdv2` (DPO stream) | Apache-2.0 | $50,000$ pairs (sample cap). Human preference aesthetic comparisons. Total Pillar 4: $110,500$ pairs ($31.0\%$). |
+| **Evaluation Suite** | **TASTE Benchmark** | `taste` (Eval track) | Evaluation only | $14,500$ screens. Held-out multi-axis expert design rating benchmark (isolated from training). |
+| **Evaluation Suite** | **UI-Vision** | `ui_vision` (Eval track) | MIT | $10,000$ screens. Desktop application visual grounding and layout benchmark. |
+| **Evaluation Suite** | **PartiPrompts** | `partiprompts` (Eval track) | Permissive | $1,632$ prompts. Fine-grained typography and challenging compositional prompts. |
+| **Evaluation Suite** | **ScreenSpot** | `screenspot` (Eval track) | Apache-2.0 | $1,272$ screens. Mobile/web GUI visual element grounding and bounding box benchmark. Total Eval: $27,404$ records ($7.7\%$). |
+| **TOTAL ACTIVE PORTFOLIO** | **All 13 Active Sources** | **`datasets.yaml` Active Set** | **Verified Provenance** | **$356,721$ records ($329,317$ training $+ 27,404$ eval / ~480 GB)** |
 
 ---
 

@@ -38,6 +38,8 @@ mixed_precision: "bf16"
 seed: 42
 max_grad_norm: 1.0
 ema_decay: 0.9995
+dataloader_num_workers: 8
+allow_tf32: true
 
 # Stratified Validation Monitoring:
 val_fraction: 0.05

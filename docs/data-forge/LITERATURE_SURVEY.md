@@ -1,6 +1,6 @@
 # Data-Forge: Academic Literature Survey & Prior Research Foundations
 
-**Canonical Scope**: Comprehensive academic literature survey and theoretical foundation for Krisna's Data-Forge multimodal data curation pipeline. This document provides deep academic analysis, methodology evaluation, and formal intellectual attribution to all prior research works that inform the ingestion, filtration, synthetic augmentation, and structural conditioning of Krisna's Sub-3TB ($1,750,000$ pairs / $2.68\text{ TB}$) multimodal training portfolio.
+**Canonical Scope**: Comprehensive academic literature survey and theoretical foundation for Krisna's Data-Forge multimodal data curation pipeline. This document provides deep academic analysis, methodology evaluation, and formal intellectual attribution to all prior research works that inform the ingestion, filtration, synthetic augmentation, and structural conditioning of Krisna's calibrated multimodal training portfolio (~400,000 pairs / ~550 GB).
 
 ---
 

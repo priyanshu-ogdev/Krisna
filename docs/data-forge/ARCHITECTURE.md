@@ -1,6 +1,6 @@
 # Data-Forge: Architecture Specification & Research Methodology
 
-**Canonical Scope**: Definitive technical architecture, mathematical methodology, and systems specification for Krisna's Data-Forge multimodal data curation engine. This document establishes the formal research paper methodology for data ingestion, deduplication, privacy scrubbing, structural extraction, continuous flow-matching conditioning, and model export across Krisna's Sub-3TB ($1,750,000$ pairs / $2.68\text{ TB}$) multimodal portfolio.
+**Canonical Scope**: Definitive technical architecture, mathematical methodology, and systems specification for Krisna's Data-Forge multimodal data curation engine. This document establishes the formal research paper methodology for data ingestion, deduplication, privacy scrubbing, structural extraction, continuous flow-matching conditioning, and model export across Krisna's calibrated portfolio (~400,000 pairs / ~550 GB).
 
 ---
 
@@ -23,8 +23,8 @@ The Data-Forge is an automated, 22-stage data curation and conditioning engine d
 │ Cryptographic Governance   │ 40-char SHA commit pinning;      │ Bit-for-bit audit reproducibility│
 │ & Immutability             │ condition != target SHA checks   │ across all compute environments. │
 ├────────────────────────────┼──────────────────────────────────┼──────────────────────────────────┤
-│ Sub-3TB Storage Ceiling    │ Exactly 1,750,000 pairs          │ Preserves 322.5 GB (10.8%)       │
-│                            │ 2.68 TB (2,677.5 GB) portfolio   │ unallocated safety headroom.     │
+│ Calibrated Storage Ceiling │ 356,721 records                  │ Preserves ~518.5 GB (51.8%)      │
+│                            │ ~480 GB (481.5 GB) portfolio     │ unallocated workstation headroom.│
 ├────────────────────────────┼──────────────────────────────────┼──────────────────────────────────┤
 │ Source-Disjoint Splitting  │ Stratified by source identity;   │ Eliminates cross-screen leakage  │
 │                            │ 5% held-out validation carve     │ between train and validation.    │
@@ -67,7 +67,7 @@ and pairs images into multi-aspect ratio buckets (`"1024,1024;832,1248;1248,832"
 
 ## 3. High-Performance DAG Orchestrator
 
-Processing over $1.75\text{M}$ multimodal records on a single workstation (48GB VRAM RTX A6000 Ada, 128GB RAM) without PCIe thrashing requires a **Chunk-Based Directed Acyclic Graph (DAG)** execution engine.
+Processing the calibrated ~400,000 multimodal records on a single workstation (48GB VRAM RTX A6000 Ada, 128GB RAM) within the ~16–17h intake ceiling requires a **Chunk-Based Directed Acyclic Graph (DAG)** execution engine.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -162,31 +162,32 @@ To eliminate identical templates and overlapping corporate websites across diffe
 
 ---
 
-## 5. Storage Accounting & Sub-3TB Portfolio Certification
+## 5. Storage Accounting & Calibrated 356,721-Record Portfolio Certification
 
 ```
 ================================================================================
 KRISNA DATAFORGE MASTER STORAGE RECONCILIATION
 ================================================================================
-Hardware Envelope:               Single Workstation / 3.0 TB NVMe Scratch Disk
-Approved Production Cap:         1,750,000 paired training examples
-Mean Paired Storage Footprint:   ~1.53 MB per pair (Condition + Target + JSON)
-Realized Portfolio Storage:      2,677.5 GB (2.68 TB)
-Unallocated Safety Headroom:     322.5 GB (10.8% safety buffer)
+Hardware Envelope:               Single Workstation / 1.0 TB NVMe Scratch Disk
+Approved Production Cap:         356,721 paired training and evaluation examples
+Mean Paired Storage Footprint:   ~1.35 MB per pair (Condition + Target + JSON metadata)
+Realized Portfolio Storage:      481.5 GB (~480 GB)
+Unallocated Safety Headroom:     ~518.5 GB (51.8% safety buffer under 1.0 TB ceiling)
+Pipeline Execution Runtime:      ~14–15 hours on NVIDIA A6000 (enforcing <= 18h intake ceiling)
 ================================================================================
 ```
 
-### Breakdown Across the 5 Strategic Pillars:
-1. **Pillar 1: General Photographic Priors (20.0% / 350,000 pairs)**:
-   - Anchored by LAION-Aesthetics $\ge 6.25$ and Open Images v7. Preserves natural visual manifolds and prevents catastrophic forgetting.
-2. **Pillar 2: Instruction-Based Image Editing (20.0% / 350,000 pairs)**:
-   - Anchored by MagicBrush, HQ-Edit, and UltraEdit. Enables conversational, multi-turn UI modifications.
-3. **Pillar 3: Graphic Design, Ad Banners & Visual Typography (22.9% / 400,000 pairs)**:
-   - Anchored by Crello, PKU-PosterLayout, and AnyWord-3M. Teaches brand aesthetics, marketing layouts, and in-image typography.
-4. **Pillar 4: Charts, Diagrams, Infographics & Presentation Decks (17.1% / 300,000 pairs)**:
-   - Anchored by ChartQA, PlotQA, InfographicVQA, DocLayNet, and SlideVQA. Covers enterprise analytics, multi-column reports, and 16:9 pitch decks.
-5. **Pillar 5: Production UI Layouts, Web Apps & Mobile Screens (20.0% / 350,000 pairs)**:
-   - Anchored by CLAY, Mind2Web, Figma2Code, and ABO E-Commerce. Powers core full-stack digital product generation.
+### Breakdown Across the 4 Strategic Pillars & Evaluation Suite (`datasets.yaml`):
+1. **Pillar 1: Mobile UI & View Hierarchies (18.5% / 66,000 pairs)**:
+   - Anchored by `rico_semantic` (sample cap 66,000). Captures native Android mobile application view hierarchies.
+2. **Pillar 2: Editorial Documents & Production Web UI (23.2% / 82,817 pairs)**:
+   - Anchored by `doclaynet` (80,000 sample cap) and `figma2code` (2,817). Covers multi-column editorial spreads, annual reports, and clean web landing pages.
+3. **Pillar 3: Graphic Design, Banners & E-Commerce (19.6% / 70,000 pairs)**:
+   - Anchored by `crello` (25,000), `pku_poster` (10,000), and `abo_ecommerce` (35,000). Teaches brand aesthetics, marketing banners, and e-commerce product cards.
+4. **Pillar 4: Instruction Editing & Preference Alignment (31.0% / 110,500 pairs)**:
+   - Anchored by `magicbrush` (10,500), `pickapic_v2` (50,000), and `hpdv2` (50,000). Powers conversational editing and human aesthetic preference alignment.
+5. **Evaluation Benchmark Suite (7.7% / 27,404 records)**:
+   - Held-out evaluation anchors: `taste` (14,500), `ui_vision` (10,000), `screenspot` (1,272), and `partiprompts` (1,632). (Photographic prior downloads are quarantined; base weights remain frozen).
 
 ---
 

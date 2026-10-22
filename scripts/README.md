@@ -11,12 +11,10 @@ run_service.sh`, not `cd scripts/inference && ./run_service.sh`).
   CLI (`data-forge run`, `data-forge manifest ...`), not shell scripts.
 - **`training/`** — env setup (`setup_env_training.sh`,
   `setup_env_diffusers_training.sh`), dataset prep
-  (`prepare_sketch_dataset.sh`, `prepare_polish_dataset.sh`,
-  `download_vqgan.sh`), the data-forge sync bridge
-  (`sync_from_data_forge_{sketch,polish,dpo}.sh`), and training launchers
-  (`train_sketch_stage{1,2}.sh`, `train_polish_default_lora.sh`,
-  `train_planner_lora.sh` — blocked legacy launcher; Critic training has been
-  removed —
-  deprecated).
+  (`prepare_polish_dataset.sh`), the data-forge sync bridge
+  (`sync_from_data_forge_polish.sh`), and the production Polish launcher
+  (`train_polish_default_lora.sh` / `train_all.ps1 -Tier polish-default`).
+  (The Sketch tier is deterministic layout code requiring no training,
+  and Planner/Critic training launchers are deprecated/sealed frozen).
 - **`inference/`** — env setup (`setup_env.sh`, `setup_env_inference.sh`,
   `setup_env_verifiers.sh`), `run_tests.sh`, `run_service.sh`.

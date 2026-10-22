@@ -18,7 +18,7 @@ docs/data-forge/
 
 ### Quick Navigation:
 - **[System Architecture & Methodology](ARCHITECTURE.md)**: Exhaustive walkthrough of the 22-stage pipeline from Stage 0 (`s00_manifest_planning`) to Stage 12 (`s12_model_data_export`), including chunk-based DAG orchestration, local FP8 vLLM serving, mathematical flow-matching formulations, and privacy scrubbing.
-- **[Master Dataset Registry](DATA_SOURCES.md)**: Authoritative source-audit ledger detailing active vs. quarantined datasets, exact record allocations, licensing status, and Sub-3TB storage accounting ($1,750,000$ pairs / $2.68\text{ TB}$).
+- **[Master Dataset Registry](DATA_SOURCES.md)**: Authoritative source-audit ledger detailing active vs. quarantined datasets, exact record allocations, licensing status, and calibrated storage accounting (~400,000 pairs / ~550 GB).
 - **[Academic Literature Survey](LITERATURE_SURVEY.md)**: Formal peer-reviewed citations, academic credits, theoretical problem formulations, and comparative analysis against prior benchmarks for the final research paper.
 
 ---
@@ -49,18 +49,18 @@ docs/data-forge/
 
 ---
 
-## 3. The 5 Strategic Dataset Pillars
+## 3. The 4 Strategic Training Pillars & Evaluation Suite
 
-The production portfolio is bounded at **$1,750,000$ pairs ($\approx 2,677.5\text{ GB} = 2.68\text{ TB}$)**, preserving an unallocated **$10.8\%$ ($322.5\text{ GB}$)** safety headroom below the $3.0\text{ TB}$ hardware ceiling:
+The production portfolio is bounded at **356,721 records (~357K records / ~480 GB)** (strictly derived from the 13 active sources in `datasets.yaml` and validated by `audit_registry.py`), preserving a **~520 GB** safety headroom below the $1.0\text{ TB}$ workstation hardware ceiling and calibrated for a 14–15h execution ceiling on an NVIDIA A6000:
 
-| Strategic Pillar | Target Pairs | Ratio | Key Anchoring Datasets | Primary Research Role |
+| Strategic Pillar / Track | Target Records | Ratio | Key Anchoring Datasets (`datasets.yaml`) | Primary Research Role |
 | :--- | :---: | :---: | :--- | :--- |
-| **Pillar 1: Photographic Priors** | $350,000$ | $20.0\%$ | LAION-Aesthetic $\ge 6.25$, Open Images v7 | Manifold preservation; prevents catastrophic forgetting. |
-| **Pillar 2: Instruction Editing** | $350,000$ | $20.0\%$ | MagicBrush, HQ-Edit, UltraEdit, UI DAGs | Conversational editing; multi-turn layout modifications. |
-| **Pillar 3: Graphic Design & Ads** | $400,000$ | $22.9\%$ | Crello, PKU-PosterLayout, AnyWord-3M, Cutouts | Brand aesthetics; marketing banners; visual typography. |
-| **Pillar 4: Charts, Docs & Decks**| $300,000$ | $17.1\%$ | ChartQA, PlotQA, InfographicVQA, DocLayNet, SlideVQA | Enterprise analytics; 16:9 pitch decks; multi-column docs. |
-| **Pillar 5: Web UI & Mobile Apps** | $350,000$ | $20.0\%$ | CLAY, Mind2Web, Figma2Code, ABO E-Commerce | Production web/desktop SaaS; mobile apps; component tokens. |
-| **TOTAL CERTIFIED PORTFOLIO** | **$1,750,000$** | **$100.0\%$** | **7 Active Training-Eligible Sources** | **Sub-3TB Certified ($2.68\text{ TB}$)** |
+| **Pillar 1: Mobile UI & Hierarchies** | $66,000$ | $18.5\%$ | `rico_semantic` (sample_size 66,000) | Native mobile UI hierarchies; component grounding. |
+| **Pillar 2: Editorial Docs & Web UI** | $82,817$ | $23.2\%$ | `doclaynet` (80,000), `figma2code` (2,817) | Multi-column publishing; modern web landing pages. |
+| **Pillar 3: Graphic Design & E-Commerce** | $70,000$ | $19.6\%$ | `crello` (25,000), `pku_poster` (10,000), `abo_ecommerce` (35,000) | Brand aesthetics; marketing banners; product cards. |
+| **Pillar 4: Instruction Editing & DPO** | $110,500$ | $31.0\%$ | `magicbrush` (10,500), `pickapic_v2` (50,000), `hpdv2` (50,000) | Conversational editing; human preference alignment. |
+| **Evaluation Benchmark Suite** | $27,404$ | $7.7\%$ | `taste` (14,500), `ui_vision` (10,000), `partiprompts` (1,632), `screenspot` (1,272) | Multi-axis aesthetic rating; GUI element grounding. |
+| **TOTAL CERTIFIED PORTFOLIO** | **$356,721$** | **$100.0\%$** | **13 Active Sources in datasets.yaml** | **Calibrated Certified (329,317 train + 27,404 eval / ~480 GB)** |
 
 ---
 

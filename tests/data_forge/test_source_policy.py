@@ -52,15 +52,19 @@ def test_real_config_exposes_source_metadata_and_policy() -> None:
     assert websight.is_synthetic is True
     assert websight.enabled is False
 
-    # Preference sources are human-labelled/real according to their registry
-    # notes, but remain ineligible until the license and immutable revision
-    # gates are satisfied.  Do not conflate preference data with synthetic
-    # data merely because it is deferred from the current export.
-    for key in ("pickapic_v2", "hpdv2", "gamelabel_10k"):
+    # Pick-a-Pic v2 and HPDv2 provide broad aesthetic DPO alignment.
+    for key in ("pickapic_v2", "hpdv2"):
         assert config.datasets[key].synthetic_status == "real"
         assert config.datasets[key].is_synthetic is False
-        assert config.datasets[key].training_eligible is False
-        assert config.datasets[key].enabled is False
+        assert config.datasets[key].training_eligible is True
+        assert config.datasets[key].enabled is True
+        assert config.datasets[key].training_targets == ["dpo_alignment"]
+        assert config.datasets[key].policy_violations(config.source_policy) == []
+
+    # GameLabel-10K is quarantined per forensic negative audit (gaming fantasy crowdsourcing mismatch)
+    gamelabel = config.datasets["gamelabel_10k"]
+    assert gamelabel.enabled is False
+    assert gamelabel.training_eligible is False
 
 
 def test_disabled_audit_entries_do_not_consume_capacity_or_pairs() -> None:

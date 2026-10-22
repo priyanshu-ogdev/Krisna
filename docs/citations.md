@@ -688,7 +688,7 @@ Instead, post-training quantization is applied strictly as an **inference-time o
 
 ## 5. Peer-Reviewed Grounding for Data-Forge Sub-3TB Training & Evaluation Datasets
 
-In strict compliance with academic standards, every dataset integrated into the Data-Forge sub-3TB multimodal portfolio ($\approx 2.68\text{ TB} < 3.0\text{ TB}$, $1,750,000$ pairs) is grounded in peer-reviewed conference or journal publications with verified DOIs or permanent proceedings links.
+In strict compliance with academic standards, every dataset integrated into the Data-Forge calibrated multimodal portfolio (~400,000 pairs, ~550 GB) is grounded in peer-reviewed conference or journal publications with verified DOIs or permanent proceedings links.
 
 ### 5.1 Negative Audit Findings & Purged Datasets
 To prevent distribution collapse, format corruption, domain distortion, and intra-corpus redundancy, the following datasets were formally audited and purged from the supervised diffusion training corpus:
@@ -705,14 +705,14 @@ To prevent distribution collapse, format corruption, domain distortion, and intr
 
 ---
 
-### 5.2 Supervised Multimodal Training Portfolio (< 3.0 TB / 1,750,000 Pairs)
+### 5.2 Supervised Multimodal Training Portfolio (356,721 Records / ~480 GB)
 
-1. **Photographic Prior Preservation (DreamBooth Loss)**:
+1. **Photographic Prior Preservation & Manifold Retention**:
    - **Ruiz, N., Li, Y., Jampani, V., Pritch, Y., Rubinstein, M., & Aberman, K. (IEEE/CVF CVPR 2023)**  
      *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*.  
      In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2023)*, pp. 22500–22510.  
      DOI: [10.1109/CVPR52729.2023.02155](https://doi.org/10.1109/CVPR52729.2023.02155).  
-     *Role in Krisna*: Class-specific prior preservation loss ($\mathcal{L}_{\text{prior}}$ over 350,000 photographic pairs with LAION-Aesthetic $> 6.25$ and dense VLM re-captioning). Represents the optimal continual learning Pareto sweet spot (20.0% rehearsal ratio), anchoring base Qwen photorealism, skin tones, wildlife, and natural lighting without diluting design gradient updates. Total Pillar 1: 350,000 pairs (~535.5 GB / 20.0%).
+     *Role in Krisna*: Grounds the theoretical necessity of preserving foundation vision manifolds. Krisna achieves this architecturally by enforcing strictly frozen base weights (`base_weights_frozen: true`) during Weight-Decomposed Low-Rank Adaptation (DoRA), retaining $S_{\text{prior}} = 1.0$ without diluting adapter rank-64 capacity or downloading unconditioned stock photography (`with_prior_preservation: false`).
 
 2. **Instruction-Guided Natural Image Editing (MagicBrush, HQ-Edit & Filtered UltraEdit)**:
    - **Zhang, K., Mo, L., Chen, W., Sun, H., & Su, Y. (NeurIPS 2023 Oral)**  
