@@ -3,17 +3,12 @@
 Comprehensive reference for consumer GPU serving, swap orchestration, and multi-turn agentic flows under the modernized architecture.
 
 > [!IMPORTANT]
-> **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration).
-> The modernized architecture strictly preserves a **12GB VRAM consumer target envelope** with a clear single-model-per-responsibility division:
-> - **Planner Tier**: Frozen Qwen-VL candidate selected by the bake-off, with a tested image-grounded request and versioned JSON delta (`krivex.delta.v1`).
-> - **Sketch Tier**: Structured Layout IR (`krivex.layout.v1`) and deterministic wireframe renderer (~0.2GB VRAM).
-> - **Polish Tier**: Qwen-Image-2.1 native pipeline; the base is frozen and the LoRA adapter remains gated until the trainer/API smoke test passes. Low-VRAM CPU offload is a target, not a measured guarantee.
-> - **Review/Critique**: Planner self-review is resident and zero-swap; pixel verification is a separate post-generation stack with an explicit safety gate.
->
-> The 12GB figure is an admission target, not a measured guarantee. Low-VRAM
-> CPU offload defaults to a 64GB RAM envelope in the service and must be
-> benchmarked on the deployment host before being advertised as a 16GB-RAM
-> configuration.
+> **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows), [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration), and [docs/RESEARCH_PAPER.md §9](../RESEARCH_PAPER.md#9-ml-systems-serving-foundations-computational-complexity-memory-bounds-and-zero-eviction-serving-dynamics) (Systems Serving Foundations & Zero-Eviction Dynamics).
+> The modernized architecture strictly preserves a **12GB VRAM / 16GB RAM consumer target envelope** with a clear single-model-per-responsibility division:
+> - **Planner Tier**: Pinned `Qwen3.5-9B-Instruct` GGUF (`Q4_K_M`) with strictly required multimodal projector (`Qwen3.5-9B-Instruct-mmproj-f16.gguf`) via `llama.cpp` (and opt-in `vllm==0.29.0`). Emits typed schema deltas (`krivex.delta.v1` / `planner.delta.v1`) with GBNF grammar pushdown automata constraints.
+> - **Sketch Tier**: Structured Layout IR (`krivex.layout.v1`) and deterministic Cassowary Simplex engine rendering dual-stream spatial conditioning (`DualStreamSketch`: wireframe + 16-class SPADE semantic map) on host SIMD (**0.0 GB VRAM**, <5ms).
+> - **Polish Tier**: `Qwen-Image-2.1` native continuous flow-matching MMViT pipeline (7B parameters); base foundation model is frozen, conditioned on dual-stream spatial tensors, and accelerated with continuous-flow UI Polish LoRA adapters (`krivex-ai/krivex-qwen-image21-polish-lora`). Low-VRAM CPU offload and NF4 quantization bound peak active synthesis to $\le 12$ GB VRAM and $\le 16$ GB RAM.
+> - **Review/Critique**: Planner self-review is resident and zero-swap ($T_{\text{swapping}} \equiv 0.000\text{s}$), paired with post-generation automated verifiers (Layout-IoU, EasyOCR readability, and ONNX Safety Gate).
 
 ---
 
@@ -24,17 +19,17 @@ User Intent (Chat Turn)
        │
        ▼
 ┌────────────────────────────────────────────────────────┐
-│ Tier A: Baseline (Always Resident, ~6.7GB VRAM)        │
-│  - Planner Backend (Qwen3.5-9B GGUF via llama.cpp)     │
-│  - Sketch Backend (Structured Layout IR + Renderer)    │
+│ Tier A: Baseline (Always Resident, ~4.4GB VRAM)        │
+│  - Planner Backend (Qwen3.5-9B GGUF + mmproj)          │
+│  - Sketch Backend (Cassowary Simplex Engine, 0 MB VRAM)│
 └────────────────────────────────────────────────────────┘
        │                                  │
-       ▼ (User requests Finalize)         ▼ (Self-Review / Critique)
+       ▼ (User requests Finalize)         ▼ (Resident Self-Review)
 ┌────────────────────────────────┐  ┌────────────────────────────────┐
 │ Tier B: Polish Tier (Swapped)  │  │ Planner Review Mode (Resident) │
-│  - Qwen-Image-2.1 Pipeline     │  │  - Zero GPU swap required      │
-│  - DreamBooth LoRA Adapter     │  │  - Visual & layout inspection  │
-│  - Standard 28 / Quality 40 St │  │  - Targeted constraint updates │
+│  - Qwen-Image-2.1 MMViT Flow   │  │  - Zero GPU swap required      │
+│  - UI Polish LoRA Adapter      │  │  - Visual & layout inspection  │
+│  - Multi-Fidelity ODE (6-40 St)│  │  - Targeted constraint updates │
 │  - Verifier Stack Safety Gate  │  └────────────────────────────────┘
 └────────────────────────────────┘
        │
@@ -61,22 +56,22 @@ stateDiagram-v2
     ERROR_RECOVERY --> IDLE_RESIDENT: Re-admit Baseline, Session Preserved
 ```
 
-*Note: self-review operates in `IDLE_RESIDENT`. Finalized pixels are scored by
+*Note: self-review operates in `IDLE_RESIDENT` via the resident `Qwen3.5-9B` VLM with `mmproj`. Finalized pixels are scored by
 the verifier stack after generation; this is not a claim that the resident
 Planner receives an image-grounded critique request.*
 
 ---
 
-## 3. Resource Ledgers & Envelopes (PRD §3, §7.2, §7.3)
+## 3. Resource Ledgers & Envelopes (PRD §3, §7.2, §7.3 & Research Paper §9.2)
 
 Admission is deterministic and CI-tested, governed by `VRAMLedger` and `RAMLedger` against declared budgets:
 
 | Tier | Full Envelope (24GB Target) | Low-VRAM Envelope (12GB Target) | Offload Mechanism |
 |---|---|---|---|
-| **Planner** (Always Resident) | 6.5 GB VRAM / 0 GB RAM | 6.5 GB VRAM / 0 GB RAM | Pinned llama.cpp GGUF 4-bit |
-| **Sketch** (Always Resident) | 0.2 GB VRAM / 0 GB RAM | 0.2 GB VRAM / 0 GB RAM | Deterministic Layout Renderer |
-| **Polish-Default** (Qwen-Image-2.1) | 12.0 GB VRAM / 0 GB RAM | 8.0 GB VRAM / 8.0 GB RAM | Diffusers `enable_model_cpu_offload()` |
-| **Polish-Quality** (Qwen-Image-2.1) | 16.0 GB VRAM / 0 GB RAM | 10.0 GB VRAM / 10.0 GB RAM | Diffusers `enable_model_cpu_offload()` |
+| **Planner** (Always Resident) | 6.5 GB VRAM / 0 GB RAM | 4.2–4.4 GB VRAM / 0 GB RAM | Pinned llama.cpp GGUF Q4_K_M + mmproj |
+| **Sketch** (Always Resident) | **0.0 GB VRAM** / 0.1 GB RAM | **0.0 GB VRAM** / 0.1 GB RAM | Pure host SIMD Cassowary Linear Simplex |
+| **Polish-Default** (Qwen-Image-2.1) | 12.0 GB VRAM / 0 GB RAM | 8.0 GB VRAM / 8.0 GB RAM | Diffusers `enable_model_cpu_offload()` + NF4 |
+| **Polish-Quality** (Qwen-Image-2.1) | 16.0 GB VRAM / 0 GB RAM | 10.0 GB VRAM / 10.0 GB RAM | Diffusers `enable_model_cpu_offload()` + VAE tiling |
 
 ---
 

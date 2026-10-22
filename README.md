@@ -84,8 +84,9 @@ arguments, and an unpinned Diffusers checkout.
 
 Read [`inference/README.md`](inference/README.md) and
 [`docs/architecture/INFERENCE_PRODUCTION_STACK.md`](docs/architecture/INFERENCE_PRODUCTION_STACK.md).
-Strict real mode requires the native Qwen pipeline, a valid condition image,
-and a verified adapter manifest. Synthetic output is explicit test mode only.
+Strict real mode requires the native Qwen-Image-2.1 pipeline, a valid condition image,
+and a verified adapter manifest. Model weights are automated via `python scripts/inference/download_weights.py`.
+Fine-tuned checkpoints (`krivex-ai/krivex-qwen-image21-polish-lora`) will be published on Hugging Face Hub, with automatic downloader resolution and zero-shot fallback.
 
 ## Engineering standards
 
