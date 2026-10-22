@@ -21,7 +21,7 @@ param(
     [switch]$WithFrontend,
     [switch]$CliSession,
     [switch]$Setup,
-    [double]$RamEnvelopeGb = 128.0,
+    [double]$RamEnvelopeGb = 0.0,
     [double]$VramEnvelopeGb = 0.0,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$RemainingArgs
@@ -48,7 +48,7 @@ if ($Help) {
 Usage:
   .\scripts\inference\run_inference.ps1                     # MockBackend, no GPU needed (port 8420)
   .\scripts\inference\run_inference.ps1 -Real              # Real backends, GPU required
-  .\scripts\inference\run_inference.ps1 -Real -LowVram     # Real backends, CPU offload for <16GB VRAM
+  .\scripts\inference\run_inference.ps1 -Real -LowVram     # Real backends, CPU offload for <=12GB VRAM & <=16GB RAM
   .\scripts\inference\run_inference.ps1 -WithFrontend      # Runs backend and launches Node.js frontend
   .\scripts\inference\run_inference.ps1 -CliSession        # Runs interactive CLI agentic session
   .\scripts\inference\run_inference.ps1 -Setup             # Installs dependencies for inference
@@ -56,7 +56,7 @@ Usage:
 
 Parameters:
   -Real               Use real models (GPU + models/ weights required)
-  -LowVram            Offload models to system RAM for 12-16GB GPUs
+  -LowVram            Offload models for <=12GB VRAM and <=16GB RAM peak hardware
   -BindHost <ip>      IP to bind service (default: 127.0.0.1)
   -Port <int>         Port to listen on (default: 8420)
   -WithFrontend       Concurrently starts the Node.js frontend on port 3100
@@ -95,7 +95,12 @@ if ($Real) {
     Write-Host "[*] Real backends mode ENABLED (GPU required)." -ForegroundColor Yellow
     if ($LowVram) {
         $env:KRIVEX_LOW_VRAM_MODE = "1"
-        Write-Host "[*] Low-VRAM envelope (<16GB VRAM) offload ENABLED." -ForegroundColor Magenta
+        if ($VramEnvelopeGb -le 0.0) { $VramEnvelopeGb = 12.0 }
+        if ($RamEnvelopeGb -le 0.0) { $RamEnvelopeGb = 16.0 }
+        Write-Host "[*] Low-VRAM envelope (<=12GB VRAM, <=16GB RAM peak) offload ENABLED." -ForegroundColor Magenta
+    } else {
+        if ($VramEnvelopeGb -le 0.0) { $VramEnvelopeGb = 24.0 }
+        if ($RamEnvelopeGb -le 0.0) { $RamEnvelopeGb = 32.0 }
     }
 } else {
     $env:KRIVEX_USE_REAL_BACKENDS = "0"

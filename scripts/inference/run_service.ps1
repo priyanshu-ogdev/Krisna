@@ -31,9 +31,9 @@ Write-Host "Starting Krivex Inference service on http://$($BindHost):$Port..." -
 
 if ($env:KRIVEX_USE_REAL_BACKENDS -eq "1") {
     Write-Host "KRIVEX_USE_REAL_BACKENDS=1 -- real model backends, GPU required." -ForegroundColor Yellow
-    Write-Host "Critic tier launches subprocess interpreter (override with KRIVEX_CRITIC_VENV_PYTHON)." -ForegroundColor Yellow
+    Write-Host "Planner tier uses frozen Qwen3.5-9B GGUF; Polish tier uses Qwen-Image-2.1." -ForegroundColor Yellow
     if ($env:KRIVEX_LOW_VRAM_MODE -eq "1") {
-        Write-Host "KRIVEX_LOW_VRAM_MODE=1 -- targeting low-VRAM envelope with system RAM offload." -ForegroundColor Magenta
+        Write-Host "KRIVEX_LOW_VRAM_MODE=1 -- targeting low-VRAM envelope (<=12GB VRAM, <=16GB RAM peak)." -ForegroundColor Magenta
     }
 } else {
     Write-Host "MockBackend mode (default) -- no GPU/weights needed." -ForegroundColor DarkCyan

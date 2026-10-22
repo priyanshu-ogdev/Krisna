@@ -8,15 +8,11 @@ PORT="${2:-8420}"
 echo -e "\033[1;36mStarting Krivex Inference service on ${BIND_HOST}:${PORT}...\033[0m"
 if [ "${KRIVEX_USE_REAL_BACKENDS:-0}" = "1" ]; then
     echo -e "\033[1;33mKRIVEX_USE_REAL_BACKENDS=1 — real model backends, GPU required.\033[0m"
-    echo -e "\033[1;33mCritic tier launches ./venv-critic/bin/python as a subprocess\033[0m"
-    echo -e "\033[1;33m(override with KRIVEX_CRITIC_VENV_PYTHON). Run\033[0m"
-    echo -e "\033[1;33m./scripts/training/setup_env_critic.sh first if you haven't.\033[0m"
+    echo -e "\033[1;33mPlanner tier uses frozen Qwen3.5-9B GGUF; Polish tier uses Qwen-Image-2.1.\033[0m"
     if [ "${KRIVEX_LOW_VRAM_MODE:-0}" = "1" ]; then
         echo -e "\033[1;35mKRIVEX_LOW_VRAM_MODE=1 — targeting a ${KRIVEX_VRAM_ENVELOPE_GB:-12.0}GB GPU envelope,\033[0m"
-        echo -e "\033[1;35moffloading the rest to system RAM (up to ${KRIVEX_RAM_ENVELOPE_GB:-64.0}GB).\033[0m"
-        echo -e "\033[1;35mSee docs/architecture/RESEARCH_AND_CITATIONS.md §4 and\033[0m"
-        echo -e "\033[1;35mdocs/review/06_inference_orchestrator.md for the real cost breakdown —\033[0m"
-        echo -e "\033[1;35mthe Critic tier's offload alone can need ~40GB system RAM.\033[0m"
+        echo -e "\033[1;35moffloading to system RAM (peak limit: ${KRIVEX_RAM_ENVELOPE_GB:-16.0}GB).\033[0m"
+        echo -e "\033[1;35mResident Planner Review mode operates within unified memory limits.\033[0m"
     fi
 else
     echo -e "\033[1;33mMockBackend mode (default) — no GPU/weights needed.\033[0m"

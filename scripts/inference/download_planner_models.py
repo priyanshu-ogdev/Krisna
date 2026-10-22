@@ -27,8 +27,8 @@ def sha256(path: Path) -> str:
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--repo-id", default=os.environ.get("KRIVEX_PLANNER_GGUF_REPO", "unsloth/Qwen3.5-9B-GGUF"))
-    p.add_argument("--filename", required=True, help="Exact GGUF filename from the publisher")
-    p.add_argument("--mmproj-filename")
+    p.add_argument("--filename", default=os.environ.get("KRIVEX_PLANNER_GGUF_FILE", "Qwen3.5-9B-Instruct-Q4_K_M.gguf"), help="Exact GGUF filename from publisher")
+    p.add_argument("--mmproj-filename", default=os.environ.get("KRIVEX_PLANNER_MMPROJ_FILE", "Qwen3.5-9B-Instruct-mmproj-f16.gguf"))
     p.add_argument("--revision", default="main")
     p.add_argument("--models-dir", default="models")
     p.add_argument("--force", action="store_true")

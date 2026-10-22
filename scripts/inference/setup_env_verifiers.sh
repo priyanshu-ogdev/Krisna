@@ -10,6 +10,6 @@ if [ ! -d ".venv" ]; then
 fi
 
 source .venv/bin/activate
-pip install -r inference/requirements-verifiers.txt
+pip install -r inference/requirements.txt
 
 echo -e "\033[1;32mDone.\033[0m"

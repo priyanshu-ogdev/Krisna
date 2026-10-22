@@ -15,7 +15,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 if [ "${KRIVEX_USE_REAL_BACKENDS:-0}" = "1" ] && [ "${KRIVEX_LOW_VRAM_MODE:-0}" = "1" ]; then
-    export KRIVEX_RAM_ENVELOPE_GB="${KRIVEX_RAM_ENVELOPE_GB:-128.0}"
+    export KRIVEX_VRAM_ENVELOPE_GB="${KRIVEX_VRAM_ENVELOPE_GB:-12.0}"
+    export KRIVEX_RAM_ENVELOPE_GB="${KRIVEX_RAM_ENVELOPE_GB:-16.0}"
 fi
 
 exec "${REPO_ROOT}/scripts/inference/run_service.sh" "$@"
