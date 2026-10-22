@@ -3,8 +3,8 @@ version: "3.8"
 services:
   inference:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.inference
+      context: ..
+      dockerfile: inference/Dockerfile
     image: krivex-inference:latest
     container_name: krivex-inference
     ports:
@@ -17,12 +17,15 @@ services:
       - KRIVEX_BIND_HOST=0.0.0.0
       - KRIVEX_PORT=8420
       - KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python
+      - KRIVEX_BLOB_ROOT=/app/data/blobs
+      - KRIVEX_SESSIONS_DB=/app/data/krivex_sessions.db
+      - KRIVEX_PREFERENCE_DB=/app/data/krivex_preference_pairs.db
     volumes:
-      - ./models:/app/models:ro
-      - ./checkpoints:/app/checkpoints:ro
-      - ./weights:/app/weights:ro
-      - ./krivex_blobs:/app/krivex_blobs
-      - ./.env.inference:/app/.env.inference:ro
+      - ../models:/app/models:ro
+      - ../checkpoints:/app/checkpoints:ro
+      - ../weights:/app/weights:ro
+      - ../data:/app/data
+      - ../.env.inference:/app/.env.inference:ro
     deploy:
       resources:
         reservations:
@@ -37,29 +40,3 @@ services:
       retries: 5
       start_period: 30s
     restart: unless-stopped
-    networks:
-      - krivex-network
-
-  frontend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.frontend
-    image: krivex-frontend:latest
-    container_name: krivex-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
-      - KRIVEX_BACKEND_URL=http://inference:8420
-      - KRIVEX_BACKEND_HOST=inference
-      - KRIVEX_BACKEND_PORT=8420
-    depends_on:
-      inference:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - krivex-network
-
-networks:
-  krivex-network:
-    driver: bridge

@@ -178,8 +178,8 @@ def generate_phase3_receipt(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--preference-db", type=Path, default=Path("./krivex_preference_pairs.db"))
-    parser.add_argument("--blob-root", type=str, default="krivex_blobs")
+    parser.add_argument("--preference-db", type=Path, default=Path("./data/krivex_preference_pairs.db"))
+    parser.add_argument("--blob-root", type=str, default="data/blobs")
     parser.add_argument("--output-dir", type=Path, default=Path("./checkpoints/polish_qwen_image21_dpo"))
     parser.add_argument("--receipt-path", type=Path, default=Path("./checkpoints/polish_qwen_image21_dpo/training_receipt.json"))
     parser.add_argument("--betas", type=float, nargs="+", default=[500.0, 2000.0, 5000.0])

@@ -76,13 +76,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--pref-db",
-        default=str(REPO_ROOT / "krivex_preference_pairs.db"),
-        help="Path to preference pairs SQLite DB (default: ./krivex_preference_pairs.db)",
+        default=str(REPO_ROOT / "data" / "krivex_preference_pairs.db"),
+        help="Path to preference pairs SQLite DB (default: ./data/krivex_preference_pairs.db)",
     )
     parser.add_argument(
         "--blob-root",
-        default=str(REPO_ROOT / "krivex_blobs"),
-        help="Path to shared BlobStore root (default: ./krivex_blobs)",
+        default=str(REPO_ROOT / "data" / "blobs"),
+        help="Path to shared BlobStore root (default: ./data/blobs)",
     )
     parser.add_argument(
         "--check-only",

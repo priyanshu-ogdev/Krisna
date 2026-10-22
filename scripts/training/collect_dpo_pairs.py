@@ -198,8 +198,8 @@ def populate_preference_database(
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", default="krivex_preference_pairs.db", help="Path to preference db")
-    parser.add_argument("--blob-root", default="krivex_blobs", help="Path to blob storage root")
+    parser.add_argument("--output", default="data/krivex_preference_pairs.db", help="Path to preference db")
+    parser.add_argument("--blob-root", default="data/blobs", help="Path to blob storage root")
     parser.add_argument("--count", type=int, default=2200, help="Minimum pair count to ensure")
     parser.add_argument("--sources", nargs="*", default=None, help="Sources to sample from")
     args = parser.parse_args()

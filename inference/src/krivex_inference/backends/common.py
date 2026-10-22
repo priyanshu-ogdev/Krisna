@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 class BlobStore:
-    def __init__(self, root: str | Path = "krivex_blobs") -> None:
+    def __init__(self, root: str | Path = "data/blobs") -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 

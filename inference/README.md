@@ -451,7 +451,7 @@ trail; summary here:
 
 ```bash
 # Build with the third venv included (skipped by default):
-docker build --build-arg INSTALL_VLLM_PLANNER=true -f docker/Dockerfile.inference .
+docker build --build-arg INSTALL_VLLM_PLANNER=true -f inference/Dockerfile .
 
 # Or locally:
 python3.11 -m venv ./venv-planner
@@ -588,11 +588,11 @@ The actual DPO training loop is a separate build, out of scope here.
 
 ## Production Docker Containerization & Dual-Venv Isolation
 
-For release and production deployments, Krivex Inference is containerized with strict dependency isolation:
+For release and production deployments, Krivex Inference is containerized with strict dependency isolation in a single unified container (serving both the Inference API and the Web Studio UI):
 
 ```bash
-# Launch multi-service GPU stack (FastAPI Inference on 8420 + Web Studio on 3000)
-docker compose up -d
+# Launch unified GPU container stack (Inference API + Web Studio on 8420)
+docker compose -f inference/docker-compose.yml up -d
 
 # Or using host preflight launchers:
 ./scripts/docker/run_docker.sh --build                     # Linux / macOS

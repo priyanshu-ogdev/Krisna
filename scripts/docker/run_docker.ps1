@@ -52,10 +52,12 @@ try {
     exit 1
 }
 
+$ComposeFile = Join-Path $RepoRoot "inference\docker-compose.yml"
+
 # 3. Handle stop action
 if ($Down) {
     Write-Host "[+] Stopping Krivex Docker services..." -ForegroundColor Yellow
-    docker compose down
+    docker compose -f $ComposeFile down
     exit 0
 }
 
@@ -76,7 +78,7 @@ if ($LowVram) {
 }
 
 # 6. Compose command assembly
-$composeArgs = @("compose", "up")
+$composeArgs = @("compose", "-f", $ComposeFile, "up")
 if ($Build) {
     $composeArgs += "--build"
 }
@@ -90,5 +92,5 @@ Write-Host "[+] Starting services: docker $($composeArgs -join ' ')..." -Foregro
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host "Krivex services started." -ForegroundColor Cyan
 Write-Host "Inference API : http://localhost:8420 (health: http://localhost:8420/healthz)" -ForegroundColor Cyan
-Write-Host "Web Studio UI : http://localhost:3000" -ForegroundColor Cyan
+Write-Host "Web Studio UI : http://localhost:8420/studio" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan

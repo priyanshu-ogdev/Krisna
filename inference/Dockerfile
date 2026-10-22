@@ -1,12 +1,12 @@
 # =============================================================================
-# Krivex Inference -- Production GPU Container with Isolated Critic Tier
+# Krivex Inference -- Unified GPU Container with Isolated Critic Tier
 # (+ optional isolated vLLM Planner tier, see INSTALL_VLLM_PLANNER below)
 # Base: NVIDIA CUDA 12.4.1 Runtime on Ubuntu 22.04 LTS
 # =============================================================================
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
 LABEL maintainer="Krivex AI Team"
-LABEL description="Production GPU inference container for Krivex with multi-tier venv isolation"
+LABEL description="Unified GPU inference container for Krivex with multi-tier venv isolation"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -17,20 +17,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     KRIVEX_PLANNER_VLLM_VENV_PYTHON=/opt/venv-planner/bin/python \
     KRIVEX_USE_REAL_BACKENDS=1 \
     KRIVEX_BIND_HOST=0.0.0.0 \
-    KRIVEX_PORT=8420
+    KRIVEX_PORT=8420 \
+    KRIVEX_BLOB_ROOT=/app/data/blobs \
+    KRIVEX_SESSIONS_DB=/app/data/krivex_sessions.db \
+    KRIVEX_PREFERENCE_DB=/app/data/krivex_preference_pairs.db
 
 # OPT-IN third venv for the vLLM Planner backend
-# (docs/review/29_vllm_planner_migration_research.md). Gated behind a
-# build ARG rather than built unconditionally: vllm==0.29.0's own wheel
-# is ~316MB before its dependency tree (torch==2.13.0, compressed-tensors,
-# flashinfer-python, triton, etc. — verified via a real `pip install
-# --dry-run` during this project's review), adding real image size and
-# build time for a feature that KRIVEX_PLANNER_BACKEND (unset by default)
-# doesn't even use. Build with `--build-arg INSTALL_VLLM_PLANNER=true` to
-# include it. This mirrors the project's own discipline of never silently
-# changing defaults/costs without an explicit opt-in, extended here to
-# the build system itself.
-# Defaulting to true so vLLM 0.29 + PyTorch 2.11+ stack is built into the production container
 ARG INSTALL_VLLM_PLANNER=true
 
 # 1. Install OS packages, software-properties-common, Python 3.11, and graphics libs
@@ -73,12 +65,7 @@ RUN python3.11 -m venv /opt/venv-critic \
     && /opt/venv-critic/bin/pip install --no-cache-dir \
         torch>=2.11.0 torchvision --index-url https://download.pytorch.org/whl/cu124
 
-# 3b. Build isolated virtual environment 3: /opt/venv-planner (OPT-IN vLLM
-# Planner backend). vllm==0.29.0 requires an EXACT torch==2.13.0 (verified
-# directly from its wheel metadata) — a much stricter pin than the main
-# venv's torch>=2.6.0 or the critic venv's torch>=2.6.0, which is exactly
-# why this needs its own venv rather than joining either existing one.
-# Skipped entirely unless INSTALL_VLLM_PLANNER=true — see the ARG above.
+# 3b. Build isolated virtual environment 3: /opt/venv-planner (OPT-IN vLLM Planner backend)
 RUN if [ "$INSTALL_VLLM_PLANNER" = "true" ]; then \
         python3.11 -m venv /opt/venv-planner \
         && /opt/venv-planner/bin/pip install --no-cache-dir --upgrade pip setuptools wheel; \
@@ -91,11 +78,6 @@ RUN /opt/venv-inference/bin/pip install --no-cache-dir -r /tmp/requirements-infe
 COPY inference/requirements-critic.txt /tmp/requirements-critic.txt
 RUN /opt/venv-critic/bin/pip install --no-cache-dir -r /tmp/requirements-critic.txt
 
-# vllm==0.29.0 pins torch==2.13.0 exactly itself (confirmed from its own
-# wheel metadata) — no separate torch install needed here the way the
-# other two venvs do their own CUDA-indexed torch install first; letting
-# pip resolve vllm's own declared torch pin avoids a redundant, possibly
-# conflicting torch install step for this venv specifically.
 COPY inference/requirements-planner.txt /tmp/requirements-planner.txt
 RUN if [ "$INSTALL_VLLM_PLANNER" = "true" ]; then \
         /opt/venv-planner/bin/pip install --no-cache-dir -r /tmp/requirements-planner.txt; \
@@ -109,12 +91,12 @@ RUN /opt/venv-inference/bin/pip install --no-cache-dir -e /app/inference --no-de
     && /opt/venv-inference/bin/pip install --no-cache-dir -e /app/training --no-deps
 
 # Make entrypoint script executable
-RUN chmod +x /app/docker/entrypoint.sh
+RUN chmod +x /app/inference/entrypoint.sh
 
-# Persistent volume targets for models and checkpoints
-VOLUME ["/app/models", "/app/checkpoints", "/app/krivex_blobs"]
+# Persistent volume targets for models, checkpoints, and data
+VOLUME ["/app/models", "/app/checkpoints", "/app/data"]
 
 EXPOSE 8420
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
+ENTRYPOINT ["/app/inference/entrypoint.sh"]
 CMD ["python", "-m", "krivex_inference.orchestrator.service"]

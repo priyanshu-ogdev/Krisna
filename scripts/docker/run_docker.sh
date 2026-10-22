@@ -70,9 +70,11 @@ for arg in "$@"; do
     esac
 done
 
+COMPOSE_FILE="inference/docker-compose.yml"
+
 if [ "$ACTION" = "down" ]; then
     echo "[+] Stopping Krivex Docker services..."
-    $COMPOSE_CMD down
+    $COMPOSE_CMD -f "$COMPOSE_FILE" down
     exit 0
 fi
 
@@ -88,11 +90,11 @@ else
 fi
 
 # 5. Launch containers
-echo "[+] Starting services with $COMPOSE_CMD $ACTION $BUILD_FLAG $DETACH_FLAG..."
-$COMPOSE_CMD up $BUILD_FLAG $DETACH_FLAG
+echo "[+] Starting services with $COMPOSE_CMD -f $COMPOSE_FILE $ACTION $BUILD_FLAG $DETACH_FLAG..."
+$COMPOSE_CMD -f "$COMPOSE_FILE" up $BUILD_FLAG $DETACH_FLAG
 
 echo "================================================================="
 echo "Krivex services started."
 echo "Inference API : http://localhost:8420 (health: http://localhost:8420/healthz)"
-echo "Web Studio UI : http://localhost:3000"
+echo "Web Studio UI : http://localhost:8420/studio"
 echo "================================================================="

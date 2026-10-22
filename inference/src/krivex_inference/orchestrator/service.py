@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -241,6 +242,31 @@ async def health():
         "backend_mode": "real" if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1" else "mock",
         "residency_state": orchestrator.state.state.value,
         "vram": orchestrator.ledger.snapshot(),
+    }
+
+
+@app.get("/healthz")
+async def healthz():
+    return await health()
+
+
+@app.get("/api/health")
+async def api_health():
+    return await health()
+
+
+@app.get("/api/system/info")
+async def api_system_info():
+    return {
+        "targetGpu": os.environ.get("KRIVEX_TARGET_GPU", "NVIDIA RTX A6000 (48GB VRAM)"),
+        "targetRam": os.environ.get("KRIVEX_TARGET_RAM", "128GB System RAM"),
+        "lowVramTarget": f"{os.environ.get('KRIVEX_VRAM_ENVELOPE_GB', '12')}GB envelope"
+        if os.environ.get("KRIVEX_LOW_VRAM_MODE") == "1"
+        else "24-48GB envelope",
+        "backendUrl": f"http://{os.environ.get('KRIVEX_BIND_HOST', '127.0.0.1')}:{os.environ.get('KRIVEX_PORT', '8420')}",
+        "backendMode": "real" if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1" else "mock",
+        "residency_state": orchestrator.state.state.value,
+        "os": os.name,
     }
 
 
@@ -645,6 +671,24 @@ async def get_research_trace(session_id: str) -> dict:
         return trajectory.model_dump()
     except SessionNotFoundError as e:
         raise _error_response(e)
+
+
+# --------------------------------------------------------------------- #
+# Static Frontend (Web Studio) Mounting & Root Redirect
+# --------------------------------------------------------------------- #
+_studio_dir = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "public"
+if not _studio_dir.is_dir():
+    _studio_dir = Path("/app/inference/frontend/public")
+
+if _studio_dir.is_dir():
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import RedirectResponse
+
+    app.mount("/studio", StaticFiles(directory=str(_studio_dir), html=True), name="studio")
+
+    @app.get("/", include_in_schema=False)
+    async def index_redirect():
+        return RedirectResponse(url="/studio")
 
 
 def main() -> None:

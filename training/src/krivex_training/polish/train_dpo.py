@@ -70,7 +70,7 @@ log = logging.getLogger("krivex_training.polish.train_dpo")
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--preference-db", required=True, help="Path to the PreferenceStore sqlite db (see scripts/training/sync_from_data_forge_dpo.sh).")
-    p.add_argument("--blob-root", default="krivex_blobs", help="Root dir chosen_ref/rejected_ref blob:// paths resolve against.")
+    p.add_argument("--blob-root", default="data/blobs", help="Root dir chosen_ref/rejected_ref blob:// paths resolve against.")
     p.add_argument("--pretrained-model-name-or-path",
                    default="Qwen/Qwen-Image-2.1",
                    help=(
