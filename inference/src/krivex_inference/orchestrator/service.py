@@ -93,8 +93,8 @@ else:
     _verifier_stack = None
     _handoff_hook = None  # flows.finalize()'s identity-passthrough default is fine for MockBackend — its polish backends don't call PIL.Image.open() on the ref at all.
 
-store = DesignStateStore(db_path="krivex_sessions.db")
-preference_store = PreferenceStore(db_path="krivex_preference_pairs.db")
+store = DesignStateStore(db_path=os.environ.get("KRIVEX_SESSIONS_DB", "krivex_sessions.db"))
+preference_store = PreferenceStore(db_path=os.environ.get("KRIVEX_PREFERENCE_DB", "krivex_preference_pairs.db"))
 session_coordinator = SessionCoordinator(
     inactivity_seconds=float(os.environ.get("KRIVEX_SELF_REVIEW_IDLE_SECONDS", "30"))
 )

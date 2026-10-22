@@ -7,6 +7,7 @@ optimistic-concurrency checks without deserializing on every write.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from pathlib import Path
@@ -32,8 +33,8 @@ class DesignStateStore:
     system, so this is deliberately the simplest thing that's actually
     correct rather than a connection pool."""
 
-    def __init__(self, db_path: str | Path = "krivex_sessions.db") -> None:
-        self.db_path = str(db_path)
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        self.db_path = str(db_path or os.environ.get("KRIVEX_SESSIONS_DB", "krivex_sessions.db"))
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)
         self._conn.row_factory = sqlite3.Row

@@ -110,8 +110,16 @@ class TestPhase3ConfigAndReceipt:
         assert data["resolution"] == 1024
 
     def test_preference_db_gate_and_receipt_generation(self, tmp_path):
-        db_path = Path("krivex_preference_pairs.db")
-        assert db_path.exists(), "krivex_preference_pairs.db must exist"
+        import sqlite3
+        db_path = tmp_path / "krivex_preference_pairs.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE preference_pairs (id TEXT PRIMARY KEY, session_id TEXT)")
+        conn.executemany(
+            "INSERT INTO preference_pairs VALUES (?, ?)",
+            [(f"p_{i}", f"s_{i}") for i in range(2200)],
+        )
+        conn.commit()
+        conn.close()
 
         stats = compute_dataset_stats(db_path)
         assert stats["total"] >= 2000, f"Phase 3 Gate: Expected >= 2000 pairs, found {stats['total']}"
