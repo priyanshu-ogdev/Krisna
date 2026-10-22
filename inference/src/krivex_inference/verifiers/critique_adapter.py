@@ -8,7 +8,7 @@ the preference-pair store) never needs to know or care which one it was —
 critic_worker.py (which runs in the isolated critic venv, see
     Planner Review performs its own structured output validation because it can't
 import this module — that venv only has transformers/unsloth, not the rest
-of krivex_inference (formerly krisna_orchestrator). `from_gemma_output()` here re-validates/normalizes
+of krivex_inference. `from_gemma_output()` here re-validates/normalizes
 whatever comes back from that subprocess through the same pydantic model
 every other source goes through, so a malformed or partial worker response
 never reaches the DesignState store un-normalized.

@@ -1,6 +1,6 @@
 # Data-Forge — Zero-Touch Data Pipeline (v16)
 
-> Automated data pipeline for the **Krisna** project — a conversational, agentic
+> Automated data pipeline for the **Krivex** project — a conversational, agentic
 > UI-design system. This revision implements the PRD's **no-RLHF-loop** decision:
 > every training-data source is either a real, human-labeled public dataset, or a
 > model that ships **frozen** and needs no training data from this pipeline at all.
@@ -23,7 +23,7 @@
 
 > [!NOTE]
 > **Decommissioned Historical Paths**:
-> - `model_data/sketch_tier_maskgit/`: Retired. Sketch is now 100% deterministic (`krisna.layout.v1` Cassowary CPU solver, 0 MB GPU VRAM, 0% overlap proof).
+> - `model_data/sketch_tier_maskgit/`: Retired. Sketch is now 100% deterministic (`krivex.layout.v1` Cassowary CPU solver, 0 MB GPU VRAM, 0% overlap proof).
 > - `model_data/polish_zimage_turbo/`: Retired. The visual polish tier is unified on `Qwen/Qwen-Image-2.1` (7B MMDiT).
 > - Stock photography downloads (PD12M, CC12M): Quarantined. Base foundation weights remain frozen (`base_weights_frozen: true`), guaranteeing natural manifold retention without downloading unconditioned stock photos.
 
@@ -122,7 +122,7 @@ not through Stage 12.
 cd data-forge
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\scripts\setup_env.ps1
-conda activate krisna-forge
+conda activate krivex-forge
 ```
 Installs Python 3.10, `torch+cu124`, `faiss-gpu`, `pandas`/`pyarrow` (needed for
 `preference_pairs/`, `ui_critique/`, and DPO-latent metadata output), then
@@ -318,7 +318,7 @@ The production portfolio consists of **13 active sources (356,721 total records 
   at deleted stage names after the no-RLHF-loop restructuring — fixed.
 - **`s12_model_data_export.py` linked processed artifacts but never the raw
   images either downstream consumer actually needs.** Found while wiring up
-  krisna-orchestrator's sync bridge
+  krivex-orchestrator's sync bridge
   (`training/data_forge_bridge/`, that project's side): `sketch_tier_maskgit/`
   only linked `vq_tokens/` (Open-MAGVIT2 `.pt` files — that encoder's own
   loading code in `engine.py` raises `RuntimeError` on purpose, unverified

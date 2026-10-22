@@ -8,7 +8,7 @@ Grounding:
 - Chen, X., et al. (IEEE/CVF CVPR 2024). "AnyDoor: Zero-shot Object-level Image Customization."
 - Kulikov, V., et al. (IEEE/CVF ICCV 2025). "FlowEdit: Inversion-Free Flow Matching Editing."
 
-Implements a deterministic Neuro-Symbolic layout architecture (krisna.layout.v1):
+Implements a deterministic Neuro-Symbolic layout architecture (krivex.layout.v1):
 1. Discrete Spatial Constraint Solving: Deterministic flexbox hierarchy, 8pt UI grid snapping,
    layer-aware z-index stacking, and facial scale floor enforcement guaranteeing 0.00% overlap.
 2. Unified DualStreamSketch Rasterization: Produces high-contrast TrueType wireframes,
@@ -45,12 +45,12 @@ class LayoutBackend(ModelBackend):
 
     def __init__(self, spec, output_dir: str | None = None, engine_mode: str | None = None):
         super().__init__(spec)
-        self.output_dir = Path(output_dir or os.environ.get("KRISNA_LAYOUT_OUTPUT_DIR", "models/sketch/layout_runs"))
+        self.output_dir = Path(output_dir or os.environ.get("KRIVEX_LAYOUT_OUTPUT_DIR", "models/sketch/layout_runs"))
         self.engine_mode = "production"
 
     async def load(self) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        log.info("Layout tier running in production deterministic neuro-symbolic mode (krisna.layout.v1).")
+        log.info("Layout tier running in production deterministic neuro-symbolic mode (krivex.layout.v1).")
         self._loaded = True
 
     async def unload(self) -> None:
@@ -90,7 +90,7 @@ class LayoutBackend(ModelBackend):
         from krivex_inference.layout_renderer import render_dual_stream_sketch
 
         asset_mode = str(constraints.get("asset_mode") or "opaque").lower()
-        wf_style = os.environ.get("KRISNA_LAYOUT_WIREFRAME_STYLE", "dark")
+        wf_style = os.environ.get("KRIVEX_LAYOUT_WIREFRAME_STYLE", "dark")
 
         # Resolve prior layout for automated differential change masking (Kulikov et al., ICCV 2025 FlowEdit)
         prior_layout_data = constraints.get("current_layout") or kwargs.get("prior_layout")
@@ -127,7 +127,7 @@ class LayoutBackend(ModelBackend):
         return {
             "tier": self.spec.tier.value,
             "mode": "layout_baseline",
-            "pipeline_version": "krisna.layout.v1",
+            "pipeline_version": "krivex.layout.v1",
             "layout_ir": layout.model_dump(),
             "layout_ref": str(json_path),
             "wireframe_ref": wireframe_ref,

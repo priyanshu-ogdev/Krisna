@@ -1,4 +1,4 @@
-"""Unit tests for Krisna Inference hardware and deployment preflight diagnostics."""
+"""Unit tests for Krivex Inference hardware and deployment preflight diagnostics."""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ def test_compute_capability_warning_older_arch():
 
 def test_check_inference_config_discovery(tmp_path):
     # Test fake repo root
-    (tmp_path / ".env.inference").write_text("KRISNA_PORT=8420\n", encoding="utf-8")
+    (tmp_path / ".env.inference").write_text("KRIVEX_PORT=8420\n", encoding="utf-8")
     critic_bin = tmp_path / "venv-critic" / "bin" / "python"
     critic_bin.parent.mkdir(parents=True)
     critic_bin.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -128,7 +128,7 @@ def test_diagnostic_report_formatting():
     )
     cfg = ConfigStatus(use_real_backends=True)
     report = format_diagnostic_report(hw, cfg)
-    assert "Krisna Inference" in report
+    assert "Krivex Inference" in report
     assert "GPU Detected         : NO" in report
     assert "ERRORS (DEPLOYMENT BLOCKED)" in report
     assert "ACTIONABLE REMEDIATION" in report

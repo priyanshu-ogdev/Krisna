@@ -32,7 +32,7 @@ class DesignStateStore:
     system, so this is deliberately the simplest thing that's actually
     correct rather than a connection pool."""
 
-    def __init__(self, db_path: str | Path = "krisna_sessions.db") -> None:
+    def __init__(self, db_path: str | Path = "krivex_sessions.db") -> None:
         self.db_path = str(db_path)
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=15.0)

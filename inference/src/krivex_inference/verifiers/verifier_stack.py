@@ -15,14 +15,14 @@ from __future__ import annotations
 import logging
 import math
 
-log = logging.getLogger("krivex_inference (formerly krisna_orchestrator).verifiers.stack")
+log = logging.getLogger("krivex_inference.verifiers.stack")
 
 # CLIP ViT-L/14 (~900MB) + aesthetic linear head (~3KB) + NSFW ViT
 # (~350MB) + easyocr detector+recognizer (~150MB) ≈ under 1.5GB, comfortably
 # inside the "<1B combined, off-the-shelf" framing from §6's stack table.
 VERIFIER_VRAM_RESERVED_GB = 1.5
 
-# These are Krisna's explicit acceptance targets, not universal thresholds
+# These are Krivex's explicit acceptance targets, not universal thresholds
 # copied from the cited papers. CLIPScore and LPIPS establish useful metric
 # families and human-correlation motivation, but neither gives a portable
 # pass/fail cutoff for UI renders. A future calibration run must replace these
@@ -36,7 +36,7 @@ EVALUATION_TARGETS = {
     "lock_preservation": 0.95,
     "seam_continuity": 0.85,
 }
-EVALUATION_POLICY_VERSION = "krisna.eval.v1"
+EVALUATION_POLICY_VERSION = "krivex.eval.v1"
 
 
 class VerifierStack:
@@ -112,7 +112,7 @@ class VerifierStack:
         The receipt deliberately distinguishes measured values, unavailable
         dimensions, project targets, and calibration status. It is suitable
         for inference evidence and training run joins, but does not pretend
-        that published metric correlations imply Krisna-specific thresholds.
+        that published metric correlations imply Krivex-specific thresholds.
         """
         metrics = self.score_finalize_output(
             polished_image,

@@ -152,7 +152,7 @@ class QwenImage21Backend(ModelBackend):
     ) -> None:
         super().__init__(spec)
         self.strict = strict
-        self.model_id = model_id or os.environ.get("KRISNA_POLISH_MODEL_ID", QWEN_IMAGE_21_MODEL_ID)
+        self.model_id = model_id or os.environ.get("KRIVEX_POLISH_MODEL_ID", QWEN_IMAGE_21_MODEL_ID)
         self.revision = revision
         if self.strict and self.revision != QWEN_IMAGE_21_REVISION:
             raise ValueError(
@@ -169,14 +169,14 @@ class QwenImage21Backend(ModelBackend):
             self.lora_adapter_path = lora_adapter_path
         elif spec.tier == Tier.POLISH_FAST:
             self.lora_adapter_path = (
-                os.environ.get("KRISNA_POLISH_FAST_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+                os.environ.get("KRIVEX_POLISH_FAST_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_LORA_PATH")
             )
         elif spec.tier == Tier.POLISH_DEFAULT:
             self.lora_adapter_path = (
-                os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+                os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_LORA_PATH")
             )
         else:
             self.lora_adapter_path = None
@@ -331,9 +331,9 @@ class QwenImage21Backend(ModelBackend):
                     if not isinstance(manifest.get("lora_target_modules"), list) or not manifest.get("lora_target_modules"):
                         raise ValueError("strict serving requires lora_target_modules")
                     rv = manifest.get("renderer_version")
-                    if rv is not None and not (rv == "krisna.renderer.v2" or str(rv).startswith("krisna.renderer.v2.")):
+                    if rv is not None and not (rv == "krivex.renderer.v2" or str(rv).startswith("krivex.renderer.v2.")):
                         raise ValueError(f"adapter renderer_version mismatch: {manifest.get('renderer_version')}")
-                    if manifest.get("prompt_template_version") not in (None, "krisna.polish_prompt.v2"):
+                    if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2"):
                         raise ValueError(f"adapter prompt_template_version mismatch: {manifest.get('prompt_template_version')}")
                 log.info("Verified LoRA adapter manifest: %s (run_id=%s)", adapter_path, manifest.get("run_id"))
             except Exception as e:

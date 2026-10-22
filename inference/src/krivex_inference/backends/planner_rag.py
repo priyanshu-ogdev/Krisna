@@ -39,7 +39,7 @@ weights into the image at build time (the same as every other tier's
 checkpoint — Qwen3.5, Z-Image-Turbo, Gemma-4, etc.), not lazily on first
 request. So unlike a public web service pulling weights over the
 network at runtime, `sentence-transformers/all-MiniLM-L6-v2` being
-unavailable when `KRISNA_PLANNER_RAG_EMBEDDINGS=1` is set is a real
+unavailable when `KRIVEX_PLANNER_RAG_EMBEDDINGS=1` is set is a real
 configuration bug (bad build, missing requirement), not an expected
 degraded-mode trigger — `load_default_embedder()` therefore does NOT
 silently fall back to TF-IDF on failure. It raises, exactly like a
@@ -116,9 +116,9 @@ def load_default_embedder() -> Callable[[str], Sequence[float]]:
 def resolve_embed_fn_from_env() -> Callable[[str], Sequence[float]] | None:
     """Single shared entry point for the Planner runtime text embedder.
     Returns None only when the feature is simply not enabled
-    (KRISNA_PLANNER_RAG_EMBEDDINGS unset). If the feature IS enabled,
+    (KRIVEX_PLANNER_RAG_EMBEDDINGS unset). If the feature IS enabled,
     load_default_embedder()'s exception propagates unmodified."""
-    if os.environ.get("KRISNA_PLANNER_RAG_EMBEDDINGS", "0") != "1":
+    if os.environ.get("KRIVEX_PLANNER_RAG_EMBEDDINGS", "0") != "1":
         return None
     return load_default_embedder()
 
@@ -131,7 +131,7 @@ def load_default_visual_embedder() -> Callable[[Any], Sequence[float]]:
     from PIL import Image
     from transformers import CLIPModel, CLIPProcessor
 
-    model_id = os.environ.get("KRISNA_VISUAL_RAG_MODEL", "openai/clip-vit-base-patch32")
+    model_id = os.environ.get("KRIVEX_VISUAL_RAG_MODEL", "openai/clip-vit-base-patch32")
     processor = CLIPProcessor.from_pretrained(model_id)
     model = CLIPModel.from_pretrained(model_id).eval()
 
@@ -161,8 +161,8 @@ def load_default_visual_embedder() -> Callable[[Any], Sequence[float]]:
 
 def resolve_visual_embed_fn_from_env() -> Callable[[Any], Sequence[float]] | None:
     """Opt-in visual RAG resolver for Planner visual grounding (ECCV 2024).
-    Controlled by KRISNA_PLANNER_RAG_VISUAL=1."""
-    if os.environ.get("KRISNA_PLANNER_RAG_VISUAL", "0") != "1":
+    Controlled by KRIVEX_PLANNER_RAG_VISUAL=1."""
+    if os.environ.get("KRIVEX_PLANNER_RAG_VISUAL", "0") != "1":
         return None
     return load_default_visual_embedder()
 

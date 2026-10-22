@@ -1,7 +1,7 @@
 """Unified Plan-and-Sketch Layer — Synchronous VLM Deliberation & Spatial Compilation.
 
 Integrates the frozen Qwen3.5-9B Vision-Language Model with the deterministic
-Neuro-Symbolic Layout Compiler (krisna.layout.v1) into a single, cohesive architectural layer.
+Neuro-Symbolic Layout Compiler (krivex.layout.v1) into a single, cohesive architectural layer.
 
 Academic & Grounded Research Foundations:
 1. Alibaba Qwen Team (2025). "Qwen3.5 Technical Report: Dual-Mode Linear Attention Hybrid
@@ -14,7 +14,7 @@ Academic & Grounded Research Foundations:
    - Dynamic-resolution Vision Transformer (mmproj) with Window Attention: Autoregressively maps
      raw UI screenshot pixels into cross-attention token streams.
    - Thinking Mode Decoupling: Separates internal chain-of-thought (<think> ... </think>) from
-     formal, schema-validated Pydantic JSON contracts (krisna.delta.v1).
+     formal, schema-validated Pydantic JSON contracts (krivex.delta.v1).
 2. Daniel Han & Michael Han (Unsloth AI 2025). "FastVision & Dynamic GGUF Quantization for
    High-Fidelity Multimodal Inference."
    - imatrix-calibrated dynamic quantization: selectively upcasts critical attention and cross-modal

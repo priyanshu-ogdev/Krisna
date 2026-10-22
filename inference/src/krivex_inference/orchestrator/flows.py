@@ -24,7 +24,7 @@ from krivex_inference.orchestrator.model_registry import Tier
 from krivex_inference.orchestrator.store import DesignStateStore
 from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator, SwapResult
 
-log = logging.getLogger("krivex_inference (formerly krisna_orchestrator).flows")
+log = logging.getLogger("krivex_inference.flows")
 
 
 class FlowError(Exception):
@@ -603,7 +603,7 @@ async def plan_sketch_and_polish(
 ) -> DesignState:
     """Unified Autonomous Plan-and-Sketch Pipeline with Direct-to-Polish and Closed-Loop Review.
 
-    Integrates Qwen3.5-9B VLM deliberation and krisna.layout.v1 into a single pipeline:
+    Integrates Qwen3.5-9B VLM deliberation and krivex.layout.v1 into a single pipeline:
     1. Simultaneous Plan + Sketch:
        Executes Planner deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding)
        and layout compilation (Cassowary constraint solving, DualStreamSketch rasterization).
@@ -1238,7 +1238,7 @@ def _synthesize_dpo_prompt(state: DesignState) -> str:
         return "High quality UI design"
 
 
-PROMPT_TEMPLATE_VERSION = "krisna.polish_prompt.v3.pe_prose"
+PROMPT_TEMPLATE_VERSION = "krivex.polish_prompt.v3.pe_prose"
 
 
 def assert_and_inject_verbatim_labels(prompt: str, expected_labels: list[str]) -> str:

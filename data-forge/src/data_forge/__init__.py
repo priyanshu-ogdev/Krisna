@@ -1,4 +1,4 @@
-"""Data-Forge: Zero-touch automated data pipeline for the Krisna project (v14 spec — no-RLHF revision)."""
+"""Data-Forge: Zero-touch automated data pipeline for the Krivex project (v14 spec — no-RLHF revision)."""
 
 from __future__ import annotations
 

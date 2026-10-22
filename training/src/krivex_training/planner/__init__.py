@@ -6,7 +6,7 @@ grounded via:
 1. RAG retrieval over UICrit (krivex_inference.backends.planner_rag) providing
    empirical human design rules without parameter modification.
 2. Pushdown automata Context-Free Grammar (CFG) logit masking guaranteeing 100%
-   syntactically valid JSON Schema compliance (`krisna.delta.v1`).
+   syntactically valid JSON Schema compliance (`krivex.delta.v1`).
 
 No fine-tuning, LoRA adapters, or RLHF loops are trained for this tier.
 All legacy LoRA training scripts have been purged.

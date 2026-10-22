@@ -2,7 +2,7 @@
 
 `BlobStore` gives `image_ref` / `vq_tokens` fields in DesignState a genuine
 on-disk meaning: a `blob://<name>` string that resolves to a real file
-under `krisna_blobs/`, instead of the placeholder strings the mock outputs
+under `krivex_blobs/`, instead of the placeholder strings the mock outputs
 use. Every real backend that produces or consumes an image writes/reads
 through this, so `finalize_output.image_ref` and the "critique this"
 flow's read of it are actually the same file on disk.
@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 class BlobStore:
-    def __init__(self, root: str | Path = "krisna_blobs") -> None:
+    def __init__(self, root: str | Path = "krivex_blobs") -> None:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 

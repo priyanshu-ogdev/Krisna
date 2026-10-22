@@ -54,7 +54,7 @@ def _patch_blob_store(monkeypatch, tmp_path, subdir: str):
     import krivex_inference.backends.blob_store_singleton as blob_singleton
     from PIL import Image
 
-    monkeypatch.setenv("KRISNA_BLOB_ROOT", str(tmp_path / subdir))
+    monkeypatch.setenv("KRIVEX_BLOB_ROOT", str(tmp_path / subdir))
     monkeypatch.setattr(blob_singleton, "_instance", None)
     return blob_singleton.get_blob_store().save_image(Image.new("RGB", (8, 8)), prefix="test")
 

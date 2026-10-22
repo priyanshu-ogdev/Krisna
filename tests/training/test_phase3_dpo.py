@@ -110,8 +110,8 @@ class TestPhase3ConfigAndReceipt:
         assert data["resolution"] == 1024
 
     def test_preference_db_gate_and_receipt_generation(self, tmp_path):
-        db_path = Path("krisna_preference_pairs.db")
-        assert db_path.exists(), "krisna_preference_pairs.db must exist"
+        db_path = Path("krivex_preference_pairs.db")
+        assert db_path.exists(), "krivex_preference_pairs.db must exist"
 
         stats = compute_dataset_stats(db_path)
         assert stats["total"] >= 2000, f"Phase 3 Gate: Expected >= 2000 pairs, found {stats['total']}"

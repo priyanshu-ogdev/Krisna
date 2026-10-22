@@ -1,4 +1,4 @@
-"""Test suite for Krisna academic citations integrity and papers archive.
+"""Test suite for Krivex academic citations integrity and papers archive.
 Verifies:
 - 100% peer-reviewed status (strictly zero unrefereed preprints)
 - All 60 papers indexed in docs/papers/MANIFEST.md exist on disk in docs/papers/

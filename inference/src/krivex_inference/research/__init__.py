@@ -1,4 +1,4 @@
-"""Project Krisna Research Utilities & Trajectory Traces.
+"""Project Krivex Research Utilities & Trajectory Traces.
 
 Tools for recording, formatting, and analyzing agentic reasoning traces,
 VLA actions, spatial states, and verifier evaluations for empirical research papers.

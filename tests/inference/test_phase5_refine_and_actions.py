@@ -236,7 +236,7 @@ async def test_iterative_refine_safety_gate_blocking(
     """Verify that failing the safety gate blocks the refinement and cleans up the blob."""
     from krivex_inference.orchestrator.model_registry import Tier
     import krivex_inference.backends.blob_store_singleton as blob_singleton
-    monkeypatch.setenv("KRISNA_BLOB_ROOT", str(tmp_path / "blobs"))
+    monkeypatch.setenv("KRIVEX_BLOB_ROOT", str(tmp_path / "blobs"))
     monkeypatch.setattr(blob_singleton, "_instance", None)
 
     # Create real blob image so verifier stack safety check is executed

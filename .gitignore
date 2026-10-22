@@ -82,7 +82,7 @@ data-forge/.checkpoints/
 data-forge/logs/
 data-forge/registry_reports/
 data-forge/audit_reports/
-data_krisna/
+data_krivex/
 custom_data_root/
 /data_*/
 datasets/
@@ -96,7 +96,7 @@ scratch/
 *.db-wal
 *.sqlite
 *.sqlite3
-krisna_blobs/
+krivex_blobs/
 logs/
 run_logs/
 tmp/

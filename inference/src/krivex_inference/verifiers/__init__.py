@@ -11,6 +11,6 @@ VRAM overhead (~1-2GB) rather than participate in swap semantics at all.
 See verifier_stack.py's VERIFIER_VRAM_RESERVED_GB.
 
 Everything here follows the same lazy-import discipline as
-krivex_inference (formerly krisna_orchestrator)/inference/: torch/transformers/opencv/easyocr are only
+krivex_inference/inference/: torch/transformers/opencv/easyocr are only
 imported inside methods, never at module scope.
 """

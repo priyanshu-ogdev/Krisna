@@ -102,7 +102,7 @@ def test_evaluation_receipt_combines_metrics_and_reports_missing_dimensions():
 
     receipt = stack.evaluate_finalize_output(object(), prompt="ui", safety_score=0.96)
 
-    assert receipt["policy"] == "krisna.eval.v1"
+    assert receipt["policy"] == "krivex.eval.v1"
     assert receipt["status"] == "incomplete"
     assert receipt["missing_metrics"] == ["handoff_consistency", "lock_preservation", "seam_continuity"]
     assert receipt["failed_metrics"] == ["aesthetic"]

@@ -50,7 +50,7 @@ class StructureStage(Stage):
                 return {"id": rec.id, "status": "excluded_failed", "reason": "Image missing", "exclusion_reason": "image_missing"}
 
             # Prefer a source-provided hierarchy when it already conforms to
-            # Krisna's canonical structure schema. This is deterministic and
+            # Krivex's canonical structure schema. This is deterministic and
             # avoids asking a VLM to re-infer structure that Figma2Code or
             # MobileViews supplied. Invalid/non-canonical source structures are
             # retained as provenance and fall through to the normal extractor.

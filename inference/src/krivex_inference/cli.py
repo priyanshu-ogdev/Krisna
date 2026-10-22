@@ -1,6 +1,6 @@
-"""Krisna Inference CLI: Harness for running agentic design sessions.
+"""Krivex Inference CLI: Harness for running agentic design sessions.
 
-Provides the CLI entry point for the Krisna Swap Orchestrator, allowing
+Provides the CLI entry point for the Krivex Swap Orchestrator, allowing
 operators to run conversational turns, finalize renders, and critique designs
 either interactively or non-interactively using MockBackend or real model backends.
 """
@@ -76,7 +76,7 @@ async def run_session(args: argparse.Namespace) -> int:
         print(
             "(MockBackend mode: this exercises the real flow shape and orchestration\n"
             " logic, but NOT real model output — pass --real with a GPU and models/\n"
-            " checkpoints configured via KRISNA_* env vars to test actual generations.)"
+            " checkpoints configured via KRIVEX_* env vars to test actual generations.)"
         )
 
     await orch.start()
@@ -132,8 +132,8 @@ async def run_session(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser for agentic sessions."""
     p = argparse.ArgumentParser(
-        prog="krisna-session",
-        description="Krisna Inference Agentic Session CLI harness",
+        prog="krivex-session",
+        description="Krivex Inference Agentic Session CLI harness",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument(

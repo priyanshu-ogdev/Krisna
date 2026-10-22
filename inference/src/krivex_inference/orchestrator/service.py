@@ -1,6 +1,6 @@
 """Packaged local service for the Swap Orchestrator + Design State Manager.
 
-Run with:  uvicorn krivex_inference (formerly krisna_orchestrator).service:app --host 127.0.0.1 --port 8420
+Run with:  uvicorn krivex_inference.service:app --host 127.0.0.1 --port 8420
 (or use scripts/run_service.sh)
 
 This wraps swap_orchestrator.SwapOrchestrator + store.DesignStateStore +
@@ -37,13 +37,13 @@ from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 from krivex_inference.orchestrator.session_coordinator import SessionCoordinator
 
 configure_logging()
-log = logging.getLogger("krivex_inference (formerly krisna_orchestrator).service")
+log = logging.getLogger("krivex_inference.service")
 
-if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
+if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1":
     from krivex_inference.backends.factory import real_backend_factory
 
-    _low_vram = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
-    _high_vram = os.environ.get("KRISNA_HIGH_VRAM_MODE") == "1"
+    _low_vram = os.environ.get("KRIVEX_LOW_VRAM_MODE") == "1"
+    _high_vram = os.environ.get("KRIVEX_HIGH_VRAM_MODE") == "1"
 
     _default_vram = "12.0" if _low_vram else ("48.0" if _high_vram else "24.0")
     _default_ram = "128.0" if _high_vram else "64.0"
@@ -52,8 +52,8 @@ if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
         backend_factory=real_backend_factory,
         low_vram=_low_vram,
         high_vram=_high_vram,
-        envelope_gb=float(os.environ.get("KRISNA_VRAM_ENVELOPE_GB", _default_vram)),
-        ram_envelope_gb=float(os.environ.get("KRISNA_RAM_ENVELOPE_GB", _default_ram)),
+        envelope_gb=float(os.environ.get("KRIVEX_VRAM_ENVELOPE_GB", _default_vram)),
+        ram_envelope_gb=float(os.environ.get("KRIVEX_RAM_ENVELOPE_GB", _default_ram)),
     )
     log.warning(
         "using_real_inference_backends",
@@ -93,10 +93,10 @@ else:
     _verifier_stack = None
     _handoff_hook = None  # flows.finalize()'s identity-passthrough default is fine for MockBackend — its polish backends don't call PIL.Image.open() on the ref at all.
 
-store = DesignStateStore(db_path="krisna_sessions.db")
-preference_store = PreferenceStore(db_path="krisna_preference_pairs.db")
+store = DesignStateStore(db_path="krivex_sessions.db")
+preference_store = PreferenceStore(db_path="krivex_preference_pairs.db")
 session_coordinator = SessionCoordinator(
-    inactivity_seconds=float(os.environ.get("KRISNA_SELF_REVIEW_IDLE_SECONDS", "30"))
+    inactivity_seconds=float(os.environ.get("KRIVEX_SELF_REVIEW_IDLE_SECONDS", "30"))
 )
 
 
@@ -147,7 +147,7 @@ async def lifespan(_: FastAPI):
     preference_store.close()
 
 
-app = FastAPI(title="Krisna Swap Orchestrator", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Krivex Swap Orchestrator", version="0.1.0", lifespan=lifespan)
 
 
 # --------------------------------------------------------------------- #
@@ -238,7 +238,7 @@ async def health():
     return {
         "status": "ok",
         "ready": orchestrator.ready,
-        "backend_mode": "real" if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1" else "mock",
+        "backend_mode": "real" if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1" else "mock",
         "residency_state": orchestrator.state.state.value,
         "vram": orchestrator.ledger.snapshot(),
     }
@@ -250,7 +250,7 @@ async def ready():
     is_ready = orchestrator.ready
     return {
         "ready": is_ready,
-        "backend_mode": "real" if os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1" else "mock",
+        "backend_mode": "real" if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1" else "mock",
         "residency_state": orchestrator.state.state.value,
         "store_accessible": True,
     }
@@ -279,9 +279,9 @@ async def models_status():
             "runtime": "llama.cpp",
         },
         "polish": {
-            "model_id": os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1"),
-            "lora_adapter": os.environ.get("KRISNA_POLISH_LORA_PATH") or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH"),
-            "fast_lora_adapter": os.environ.get("KRISNA_POLISH_FAST_LORA_PATH"),
+            "model_id": os.environ.get("KRIVEX_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1"),
+            "lora_adapter": os.environ.get("KRIVEX_POLISH_LORA_PATH") or os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH"),
+            "fast_lora_adapter": os.environ.get("KRIVEX_POLISH_FAST_LORA_PATH"),
         },
         "vram_ledger": orchestrator.ledger.snapshot(),
         "ram_ledger": orchestrator.ram_ledger.snapshot(),
@@ -597,7 +597,7 @@ async def preference_pairs_stats() -> dict:
 async def preference_pairs_export(source: str | None = None) -> dict:
     from krivex_training.dpo.dpo_dataset_export import export_jsonl
 
-    output_path = f"krisna_dpo_export{'_' + source if source else ''}.jsonl"
+    output_path = f"krivex_dpo_export{'_' + source if source else ''}.jsonl"
     count = export_jsonl(preference_store, output_path, source=source)
     return {"written": count, "path": output_path}
 
@@ -648,25 +648,25 @@ async def get_research_trace(session_id: str) -> dict:
 
 
 def main() -> None:
-    """CLI entry point for running the Krisna Inference FastAPI service."""
+    """CLI entry point for running the Krivex Inference FastAPI service."""
     import argparse
     import os
     import uvicorn
 
     parser = argparse.ArgumentParser(
         prog="krivex-inference",
-        description="Krisna Inference Swap Orchestrator FastAPI service",
+        description="Krivex Inference Swap Orchestrator FastAPI service",
     )
     parser.add_argument(
         "--host",
-        default=os.getenv("KRISNA_BIND_HOST", "127.0.0.1"),
-        help="Host to bind service to (default: 127.0.0.1 or KRISNA_BIND_HOST)",
+        default=os.getenv("KRIVEX_BIND_HOST", "127.0.0.1"),
+        help="Host to bind service to (default: 127.0.0.1 or KRIVEX_BIND_HOST)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("KRISNA_PORT", "8420")),
-        help="Port to bind service to (default: 8420 or KRISNA_PORT)",
+        default=int(os.getenv("KRIVEX_PORT", "8420")),
+        help="Port to bind service to (default: 8420 or KRIVEX_PORT)",
     )
     parser.add_argument(
         "--reload",

@@ -9,7 +9,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     handler.setFormatter(
         logging.Formatter("%(asctime)s %(levelname)-8s %(name)s :: %(message)s")
     )
-    root = logging.getLogger("krivex_inference (formerly krisna_orchestrator)")
+    root = logging.getLogger("krivex_inference")
     root.setLevel(level)
     root.handlers.clear()
     root.addHandler(handler)

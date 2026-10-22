@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "data-forge"
 version = "0.14.0"
-description = "Zero-touch automated data pipeline for the Krisna project (v14 spec — no-RLHF-loop revision)"
+description = "Zero-touch automated data pipeline for the Krivex project (v14 spec — no-RLHF-loop revision)"
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 license = { text = "Proprietary" }

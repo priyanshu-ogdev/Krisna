@@ -1,7 +1,7 @@
 """Phase 2 Ablation Matrix Runner and Verification Evaluator.
 
 Automates the execution, tracking, and evaluation of Phase 2 ablation studies
-against the Krisna evaluation benchmark:
+against the Krivex evaluation benchmark:
 - Ablation A: Standard LoRA (rank=64, attn-only) vs DoRA
 - Ablation B: DoRA (rank=64, attn-only) vs DoRA (+img_mlp SwiGLU sublayers)
 - Ablation C: DoRA (+img_mlp) with NO wireframe condition (isolating Layout IR)
@@ -155,7 +155,7 @@ def generate_ablation_summary(
     """Generates a publication-grade comparative Markdown & LaTeX ablation matrix.
 
     Formats metric tradeoffs across all Phase 2 architectural ablations against
-    the full Krisna multimodal flow-matching pipeline.
+    the full Krivex multimodal flow-matching pipeline.
     """
     lines = [
         "# Phase 2 Polish Tier Architecture & Conditioning Ablation Matrix",

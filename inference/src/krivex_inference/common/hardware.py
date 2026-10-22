@@ -1,4 +1,4 @@
-"""Hardware and deployment configuration verification for Krisna Inference.
+"""Hardware and deployment configuration verification for Krivex Inference.
 
 Validates:
 1. NVIDIA GPU presence and driver / CUDA compatibility.
@@ -227,7 +227,7 @@ def check_gpu_cuda_match(
                 if low_vram:
                     status.errors.append(msg)
                 else:
-                    status.warnings.append(msg + " Consider enabling low-VRAM mode (KRISNA_LOW_VRAM_MODE=1).")
+                    status.warnings.append(msg + " Consider enabling low-VRAM mode (KRIVEX_LOW_VRAM_MODE=1).")
 
             # System RAM check for low-VRAM offloading
             if low_vram and status.total_ram_gb > 0 and status.total_ram_gb < 32.0:
@@ -278,15 +278,15 @@ def check_inference_config(
     root = repo_root or find_repo_root()
     cfg = ConfigStatus()
 
-    cfg.use_real_backends = os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1"
-    cfg.low_vram_mode = os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
+    cfg.use_real_backends = os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1"
+    cfg.low_vram_mode = os.environ.get("KRIVEX_LOW_VRAM_MODE") == "1"
 
     # Check .env.inference
     env_file = root / ".env.inference"
     cfg.env_inference_exists = env_file.is_file()
 
     # Check Critic worker Python (Legacy; retired in favor of Resident Planner Review)
-    critic_py_env = os.environ.get("KRISNA_CRITIC_VENV_PYTHON")
+    critic_py_env = os.environ.get("KRIVEX_CRITIC_VENV_PYTHON")
     if critic_py_env:
         critic_path = Path(critic_py_env)
         cfg.critic_python_path = str(critic_path)
@@ -303,13 +303,13 @@ def check_inference_config(
         cfg.critic_python_exists = critic_path is not None
 
     # Check Sketch checkpoint if configured
-    sketch_ckpt = os.environ.get("KRISNA_SKETCH_CHECKPOINT")
+    sketch_ckpt = os.environ.get("KRIVEX_SKETCH_CHECKPOINT")
     if sketch_ckpt:
         cfg.sketch_checkpoint = sketch_ckpt
         cfg.sketch_checkpoint_exists = Path(sketch_ckpt).exists()
 
     # Check Polish LoRA if configured
-    polish_lora = os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
+    polish_lora = os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
     if polish_lora:
         cfg.polish_lora_path = polish_lora
         cfg.polish_lora_exists = Path(polish_lora).exists()
@@ -319,12 +319,12 @@ def check_inference_config(
         if critic_py_env and not cfg.critic_python_exists:
             cfg.warnings.append(
                 f"Legacy Critic isolated Python interpreter not found at: {cfg.critic_python_path}. "
-                "Note: Krisna now defaults to Resident Planner Review (0GB added VRAM)."
+                "Note: Krivex now defaults to Resident Planner Review (0GB added VRAM)."
             )
         if sketch_ckpt and not cfg.sketch_checkpoint_exists:
-            cfg.errors.append(f"Configured KRISNA_SKETCH_CHECKPOINT does not exist: {sketch_ckpt}")
+            cfg.errors.append(f"Configured KRIVEX_SKETCH_CHECKPOINT does not exist: {sketch_ckpt}")
         if polish_lora and not cfg.polish_lora_exists:
-            cfg.errors.append(f"Configured KRISNA_POLISH_DEFAULT_LORA_PATH does not exist: {polish_lora}")
+            cfg.errors.append(f"Configured KRIVEX_POLISH_DEFAULT_LORA_PATH does not exist: {polish_lora}")
 
     cfg.is_ready = len(cfg.errors) == 0
     return cfg
@@ -334,7 +334,7 @@ def format_diagnostic_report(hw: HardwareStatus, cfg: ConfigStatus | None = None
     """Builds a human-readable, actionable diagnostic report."""
     lines = [
         "=================================================================",
-        "        Krisna Inference -- Deployment & Hardware Diagnostics    ",
+        "        Krivex Inference -- Deployment & Hardware Diagnostics    ",
         "=================================================================",
     ]
 
@@ -391,7 +391,7 @@ def format_diagnostic_report(hw: HardwareStatus, cfg: ConfigStatus | None = None
             lines.append("       docker run --gpus all -p 8420:8420 krivex-inference:latest")
             lines.append("       or use docker compose up (GPU reservations pre-configured).")
             lines.append("  3. Automated Testing / Mock Development (No GPU):")
-            lines.append("     - Explicitly run in mock mode: export KRISNA_USE_REAL_BACKENDS=0")
+            lines.append("     - Explicitly run in mock mode: export KRIVEX_USE_REAL_BACKENDS=0")
 
     lines.append("=================================================================")
     return "\n".join(lines)
@@ -402,7 +402,7 @@ def main() -> int:
     import json
 
     parser = argparse.ArgumentParser(
-        description="Krisna Inference Hardware & Configuration Diagnostic Tool",
+        description="Krivex Inference Hardware & Configuration Diagnostic Tool",
     )
     parser.add_argument("--require-gpu", action="store_true", help="Fail with exit code 1 if GPU/CUDA is missing or incompatible")
     parser.add_argument("--deploy-check", action="store_true", help="Enforce real-backend deployment readiness (GPU + config)")
@@ -411,7 +411,7 @@ def main() -> int:
     args = parser.parse_args()
 
     require_gpu = args.require_gpu or args.deploy_check
-    low_vram = args.low_vram or os.environ.get("KRISNA_LOW_VRAM_MODE") == "1"
+    low_vram = args.low_vram or os.environ.get("KRIVEX_LOW_VRAM_MODE") == "1"
 
     hw = check_gpu_cuda_match(require_gpu=False, low_vram=low_vram)
     cfg = check_inference_config(require_real=args.deploy_check)

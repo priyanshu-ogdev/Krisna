@@ -1,6 +1,6 @@
 pipeline:
   version: 0.14.0
-  dataset_version_prefix: krisna_v
+  dataset_version_prefix: krivex_v
   source_policy:
     # Only explicitly approved, provenance-complete sources may feed a model
     # training export. Synthetic records remain useful for tests/evaluation,

@@ -139,10 +139,10 @@ def _production_preflight(config: PipelineConfig) -> list[str]:
                 blockers.append(f"required preference-pair safety stage {name} is disabled")
 
     mock_flags = (
-        "KRISNA_MOCK_VLLM",
-        "KRISNA_MOCK_CLIP",
-        "KRISNA_MOCK_VAE",
-        "KRISNA_ALLOW_MOCK_FALLBACK",
+        "KRIVEX_MOCK_VLLM",
+        "KRIVEX_MOCK_CLIP",
+        "KRIVEX_MOCK_VAE",
+        "KRIVEX_ALLOW_MOCK_FALLBACK",
     )
     enabled_mocks = [name for name in mock_flags if os.environ.get(name) == "1"]
     if enabled_mocks:

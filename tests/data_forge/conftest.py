@@ -20,7 +20,7 @@ def tmp_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def data_root(tmp_path: Path) -> Path:
     """Temporary DATA_ROOT."""
-    root = tmp_path / "data_krisna"
+    root = tmp_path / "data_krivex"
     root.mkdir()
     return root
 

@@ -263,13 +263,13 @@ class TestResolveEmbedFnFromEnv:
     def test_disabled_by_default(self, monkeypatch):
         from krivex_inference.backends.planner_rag import resolve_embed_fn_from_env
 
-        monkeypatch.delenv("KRISNA_PLANNER_RAG_EMBEDDINGS", raising=False)
+        monkeypatch.delenv("KRIVEX_PLANNER_RAG_EMBEDDINGS", raising=False)
         assert resolve_embed_fn_from_env() is None
 
     def test_disabled_for_any_non_1_value(self, monkeypatch):
         from krivex_inference.backends.planner_rag import resolve_embed_fn_from_env
 
-        monkeypatch.setenv("KRISNA_PLANNER_RAG_EMBEDDINGS", "true")
+        monkeypatch.setenv("KRIVEX_PLANNER_RAG_EMBEDDINGS", "true")
         assert resolve_embed_fn_from_env() is None
 
     def test_load_default_embedder_raises_loudly_when_package_missing(self, monkeypatch):
@@ -306,7 +306,7 @@ class TestResolveEmbedFnFromEnv:
 
         from krivex_inference.backends import planner_rag
 
-        monkeypatch.setenv("KRISNA_PLANNER_RAG_EMBEDDINGS", "1")
+        monkeypatch.setenv("KRIVEX_PLANNER_RAG_EMBEDDINGS", "1")
 
         def raises(*args, **kwargs):
             raise RuntimeError("simulated load failure")
@@ -375,10 +375,10 @@ class TestMultimodalRAGMechanism:
     def test_resolve_visual_embed_fn_from_env(self, monkeypatch):
         from krivex_inference.backends import planner_rag
 
-        monkeypatch.delenv("KRISNA_PLANNER_RAG_VISUAL", raising=False)
+        monkeypatch.delenv("KRIVEX_PLANNER_RAG_VISUAL", raising=False)
         assert planner_rag.resolve_visual_embed_fn_from_env() is None
 
-        monkeypatch.setenv("KRISNA_PLANNER_RAG_VISUAL", "1")
+        monkeypatch.setenv("KRIVEX_PLANNER_RAG_VISUAL", "1")
         monkeypatch.setattr(planner_rag, "load_default_visual_embedder", lambda: (lambda img: [0.1, 0.2]))
         fn = planner_rag.resolve_visual_embed_fn_from_env()
         assert fn is not None

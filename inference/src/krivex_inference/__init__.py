@@ -1,4 +1,4 @@
-"""Krisna Inference: Swap Orchestrator, Design State Manager, and Verifiers.
+"""Krivex Inference: Swap Orchestrator, Design State Manager, and Verifiers.
 
 Subsystem for executing multi-tier agentic UI generation flows across
 Planner, Sketch, and Polish models with resident review within declared VRAM envelopes.

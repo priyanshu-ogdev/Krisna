@@ -50,11 +50,11 @@ def _compute_renderer_hash() -> str:
         fp = asset_dir / name
         if fp.exists():
             hasher.update(fp.read_bytes())
-    hasher.update(b"krisna.layout_renderer.v2.deterministic_fonts_measured_wrap")
+    hasher.update(b"krivex.layout_renderer.v2.deterministic_fonts_measured_wrap")
     return hasher.hexdigest()
 
 RENDERER_SPEC_HASH = _compute_renderer_hash()
-RENDERER_VERSION = f"krisna.renderer.v2.{RENDERER_SPEC_HASH[:8]}"
+RENDERER_VERSION = f"krivex.renderer.v2.{RENDERER_SPEC_HASH[:8]}"
 
 
 def _resolve_ui_fonts() -> dict[str, Any]:

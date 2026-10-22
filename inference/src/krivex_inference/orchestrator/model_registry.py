@@ -70,7 +70,7 @@ REGISTRY: dict[Tier, ModelSpec] = {
         is_trainable=False,
     ),
     Tier.SKETCH: ModelSpec(
-        tier=Tier.SKETCH, name="Krisna structured Layout IR",
+        tier=Tier.SKETCH, name="Krivex structured Layout IR",
         vram_gb=0.2, quantization="deterministic renderer; no learned weights",
         always_resident=True,
         is_trainable=False,
@@ -371,10 +371,10 @@ class TorchBackend(ModelBackend):
 
 def default_backend_factory(spec: ModelSpec) -> ModelBackend:
     """Production backend factory. Returns real model backends (TorchBackend) by default,
-    or MockBackend when mock mode is enabled via KRISNA_MOCK_INFERENCE=1."""
-    if os.environ.get("KRISNA_USE_REAL_BACKENDS", "0") == "1":
+    or MockBackend when mock mode is enabled via KRIVEX_MOCK_INFERENCE=1."""
+    if os.environ.get("KRIVEX_USE_REAL_BACKENDS", "0") == "1":
         return TorchBackend(spec=spec)
-    if os.environ.get("KRISNA_MOCK_INFERENCE", "0") == "1":
+    if os.environ.get("KRIVEX_MOCK_INFERENCE", "0") == "1":
         return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
     return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
 

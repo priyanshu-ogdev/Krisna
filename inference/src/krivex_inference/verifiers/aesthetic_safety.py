@@ -22,7 +22,7 @@ AESTHETIC_WEIGHTS_URL = (
 
 class AestheticVerifier:
     def __init__(self, cache_dir: str | Path | None = None) -> None:
-        self.cache_dir = Path(cache_dir or os.path.expanduser("~/.cache/krisna_aesthetic"))
+        self.cache_dir = Path(cache_dir or os.path.expanduser("~/.cache/krivex_aesthetic"))
         self._linear = None
 
     def _load(self) -> None:

@@ -9,11 +9,11 @@ from data_forge.data.schema_validator import SchemaValidator
 
 @pytest.fixture
 def validator() -> SchemaValidator:
-    # Tests now live at krisna/tests/data_forge/ (root-level tests/ split
+    # Tests now live at krivex/tests/data_forge/ (root-level tests/ split
     # by package), but configs/ stays inside the data-forge package
     # directory itself, not alongside the tests — see
     # docs/architecture/DIRECTORY_LAYOUT.md. Path must reach
-    # krisna/data-forge/configs/schemas, not krisna/tests/configs/schemas
+    # krivex/data-forge/configs/schemas, not krivex/tests/configs/schemas
     # (which is what `parent.parent` alone resolved to before this repo
     # was split into the monorepo layout).
     schemas_dir = Path(__file__).parent.parent.parent / "data-forge" / "configs" / "schemas"

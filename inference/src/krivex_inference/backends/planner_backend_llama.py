@@ -84,8 +84,8 @@ class PlannerBackendLlama(ModelBackend):
         flash_attn: bool | None = None,
     ):
         super().__init__(spec)
-        self.model_path = model_path or os.environ.get("KRISNA_PLANNER_GGUF")
-        self.mmproj_path = mmproj_path or os.environ.get("KRISNA_PLANNER_MMPROJ")
+        self.model_path = model_path or os.environ.get("KRIVEX_PLANNER_GGUF")
+        self.mmproj_path = mmproj_path or os.environ.get("KRIVEX_PLANNER_MMPROJ")
         self.rag_corpus_dir = rag_corpus_dir
         self.n_ctx = n_ctx
         self.n_gpu_layers = n_gpu_layers
@@ -105,7 +105,7 @@ class PlannerBackendLlama(ModelBackend):
 
         if not resolved_path:
             # Check if running in synthetic / test mode
-            if os.environ.get("KRISNA_USE_REAL_BACKENDS") != "1":
+            if os.environ.get("KRIVEX_USE_REAL_BACKENDS") != "1":
                 log.info("No Planner GGUF discovered; running PlannerBackendLlama in synthetic mode.")
                 self._loaded = True
                 return
@@ -124,7 +124,7 @@ class PlannerBackendLlama(ModelBackend):
             try:
                 from llama_cpp import Llama
             except ImportError as exc:
-                if os.environ.get("KRISNA_USE_REAL_BACKENDS") != "1":
+                if os.environ.get("KRIVEX_USE_REAL_BACKENDS") != "1":
                     log.warning("llama-cpp-python not installed; operating in synthetic mock mode.")
                     return None
                 raise BackendLoadError(
@@ -133,16 +133,16 @@ class PlannerBackendLlama(ModelBackend):
                 ) from exc
 
             hw = probe_cuda_hardware()
-            ctx = self.n_ctx or int(os.environ.get("KRISNA_PLANNER_CTX", "8192"))
+            ctx = self.n_ctx or int(os.environ.get("KRIVEX_PLANNER_CTX", "8192"))
             gpu_layers = (
                 self.n_gpu_layers
                 if self.n_gpu_layers is not None
-                else int(os.environ.get("KRISNA_PLANNER_GPU_LAYERS", str(hw["recommended_gpu_layers"])))
+                else int(os.environ.get("KRIVEX_PLANNER_GPU_LAYERS", str(hw["recommended_gpu_layers"])))
             )
             flash_attn_val = (
                 self.flash_attn
                 if self.flash_attn is not None
-                else (os.environ.get("KRISNA_PLANNER_FLASH_ATTN", "1") == "1" and hw["supports_flash_attn"])
+                else (os.environ.get("KRIVEX_PLANNER_FLASH_ATTN", "1") == "1" and hw["supports_flash_attn"])
             )
 
             config = LlamaCppConfig(
@@ -272,7 +272,7 @@ class PlannerBackendLlama(ModelBackend):
             )
 
         system = (
-            "You are Krisna's frozen design Planner. Return one valid JSON object conforming to "
+            "You are Krivex's frozen design Planner. Return one valid JSON object conforming to "
             "the planner.delta.v1 specification with keys: schema_version, reply_text, "
             "design_state_delta, retrieved_critique_ids, and runtime_metadata. "
             "Never invent unsupported tool calls. Active constraints: " + str(constraints or {})
@@ -360,9 +360,9 @@ class PlannerBackendLlama(ModelBackend):
 
     @staticmethod
     def _read_file_bytes(path: Path) -> bytes:
-        max_bytes = int(os.environ.get("KRISNA_PLANNER_MAX_IMAGE_BYTES", str(_DEFAULT_MAX_IMAGE_BYTES)))
+        max_bytes = int(os.environ.get("KRIVEX_PLANNER_MAX_IMAGE_BYTES", str(_DEFAULT_MAX_IMAGE_BYTES)))
         if max_bytes <= 0:
-            raise ValueError("KRISNA_PLANNER_MAX_IMAGE_BYTES must be positive")
+            raise ValueError("KRIVEX_PLANNER_MAX_IMAGE_BYTES must be positive")
         try:
             with path.open("rb") as handle:
                 payload = handle.read(max_bytes + 1)
@@ -385,10 +385,10 @@ class PlannerBackendLlama(ModelBackend):
                 image_format = (image.format or "").upper()
                 width, height = image.size
                 max_pixels = int(
-                    os.environ.get("KRISNA_PLANNER_MAX_IMAGE_PIXELS", str(_DEFAULT_MAX_IMAGE_PIXELS))
+                    os.environ.get("KRIVEX_PLANNER_MAX_IMAGE_PIXELS", str(_DEFAULT_MAX_IMAGE_PIXELS))
                 )
                 if max_pixels <= 0:
-                    raise ValueError("KRISNA_PLANNER_MAX_IMAGE_PIXELS must be positive")
+                    raise ValueError("KRIVEX_PLANNER_MAX_IMAGE_PIXELS must be positive")
                 if width <= 0 or height <= 0 or width * height > max_pixels:
                     raise ValueError("Planner image dimensions exceed the safety limit")
                 image.verify()
@@ -537,7 +537,7 @@ class PlannerBackendLlama(ModelBackend):
         if not self._loaded:
             raise RuntimeError("Planner backend not loaded")
 
-        if review and os.environ.get("KRISNA_USE_REAL_BACKENDS") == "1":
+        if review and os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1":
             self._require_strict_visual_review(
                 image_ref=image_ref,
                 wireframe_ref=wireframe_ref,

@@ -979,7 +979,7 @@ async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
     assert result["mask_ref"] is not None
     assert result["canvas_width"] % 32 == 0
     assert result["canvas_height"] % 32 == 0
-    assert result["mode"] in ("layout_baseline", "neural_layout_flow") or result["mode"].startswith("krisna.layout.v1.")
+    assert result["mode"] in ("layout_baseline", "neural_layout_flow") or result["mode"].startswith("krivex.layout.v1.")
 
 
 def test_layout_from_constraints_preserves_and_mutates_current_layout():

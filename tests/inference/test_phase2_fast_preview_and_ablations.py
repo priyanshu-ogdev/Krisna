@@ -58,7 +58,7 @@ def test_polish_fast_tier_registry():
 
 def test_real_backend_factory_polish_fast(monkeypatch):
     """Verify backend factory configures 6 steps for fast preview tier."""
-    monkeypatch.setenv("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
+    monkeypatch.setenv("KRIVEX_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
     backend = real_backend_factory(REGISTRY[Tier.POLISH_FAST])
     assert isinstance(backend, QwenImage21Backend)
     assert backend.spec.tier == Tier.POLISH_FAST

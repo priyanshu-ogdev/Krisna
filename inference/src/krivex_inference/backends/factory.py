@@ -28,15 +28,15 @@ from krivex_inference.orchestrator.model_registry import ModelBackend, ModelSpec
 # env var without also constructing the orchestrator with `low_vram=True`
 # would offload the backends correctly but still enforce the full 24GB
 # envelope/budget bookkeeping — set both together in practice, see
-# scripts/run_service.sh's KRISNA_LOW_VRAM_MODE handling.
-_LOW_VRAM = os.environ.get("KRISNA_LOW_VRAM_MODE", "0") == "1"
-_HIGH_VRAM = os.environ.get("KRISNA_HIGH_VRAM_MODE", "0") == "1"
+# scripts/run_service.sh's KRIVEX_LOW_VRAM_MODE handling.
+_LOW_VRAM = os.environ.get("KRIVEX_LOW_VRAM_MODE", "0") == "1"
+_HIGH_VRAM = os.environ.get("KRIVEX_HIGH_VRAM_MODE", "0") == "1"
 
 
 def real_backend_factory(spec: ModelSpec) -> ModelBackend:
     if spec.tier == Tier.PLANNER:
         from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
-        return PlannerBackendLlama(spec, rag_corpus_dir=os.environ.get("KRISNA_PLANNER_RAG_CORPUS_DIR"))
+        return PlannerBackendLlama(spec, rag_corpus_dir=os.environ.get("KRIVEX_PLANNER_RAG_CORPUS_DIR"))
 
     if spec.tier == Tier.SKETCH:
         from krivex_inference.backends.layout_backend import LayoutBackend
@@ -45,17 +45,17 @@ def real_backend_factory(spec: ModelSpec) -> ModelBackend:
     if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
         from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
 
-        model_id = os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
+        model_id = os.environ.get("KRIVEX_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
         if spec.tier == Tier.POLISH_FAST:
             lora_path = (
-                os.environ.get("KRISNA_POLISH_FAST_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+                os.environ.get("KRIVEX_POLISH_FAST_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_LORA_PATH")
             )
         elif spec.tier == Tier.POLISH_DEFAULT:
             lora_path = (
-                os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
-                or os.environ.get("KRISNA_POLISH_LORA_PATH")
+                os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
+                or os.environ.get("KRIVEX_POLISH_LORA_PATH")
             )
         else:
             lora_path = None

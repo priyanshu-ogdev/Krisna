@@ -1,4 +1,4 @@
-"""Canonical Krisna layout intermediate representation.
+"""Canonical Krivex layout intermediate representation.
 
 This is deliberately independent of any generative model.  LayoutFlow,
 Planner JSON, or a future model must all pass through this representation
@@ -24,7 +24,7 @@ class SceneArchetype(str, Enum):
     FREEFORM_ART = "freeform_art"
 
 
-LAYOUT_SCHEMA_VERSION = "krisna.layout.v1"
+LAYOUT_SCHEMA_VERSION = "krivex.layout.v1"
 NODE_TYPES = {
     # Structural & Layout Containers
     "container", "card", "region", "canvas_zone", "modal", "background",

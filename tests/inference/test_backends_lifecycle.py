@@ -19,7 +19,7 @@ from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 async def test_layout_backend_lifecycle_and_generation(tmp_path):
     spec = ModelSpec(
         tier=Tier.SKETCH,
-        name="Krisna structured Layout IR",
+        name="Krivex structured Layout IR",
         vram_gb=0.2,
         quantization="deterministic renderer",
         always_resident=True,
@@ -63,7 +63,7 @@ async def test_layout_backend_lifecycle_and_generation(tmp_path):
 async def test_layout_backend_raises_when_unloaded():
     spec = ModelSpec(
         tier=Tier.SKETCH,
-        name="Krisna structured Layout IR",
+        name="Krivex structured Layout IR",
         vram_gb=0.2,
         quantization="deterministic renderer",
         always_resident=True,

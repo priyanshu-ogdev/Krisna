@@ -49,7 +49,7 @@ from krivex_inference.orchestrator.model_registry import (
 from krivex_inference.orchestrator.state_machine import ResidencyState, StateMachine, SwapTrigger
 from krivex_inference.orchestrator.vram_budget import RAMLedger, VRAMLedger
 
-log = logging.getLogger("krivex_inference (formerly krisna_orchestrator).swap")
+log = logging.getLogger("krivex_inference.swap")
 
 
 def _is_oom_error(exc: BaseException) -> bool:

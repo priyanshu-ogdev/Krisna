@@ -167,7 +167,7 @@ class TestZeroRecordsCreatesOutputDir:
 
 class TestCaptionsIncludeImageFilename:
     """Regression test for a real bug found integrating with
-    krisna-orchestrator's sync bridge: record_id is a random uuid4
+    krivex-orchestrator's sync bridge: record_id is a random uuid4
     (manifest.py's create_record), completely unrelated to the linked
     image's on-disk filename (named after the original fetch-time file,
     e.g. "rico_core_0000042.png"). A downstream consumer joining

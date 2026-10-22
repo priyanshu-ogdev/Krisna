@@ -82,8 +82,8 @@ def test_service_main_entrypoint():
 
 def test_no_stray_databases_in_inference():
     """Verify no stray SQLite database files are left inside the inference package."""
-    stray_root = _REPO_ROOT / "inference" / "krisna_preference_pairs.db"
-    stray_src = _REPO_ROOT / "inference" / "src" / "krisna_preference_pairs.db"
+    stray_root = _REPO_ROOT / "inference" / "krivex_preference_pairs.db"
+    stray_src = _REPO_ROOT / "inference" / "src" / "krivex_preference_pairs.db"
 
     assert not stray_root.exists(), f"Stray database found: {stray_root}"
     assert not stray_src.exists(), f"Stray database found: {stray_src}"
@@ -102,7 +102,7 @@ def test_runtime_cli_harness():
         timeout=10,
     )
     assert result.returncode == 0
-    assert "krisna-session" in result.stdout or "Inference Agentic Session" in result.stdout
+    assert "krivex-session" in result.stdout or "Inference Agentic Session" in result.stdout
 
 
 def test_unified_inference_frontend_structure():

@@ -5,8 +5,8 @@
 # - Croitoru et al., "Curriculum Direct Preference Optimization for Diffusion and Consistency Models", IEEE/CVF CVPR 2025.
 # - Esser et al., "Scaling Rectified Flow Transformers for High-Resolution Image Synthesis", ICML 2024.
 
-preference_db: "./krisna_preference_pairs.db"
-blob_root: "krisna_blobs"
+preference_db: "./krivex_preference_pairs.db"
+blob_root: "krivex_blobs"
 pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
 output_dir: "./checkpoints/polish_qwen_image21_dpo"
 lora_adapter_path: null  # Auto-continues from ./checkpoints/polish_default_lora via launcher

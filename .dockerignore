@@ -16,8 +16,8 @@ node_modules
 *.tar.gz
 data-forge/workspace
 data-forge/runs
-krisna_sessions.db
-krisna_preference_pairs.db
+krivex_sessions.db
+krivex_preference_pairs.db
 logs
 *.log
 scratch

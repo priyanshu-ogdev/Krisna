@@ -1,4 +1,4 @@
-"""Sketch Tier Specification — 100% DETERMINISTIC & FROZEN (krisna.layout.v1).
+"""Sketch Tier Specification — 100% DETERMINISTIC & FROZEN (krivex.layout.v1).
 
 The Sketch tier operates strictly via deterministic neuro-symbolic Layout IR compilation
 and Simplex / Cassowary linear constraint solving on the CPU (0 MB GPU VRAM, <5ms latency).
@@ -20,7 +20,7 @@ def get_sketch_training_status() -> dict[str, str | bool]:
         "tier": "sketch",
         "is_trainable": False,
         "is_frozen": True,
-        "engine": "krisna.layout.v1 (Neuro-Symbolic Simplex / Cassowary Solver)",
+        "engine": "krivex.layout.v1 (Neuro-Symbolic Simplex / Cassowary Solver)",
         "vram_gb": 0.0,
         "rationale": "Deterministic Layout IR guarantees 0% element overlap, 0 MB GPU VRAM, and eliminates VQ codebook collapse",
     }

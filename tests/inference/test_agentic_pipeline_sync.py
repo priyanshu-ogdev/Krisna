@@ -112,7 +112,7 @@ async def test_strict_visual_review_rejects_missing_image(monkeypatch):
     spec = ModelSpec(tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=6.5, quantization="GGUF")
     backend = PlannerBackendLlama(spec)
     backend._loaded = True
-    monkeypatch.setenv("KRISNA_USE_REAL_BACKENDS", "1")
+    monkeypatch.setenv("KRIVEX_USE_REAL_BACKENDS", "1")
 
     with pytest.raises(ValueError, match="requires a valid image"):
         await backend.run(review=True)
@@ -124,7 +124,7 @@ async def test_strict_visual_review_rejects_missing_projector(monkeypatch):
     backend = PlannerBackendLlama(spec)
     backend._loaded = True
     backend._llama = object()
-    monkeypatch.setenv("KRISNA_USE_REAL_BACKENDS", "1")
+    monkeypatch.setenv("KRIVEX_USE_REAL_BACKENDS", "1")
 
     with pytest.raises(RuntimeError, match="multimodal projector"):
         await backend.run(review=True, image_bytes=_png_bytes())
@@ -137,7 +137,7 @@ async def test_strict_visual_review_rejects_invalid_image(tmp_path, monkeypatch)
     backend._loaded = True
     backend._llama = object()
     Path(backend.mmproj_path).write_bytes(b"projector")
-    monkeypatch.setenv("KRISNA_USE_REAL_BACKENDS", "1")
+    monkeypatch.setenv("KRIVEX_USE_REAL_BACKENDS", "1")
 
     with pytest.raises(ValueError, match="Invalid Planner review image"):
         await backend.run(review=True, image_bytes=b"not an image")

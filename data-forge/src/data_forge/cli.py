@@ -123,9 +123,9 @@ def _load_pipeline_config(
     else:
         raise click.ClickException(f"Unknown config profile: {profile}")
 
-    pipeline_path = pipeline_yaml or os.environ.get("KRISNA_PIPELINE_YAML") or default_pipeline
-    models_path = models_yaml or os.environ.get("KRISNA_MODELS_YAML") or default_models
-    datasets_yaml_path = datasets_yaml or os.environ.get("KRISNA_DATASETS_YAML") or default_datasets
+    pipeline_path = pipeline_yaml or os.environ.get("KRIVEX_PIPELINE_YAML") or default_pipeline
+    models_path = models_yaml or os.environ.get("KRIVEX_MODELS_YAML") or default_models
+    datasets_yaml_path = datasets_yaml or os.environ.get("KRIVEX_DATASETS_YAML") or default_datasets
     config = load_config(
         pipeline_yaml=pipeline_path,
         models_yaml=models_path,
@@ -186,7 +186,7 @@ def _require_local_vlm_hardware(config: PipelineConfig) -> None:
 @click.group()
 @click.version_option(version="0.14.0", prog_name="data-forge")
 def main() -> None:
-    """Data-Forge: Zero-touch data pipeline for the Krisna project (v14)."""
+    """Data-Forge: Zero-touch data pipeline for the Krivex project (v14)."""
     import multiprocessing
     import sys
     if sys.platform == 'win32':

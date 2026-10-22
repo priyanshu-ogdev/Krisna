@@ -44,7 +44,7 @@ class TestFrozenModelsHaveNoLoraWiring:
         assert backend.lora_adapter_path is None
 
     def test_polish_quality_does_not_inherit_default_lora_env(self, monkeypatch):
-        monkeypatch.setenv("KRISNA_POLISH_LORA_PATH", "should-not-load")
+        monkeypatch.setenv("KRIVEX_POLISH_LORA_PATH", "should-not-load")
         backend = real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
         assert backend.lora_adapter_path is None
 
@@ -57,33 +57,33 @@ class TestFrozenModelsHaveNoLoraWiring:
 
         source = inspect.getsource(factory_module)
         for removed_env_var in (
-            "KRISNA_PLANNER_LORA_PATH",
-            "KRISNA_CRITIC_LORA_PATH",
+            "KRIVEX_PLANNER_LORA_PATH",
+            "KRIVEX_CRITIC_LORA_PATH",
         ):
             assert f'os.environ.get("{removed_env_var}"' not in source
 
 
 class TestLowVramModeFactoryWiring:
     def test_low_vram_env_var_enables_offload_on_polish_default(self, monkeypatch):
-        monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
+        monkeypatch.setenv("KRIVEX_LOW_VRAM_MODE", "1")
         import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.POLISH_DEFAULT])
             assert backend.enable_cpu_offload is True
         finally:
-            monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
+            monkeypatch.delenv("KRIVEX_LOW_VRAM_MODE", raising=False)
             importlib.reload(factory_module)
 
     def test_low_vram_env_var_enables_offload_on_polish_quality(self, monkeypatch):
-        monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
+        monkeypatch.setenv("KRIVEX_LOW_VRAM_MODE", "1")
         import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
             assert backend.enable_cpu_offload is True
         finally:
-            monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
+            monkeypatch.delenv("KRIVEX_LOW_VRAM_MODE", raising=False)
             importlib.reload(factory_module)
 
     def test_default_mode_leaves_offload_disabled(self):
@@ -93,12 +93,12 @@ class TestLowVramModeFactoryWiring:
         assert backend.enable_cpu_offload is False
 
     def test_planner_never_offloaded_even_in_low_vram_mode(self, monkeypatch):
-        monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
+        monkeypatch.setenv("KRIVEX_LOW_VRAM_MODE", "1")
         import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             planner = factory_module.real_backend_factory(REGISTRY[Tier.PLANNER])
             assert not getattr(planner, "enable_cpu_offload", False)
         finally:
-            monkeypatch.delenv("KRISNA_LOW_VRAM_MODE", raising=False)
+            monkeypatch.delenv("KRIVEX_LOW_VRAM_MODE", raising=False)
             importlib.reload(factory_module)

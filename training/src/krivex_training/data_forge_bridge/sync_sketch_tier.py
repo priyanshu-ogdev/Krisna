@@ -1,6 +1,6 @@
 """Sketch tier synchronization bridge — RETIRED / DETERMINISTIC ENGINE.
 
-The Sketch tier standardizes on the deterministic neuro-symbolic `krisna.layout.v1`
+The Sketch tier standardizes on the deterministic neuro-symbolic `krivex.layout.v1`
 engine (0 MB VRAM, <5ms CPU latency). Discrete VQ token codebooks and MaskGIT training
 shards are completely retired and obsolete.
 
@@ -26,7 +26,7 @@ def sync(
 ) -> Path | None:
     """No-op sync for the deterministic Sketch tier.
 
-    Because the production Sketch tier (krisna.layout.v1) generates layouts
+    Because the production Sketch tier (krivex.layout.v1) generates layouts
     via deterministic Simplex constraint solving rather than learned discrete tokens,
     data-forge VQ token manifests are not consumed during training.
     """
@@ -36,7 +36,7 @@ def sync(
         DeprecationWarning,
         stacklevel=2,
     )
-    log.info("Sketch tier is deterministic (krisna.layout.v1); bypassing token shard sync.")
+    log.info("Sketch tier is deterministic (krivex.layout.v1); bypassing token shard sync.")
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / "manifest.jsonl"

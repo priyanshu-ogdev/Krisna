@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     # Run the service against an isolated DB file in a temp cwd so tests
-    # never touch (or depend on) a real krisna_sessions.db in the repo.
+    # never touch (or depend on) a real krivex_sessions.db in the repo.
     monkeypatch.chdir(tmp_path)
     import krivex_inference.orchestrator.service as service_module
 

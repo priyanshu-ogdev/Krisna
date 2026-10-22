@@ -99,12 +99,12 @@ class TestManifestQueries:
 
 class TestDatasetVersioning:
     def test_create_version(self, manifest: Manifest):
-        manifest.create_dataset_version("krisna_v001", notes="Test")
+        manifest.create_dataset_version("krivex_v001", notes="Test")
         latest = manifest.get_latest_version()
-        assert latest == "krisna_v001"
+        assert latest == "krivex_v001"
 
     def test_version_ordering(self, manifest: Manifest):
-        manifest.create_dataset_version("krisna_v001")
+        manifest.create_dataset_version("krivex_v001")
         import time; time.sleep(0.01)
-        manifest.create_dataset_version("krisna_v002")
-        assert manifest.get_latest_version() == "krisna_v002"
+        manifest.create_dataset_version("krivex_v002")
+        assert manifest.get_latest_version() == "krivex_v002"

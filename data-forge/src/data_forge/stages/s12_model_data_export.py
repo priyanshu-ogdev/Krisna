@@ -659,7 +659,7 @@ class ModelDataExportStage(Stage):
             # data path is:
             #   data-forge preference_pairs/ (s01_6_preference_pairs)
             #   → training/data_forge_bridge/sync_dpo_pairs.py
-            #   → krisna_training.dpo.preference_store.PreferenceStore
+            #   → krivex_training.dpo.preference_store.PreferenceStore
             #   → training/polish/dpo_dataset.py::PreferencePairDataset
             #   → training/polish/train_dpo.py
             # train_dpo.py re-encodes images from BlobStore at training time;

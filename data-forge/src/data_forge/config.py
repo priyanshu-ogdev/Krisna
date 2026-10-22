@@ -17,18 +17,18 @@ def _default_data_root() -> Path:
     """Return the default DATA_ROOT when no DATA_ROOT env var is set.
 
     UPGRADED (docs/review/26_data_root_path_consistency.md): this used to
-    return a platform-branched default (an absolute `/data_krisna` on
-    Linux, `D:\\data_krisna` on Windows). That default was never actually
+    return a platform-branched default (an absolute `/data_krivex` on
+    Linux, `D:\\data_krivex` on Windows). That default was never actually
     reachable in practice, though, because the repo's own committed
-    `.env` unconditionally set `DATA_ROOT=D:\\data_krisna` and
+    `.env` unconditionally set `DATA_ROOT=D:\\data_krivex` and
     data_forge/cli.py's `_load_env_file()` loads that file on every
     platform, including the Linux/WSL2 target `run_data_forge.sh` is
-    written for. `Path("D:\\data_krisna")` on POSIX is not a drive path —
+    written for. `Path("D:\\data_krivex")` on POSIX is not a drive path —
     backslashes aren't separators there — so it silently resolved to a
-    single-component relative folder literally named "D:\\data_krisna",
+    single-component relative folder literally named "D:\\data_krivex",
     which also disagreed with scripts/data-forge/sync_to_training.py's
-    own independent default (`REPO_ROOT / "data_krisna"`) and with
-    train.sh --help's documented default (`./data_krisna`).
+    own independent default (`REPO_ROOT / "data_krivex"`) and with
+    train.sh --help's documented default (`./data_krivex`).
 
     Fixed by standardizing on one repo-relative default everywhere,
     matching sync_to_training.py and train.sh, rather than branching on
@@ -36,7 +36,7 @@ def _default_data_root() -> Path:
     fully supported via the DATA_ROOT env var (see .env.example); this
     function only governs what happens when nothing is set.
     """
-    return Path.cwd() / "data_krisna"
+    return Path.cwd() / "data_krivex"
 
 
 def _default_prompts_dir() -> Path:
@@ -399,7 +399,7 @@ class PipelineConfig:
     """Top-level configuration container for the entire pipeline."""
 
     version: str = "0.13.0"
-    dataset_version_prefix: str = "krisna_v"
+    dataset_version_prefix: str = "krivex_v"
     data_root: Path = field(default_factory=_default_data_root)
     paths: PathsConfig = field(default_factory=PathsConfig)
     resolved_paths: dict[str, Path] = field(default_factory=dict)

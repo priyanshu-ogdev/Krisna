@@ -1,6 +1,6 @@
 """Stage 3.5: PII Scrub — face blurring (NEW in v13 upgrades).
 
-Prevents Krisna from learning to generate real people's private data.
+Prevents Krivex from learning to generate real people's private data.
 Runs between Quality (Stage 3) and Safety (Stage 4).
 
 Text-based PII redaction is handled separately by s05_5_pii_text_redact,

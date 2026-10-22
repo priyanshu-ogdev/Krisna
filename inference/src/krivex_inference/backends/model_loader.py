@@ -43,7 +43,7 @@ PLANNER_MMPROJ_FILENAME = PLANNER_MMPROJ_FILENAMES[0]
 DEFAULT_CANDIDATE_DIRS = [
     Path("models/planner"),
     Path("models"),
-    Path.home() / ".cache" / "krisna" / "models" / "planner",
+    Path.home() / ".cache" / "krivex" / "models" / "planner",
     Path("custom_data_root/models/planner"),
 ]
 
@@ -106,7 +106,7 @@ def discover_planner_model(explicit_path: str | None = None) -> Path | None:
     
     Priority order:
     1. Explicit path parameter.
-    2. KRISNA_PLANNER_GGUF environment variable.
+    2. KRIVEX_PLANNER_GGUF environment variable.
     3. Auto-discovery in candidate model directories (matching *.gguf).
     """
     if explicit_path:
@@ -118,7 +118,7 @@ def discover_planner_model(explicit_path: str | None = None) -> Path | None:
             if ggufs:
                 return ggufs[0].resolve()
 
-    env_path = os.environ.get("KRISNA_PLANNER_GGUF")
+    env_path = os.environ.get("KRIVEX_PLANNER_GGUF")
     if env_path:
         p = Path(env_path)
         if p.is_file():
@@ -151,7 +151,7 @@ def discover_mmproj_model(explicit_path: str | None = None) -> Path | None:
         if p.is_file():
             return p.resolve()
 
-    env_path = os.environ.get("KRISNA_PLANNER_MMPROJ")
+    env_path = os.environ.get("KRIVEX_PLANNER_MMPROJ")
     if env_path:
         p = Path(env_path)
         if p.is_file():
@@ -241,13 +241,13 @@ def build_calibrated_planner_config() -> LlamaCppConfig | None:
     mmproj_path = discover_mmproj_model()
     hw = probe_cuda_hardware()
 
-    ctx = int(os.environ.get("KRISNA_PLANNER_CTX", "8192"))
+    ctx = int(os.environ.get("KRIVEX_PLANNER_CTX", "8192"))
     # In low-VRAM mode, default to 4096 or 8192
-    if os.environ.get("KRISNA_LOW_VRAM_MODE") == "1":
+    if os.environ.get("KRIVEX_LOW_VRAM_MODE") == "1":
         ctx = min(ctx, 4096)
 
-    gpu_layers = int(os.environ.get("KRISNA_PLANNER_GPU_LAYERS", str(hw["recommended_gpu_layers"])))
-    flash_attn = os.environ.get("KRISNA_PLANNER_FLASH_ATTN", "1") == "1" and hw["supports_flash_attn"]
+    gpu_layers = int(os.environ.get("KRIVEX_PLANNER_GPU_LAYERS", str(hw["recommended_gpu_layers"])))
+    flash_attn = os.environ.get("KRIVEX_PLANNER_FLASH_ATTN", "1") == "1" and hw["supports_flash_attn"]
 
     return LlamaCppConfig(
         model_path=str(model_path),

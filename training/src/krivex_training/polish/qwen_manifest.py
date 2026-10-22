@@ -30,8 +30,8 @@ def build_manifest(*, adapter_path: str, resolution: int = 1024,
                    lora_target_modules: list[str] | None = None,
                    trainable_parameter_count: int | None = None,
                    frozen_parameter_count: int | None = None,
-                   renderer_version: str = "krisna.renderer.v2",
-                   prompt_template_version: str = "krisna.polish_prompt.v2",
+                   renderer_version: str = "krivex.renderer.v2",
+                   prompt_template_version: str = "krivex.polish_prompt.v2",
                    seed: int | None = None) -> dict[str, Any]:
     return {"schema_version": SCHEMA_VERSION, "base_model": MODEL_ID,
             "pipeline": PIPELINE, "conditioning": "image",
@@ -80,9 +80,9 @@ def validate_manifest(manifest: dict[str, Any], *, strict: bool = True) -> dict[
         if not isinstance(manifest.get("rank"), int) or manifest["rank"] <= 0:
             raise QwenManifestError("rank must be a positive integer in strict mode")
         rv = manifest.get("renderer_version")
-        if rv is not None and not (rv == "krisna.renderer.v2" or str(rv).startswith("krisna.renderer.v2.")):
+        if rv is not None and not (rv == "krivex.renderer.v2" or str(rv).startswith("krivex.renderer.v2.")):
             raise QwenManifestError(f"renderer_version mismatch: {manifest.get('renderer_version')}")
-        if manifest.get("prompt_template_version") not in (None, "krisna.polish_prompt.v2"):
+        if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2"):
             raise QwenManifestError(f"prompt_template_version mismatch: {manifest.get('prompt_template_version')}")
     return manifest
 

@@ -1,4 +1,4 @@
-"""Canonical Research Trajectory & Trace Schema for Krisna.
+"""Canonical Research Trajectory & Trace Schema for Krivex.
 
 Standardized format for capturing reasoning traces, conversation steps,
 VLA actions, spatial states, and verifier evaluations to enable rigorous
@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-TRACE_SCHEMA_VERSION = "krisna.research.trace.v1"
+TRACE_SCHEMA_VERSION = "krivex.research.trace.v1"
 
 
 class RuntimeEnvironmentInfo(BaseModel):

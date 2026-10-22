@@ -1,4 +1,4 @@
-"""Test Suite for Project Krisna Research Trajectory & Trace Export.
+"""Test Suite for Project Krivex Research Trajectory & Trace Export.
 
 Validates that all reasoning traces, conversation histories, VLA actions,
 and verifier scores are faithfully recorded for academic research paper analysis.
