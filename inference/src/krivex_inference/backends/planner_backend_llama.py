@@ -198,6 +198,8 @@ class PlannerBackendLlama(ModelBackend):
         self._rag_index = UICritRAGIndex()
         self._loaded = False
         self._load_telemetry = {}
+        import gc
+        gc.collect()
 
     @staticmethod
     def _format_layout_graph_prefix(layout_tree: Any) -> str:

@@ -147,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
              "Only meaningful with --real.",
     )
     p.add_argument("--vram-envelope-gb", type=float, default=None, help="Override the VRAM envelope.")
-    p.add_argument("--ram-envelope-gb", type=float, default=48.0, help="System-RAM budget for low-VRAM mode.")
+    p.add_argument("--ram-envelope-gb", type=float, default=16.0, help="System-RAM budget for low-VRAM mode.")
     p.add_argument(
         "--message", action="append",
         help="A conversational turn message. Repeatable for a multi-turn session. "

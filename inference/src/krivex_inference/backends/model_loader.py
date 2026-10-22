@@ -44,7 +44,6 @@ DEFAULT_CANDIDATE_DIRS = [
     Path("models/planner"),
     Path("models"),
     Path.home() / ".cache" / "krivex" / "models" / "planner",
-    Path("custom_data_root/models/planner"),
 ]
 
 

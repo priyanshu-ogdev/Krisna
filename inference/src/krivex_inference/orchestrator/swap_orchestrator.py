@@ -121,6 +121,11 @@ class SwapOrchestrator:
 
     def __post_init__(self) -> None:
         self.state = StateMachine(ResidencyState.IDLE_RESIDENT)
+        if self.low_vram:
+            if self.envelope_gb == 24.0:
+                self.envelope_gb = 12.0
+            if self.ram_envelope_gb == 48.0:
+                self.ram_envelope_gb = 16.0
         self.registry = get_registry(low_vram=self.low_vram, high_vram=self.high_vram)
         self.ledger = VRAMLedger(envelope_gb=self.envelope_gb, registry=self.registry, safety_margin_gb=self.vram_safety_margin_gb)
         self.ram_ledger = RAMLedger(envelope_gb=self.ram_envelope_gb, registry=self.registry)
@@ -499,7 +504,14 @@ class SwapOrchestrator:
                         "tier_load_oom",
                         extra={"tier": requested_tier.value, "attempt": attempt, "error": str(e)},
                     )
-                    # Real backend: torch.cuda.empty_cache() + gc.collect() here.
+                    try:
+                        import gc
+                        import torch
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    except Exception:
+                        pass
                     await asyncio.sleep(0.005 * attempt)
                     continue
                 raise

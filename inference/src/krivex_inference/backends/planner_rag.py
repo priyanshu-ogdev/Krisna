@@ -36,7 +36,7 @@ existing caller), behavior is byte-identical to before this pass.
 
 MODEL AVAILABILITY: this project's inference containers build model
 weights into the image at build time (the same as every other tier's
-checkpoint — Qwen3.5, Z-Image-Turbo, Gemma-4, etc.), not lazily on first
+checkpoint — Qwen3.5, Qwen-Image-2.1, etc.), not lazily on first
 request. So unlike a public web service pulling weights over the
 network at runtime, `sentence-transformers/all-MiniLM-L6-v2` being
 unavailable when `KRIVEX_PLANNER_RAG_EMBEDDINGS=1` is set is a real

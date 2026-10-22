@@ -47,7 +47,7 @@ if os.environ.get("KRIVEX_USE_REAL_BACKENDS") == "1":
     _high_vram = os.environ.get("KRIVEX_HIGH_VRAM_MODE") == "1"
 
     _default_vram = "12.0" if _low_vram else ("48.0" if _high_vram else "24.0")
-    _default_ram = "128.0" if _high_vram else "64.0"
+    _default_ram = "16.0" if _low_vram else ("128.0" if _high_vram else "32.0")
 
     orchestrator = SwapOrchestrator(
         backend_factory=real_backend_factory,

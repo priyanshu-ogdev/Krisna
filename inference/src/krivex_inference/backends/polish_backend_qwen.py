@@ -271,8 +271,17 @@ class QwenImage21Backend(ModelBackend):
 
                 if self.enable_cpu_offload:
                     pipe.enable_model_cpu_offload()
+                    # SOTA VAE memory slicing and tiling to prevent peak VRAM spikes on 12GB GPUs during decode
+                    if hasattr(pipe, "enable_vae_tiling"):
+                        pipe.enable_vae_tiling()
+                    if hasattr(pipe, "enable_vae_slicing"):
+                        pipe.enable_vae_slicing()
                 else:
                     pipe.to(self.device)
+
+                if torch.cuda.is_available():
+                    torch.backends.cuda.matmul.allow_tf32 = True
+                    torch.backends.cudnn.allow_tf32 = True
 
                 return pipe
             except Exception as e:
@@ -349,7 +358,9 @@ class QwenImage21Backend(ModelBackend):
         self._loaded = False
         def _cleanup():
             try:
+                import gc
                 import torch
+                gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except ImportError:
