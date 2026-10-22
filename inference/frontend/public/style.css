@@ -769,28 +769,180 @@ table td:last-child { font-family: var(--font-mono); word-break: break-all; colo
 /* ------------------------------------------------------------------ *
  * Chat Log & Messages
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ *
+ * Chat Log & Messages — High-Tech Glassmorphism Design
+ * ------------------------------------------------------------------ */
 .chat-log {
   background: #05070a;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 0.85rem 1rem;
-  height: 220px;
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  height: 280px;
   overflow-y: auto;
   font-size: 0.85rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.85rem;
+  scroll-behavior: smooth;
 }
-.chat-log .msg { margin-bottom: 0.6rem; display: flex; gap: 0.6rem; align-items: baseline; }
-.chat-log .msg .who {
+.chat-log::-webkit-scrollbar { width: 6px; }
+.chat-log::-webkit-scrollbar-track { background: rgba(5, 7, 10, 0.5); }
+.chat-log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+
+.chat-log .msg {
+  margin-bottom: 0.85rem;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  background: rgba(20, 27, 37, 0.55);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+.chat-log .msg:hover {
+  background: rgba(28, 38, 52, 0.7);
+  border-color: rgba(99, 102, 241, 0.3);
+  transform: translateY(-1px);
+}
+.chat-log .msg.role-user {
+  border-left: 3px solid var(--cool);
+}
+.chat-log .msg.role-planner {
+  border-left: 3px solid var(--hot);
+}
+.chat-log .msg.role-critic {
+  border-left: 3px solid var(--good);
+}
+.chat-log .msg.role-assistant {
+  border-left: 3px solid var(--accent-primary);
+}
+.chat-log .msg.thinking {
+  border-left: 3px solid var(--ash-500);
+  animation: pulse-thought 1.8s ease-in-out infinite;
+}
+@keyframes pulse-thought {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; border-color: var(--hot); }
+}
+
+.msg-avatar-col {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+.msg-body-col {
+  flex: 1;
+  min-width: 0;
+}
+.msg-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+.msg-author {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--ash-100);
+  letter-spacing: 0.01em;
+}
+.msg-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ash-500);
+}
+
+.chat-main-text {
+  color: var(--ash-100);
+  line-height: 1.55;
+  font-size: 0.84rem;
+}
+.chat-p { margin: 0 0 0.4rem 0; }
+.chat-p:last-child { margin-bottom: 0; }
+.chat-li { margin-left: 1.1rem; margin-bottom: 0.25rem; }
+
+/* Chain-of-Thought (CoT) Accordion */
+.thought-accordion {
+  background: rgba(8, 11, 16, 0.85);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  font-size: 0.78rem;
+}
+.thought-summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--hot);
+  font-weight: 500;
+  user-select: none;
+}
+.thought-summary::-webkit-details-marker { display: none; }
+.thought-title { flex: 1; }
+.thought-badge {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--hot);
+}
+.thought-body {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ash-300);
+  line-height: 1.6;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+/* Action Chips in Chat */
+.action-tag {
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: 0.68rem;
-  color: var(--ash-500);
-  min-width: 4rem;
-  text-transform: uppercase;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin: 1px 3px 1px 0;
 }
-.chat-log .msg.role-user .who { color: var(--cool); }
-.chat-log .msg.role-planner .who { color: var(--hot); }
-.chat-log .msg.thinking .who { color: var(--ash-500); }
-.chat-log .msg.thinking span:last-child { color: var(--ash-500); font-style: italic; }
+.action-add_component { background: rgba(6, 182, 212, 0.15); color: var(--cool); border: 1px solid rgba(6, 182, 212, 0.35); }
+.action-lock_region { background: rgba(245, 158, 11, 0.15); color: var(--hot); border: 1px solid rgba(245, 158, 11, 0.35); }
+.action-move_component { background: rgba(139, 92, 246, 0.15); color: var(--purple); border: 1px solid rgba(139, 92, 246, 0.35); }
+
+.chat-code-block {
+  background: #05070a;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.85rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  margin: 0.4rem 0;
+}
+.chat-inline-code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+  color: #38bdf8;
+}
 
 .chat-error {
   background: rgba(239, 68, 68, 0.1);
@@ -1331,3 +1483,100 @@ button:hover .ui-icon-spin-hover {
 }
 
 .hidden { display: none !important; }
+
+/* ------------------------------------------------------------------ *
+ * Screenshot Decompilation Preview Bar
+ * ------------------------------------------------------------------ */
+.screenshot-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.45rem 0.85rem;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: var(--radius-sm);
+  margin-top: 0.5rem;
+  animation: fadeIn 0.25s ease;
+}
+.preview-badge {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--cool);
+  font-weight: 600;
+}
+.preview-filename {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--ash-300);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ *
+ * Research Trace Observability Modal Styling (krivex.research.trace.v1)
+ * ------------------------------------------------------------------ */
+.research-trace-content {
+  max-width: 780px !important;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+.research-trace-body {
+  padding: 1.25rem;
+}
+.trace-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 1.25rem;
+}
+@media (max-width: 640px) {
+  .trace-grid { grid-template-columns: 1fr; }
+}
+.trace-card {
+  background: rgba(14, 19, 27, 0.85);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.trace-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  color: var(--ash-500);
+  letter-spacing: 0.04em;
+}
+.trace-val {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--cool);
+}
+.trace-note {
+  font-size: 0.72rem;
+  color: var(--ash-300);
+  line-height: 1.4;
+}
+.trace-receipt-section {
+  margin-top: 1rem;
+}
+.trace-receipt-section h4 {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem 0;
+  color: var(--ash-300);
+}
+.trace-receipt-section .terminal {
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 0.75rem;
+  padding: 0.75rem;
+  background: #05070a;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}

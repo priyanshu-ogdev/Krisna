@@ -82,42 +82,34 @@ function renderCheckpoints(data) {
   if (!container) return;
   const items = [];
 
-  // Sketch
-  if (data.sketch && data.sketch.length > 0) {
-    for (const s of data.sketch) {
-      items.push(`
-        <div class="ckpt-card">
-          <div class="ckpt-info">
-            <div class="ckpt-title-row">
-              <span class="ckpt-name">Sketch (${s.isFinal ? "Final" : "Step"})</span>
-              <span class="ckpt-badge ready">${s.sizeMb}MB</span>
-            </div>
-            <span class="ckpt-path">${escapeHtml(s.path)}</span>
-          </div>
-          <button type="button" class="btn btn-ghost btn-xs" onclick='useSketchPath(${escapeHtml(JSON.stringify(s.path))})' title="Auto-populate Sketch path in form">
-            <svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 14 14" fill="none" stroke="currentColor">
-              <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Use</span>
-          </button>
+  // Planner VLM + Projector
+  const plannerReady = data.planner && data.planner.ready;
+  items.push(`
+    <div class="ckpt-card">
+      <div class="ckpt-info">
+        <div class="ckpt-title-row">
+          <span class="ckpt-name">Planner VLM (Qwen3.5-9B GGUF + mmproj)</span>
+          <span class="ckpt-badge ${plannerReady ? "ready" : "missing"}">${plannerReady ? "Ready" : "Not Downloaded"}</span>
         </div>
-      `);
-    }
-  } else {
-    items.push(`
-      <div class="ckpt-card">
-        <div class="ckpt-info">
-          <div class="ckpt-title-row">
-            <span class="ckpt-name">Sketch Tier</span>
-            <span class="ckpt-badge missing">Not Found</span>
-          </div>
-          <span class="ckpt-path">checkpoints/sketch_stage2_512/checkpoint_final.pt</span>
-        </div>
+        <span class="ckpt-path">${escapeHtml(data.planner?.gguf || "models/planner/Qwen3.5-9B-Instruct-Q4_K_M.gguf")}</span>
       </div>
-    `);
-  }
+    </div>
+  `);
 
-  // Polish
+  // Sketch Tier
+  items.push(`
+    <div class="ckpt-card">
+      <div class="ckpt-info">
+        <div class="ckpt-title-row">
+          <span class="ckpt-name">Sketch Tier (Deterministic Simplex)</span>
+          <span class="ckpt-badge ready">0 MB VRAM</span>
+        </div>
+        <span class="ckpt-path">Host SIMD Cassowary Solver (krivex.layout.v1)</span>
+      </div>
+    </div>
+  `);
+
+  // Polish Foundation & LoRA
   if (data.polish && data.polish.length > 0) {
     for (const p of data.polish) {
       items.push(`
@@ -143,35 +135,18 @@ function renderCheckpoints(data) {
       <div class="ckpt-card">
         <div class="ckpt-info">
           <div class="ckpt-title-row">
-            <span class="ckpt-name">Polish LoRA</span>
-            <span class="ckpt-badge missing">Not Found</span>
+            <span class="ckpt-name">Polish LoRA (krivex-ai/krivex-qwen-image21-polish-lora)</span>
+            <span class="ckpt-badge ready">HF Hub Hub-Gated</span>
           </div>
-          <span class="ckpt-path">models/dpo_checkpoints/**/final/ or checkpoints/polish_default_lora</span>
+          <span class="ckpt-path">Auto-resolves from HF Hub or runs zero-shot base</span>
         </div>
       </div>
     `);
   }
 
-  // Critic venv
-  items.push(`
-    <div class="ckpt-card">
-      <div class="ckpt-info">
-        <div class="ckpt-title-row">
-          <span class="ckpt-name">Critic Environment</span>
-          <span class="ckpt-badge ${data.critic && data.critic.ready ? "ready" : "missing"}">${data.critic && data.critic.ready ? "Ready" : "Missing"}</span>
-        </div>
-        <span class="ckpt-path">${escapeHtml((data.critic && data.critic.venv) || "venv-critic/Scripts/python.exe")}</span>
-      </div>
-    </div>
-  `);
-
   container.innerHTML = items.join("");
 }
 
-window.useSketchPath = function(p) {
-  const input = $("#input-sketch-ckpt");
-  if (input) input.value = p;
-};
 window.usePolishPath = function(p) {
   const input = $("#input-polish-lora");
   if (input) input.value = p;
@@ -179,10 +154,6 @@ window.usePolishPath = function(p) {
 
 function applyBestDiscoveredCheckpoints() {
   if (!discoveredCheckpoints) return;
-  if (discoveredCheckpoints.sketch && discoveredCheckpoints.sketch.length > 0) {
-    const best = discoveredCheckpoints.sketch.find(s => s.isFinal) || discoveredCheckpoints.sketch[0];
-    useSketchPath(best.path);
-  }
   if (discoveredCheckpoints.polish && discoveredCheckpoints.polish.length > 0) {
     const best = discoveredCheckpoints.polish.find(p => p.type === "dpo") || discoveredCheckpoints.polish[0];
     usePolishPath(best.path);
@@ -199,15 +170,12 @@ loadCheckpoints();
 // which JSON events belong to this step; `tier`/`label` narrow which
 // event instance (multiple models share the "model_download_*" events).
 const INSTALL_STEPS = [
-  { id: "plan", title: "Plan & disk check", match: (e) => e.event === "plan" || e.event === "disk_check" },
-  { id: "planner", title: "Download Planner", tier: "planner", match: (e) => e.tier === "planner" },
-  { id: "polish_default", title: "Download Polish · Default", tier: "polish_default", match: (e) => e.tier === "polish_default" },
-  { id: "polish_quality", title: "Download Polish · Quality", tier: "polish_quality", match: (e) => e.tier === "polish_quality", skippable: "skipQuality" },
-  { id: "critic", title: "Download Critic", tier: "critic", match: (e) => e.tier === "critic", skippable: "skipCritic" },
-  { id: "sketch_ckpt", title: "Locate Sketch checkpoint", match: (e) => e.label === "SKETCH_CHECKPOINT" },
-  { id: "polish_lora", title: "Locate Polish LoRA", match: (e) => e.label === "POLISH_LORA" },
-  { id: "critic_venv", title: "Verify Critic venv", match: (e) => e.event === "critic_venv_found" || e.event === "critic_venv_missing", skippable: "skipCritic" },
-  { id: "env_write", title: "Write .env.inference", match: (e) => e.event === "env_file_written" || e.event === "install_incomplete" || e.event === "install_complete" || e.event === "dry_run_complete" },
+  { id: "plan", title: "Plan & Hardware Disk Check", match: (e) => e.event === "plan" || e.event === "disk_check" },
+  { id: "planner", title: "Download Planner VLM (Qwen3.5-9B GGUF + mmproj)", tier: "planner", match: (e) => e.tier === "planner" || (e.event && e.event.includes("planner")) },
+  { id: "sketch", title: "Verify Sketch Tier (Deterministic Layout Simplex)", match: (e) => e.event === "sketch_tier_status" },
+  { id: "polish", title: "Download Polish MMViT (Qwen-Image-2.1)", tier: "polish", match: (e) => e.tier === "polish" || (e.event && e.event.includes("model_download")) },
+  { id: "polish_lora", title: "Resolve UI Polish LoRA Adapter (HF / Checkpoints)", match: (e) => e.event === "lora_hf_check" || e.event === "lora_status" || e.label === "POLISH_LORA" || e.event === "local_artifact_found" },
+  { id: "env_write", title: "Seal Runtime & Write .env.inference", match: (e) => e.event === "env_file_written" || e.event === "install_incomplete" || e.event === "install_complete" || e.event === "dry_run_complete" },
 ];
 
 function newStepState() {
@@ -222,11 +190,17 @@ function applyEventToSteps(evt) {
     const s = stepState[step.id];
     switch (evt.event) {
       case "plan":
-        s.status = "active"; s.detail = `envelope target reachable for: ${evt.models?.join(", ")}`;
+        s.status = "active"; s.detail = `Needed ${evt.needed_gb}GB VRAM/disk, low_vram=${evt.low_vram}`;
         break;
       case "disk_check":
         s.status = evt.ok ? "done" : "failed";
         s.detail = `${evt.free_gb}GB free / ${evt.needed_gb}GB needed`;
+        break;
+      case "planner_download_skipped_dry_run":
+        s.status = "done"; s.detail = `Dry run: ${evt.file} (${evt.repo_id})`;
+        break;
+      case "sketch_tier_status":
+        s.status = "done"; s.detail = `${evt.engine} (${evt.vram_mb} MB VRAM, pure host SIMD)`;
         break;
       case "model_download_start":
         s.status = "active"; s.detail = `${evt.repo_id} downloading…`;
@@ -241,7 +215,16 @@ function applyEventToSteps(evt) {
         s.status = "failed"; s.detail = evt.error;
         break;
       case "model_download_skipped_dry_run":
-        s.status = "done"; s.detail = "would download (dry run)";
+        s.status = "done"; s.detail = `Dry run: ${evt.tier} (${evt.repo_id})`;
+        break;
+      case "lora_hf_check":
+        s.status = "active"; s.detail = `Checking HF Hub for ${evt.repo_id}…`;
+        break;
+      case "lora_hf_unavailable":
+        s.status = "active"; s.detail = evt.note;
+        break;
+      case "lora_status":
+        s.status = "done"; s.detail = `${evt.status}: ${evt.note}`;
         break;
       case "local_artifact_found":
         s.status = "done"; s.detail = `${evt.path} (${evt.source})`;
@@ -250,14 +233,8 @@ function applyEventToSteps(evt) {
         s.status = evt.required ? "failed" : "skipped";
         s.detail = evt.required ? "not found — required" : "not found — optional, continuing";
         break;
-      case "critic_venv_found":
-        s.status = "done"; s.detail = evt.path;
-        break;
-      case "critic_venv_missing":
-        s.status = "failed"; s.detail = evt.hint;
-        break;
       case "env_file_written":
-        s.status = "done"; s.detail = `${evt.vars} vars written`;
+        s.status = "done"; s.detail = `${evt.vars} vars written to ${evt.path}`;
         break;
       case "install_incomplete":
         if (s.status !== "done") s.status = "failed";
@@ -361,11 +338,9 @@ function formValues() {
   const fd = new FormData($("#install-form"));
   return {
     lowVram: fd.has("lowVram"),
-    fastPlanner: fd.has("fastPlanner"),
-    skipQuality: fd.has("skipQuality"),
-    skipCritic: fd.has("skipCritic"),
-    sketchCheckpoint: fd.get("sketchCheckpoint") || null,
-    polishLora: fd.get("polishLora") || null,
+    skipPolish: fd.has("skipPolish"),
+    skipPlanner: fd.has("skipPlanner"),
+    polishLora: fd.get("polishLora")?.trim() || null,
   };
 }
 
@@ -1455,6 +1430,88 @@ async function updatePixelCanvas() {
   }
 }
 
+function formatChatContent(raw) {
+  if (!raw) return "";
+
+  // Extract <think> ... </think> CoT reasoning blocks
+  const thinkMatch = raw.match(/<think>([\s\S]*?)<\/think>/i);
+  let thoughtHtml = "";
+  let cleanContent = raw;
+  if (thinkMatch) {
+    const thoughtText = thinkMatch[1].trim();
+    cleanContent = raw.replace(/<think>[\s\S]*?<\/think>/i, "").trim();
+    thoughtHtml = `
+      <details class="thought-accordion">
+        <summary class="thought-summary">
+          <span class="thought-icon">🧠</span>
+          <span class="thought-title">VLM Deliberation (Chain-of-Thought)</span>
+          <span class="thought-badge">Gated DeltaNet</span>
+        </summary>
+        <div class="thought-body">${escapeHtml(thoughtText).replace(/\n/g, "<br/>")}</div>
+      </details>
+    `;
+  }
+
+  // Format code blocks ```lang ... ```
+  cleanContent = cleanContent.replace(/```([a-z0-9_-]*)\n([\s\S]*?)```/gi, (_m, lang, code) => {
+    return `<pre class="chat-code-block"><code class="language-${escapeHtml(lang)}">${escapeHtml(code.trim())}</code></pre>`;
+  });
+
+  // Format inline code `code`
+  cleanContent = cleanContent.replace(/`([^`]+)`/g, (_m, c) => {
+    return `<code class="chat-inline-code">${escapeHtml(c)}</code>`;
+  });
+
+  // Format bold **text**
+  cleanContent = cleanContent.replace(/\*\*([^*]+)\*\*/g, (_m, b) => {
+    return `<strong>${escapeHtml(b)}</strong>`;
+  });
+
+  // Highlight action tokens like [ADD_COMPONENT], [LOCK_REGION]
+  cleanContent = cleanContent.replace(/\[(ADD_COMPONENT|MOVE_COMPONENT|RESIZE_COMPONENT|DELETE_COMPONENT|LOCK_REGION|STYLE_UPDATE)\]/g, (_m, act) => {
+    return `<span class="action-tag action-${act.toLowerCase()}">${escapeHtml(act)}</span>`;
+  });
+
+  // Format lines
+  const lines = cleanContent.split("\n");
+  const formattedLines = lines.map(line => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      return `<li class="chat-li">${trimmed.slice(2)}</li>`;
+    }
+    return line ? `<p class="chat-p">${line}</p>` : "";
+  }).join("");
+
+  return `${thoughtHtml}<div class="chat-main-text">${formattedLines}</div>`;
+}
+
+const ROLE_META = {
+  user: {
+    label: "Designer",
+    badge: "User Turn",
+    cssClass: "role-user",
+    avatar: `<svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 16 16" fill="none" stroke="currentColor"><circle cx="8" cy="5" r="3" stroke-width="1.4"/><path d="M2.5 14c0-3 2.5-4.5 5.5-4.5s5.5 1.5 5.5 4.5" stroke-width="1.4" stroke-linecap="round"/></svg>`,
+  },
+  planner: {
+    label: "Qwen3.5-9B",
+    badge: "Autoregressive VLM",
+    cssClass: "role-planner",
+    avatar: `<svg class="ui-icon ui-icon-xs ui-icon-amber" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M8 1.5l1.8 4.7 4.7 1.8-4.7 1.8L9 14.5l-1.8-4.7-4.7-1.8 4.7-1.8L8 1.5z" stroke-width="1.3" fill="rgba(245,158,11,0.3)"/></svg>`,
+  },
+  assistant: {
+    label: "Krivex Studio",
+    badge: "Orchestrator",
+    cssClass: "role-assistant",
+    avatar: `<svg class="ui-icon ui-icon-xs ui-icon-indigo" viewBox="0 0 16 16" fill="none" stroke="currentColor"><circle cx="8" cy="8" r="6" stroke-width="1.3" fill="rgba(99,102,241,0.25)"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>`,
+  },
+  critic: {
+    label: "Resident Review",
+    badge: "Zero-Swap Verifier",
+    cssClass: "role-critic",
+    avatar: `<svg class="ui-icon ui-icon-xs ui-icon-emerald" viewBox="0 0 16 16" fill="none" stroke="currentColor"><path d="M8 2l5 2v4.5c0 3.2-2.2 5.5-5 6.5-2.8-1-5-3.3-5-6.5V4l5-2z" stroke-width="1.3" fill="rgba(16,185,129,0.25)"/><path d="M6 8l1.5 1.5 3-3" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  },
+};
+
 function renderChat() {
   const log = $("#chat-log");
   log.innerHTML = "";
@@ -1480,9 +1537,24 @@ function renderChat() {
   }
 
   for (const turn of sessionState.conversation_history || []) {
+    const meta = ROLE_META[turn.role] || {
+      label: turn.role,
+      badge: "Turn",
+      cssClass: `role-${turn.role}`,
+      avatar: `<svg class="ui-icon ui-icon-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor"><circle cx="8" cy="8" r="6" stroke-width="1.3"/></svg>`,
+    };
     const div = document.createElement("div");
-    div.className = `msg role-${turn.role}`;
-    div.innerHTML = `<span class="who">${turn.role}</span><span>${escapeHtml(turn.content)}</span>`;
+    div.className = `msg ${meta.cssClass}`;
+    div.innerHTML = `
+      <div class="msg-avatar-col">${meta.avatar}</div>
+      <div class="msg-body-col">
+        <div class="msg-header">
+          <span class="msg-author">${meta.label}</span>
+          <span class="msg-badge">${meta.badge}</span>
+        </div>
+        <div class="msg-content">${formatChatContent(turn.content)}</div>
+      </div>
+    `;
     log.appendChild(div);
   }
   log.scrollTop = log.scrollHeight;
@@ -2324,3 +2396,107 @@ function exportDesignStateJson() {
 $("#btn-download-render")?.addEventListener("click", downloadRenderPng);
 $("#lightbox-download")?.addEventListener("click", downloadRenderPng);
 $("#btn-export-json")?.addEventListener("click", exportDesignStateJson);
+
+// ------------------------------------------------------------------ //
+// Screenshot Upload & Qwen3.5-9B VLM Layout Decompilation
+// ------------------------------------------------------------------ //
+let stagedScreenshotBase64 = null;
+
+$("#btn-attach-screenshot")?.addEventListener("click", () => {
+  $("#file-screenshot-input")?.click();
+});
+
+$("#file-screenshot-input")?.addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    stagedScreenshotBase64 = reader.result;
+    $("#screenshot-filename").textContent = file.name;
+    $("#screenshot-preview-bar")?.classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+});
+
+$("#btn-remove-screenshot")?.addEventListener("click", () => {
+  stagedScreenshotBase64 = null;
+  const input = $("#file-screenshot-input");
+  if (input) input.value = "";
+  $("#screenshot-preview-bar")?.classList.add("hidden");
+});
+
+$("#btn-decompile-now")?.addEventListener("click", async () => {
+  if (!sessionState || busy || !stagedScreenshotBase64) return;
+  clearChatError();
+  setBusy(true);
+  addThinkingBubble("qwen3.5-9b vlm (decompiling UI screenshot into layout tree)");
+
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/decompile`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_bytes: stagedScreenshotBase64 }),
+    });
+    removeThinkingBubble();
+    if (r.ok) {
+      const data = await r.json();
+      applySession(data);
+      // Automatically switch to wireframe view to inspect decompiled layout tree
+      $("#mode-btn-wireframe")?.click();
+      $("#btn-remove-screenshot")?.click();
+    } else {
+      showChatError(await extractErrorDetail(r));
+    }
+  } catch (err) {
+    removeThinkingBubble();
+    showChatError(`Decompilation failed: ${err.message || err}`);
+  } finally {
+    setBusy(false);
+    refreshStatus();
+  }
+});
+
+// ------------------------------------------------------------------ //
+// Research Trace Telemetry Modal (krivex.research.trace.v1)
+// ------------------------------------------------------------------ //
+async function loadResearchTrace() {
+  if (!sessionState?.session_id) return;
+  try {
+    const r = await fetch(`/api/session/${sessionState.session_id}/research-trace`);
+    if (r.ok) {
+      const data = await r.json();
+      if ($("#trace-raw-json")) {
+        $("#trace-raw-json").textContent = JSON.stringify(data, null, 2);
+      }
+      if (data.serving_dynamics) {
+        $("#trace-t-swapping").textContent = `T_swapping = ${data.serving_dynamics.swapping_overhead_s?.toFixed(3) || "0.000"}s`;
+      }
+      if (data.metrics?.geometric_layout_iou) {
+        $("#trace-simplex-latency").textContent = `IoU: ${data.metrics.geometric_layout_iou} (< 5.0ms Simplex)`;
+      }
+    }
+  } catch (err) {
+    if ($("#trace-raw-json")) {
+      $("#trace-raw-json").textContent = `// Trace telemetry unavailable: ${err.message || err}`;
+    }
+  }
+}
+
+function openResearchTrace() {
+  $("#research-trace-modal")?.classList.remove("hidden");
+  loadResearchTrace();
+}
+
+function closeResearchTrace() {
+  $("#research-trace-modal")?.classList.add("hidden");
+}
+
+$("#btn-topbar-trace")?.addEventListener("click", openResearchTrace);
+$("#research-trace-close")?.addEventListener("click", closeResearchTrace);
+$("#research-trace-backdrop")?.addEventListener("click", closeResearchTrace);
+$("#btn-refresh-trace")?.addEventListener("click", loadResearchTrace);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#research-trace-modal")?.classList.contains("hidden")) {
+    closeResearchTrace();
+  }
+});

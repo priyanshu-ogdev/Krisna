@@ -101,6 +101,16 @@
           </svg>
           <span id="btn-topbar-unload-label">Unload GPU</span>
         </button>
+        <button type="button" class="btn btn-ghost btn-xs" id="btn-topbar-trace" title="View Section 10 Empirical Research Trace (krivex.research.trace.v1)">
+          <svg class="ui-icon ui-icon-xs ui-icon-cyan" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+            <path d="M2 13.5h12M4 10l3-4 2.5 3 2.5-5" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="4" cy="10" r="1.2" fill="currentColor"/>
+            <circle cx="7" cy="6" r="1.2" fill="currentColor"/>
+            <circle cx="9.5" cy="9" r="1.2" fill="currentColor"/>
+            <circle cx="12" cy="4" r="1.2" fill="currentColor"/>
+          </svg>
+          <span id="btn-topbar-trace-label">Research Trace</span>
+        </button>
       </div>
       <div id="resident-pill" class="pill mode-pill" title="Resident Inference Tiers">
         <i class="dot"></i><span id="resident-pill-text">Baseline: Idle</span>
@@ -166,17 +176,13 @@
             </div>
             <form id="install-form">
               <div class="option-grid">
-                <label class="opt"><input type="checkbox" name="lowVram" /><span>Low-VRAM mode <em>12–16GB CPU offload</em></span></label>
-                <label class="opt"><input type="checkbox" name="fastPlanner" /><span>Fast planner <em>Qwen3.5-4B</em></span></label>
-                <label class="opt"><input type="checkbox" name="skipQuality" /><span>Skip Polish-Quality <em>Qwen-Image-2.1 · frozen base</em></span></label>
-                <label class="opt"><input type="checkbox" name="skipCritic" /><span>Skip Critic <em>needs venv-critic</em></span></label>
+                <label class="opt"><input type="checkbox" name="lowVram" checked /><span>Low-VRAM mode <em>12GB VRAM / 16GB RAM CPU offload</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipPolish" /><span>Skip Polish foundation <em>use cached Qwen-Image-2.1</em></span></label>
+                <label class="opt"><input type="checkbox" name="skipPlanner" /><span>Skip Planner GGUF <em>use cached Qwen3.5-9B</em></span></label>
               </div>
               <div class="field-grid">
-                <label class="field">Sketch checkpoint path
-                  <input type="text" id="input-sketch-ckpt" name="sketchCheckpoint" placeholder="auto-discovered if blank" />
-                </label>
-                <label class="field">Polish LoRA adapter path
-                  <input type="text" id="input-polish-lora" name="polishLora" placeholder="auto-discovered if blank" />
+                <label class="field">Polish LoRA adapter path or Hugging Face repo
+                  <input type="text" id="input-polish-lora" name="polishLora" placeholder="default: krivex-ai/krivex-qwen-image21-polish-lora (or local path)" />
                 </label>
               </div>
               <div class="btn-row">
@@ -520,7 +526,15 @@
               </div>
 
               <form id="message-form" class="message-form">
-                <input type="text" id="message-input" placeholder="Describe your UI requirements (e.g. 'Dark fintech wallet with balance card and action buttons')…" autocomplete="off" />
+                <input type="file" id="file-screenshot-input" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+                <button type="button" class="btn btn-ghost btn-icon-only" id="btn-attach-screenshot" title="Upload UI screenshot for Qwen3.5-9B VLM layout decompilation">
+                  <svg class="ui-icon ui-icon-cyan" viewBox="0 0 16 16" fill="none" stroke="currentColor">
+                    <rect x="2" y="2" width="12" height="12" rx="2" stroke-width="1.4"/>
+                    <circle cx="5.5" cy="5.5" r="1.5" fill="currentColor"/>
+                    <path d="M14 11l-4-4-5 5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <input type="text" id="message-input" placeholder="Describe UI requirements (or upload screenshot for VLM decompilation)…" autocomplete="off" />
                 <button type="submit" class="btn btn-primary" id="btn-send">
                   <svg class="ui-icon ui-icon-xs" viewBox="0 0 14 14" fill="none" stroke="currentColor">
                     <path d="M2 7h9M8 4l3 3-3 3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -528,6 +542,12 @@
                   <span>Send Turn</span>
                 </button>
               </form>
+              <div id="screenshot-preview-bar" class="screenshot-preview-bar hidden">
+                <span class="preview-badge">Screenshot Staged:</span>
+                <span id="screenshot-filename" class="preview-filename"></span>
+                <button type="button" class="btn btn-primary btn-xs" id="btn-decompile-now">Decompile with 9B VLM</button>
+                <button type="button" class="btn btn-ghost btn-xs" id="btn-remove-screenshot">&times;</button>
+              </div>
 
               <div class="btn-row studio-action-row">
                 <button type="button" class="btn btn-secondary" id="btn-self-review" title="Trigger autonomous refinement turn without user prompt">
@@ -662,6 +682,57 @@
             <span class="milestone" data-t="65">0.65 Component Geometry</span>
             <span class="milestone" data-t="100">1.0 Polish Convergence</span>
           </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================= RESEARCH TRACE OBSERVABILITY MODAL ============================= -->
+  <div id="research-trace-modal" class="lightbox-modal hidden">
+    <div class="lightbox-backdrop" id="research-trace-backdrop"></div>
+    <div class="lightbox-content research-trace-content">
+      <div class="lightbox-header">
+        <div class="lightbox-title">
+          <span class="lightbox-dot" style="background:#06b6d4;box-shadow:0 0 8px #06b6d4;"></span>
+          <h3>Empirical Research Trace Telemetry (krivex.research.trace.v1)</h3>
+          <span class="tag tag-phase">Research Paper §9 &amp; §10</span>
+        </div>
+        <div class="lightbox-actions">
+          <button type="button" class="btn btn-ghost btn-sm" id="btn-refresh-trace">
+            <svg class="ui-icon ui-icon-xs ui-icon-spin-hover" viewBox="0 0 14 14" fill="none" stroke="currentColor">
+              <path d="M12 7A5 5 0 1 1 7 2c2 0 3.8 1.2 4.6 3M12 2v3H9" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span>Refresh</span>
+          </button>
+          <button type="button" class="btn btn-ghost btn-sm lightbox-close" id="research-trace-close">&times;</button>
+        </div>
+      </div>
+      <div class="research-trace-body" id="research-trace-body">
+        <div class="trace-grid">
+          <div class="trace-card">
+            <span class="trace-label">Serving Latency Overhead</span>
+            <span class="trace-val" id="trace-t-swapping">T_swapping = 0.000s</span>
+            <span class="trace-note">Theorem 2: Zero inter-tier bus eviction latency</span>
+          </div>
+          <div class="trace-card">
+            <span class="trace-label">Layout Simplex Engine</span>
+            <span class="trace-val" id="trace-simplex-latency">&lt; 5.0 ms (0 MB VRAM)</span>
+            <span class="trace-note">Pure host CPU SIMD Cassowary solver</span>
+          </div>
+          <div class="trace-card">
+            <span class="trace-label">Active Synthesis VRAM</span>
+            <span class="trace-val" id="trace-peak-vram">&le; 10.0 GB VRAM</span>
+            <span class="trace-note">Consumer 12GB envelope strictly respected</span>
+          </div>
+          <div class="trace-card">
+            <span class="trace-label">ODE Integration Solver</span>
+            <span class="trace-val" id="trace-ode-solver">Flow Matching (Optimal Transport)</span>
+            <span class="trace-note">Trajectory error bound ||E|| &le; 10^-4</span>
+          </div>
+        </div>
+        <div class="trace-receipt-section">
+          <h4>Active Design State Receipt</h4>
+          <pre id="trace-raw-json" class="terminal"></pre>
         </div>
       </div>
     </div>

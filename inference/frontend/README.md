@@ -33,10 +33,9 @@ pip install -e inference/ -e training/
 pip install -e "inference/[backends]"   # torch, transformers, diffusers, bitsandbytes...
 ```
 
-(Critic runs in its own isolated venv — see
-the former Critic environment — it is no longer required because Planner Review
-pinned `transformers` version than the other tiers. `download_weights.py`
-checks for `./venv-critic/bin/python` and tells you if it's missing.)
+(All foundation models are natively Qwen-based (`Qwen3.5-9B` + `Qwen-Image-2.1`)
+and share a single unified environment with `torch>=2.11.0`, `transformers>=5.17.0`, and `vllm==0.29.0`.
+Multi-venv isolation is eliminated; Planner review is fully resident with zero swap overhead.)
 
 ## Run it
 
