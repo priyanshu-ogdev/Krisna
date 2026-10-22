@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from krisna_inference.orchestrator.exceptions import OOMRecoveryExhausted, SwapBusyError
-from krisna_inference.orchestrator.model_registry import MockBackend, ModelSpec, Tier
-from krisna_inference.orchestrator.state_machine import ResidencyState
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.orchestrator.exceptions import OOMRecoveryExhausted, SwapBusyError
+from krivex_inference.orchestrator.model_registry import MockBackend, ModelSpec, Tier
+from krivex_inference.orchestrator.state_machine import ResidencyState
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 
 
 @pytest.mark.asyncio

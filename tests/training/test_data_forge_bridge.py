@@ -6,11 +6,11 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.common import BlobStore
-from krisna_training.data_forge_bridge.sync_dpo_pairs import sync as sync_dpo
-from krisna_training.data_forge_bridge.sync_planner_rag import count_critiques, sync as sync_planner
-from krisna_training.data_forge_bridge.sync_polish_default import sync as sync_polish
-from krisna_training.dpo.preference_store import PreferenceStore
+from krivex_inference.backends.common import BlobStore
+from krivex_training.data_forge_bridge.sync_dpo_pairs import sync as sync_dpo
+from krivex_training.data_forge_bridge.sync_planner_rag import count_critiques, sync as sync_planner
+from krivex_training.data_forge_bridge.sync_polish_default import sync as sync_polish
+from krivex_training.dpo.preference_store import PreferenceStore
 
 
 # ---------------------------------------------------------------------------
@@ -333,13 +333,13 @@ class TestSourceCaptionSurvivesEndToEnd:
 
 class TestSyncPolishQwen:
     def test_missing_manifest_raises_file_not_found(self, tmp_path):
-        from krisna_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
+        from krivex_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
         with pytest.raises(FileNotFoundError, match="Qwen-Image-2.1 pair manifest not found"):
             sync_qwen(tmp_path / "model_data", tmp_path / "prepared")
 
     def test_sync_qwen_materializes_valid_pairs(self, tmp_path):
         import hashlib
-        from krisna_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
+        from krivex_training.data_forge_bridge.sync_polish_qwen import sync as sync_qwen
 
         model_dir = tmp_path / "model_data" / "polish_qwen_image21"
         cond_dir = model_dir / "conditions"

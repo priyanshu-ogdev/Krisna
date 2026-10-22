@@ -54,7 +54,7 @@ $env:PYTHONPATH = "$InfSrc;$TrainSrc;$env:PYTHONPATH"
 
 $UvicornArgs = @(
     "-m", "uvicorn",
-    "krisna_inference.orchestrator.service:app",
+    "krivex_inference.orchestrator.service:app",
     "--host", $BindHost,
     "--port", [string]$Port
 )

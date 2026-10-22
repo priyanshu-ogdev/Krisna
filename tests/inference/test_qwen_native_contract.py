@@ -5,9 +5,9 @@ import sys
 import types
 
 import pytest
-from krisna_inference.backends.blob_store_singleton import get_blob_store
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.backends.blob_store_singleton import get_blob_store
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 from PIL import Image
 
 

@@ -37,23 +37,23 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from PIL import Image
 import numpy as np
 
-from krisna_inference.layout_ir import (
+from krivex_inference.layout_ir import (
     BBox,
     LayoutIR,
     LayoutNode,
 )
-from krisna_inference.layout_renderer import (
+from krivex_inference.layout_renderer import (
     render_segmentation_map,
     render_wireframe,
 )
-from krisna_inference.backends.polish_backend_qwen import (
+from krivex_inference.backends.polish_backend_qwen import (
     QwenImage21Backend,
     QWEN_IMAGE_21_MODEL_ID,
     QWEN_IMAGE_21_REVISION,
 )
-from krisna_inference.orchestrator.flows import assert_and_inject_verbatim_labels
-from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.orchestrator.flows import assert_and_inject_verbatim_labels
+from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
 logging.basicConfig(
     level=logging.INFO,
@@ -187,7 +187,7 @@ async def run_inference_preflight(args: argparse.Namespace) -> dict[str, Any]:
     log.info("Synthesized Polish Prompt with Quoted Labels:\n%s", prompt)
 
     # 5. Execute Scratch Generation (28 Steps)
-    from krisna_inference.backends.blob_store_singleton import get_blob_store
+    from krivex_inference.backends.blob_store_singleton import get_blob_store
     blobs = get_blob_store()
 
     # 5. Execute Scratch Generation (28 Steps)

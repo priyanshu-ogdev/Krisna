@@ -286,7 +286,7 @@ function Execute-Tier {
             $pyScript = @'
 import subprocess, sys, yaml
 from pathlib import Path
-from krisna_training.polish.qwen_trainer_contract import build_accelerate_command, format_command
+from krivex_training.polish.qwen_trainer_contract import build_accelerate_command, format_command
 config_path = sys.argv[1]
 cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
 diffusers_dir = Path(cfg.get('diffusers_dir', './third_party/diffusers'))

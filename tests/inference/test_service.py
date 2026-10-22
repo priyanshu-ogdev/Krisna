@@ -11,7 +11,7 @@ def client(tmp_path, monkeypatch):
     # Run the service against an isolated DB file in a temp cwd so tests
     # never touch (or depend on) a real krisna_sessions.db in the repo.
     monkeypatch.chdir(tmp_path)
-    import krisna_inference.orchestrator.service as service_module
+    import krivex_inference.orchestrator.service as service_module
 
     importlib.reload(service_module)
     with TestClient(service_module.app) as c:

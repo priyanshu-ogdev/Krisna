@@ -16,8 +16,8 @@ from pathlib import Path
 
 
 async def main_async(args):
-    from krisna_inference.backends.factory import real_backend_factory
-    from krisna_inference.orchestrator.model_registry import REGISTRY, Tier
+    from krivex_inference.backends.factory import real_backend_factory
+    from krivex_inference.orchestrator.model_registry import REGISTRY, Tier
 
     backend = real_backend_factory(REGISTRY[Tier.PLANNER])
     await backend.load()

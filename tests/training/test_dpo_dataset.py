@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.common import BlobStore
-from krisna_training.polish.dpo_dataset import PreferencePairDataset
-from krisna_training.preference import PreferencePair, PreferenceStore
+from krivex_inference.backends.common import BlobStore
+from krivex_training.polish.dpo_dataset import PreferencePairDataset
+from krivex_training.preference import PreferencePair, PreferenceStore
 
 
 def test_dpo_dataset_loads_and_transforms(tmp_path):
@@ -227,12 +227,12 @@ def test_dpo_dataset_prompt_augmentation_invariants():
         assert len(item["prompt"]) > 0
 
         # Augmented prompt path
-        with patch("krisna_training.polish.dpo_dataset.random.random", return_value=0.0):
+        with patch("krivex_training.polish.dpo_dataset.random.random", return_value=0.0):
             aug_item = ds[0]
             assert len(aug_item["prompt"]) > 0
 
         # Raw prompt path
-        with patch("krisna_training.polish.dpo_dataset.random.random", return_value=1.0):
+        with patch("krivex_training.polish.dpo_dataset.random.random", return_value=1.0):
             raw_item = ds[0]
             assert raw_item["prompt"] == "a majestic mountain landscape at dusk"
     finally:

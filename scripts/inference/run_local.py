@@ -28,13 +28,13 @@ sys.path.insert(0, str(REPO_ROOT / "inference" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "training" / "src"))
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from krisna_inference.backends.model_loader import (
+from krivex_inference.backends.model_loader import (
     discover_mmproj_model,
     discover_planner_model,
     probe_cuda_hardware,
     verify_manifest,
 )
-from krisna_inference.common.hardware import _probe_system_ram
+from krivex_inference.common.hardware import _probe_system_ram
 
 logging.basicConfig(
     level=logging.INFO,
@@ -149,7 +149,7 @@ def main() -> None:
     import uvicorn
 
     uvicorn.run(
-        "krisna_inference.orchestrator.service:app",
+        "krivex_inference.orchestrator.service:app",
         host=args.host,
         port=args.port,
         reload=args.reload,

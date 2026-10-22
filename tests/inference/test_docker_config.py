@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import yaml
 
-from krisna_inference.common.hardware import find_repo_root
+from krivex_inference.common.hardware import find_repo_root
 
 
 def test_dockerfile_inference_structure():

@@ -4,17 +4,17 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.planner_schema import (
+from krivex_inference.backends.planner_schema import (
     AddComponentAction,
     LockRegionAction,
     RemoveComponentAction,
     ResizeAction,
     SetTextAction,
 )
-from krisna_inference.layout_baseline import layout_from_constraints
-from krisna_inference.layout_renderer import render_wireframe
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.layout_baseline import layout_from_constraints
+from krivex_inference.layout_renderer import render_wireframe
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
 def test_layout_baseline_synchronizes_with_planner_actions():
@@ -150,15 +150,15 @@ async def test_polish_backend_preserves_rgba_mode():
 async def test_end_to_end_planner_to_polish_sync(tmp_path, monkeypatch):
     """Verify the full Planner -> Layout Engine -> Renderer -> Polish -> Verifiers chain."""
     import json
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, Constraints, LockedRegion
-    from krisna_inference.orchestrator.flows import synthesize_polish_prompt
-    from krisna_inference.verifiers.layout_iou import LayoutIoUVerifier
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, Constraints, LockedRegion
+    from krivex_inference.orchestrator.flows import synthesize_polish_prompt
+    from krivex_inference.verifiers.layout_iou import LayoutIoUVerifier
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     store = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
 
     # 1. State with Planner actions
     state = DesignState()
@@ -245,7 +245,7 @@ async def test_end_to_end_planner_to_polish_sync(tmp_path, monkeypatch):
 
 def test_deterministic_flexbox_partitions_colliding_components():
     """Verify that _resolve_flex_layout automatically resolves colliding sibling components."""
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_baseline import layout_from_constraints
 
     constraints = {
         "style": "clean modern",
@@ -284,7 +284,7 @@ def test_deterministic_flexbox_partitions_colliding_components():
 
 def test_truetype_font_hierarchy_resolution():
     """Verify TrueType font resolution resolves modern typography scale without error."""
-    from krisna_inference.layout_renderer import _resolve_ui_fonts
+    from krivex_inference.layout_renderer import _resolve_ui_fonts
 
     fonts = _resolve_ui_fonts()
     for role in ("display", "title", "header", "body", "button", "caption", "badge"):
@@ -294,7 +294,7 @@ def test_truetype_font_hierarchy_resolution():
 
 def test_locked_nodes_strictly_exempt_from_flex_repartitioning():
     """Verify that locked nodes are never moved by _resolve_flex_layout, even when colliding."""
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_baseline import layout_from_constraints
 
     constraints = {
         "style": "clean modern",
@@ -337,8 +337,8 @@ def test_locked_nodes_strictly_exempt_from_flex_repartitioning():
 
 def test_non_tautological_lock_compositor_with_perturbed_render():
     """Verify LockCompositor and LockPreservationVerifier are non-tautological by perturbing render."""
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=4.5, quantization="BF16", always_resident=False)
     backend = QwenImage21Backend(spec)
@@ -367,13 +367,13 @@ def test_non_tautological_lock_compositor_with_perturbed_render():
 @pytest.mark.asyncio
 async def test_wireframe_as_lock_donor_bug_resolved(tmp_path, monkeypatch):
     """Verify that editing turns use the prior polished render as lock donor, NOT the wireframe."""
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     store = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
 
     # 1. Wireframe image (white background with gray outline)
     wireframe_img = Image.new("RGB", (200, 200), (255, 255, 255))
@@ -413,13 +413,13 @@ async def test_wireframe_as_lock_donor_bug_resolved(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_closed_loop_retry_and_drift_feedback(tmp_path, monkeypatch):
     """Verify that when verifier detects spatial drift, finalize() triggers an automated single retry."""
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, Constraints, SessionStage
-    from krisna_inference.orchestrator.flows import finalize
-    from krisna_inference.orchestrator.swap_orchestrator import SwapResult
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, Constraints, SessionStage
+    from krivex_inference.orchestrator.flows import finalize
+    from krivex_inference.orchestrator.swap_orchestrator import SwapResult
 
     store_blob = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
 
     state = DesignState()
     state.stage = SessionStage.SKETCHING
@@ -478,7 +478,7 @@ async def test_closed_loop_retry_and_drift_feedback(tmp_path, monkeypatch):
 
 def test_planner_prompt_system_role_safety_and_current_layout_prefix():
     """Verify PlannerBackend safely maps system history turns to user diagnostics and grounds current_layout."""
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
     spec = ModelSpec(tier=Tier.PLANNER, name="Qwen3.5-9B", vram_gb=10.0, quantization="Q4_K_M", always_resident=True)
     backend = PlannerBackendLlama(spec)
 
@@ -522,14 +522,14 @@ def test_planner_prompt_system_role_safety_and_current_layout_prefix():
 @pytest.mark.asyncio
 async def test_iterative_refine_wires_lock_donor_and_verifier_stack(tmp_path, monkeypatch):
     """Verify iterative_refine forwards lock_donor_ref and runs verifier_stack with lock donor."""
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage, LockedRegion
-    from krisna_inference.orchestrator.flows import iterative_refine
-    from krisna_inference.orchestrator.swap_orchestrator import SwapResult
-    from krisna_inference.verifiers.verifier_stack import VerifierStack
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage, LockedRegion
+    from krivex_inference.orchestrator.flows import iterative_refine
+    from krivex_inference.orchestrator.swap_orchestrator import SwapResult
+    from krivex_inference.verifiers.verifier_stack import VerifierStack
 
     store_blob = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
 
     # Create prior render image (high-fidelity render with red lock card)
     prior_img = Image.new("RGB", (200, 200), (20, 20, 20))
@@ -564,7 +564,7 @@ async def test_iterative_refine_wires_lock_donor_and_verifier_stack(tmp_path, mo
 
     class OfflineTestVerifierStack(VerifierStack):
         def __init__(self):
-            from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+            from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
             self.lock_preservation = LockPreservationVerifier()
             self.clip_alignment = type("MockCLIP", (), {"score": lambda self, img, p: 0.85})()
             self.ocr_readability = type("MockOCR", (), {"score": lambda self, img, t: 0.90})()
@@ -642,8 +642,8 @@ def test_sketch_tier_aspect_ratios_and_typography_boundaries(tmp_path):
 
 def test_flex_layout_unit_exempts_locked_nodes_and_displaces_mutables():
     """Unit test for internal _resolve_flex_layout: locked nodes remain strictly stationary while colliding mutables yield space."""
-    from krisna_inference.layout_ir import BBox, LayoutNode
-    from krisna_inference.layout_baseline import _resolve_flex_layout
+    from krivex_inference.layout_ir import BBox, LayoutNode
+    from krivex_inference.layout_baseline import _resolve_flex_layout
 
     # Create a locked node and a colliding mutable node at the exact same coordinates
     initial_locked_bbox = BBox(x1=0.20, y1=0.20, x2=0.80, y2=0.40)
@@ -678,8 +678,8 @@ def test_flex_layout_unit_exempts_locked_nodes_and_displaces_mutables():
 
 def test_flex_layout_detects_locked_locked_collision_and_clamps_y_overflow():
     """Verify _resolve_flex_layout detects locked-locked collision conflicts and clamps mutable nodes against Y overflow."""
-    from krisna_inference.layout_ir import BBox, LayoutNode
-    from krisna_inference.layout_baseline import _resolve_flex_layout
+    from krivex_inference.layout_ir import BBox, LayoutNode
+    from krivex_inference.layout_baseline import _resolve_flex_layout
 
     node_map = {
         "locked_1": LayoutNode(id="locked_1", type="card", bbox=BBox(x1=0.2, y1=0.8, x2=0.8, y2=0.95), locked=True),
@@ -698,7 +698,7 @@ def test_flex_layout_detects_locked_locked_collision_and_clamps_y_overflow():
 
 def test_lock_preservation_verifier_computes_seam_boundary_continuity():
     """Verify LockPreservationVerifier calculates both MAE pixel score and seam continuity score."""
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     verifier = LockPreservationVerifier()
 
@@ -787,7 +787,7 @@ def test_qwen_backend_call_arguments_match_pipeline_signature():
 
 def test_explicit_asset_mode_transparency():
     """Verify explicit asset_mode in constraints governs RGBA preservation."""
-    from krisna_inference.orchestrator.design_state import Constraints
+    from krivex_inference.orchestrator.design_state import Constraints
 
     c_opaque = Constraints(asset_mode="opaque")
     assert c_opaque.asset_mode == "opaque"
@@ -798,7 +798,7 @@ def test_explicit_asset_mode_transparency():
 
 def test_verbatim_label_guard_reinjects_missing_labels():
     """Verify that assert_and_inject_verbatim_labels preserves all labels without loss."""
-    from krisna_inference.orchestrator.flows import assert_and_inject_verbatim_labels
+    from krivex_inference.orchestrator.flows import assert_and_inject_verbatim_labels
 
     prompt = "A modern banking dashboard with dark background."
     labels = ["Pay Now", "Transfer Funds", "$1,450.00"]
@@ -812,8 +812,8 @@ def test_verbatim_label_guard_reinjects_missing_labels():
 def test_synthesize_descriptive_polish_prompt_produces_pe_prose(tmp_path):
     """Verify that synthesize_descriptive_polish_prompt generates coherent PE prose."""
     import json
-    from krisna_inference.orchestrator.design_state import DesignState, Constraints, LockedRegion
-    from krisna_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
+    from krivex_inference.orchestrator.design_state import DesignState, Constraints, LockedRegion
+    from krivex_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
 
     state = DesignState()
     state.constraints = Constraints(
@@ -845,8 +845,8 @@ def test_synthesize_descriptive_polish_prompt_produces_pe_prose(tmp_path):
 def test_grounded_spatial_retry_prompt_linguistic_feedback(tmp_path):
     """Verify build_grounded_spatial_retry_prompt emits region-specific linguistic feedback."""
     import json
-    from krisna_inference.orchestrator.design_state import DesignState
-    from krisna_inference.orchestrator.flows import build_grounded_spatial_retry_prompt
+    from krivex_inference.orchestrator.design_state import DesignState
+    from krivex_inference.orchestrator.flows import build_grounded_spatial_retry_prompt
 
     state = DesignState()
     layout_data = {
@@ -879,8 +879,8 @@ def test_grounded_spatial_retry_prompt_linguistic_feedback(tmp_path):
 
 def test_locked_locked_conflicts_surfaced_to_layout_diagnostics():
     """Verify that locked-locked collisions are captured in LayoutIR.diagnostics."""
-    from krisna_inference.layout_baseline import layout_from_constraints
-    from krisna_inference.backends.planner_schema import AddComponentAction
+    from krivex_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.backends.planner_schema import AddComponentAction
 
     constraints = {
         "style": "dark",
@@ -901,8 +901,8 @@ def test_locked_locked_conflicts_surfaced_to_layout_diagnostics():
 
 def test_seam_continuity_evaluation_target_gating():
     """Verify seam_continuity target 0.85 in EVALUATION_TARGETS and evaluation receipt."""
-    from krisna_inference.verifiers.verifier_stack import EVALUATION_TARGETS, VerifierStack
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.verifiers.verifier_stack import EVALUATION_TARGETS, VerifierStack
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     assert "seam_continuity" in EVALUATION_TARGETS
     assert EVALUATION_TARGETS["seam_continuity"] == 0.85
@@ -953,9 +953,9 @@ def test_render_wireframe_transparent_asset_mode_produces_rgba(tmp_path):
 @pytest.mark.asyncio
 async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
     """Verify LayoutBackend saves and retains native RGBA wireframe in blob store."""
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.backends.blob_store_singleton import get_blob_store
-    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.backends.blob_store_singleton import get_blob_store
+    from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
     spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
     backend = LayoutBackend(spec, output_dir=str(tmp_path))
@@ -984,7 +984,7 @@ async def test_layout_backend_preserves_rgba_wireframe_in_blob_store(tmp_path):
 
 def test_layout_from_constraints_preserves_and_mutates_current_layout():
     """Verify that layout_from_constraints preserves prior turn's current_layout and applies actions cleanly."""
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_baseline import layout_from_constraints
 
     prior_layout = [
         {"id": "navbar", "type": "container", "bbox": [0.0, 0.0, 1.0, 0.12], "locked": False},
@@ -1025,8 +1025,8 @@ def test_layout_from_constraints_preserves_and_mutates_current_layout():
 
 def test_render_dual_stream_sketch_quantization_and_synchronization(tmp_path):
     """Verify render_dual_stream_sketch produces synchronized wireframe, SPADE segmentation, and mask with multiple-of-32 dimensions."""
-    from krisna_inference.layout_renderer import render_dual_stream_sketch, render_spatial_alpha_mask, DualStreamSketch
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_renderer import render_dual_stream_sketch, render_spatial_alpha_mask, DualStreamSketch
+    from krivex_inference.layout_baseline import layout_from_constraints
 
     constraints = {
         "style": "clean dark modern",
@@ -1072,8 +1072,8 @@ def test_render_dual_stream_sketch_quantization_and_synchronization(tmp_path):
 
 def test_render_spatial_alpha_mask_values():
     """Verify render_spatial_alpha_mask assigns 0 to locked regions and 255 to mutable areas."""
-    from krisna_inference.layout_renderer import render_spatial_alpha_mask
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_renderer import render_spatial_alpha_mask
+    from krivex_inference.layout_baseline import layout_from_constraints
     import numpy as np
 
     constraints = {
@@ -1098,8 +1098,8 @@ def test_render_spatial_alpha_mask_values():
 
 def test_universal_node_types_and_spade_palette(tmp_path):
     """Verify that universal graphic design nodes survive schema validation and render discrete SPADE classes."""
-    from krisna_inference.layout_ir import LayoutIR, LayoutNode, BBox, NODE_TYPES
-    from krisna_inference.layout_renderer import render_segmentation_map, UNIVERSAL_SEMANTIC_PALETTE
+    from krivex_inference.layout_ir import LayoutIR, LayoutNode, BBox, NODE_TYPES
+    from krivex_inference.layout_renderer import render_segmentation_map, UNIVERSAL_SEMANTIC_PALETTE
     import numpy as np
 
     # 1. Verify schema includes universal design nodes
@@ -1136,8 +1136,8 @@ def test_universal_node_types_and_spade_palette(tmp_path):
 
 def test_compute_differential_mask_isolates_partition_edits(tmp_path):
     """Verify compute_differential_mask isolates edited partition and preserves untouched partitions."""
-    from krisna_inference.layout_ir import LayoutIR, LayoutNode, BBox
-    from krisna_inference.layout_renderer import compute_differential_mask
+    from krivex_inference.layout_ir import LayoutIR, LayoutNode, BBox
+    from krivex_inference.layout_renderer import compute_differential_mask
     import numpy as np
 
     # Turn 1: Navbar at top, Card A on left, Card B on right
@@ -1174,8 +1174,8 @@ def test_compute_differential_mask_isolates_partition_edits(tmp_path):
 def test_multi_column_spatial_prompt_synthesis(tmp_path):
     """Verify synthesize_descriptive_polish_prompt emits 2D multi-column partition coordinates."""
     import json
-    from krisna_inference.orchestrator.design_state import DesignState
-    from krisna_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
+    from krivex_inference.orchestrator.design_state import DesignState
+    from krivex_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
 
     state = DesignState()
     state.constraints.style = "modern SaaS"
@@ -1207,11 +1207,11 @@ def test_multi_column_spatial_prompt_synthesis(tmp_path):
 def test_portrait_character_archetype_and_facial_mapping(tmp_path):
     """Verify portrait archetype detection, starter nodes with facial landmarks, and polish prompt prose."""
     import json
-    from krisna_inference.layout_ir import SceneArchetype, LayoutIR
-    from krisna_inference.layout_baseline import detect_scene_archetype, layout_from_constraints
-    from krisna_inference.layout_renderer import render_wireframe, render_segmentation_map
-    from krisna_inference.orchestrator.design_state import DesignState
-    from krisna_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
+    from krivex_inference.layout_ir import SceneArchetype, LayoutIR
+    from krivex_inference.layout_baseline import detect_scene_archetype, layout_from_constraints
+    from krivex_inference.layout_renderer import render_wireframe, render_segmentation_map
+    from krivex_inference.orchestrator.design_state import DesignState
+    from krivex_inference.orchestrator.flows import synthesize_descriptive_polish_prompt
 
     prompt = "Create a dramatic cyberpunk female warrior character portrait with glowing neon eyes and intricate cyberware"
     archetype = detect_scene_archetype(prompt)
@@ -1256,8 +1256,8 @@ def test_portrait_character_archetype_and_facial_mapping(tmp_path):
 
 def test_graphic_poster_z_index_overlay_stacking():
     """Verify nodes on distinct z-index layers or parent-child containment do not collide or get split."""
-    from krisna_inference.layout_ir import SceneArchetype, LayoutNode, BBox
-    from krisna_inference.layout_baseline import layout_from_constraints, detect_scene_archetype
+    from krivex_inference.layout_ir import SceneArchetype, LayoutNode, BBox
+    from krivex_inference.layout_baseline import layout_from_constraints, detect_scene_archetype
 
     prompt = "Design a retro music festival poster headline with typography overlay on background art"
     archetype = detect_scene_archetype(prompt)
@@ -1305,8 +1305,8 @@ def test_graphic_poster_z_index_overlay_stacking():
 
 def test_facial_scale_floor_enforcement():
     """Verify facial/focal subject dimensions are clamped to >= 128px floor to prevent VAE collapse."""
-    from krisna_inference.layout_ir import LayoutNode, BBox
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_ir import LayoutNode, BBox
+    from krivex_inference.layout_baseline import layout_from_constraints
 
     # Pass a tiny face node (50x50 on a 1024x1024 canvas = 0.0488x0.0488)
     tiny_focal = LayoutNode(
@@ -1335,13 +1335,13 @@ def test_facial_scale_floor_enforcement():
 async def test_image_to_image_spatial_conditioning_receipts(tmp_path, monkeypatch):
     """Verify QwenImage21Backend multi-stream spatial conditioning (SPADE + inpaint mask)."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
 
     store = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
 
     # 1. Source wireframe
     source = Image.new("RGB", (512, 512), (240, 240, 245))
@@ -1382,15 +1382,15 @@ async def test_image_to_image_spatial_conditioning_receipts(tmp_path, monkeypatc
 async def test_vlm_screenshot_decompilation_end_to_end(tmp_path, monkeypatch):
     """Verify that decompile_screenshot feeds raster image into Planner VLM and synchronizes Sketch."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.model_registry import MockBackend, ModelSpec, Tier
-    from krisna_inference.orchestrator import flows
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.model_registry import MockBackend, ModelSpec, Tier
+    from krivex_inference.orchestrator import flows
 
     store = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
 
     db_store = DesignStateStore(db_path=tmp_path / "sessions.db")
     state = db_store.create(DesignState())
@@ -1427,21 +1427,21 @@ async def test_vlm_screenshot_decompilation_end_to_end(tmp_path, monkeypatch):
 async def test_image_to_image_turn1_face_preservation(tmp_path, monkeypatch):
     """Verify Turn 1 Image-to-Image preserves locked face pixels from reference_image_ref without drift."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, LockedRegion
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.model_registry import Tier, REGISTRY
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.orchestrator import flows
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, LockedRegion
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.model_registry import Tier, REGISTRY
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.orchestrator import flows
 
     store = BlobStore(root=tmp_path / "blobs")
-    import krisna_inference.backends.blob_store_singleton as bss
+    import krivex_inference.backends.blob_store_singleton as bss
     bss.set_blob_store(store)
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
-    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: store)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.layout_backend.get_blob_store", lambda: store)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: store)
 
     db_store = DesignStateStore(db_path=tmp_path / "sessions_face.db")
     state = db_store.create(DesignState())
@@ -1459,7 +1459,7 @@ async def test_image_to_image_turn1_face_preservation(tmp_path, monkeypatch):
             return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
         elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             return QwenImage21Backend(spec)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec, load_latency_s=0.0, unload_latency_s=0.0)
 
     orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
@@ -1510,10 +1510,10 @@ async def test_image_to_image_turn1_face_preservation(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_unified_plan_sketch_layer_simultaneous_execution(tmp_path):
     """Verify UnifiedPlanSketchLayer executes Plan deliberation and Layout compilation simultaneously."""
-    from krisna_inference.orchestrator.unified_plan_sketch import UnifiedPlanSketchLayer
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.unified_plan_sketch import UnifiedPlanSketchLayer
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 
     db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
     state = DesignState()
@@ -1545,10 +1545,10 @@ async def test_unified_plan_sketch_layer_simultaneous_execution(tmp_path):
 @pytest.mark.asyncio
 async def test_plan_sketch_and_polish_closed_loop_deliberation(tmp_path):
     """Verify plan_sketch_and_polish directly proceeds to Polish and loops back to review & further planning."""
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator import flows
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator import flows
 
     db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
     state = DesignState()
@@ -1589,10 +1589,10 @@ async def test_plan_sketch_and_polish_closed_loop_deliberation(tmp_path):
 @pytest.mark.asyncio
 async def test_plan_sketch_and_polish_fast_preview(tmp_path):
     """Verify plan_sketch_and_polish with fast=True populates preview_output via CFM distillation."""
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator import flows
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator import flows
 
     db_store = DesignStateStore(db_path=str(tmp_path / "test_sessions.db"))
     state = DesignState()
@@ -1622,12 +1622,12 @@ async def test_plan_sketch_and_polish_fast_preview(tmp_path):
 def test_service_execute_endpoint_and_auto_proceed(tmp_path, monkeypatch):
     """Test POST /session/{session_id}/execute and /message with auto_proceed=True via FastAPI TestClient."""
     from fastapi.testclient import TestClient
-    from krisna_inference.orchestrator.service import app
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+    from krivex_inference.orchestrator.service import app
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.design_state import DesignState, SessionStage
 
     test_store = DesignStateStore(db_path=str(tmp_path / "svc_test.db"))
-    monkeypatch.setattr("krisna_inference.orchestrator.service.store", test_store)
+    monkeypatch.setattr("krivex_inference.orchestrator.service.store", test_store)
 
     with TestClient(app) as client:
         # Create session
@@ -1667,7 +1667,7 @@ def test_service_execute_endpoint_and_auto_proceed(tmp_path, monkeypatch):
 
 def test_vla_action_primitives_end_to_end():
     """Negative audit: verify all VLA action primitives are parsed, executed, and mutate Scene DAG."""
-    from krisna_inference.backends.planner_schema import (
+    from krivex_inference.backends.planner_schema import (
         AddComponentAction,
         LockRegionAction,
         MoveComponentAction,
@@ -1745,12 +1745,12 @@ def test_vla_action_primitives_end_to_end():
 async def test_face_identity_preservation_turn_1_image_to_image(tmp_path):
     """Verify Turn 1 Image-to-Image preserves human facial identity with 0.00% drift (lock score 1.000)."""
     import numpy as np
-    from krisna_inference.backends.blob_store_singleton import get_blob_store
-    from krisna_inference.orchestrator.design_state import DesignState
-    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.blob_store_singleton import get_blob_store
+    from krivex_inference.orchestrator.design_state import DesignState
+    from krivex_inference.orchestrator.flows import plan_sketch_and_polish
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     blobs = get_blob_store()
     store = DesignStateStore(db_path=str(tmp_path / "face_turn1_test.db"))
@@ -1777,9 +1777,9 @@ async def test_face_identity_preservation_turn_1_image_to_image(tmp_path):
         if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_FAST, Tier.POLISH_QUALITY):
             return QwenImage21Backend(spec, strict=False)
         if spec.tier == Tier.SKETCH:
-            from krisna_inference.backends.layout_backend import LayoutBackend
+            from krivex_inference.backends.layout_backend import LayoutBackend
             return LayoutBackend(spec)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
 
     orchestrator = SwapOrchestrator(backend_factory=test_backend_factory)
@@ -1819,11 +1819,11 @@ async def test_face_identity_preservation_turn_1_image_to_image(tmp_path):
 async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
     """Verify facial identity is preserved across multiple conversational turns without degradation."""
     import numpy as np
-    from krisna_inference.backends.blob_store_singleton import get_blob_store
-    from krisna_inference.orchestrator.flows import conversational_turn, finalize
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.blob_store_singleton import get_blob_store
+    from krivex_inference.orchestrator.flows import conversational_turn, finalize
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     blobs = get_blob_store()
     store = DesignStateStore(db_path=str(tmp_path / "face_multiturn_test.db"))
@@ -1836,7 +1836,7 @@ async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
     donor_photo = Image.fromarray(canvas, mode="RGB")
     donor_ref = blobs.save_image(donor_photo, prefix="donor_portrait")
 
-    from krisna_inference.orchestrator.design_state import DesignState
+    from krivex_inference.orchestrator.design_state import DesignState
 
     state = DesignState(session_id="multiturn_face")
     state.constraints.style = "minimalist"
@@ -1847,9 +1847,9 @@ async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
         if spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_FAST, Tier.POLISH_QUALITY):
             return QwenImage21Backend(spec, strict=False)
         if spec.tier == Tier.SKETCH:
-            from krisna_inference.backends.layout_backend import LayoutBackend
+            from krivex_inference.backends.layout_backend import LayoutBackend
             return LayoutBackend(spec)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec=spec, load_latency_s=0.0, unload_latency_s=0.0)
 
     orchestrator = SwapOrchestrator(backend_factory=test_backend_factory)
@@ -1909,13 +1909,13 @@ async def test_face_identity_preservation_multiturn_no_degradation(tmp_path):
 async def test_polish_backend_differential_mask_and_pipeline_signature(tmp_path, monkeypatch):
     """Verify PolishBackendQwen passes mask_image to native pipeline and composites differential masks."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.orchestrator.model_registry import Tier, ModelSpec
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.orchestrator.model_registry import Tier, ModelSpec
 
     blobs = BlobStore(root=tmp_path / "blobs")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
 
     spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="test_qwen", vram_gb=14.0, quantization="bf16")
     backend = QwenImage21Backend(spec, strict=False)
@@ -1980,24 +1980,24 @@ async def test_polish_backend_differential_mask_and_pipeline_signature(tmp_path,
 async def test_iterative_refine_syncs_dual_stream_sketch_and_mask_to_polish(tmp_path, monkeypatch):
     """Verify iterative_refine re-renders dual-stream sketch (SPADE + differential mask) and passes to polish."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.model_registry import Tier
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.orchestrator.flows import finalize, iterative_refine
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.model_registry import Tier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.orchestrator.flows import finalize, iterative_refine
 
     blobs = BlobStore(root=tmp_path / "blobs_refine")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
 
     store = DesignStateStore(db_path=tmp_path / "sessions_refine.db")
 
     # Populate initial layout and finalize
-    from krisna_inference.layout_baseline import layout_from_constraints
+    from krivex_inference.layout_baseline import layout_from_constraints
     initial_layout = layout_from_constraints({"style": "dark", "layout_hints": ["header", "cta_button"]})
     layout_file = tmp_path / "initial_layout.json"
     import json
@@ -2015,7 +2015,7 @@ async def test_iterative_refine_syncs_dual_stream_sketch_and_mask_to_polish(tmp_
             return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
         elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             return QwenImage21Backend(spec, strict=False)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec, load_latency_s=0.0, unload_latency_s=0.0)
 
     orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
@@ -2051,14 +2051,14 @@ async def test_iterative_refine_syncs_dual_stream_sketch_and_mask_to_polish(tmp_
 async def test_finalize_retries_on_lock_preservation_drop(tmp_path, monkeypatch):
     """Verify that lock preservation degradation (< 0.95) triggers automated retry with mask_ref preserved."""
     from PIL import Image
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage, LockedRegion
-    from krisna_inference.orchestrator.model_registry import Tier
-    from krisna_inference.orchestrator.swap_orchestrator import SwapResult
-    from krisna_inference.orchestrator.flows import finalize
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import DesignState, LayoutDraft, SessionStage, LockedRegion
+    from krivex_inference.orchestrator.model_registry import Tier
+    from krivex_inference.orchestrator.swap_orchestrator import SwapResult
+    from krivex_inference.orchestrator.flows import finalize
 
     store_blob = BlobStore(root=tmp_path / "blobs_retry")
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: store_blob)
 
     state = DesignState(
         session_id="retry_lock_test",
@@ -2133,24 +2133,24 @@ async def test_multi_asset_duo_composition_self_and_girl(tmp_path, monkeypatch):
     5. LockPreservationVerifier achieves verified 1.000 (0.00% facial drift) across both subjects.
     """
     from PIL import Image, ImageDraw
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import ReferenceAsset, DesignState
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.model_registry import Tier
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import ReferenceAsset, DesignState
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.model_registry import Tier
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.flows import plan_sketch_and_polish
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     blobs = BlobStore(root=tmp_path / "blobs_duo")
-    import krisna_inference.backends.blob_store_singleton as bss
+    import krivex_inference.backends.blob_store_singleton as bss
     bss.set_blob_store(blobs)
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
 
     # 1. Create two distinct synthetic photographic portraits
     # Photo 1: User's face (blue tones)
@@ -2175,7 +2175,7 @@ async def test_multi_asset_duo_composition_self_and_girl(tmp_path, monkeypatch):
             return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
         elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             return QwenImage21Backend(spec, strict=False)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec)
 
     orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
@@ -2244,24 +2244,24 @@ async def test_multi_asset_subject_and_background_teleportation(tmp_path, monkey
     4. Polish tier preserves both background scene and exact facial identity.
     """
     from PIL import Image, ImageDraw
-    from krisna_inference.backends.common import BlobStore
-    from krisna_inference.orchestrator.design_state import ReferenceAsset, DesignState
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.model_registry import Tier
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.flows import plan_sketch_and_polish
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.common import BlobStore
+    from krivex_inference.orchestrator.design_state import ReferenceAsset, DesignState
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.model_registry import Tier
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.flows import plan_sketch_and_polish
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     blobs = BlobStore(root=tmp_path / "blobs_teleport")
-    import krisna_inference.backends.blob_store_singleton as bss
+    import krivex_inference.backends.blob_store_singleton as bss
     bss.set_blob_store(blobs)
-    monkeypatch.setattr("krisna_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.layout_backend.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
-    monkeypatch.setattr("krisna_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.blob_store_singleton.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.layout_backend.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.polish_backend_qwen.get_blob_store", lambda: blobs)
+    monkeypatch.setattr("krivex_inference.backends.planner_backend_llama.get_blob_store", lambda: blobs)
 
     # Background: Sunset beach environment
     img_bg = Image.new("RGB", (640, 480), (240, 140, 60))
@@ -2285,7 +2285,7 @@ async def test_multi_asset_subject_and_background_teleportation(tmp_path, monkey
             return LayoutBackend(spec, output_dir=tmp_path / "layout_out")
         elif spec.tier in (Tier.POLISH_DEFAULT, Tier.POLISH_QUALITY, Tier.POLISH_FAST):
             return QwenImage21Backend(spec, strict=False)
-        from krisna_inference.orchestrator.model_registry import MockBackend
+        from krivex_inference.orchestrator.model_registry import MockBackend
         return MockBackend(spec)
 
     orch = SwapOrchestrator(backend_factory=backend_factory, envelope_gb=24.0)
@@ -2338,9 +2338,9 @@ def test_crop_and_paste_localized_facial_preservation():
     (e.g., at [0.60, 0.35, 0.30, 0.40]) was previously destroyed by 1-to-1 canvas masking.
     """
     from PIL import Image, ImageDraw
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
     spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="qwen_image", vram_gb=12.0, quantization="bf16")
     backend = QwenImage21Backend(spec, strict=False)

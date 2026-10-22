@@ -7,12 +7,12 @@ duplicated inline synthesis into a shared function.
 
 from __future__ import annotations
 
-from krisna_inference.orchestrator.design_state import (
+from krivex_inference.orchestrator.design_state import (
     Constraints,
     ConversationTurn,
     DesignState,
 )
-from krisna_inference.orchestrator.flows import _synthesize_dpo_prompt
+from krivex_inference.orchestrator.flows import _synthesize_dpo_prompt
 
 
 class TestSynthesizeDpoPrompt:

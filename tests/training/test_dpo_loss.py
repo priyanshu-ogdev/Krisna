@@ -14,9 +14,9 @@ import math
 import pytest
 
 torch = pytest.importorskip("torch")
-pytest.importorskip("krisna_training.polish.dpo_loss", reason="Legacy Z-Image DPO loss retired in commit c5612eb")
+pytest.importorskip("krivex_training.polish.dpo_loss", reason="Legacy Z-Image DPO loss retired in commit c5612eb")
 
-from krisna_training.polish.dpo_loss import (
+from krivex_training.polish.dpo_loss import (
     flow_matching_dpo_loss,
     flow_matching_velocity_target,
     noise_latent_at_timestep,

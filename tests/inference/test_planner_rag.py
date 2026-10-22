@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from krisna_inference.backends.planner_rag import UICritRAGIndex
+from krivex_inference.backends.planner_rag import UICritRAGIndex
 
 
 def _write_corpus(path, entries):
@@ -261,13 +261,13 @@ class TestEmbeddingRetrievalMechanism:
 
 class TestResolveEmbedFnFromEnv:
     def test_disabled_by_default(self, monkeypatch):
-        from krisna_inference.backends.planner_rag import resolve_embed_fn_from_env
+        from krivex_inference.backends.planner_rag import resolve_embed_fn_from_env
 
         monkeypatch.delenv("KRISNA_PLANNER_RAG_EMBEDDINGS", raising=False)
         assert resolve_embed_fn_from_env() is None
 
     def test_disabled_for_any_non_1_value(self, monkeypatch):
-        from krisna_inference.backends.planner_rag import resolve_embed_fn_from_env
+        from krivex_inference.backends.planner_rag import resolve_embed_fn_from_env
 
         monkeypatch.setenv("KRISNA_PLANNER_RAG_EMBEDDINGS", "true")
         assert resolve_embed_fn_from_env() is None
@@ -285,7 +285,7 @@ class TestResolveEmbedFnFromEnv:
 
         import pytest
 
-        from krisna_inference.backends.planner_rag import load_default_embedder
+        from krivex_inference.backends.planner_rag import load_default_embedder
 
         real_import = builtins.__import__
 
@@ -304,7 +304,7 @@ class TestResolveEmbedFnFromEnv:
         only the "feature not enabled" case returns None."""
         import pytest
 
-        from krisna_inference.backends import planner_rag
+        from krivex_inference.backends import planner_rag
 
         monkeypatch.setenv("KRISNA_PLANNER_RAG_EMBEDDINGS", "1")
 
@@ -373,7 +373,7 @@ class TestMultimodalRAGMechanism:
         assert results[0].record_id == "rec2"
 
     def test_resolve_visual_embed_fn_from_env(self, monkeypatch):
-        from krisna_inference.backends import planner_rag
+        from krivex_inference.backends import planner_rag
 
         monkeypatch.delenv("KRISNA_PLANNER_RAG_VISUAL", raising=False)
         assert planner_rag.resolve_visual_embed_fn_from_env() is None

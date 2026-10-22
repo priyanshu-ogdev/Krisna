@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "training" / "src"))
-from krisna_training.polish.qwen_manifest import write_manifest  # noqa: I001
+from krivex_training.polish.qwen_manifest import write_manifest  # noqa: I001
 
 def main() -> int:
     parser = argparse.ArgumentParser()

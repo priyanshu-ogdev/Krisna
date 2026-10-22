@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.research import (
+from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.research import (
     TRACE_SCHEMA_VERSION,
     RuntimeEnvironmentInfo,
     SessionResearchTrajectory,
@@ -118,7 +118,7 @@ def test_export_and_save_trajectory_files(tmp_path: Path):
 def client(tmp_path: Path, monkeypatch):
     import importlib
     monkeypatch.chdir(tmp_path)
-    import krisna_inference.orchestrator.service as service_module
+    import krivex_inference.orchestrator.service as service_module
 
     importlib.reload(service_module)
     with TestClient(service_module.app) as c:

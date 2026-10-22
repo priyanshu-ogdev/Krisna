@@ -11,7 +11,7 @@ source .venv/bin/activate
 
 python3 - "$DATA_FORGE_MODEL_DATA" "$OUTPUT_DIR" <<'PYEOF'
 import sys
-from krisna_training.data_forge_bridge.sync_polish_default import sync
+from krivex_training.data_forge_bridge.sync_polish_default import sync
 
 model_data_dir, output_dir = sys.argv[1:3]
 out = sync(model_data_dir, output_dir)

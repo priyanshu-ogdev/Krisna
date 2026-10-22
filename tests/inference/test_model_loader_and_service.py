@@ -7,7 +7,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from krisna_inference.backends.model_loader import (
+from krivex_inference.backends.model_loader import (
     LlamaCppConfig,
     discover_planner_model,
     discover_mmproj_model,
@@ -15,7 +15,7 @@ from krisna_inference.backends.model_loader import (
     sha256_file,
     verify_manifest,
 )
-from krisna_inference.orchestrator.service import app
+from krivex_inference.orchestrator.service import app
 
 
 @pytest.fixture

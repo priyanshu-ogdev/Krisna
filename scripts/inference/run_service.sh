@@ -24,4 +24,4 @@ else
 fi
 
 source .venv/bin/activate
-python -m uvicorn krisna_inference.orchestrator.service:app --host "$BIND_HOST" --port "$PORT" --reload
+python -m uvicorn krivex_inference.orchestrator.service:app --host "$BIND_HOST" --port "$PORT" --reload

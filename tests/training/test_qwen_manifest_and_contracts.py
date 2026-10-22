@@ -17,8 +17,8 @@ from PIL import Image
 
 yaml = pytest.importorskip("yaml")
 
-from krisna_training.polish.prepare_dataset import prepare_qwen_pairs_from_manifest
-from krisna_training.polish.qwen_manifest import (
+from krivex_training.polish.prepare_dataset import prepare_qwen_pairs_from_manifest
+from krivex_training.polish.qwen_manifest import (
     BASE_REVISION,
     MODEL_ID,
     QwenManifestError,

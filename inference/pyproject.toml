@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "krisna-inference"
+name = "krivex-inference"
 version = "0.2.0"
 description = "Krisna Inference — Swap Orchestrator, Design State Manager, real model backends, and the verifier stack (final no-RLHF-loop PRD revision). Split out of krisna-orchestrator v0.1.0 as part of the training/inference separation — see docs/inference/ARCHITECTURE.md."
 requires-python = ">=3.11"
@@ -49,7 +49,7 @@ planner-llama = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-krisna_inference = ["assets/fonts/*.ttf"]
+krivex_inference = ["assets/fonts/*.ttf"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

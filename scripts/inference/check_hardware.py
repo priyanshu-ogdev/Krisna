@@ -25,10 +25,10 @@ if INFERENCE_SRC.exists() and str(INFERENCE_SRC) not in sys.path:
     sys.path.insert(0, str(INFERENCE_SRC))
 
 try:
-    from krisna_inference.common.hardware import main
+    from krivex_inference.common.hardware import main
 except ImportError as err:
     sys.stderr.write(
-        f"[ERROR] Failed to import krisna_inference.common.hardware: {err}\n"
+        f"[ERROR] Failed to import krivex_inference.common.hardware: {err}\n"
         f"Ensure Python is running from repo root or inference package is accessible.\n"
     )
     sys.exit(1)

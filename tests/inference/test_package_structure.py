@@ -1,9 +1,9 @@
-"""Structural and integrity tests for the krisna-inference package.
+"""Structural and integrity tests for the krivex-inference package.
 
 Verifies:
-1. Package version and public re-exports in krisna_inference/__init__.py.
-2. CLI argument parsing in krisna_inference.cli.
-3. Service CLI entrypoint function in krisna_inference.orchestrator.service.
+1. Package version and public re-exports in krivex_inference/__init__.py.
+2. CLI argument parsing in krivex_inference.cli.
+3. Service CLI entrypoint function in krivex_inference.orchestrator.service.
 4. Backward-compatible runner in inference-runtime/run_agentic_session.py.
 5. Cleanliness of inference directory (no stray duplicate databases).
 """
@@ -20,15 +20,15 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_package_exports():
-    """Verify krisna_inference package exports its canonical symbols."""
-    import krisna_inference
+    """Verify krivex_inference package exports its canonical symbols."""
+    import krivex_inference
 
-    assert hasattr(krisna_inference, "__version__")
-    assert krisna_inference.__version__ == "0.2.0"
-    assert krisna_inference.__version_info__ == (0, 2, 0)
+    assert hasattr(krivex_inference, "__version__")
+    assert krivex_inference.__version__ == "0.2.0"
+    assert krivex_inference.__version_info__ == (0, 2, 0)
 
     # Core classes
-    from krisna_inference import (
+    from krivex_inference import (
         DesignState,
         DesignStateStore,
         MockBackend,
@@ -53,8 +53,8 @@ def test_package_exports():
 
 
 def test_cli_parser():
-    """Verify krisna_inference.cli argument parser configuration."""
-    from krisna_inference.cli import build_parser
+    """Verify krivex_inference.cli argument parser configuration."""
+    from krivex_inference.cli import build_parser
 
     parser = build_parser()
     # Test safe default parsing
@@ -74,7 +74,7 @@ def test_cli_parser():
 
 def test_service_main_entrypoint():
     """Verify service.py exposes a main() function for CLI execution."""
-    from krisna_inference.orchestrator import service
+    from krivex_inference.orchestrator import service
 
     assert hasattr(service, "main")
     assert callable(service.main)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from krisna_inference.orchestrator.design_state import DesignState, SessionStage
+from krivex_inference.orchestrator.design_state import DesignState, SessionStage
 
 
 def test_default_state_shape_matches_prd_5_1():
@@ -52,7 +52,7 @@ def test_critique_eligibility_requires_finalized_render():
 
 
 def test_locked_regions_roundtrip():
-    from krisna_inference.orchestrator.design_state import LockedRegion
+    from krivex_inference.orchestrator.design_state import LockedRegion
 
     state = DesignState()
     state.constraints.locked_regions.append(
@@ -74,7 +74,7 @@ def test_refine_eligibility():
 
 
 def test_instructlayout_formatting():
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
 
     layout_tree = {
         "nodes": [

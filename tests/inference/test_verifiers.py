@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from krisna_inference.verifiers.layout_iou import LayoutIoUVerifier, _iou
-from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
-from krisna_inference.verifiers.verifier_stack import VerifierStack
+from krivex_inference.verifiers.layout_iou import LayoutIoUVerifier, _iou
+from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
+from krivex_inference.verifiers.verifier_stack import VerifierStack
 
 
 # ---------------------------------------------------------------------------

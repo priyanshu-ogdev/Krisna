@@ -4,14 +4,14 @@ import importlib
 import inspect
 import pytest
 
-from krisna_inference.backends.factory import real_backend_factory
-from krisna_inference.orchestrator.model_registry import REGISTRY, Tier
+from krivex_inference.backends.factory import real_backend_factory
+from krivex_inference.orchestrator.model_registry import REGISTRY, Tier
 
 
 def test_factory_returns_correct_class_per_tier():
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
-    from krisna_inference.backends.layout_backend import LayoutBackend
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.layout_backend import LayoutBackend
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
 
     expected = {
         Tier.PLANNER: PlannerBackendLlama,
@@ -53,7 +53,7 @@ class TestFrozenModelsHaveNoLoraWiring:
         assert hasattr(backend, "lora_adapter_path")
 
     def test_factory_module_source_has_no_removed_env_vars(self):
-        import krisna_inference.backends.factory as factory_module
+        import krivex_inference.backends.factory as factory_module
 
         source = inspect.getsource(factory_module)
         for removed_env_var in (
@@ -66,7 +66,7 @@ class TestFrozenModelsHaveNoLoraWiring:
 class TestLowVramModeFactoryWiring:
     def test_low_vram_env_var_enables_offload_on_polish_default(self, monkeypatch):
         monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
-        import krisna_inference.backends.factory as factory_module
+        import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.POLISH_DEFAULT])
@@ -77,7 +77,7 @@ class TestLowVramModeFactoryWiring:
 
     def test_low_vram_env_var_enables_offload_on_polish_quality(self, monkeypatch):
         monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
-        import krisna_inference.backends.factory as factory_module
+        import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             backend = factory_module.real_backend_factory(REGISTRY[Tier.POLISH_QUALITY])
@@ -94,7 +94,7 @@ class TestLowVramModeFactoryWiring:
 
     def test_planner_never_offloaded_even_in_low_vram_mode(self, monkeypatch):
         monkeypatch.setenv("KRISNA_LOW_VRAM_MODE", "1")
-        import krisna_inference.backends.factory as factory_module
+        import krivex_inference.backends.factory as factory_module
         importlib.reload(factory_module)
         try:
             planner = factory_module.real_backend_factory(REGISTRY[Tier.PLANNER])

@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from krisna_inference.common.hardware import (
+from krivex_inference.common.hardware import (
     ConfigStatus,
     HardwareIncompatibleError,
     HardwareStatus,

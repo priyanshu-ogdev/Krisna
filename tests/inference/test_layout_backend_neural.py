@@ -12,10 +12,10 @@ import pytest
 from pathlib import Path
 from PIL import Image
 
-from krisna_inference.backends.layout_backend import LayoutBackend
-from krisna_inference.backends.blob_store_singleton import get_blob_store
-from krisna_inference.backends.planner_schema import AddComponentAction, LockRegionAction
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.backends.layout_backend import LayoutBackend
+from krivex_inference.backends.blob_store_singleton import get_blob_store
+from krivex_inference.backends.planner_schema import AddComponentAction, LockRegionAction
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
 @pytest.mark.asyncio
@@ -122,7 +122,7 @@ async def test_layout_backend_with_transparent_asset_mode(tmp_path):
 @pytest.mark.asyncio
 async def test_layout_backend_generates_and_persists_segmentation_map(tmp_path):
     """Verify LayoutBackend produces a canonical semantic segmentation map in BlobStore (NVIDIA SPADE style)."""
-    from krisna_inference.layout_renderer import UI_SEMANTIC_PALETTE
+    from krivex_inference.layout_renderer import UI_SEMANTIC_PALETTE
 
     spec = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
     backend = LayoutBackend(spec, output_dir=str(tmp_path))
@@ -164,7 +164,7 @@ async def test_layout_backend_generates_and_persists_segmentation_map(tmp_path):
 @pytest.mark.asyncio
 async def test_polish_backend_consumes_segmentation_map(tmp_path):
     """Verify QwenImage21Backend consumes segmentation_ref and logs NVIDIA SPADE multi-stream telemetry."""
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
 
     spec_sketch = ModelSpec(tier=Tier.SKETCH, name="LayoutBaseline", vram_gb=0.0, quantization="none")
     sketch_backend = LayoutBackend(spec_sketch, output_dir=str(tmp_path))

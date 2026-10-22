@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from krisna_inference.backends.common import BlobStore
-from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
-from krisna_inference.backends.planner_schema import PlannerResponse
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.backends.common import BlobStore
+from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
+from krivex_inference.backends.planner_schema import PlannerResponse
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
 def test_planner_llama_prompt_incorporates_prior_critique():
@@ -99,7 +99,7 @@ def test_planner_prompt_loads_blob_image_reference(monkeypatch, tmp_path):
     ref = store.save_image(Image.new("RGB", (2, 2), color="blue"), prefix="wireframe")
 
     monkeypatch.setattr(
-        "krisna_inference.backends.planner_backend_llama.get_blob_store",
+        "krivex_inference.backends.planner_backend_llama.get_blob_store",
         lambda: store,
     )
     messages, _ = backend._prompt("Review", {}, [], None, True, wireframe_ref=ref)

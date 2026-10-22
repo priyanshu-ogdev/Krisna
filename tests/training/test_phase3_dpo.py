@@ -15,7 +15,7 @@ import yaml
 
 torch = pytest.importorskip("torch")
 
-from krisna_training.polish.dpo_loss import (
+from krivex_training.polish.dpo_loss import (
     FlowMatchingDPOLossOutput,
     flow_matching_dpo_loss,
     flow_matching_velocity_target,

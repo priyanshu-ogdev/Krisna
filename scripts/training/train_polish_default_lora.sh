@@ -10,7 +10,7 @@ export PYTHONPATH="$ROOT/training/src${PYTHONPATH:+:$PYTHONPATH}"
 echo -e "\033[1;36mRunning CPU-only Qwen-Image-2.1 training preflight...\033[0m"
 # This performs all receipt, split, path, image-hash, and pinned-HEAD checks
 # before accelerate is started.  Its command rendering redacts hub_token.
-python3 -m krisna_training.polish.train_preflight "$CONFIG"
+python3 -m krivex_training.polish.train_preflight "$CONFIG"
 
 python3 - "$CONFIG" <<'PYEOF'
 import json

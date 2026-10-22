@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.blob_store_singleton import get_blob_store
-from krisna_inference.backends.layout_backend import LayoutBackend
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.backends.blob_store_singleton import get_blob_store
+from krivex_inference.backends.layout_backend import LayoutBackend
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
 
 # ---------------------------------------------------------------------------

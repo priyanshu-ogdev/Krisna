@@ -14,17 +14,17 @@ from pathlib import Path
 import pytest
 import yaml
 
-from krisna_inference.orchestrator import flows
-from krisna_inference.orchestrator.design_state import SessionStage
-from krisna_inference.orchestrator.model_registry import (
+from krivex_inference.orchestrator import flows
+from krivex_inference.orchestrator.design_state import SessionStage
+from krivex_inference.orchestrator.model_registry import (
     HIGH_VRAM_REGISTRY,
     LOW_VRAM_REGISTRY,
     REGISTRY,
     MockBackend,
     Tier,
 )
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 from scripts.training.compare_cfm_steps import (
     evaluate_step_pareto,
     generate_cfm_distillation_receipt,
@@ -172,7 +172,7 @@ class TestPhase4RuntimeTierAndFlowIntegration:
 class TestCFMLossBroadcasting:
     def test_cfm_loss_4d_and_3d_tensor_broadcasting(self):
         import torch
-        from krisna_training.polish.cfm_loss import (
+        from krivex_training.polish.cfm_loss import (
             consistency_distillation_loss,
             consistency_scaling,
             pseudo_huber_loss,

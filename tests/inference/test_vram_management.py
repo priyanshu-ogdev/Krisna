@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.orchestrator.exceptions import VRAMBudgetExceededError
-from krisna_inference.orchestrator.model_registry import (
+from krivex_inference.orchestrator.exceptions import VRAMBudgetExceededError
+from krivex_inference.orchestrator.model_registry import (
     HIGH_VRAM_REGISTRY,
     LOW_VRAM_REGISTRY,
     REGISTRY,
@@ -12,8 +12,8 @@ from krisna_inference.orchestrator.model_registry import (
     Tier,
     get_registry,
 )
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-from krisna_inference.orchestrator.vram_budget import VRAMLedger
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.orchestrator.vram_budget import VRAMLedger
 
 
 def fast_mock_factory(spec: ModelSpec) -> MockBackend:

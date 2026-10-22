@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.orchestrator import flows
-from krisna_inference.orchestrator.design_state import SessionStage
-from krisna_inference.orchestrator.model_registry import Tier
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.orchestrator import flows
+from krivex_inference.orchestrator.design_state import SessionStage
+from krivex_inference.orchestrator.model_registry import Tier
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 
 
 @pytest.mark.asyncio
@@ -51,7 +51,7 @@ def _patch_blob_store(monkeypatch, tmp_path, subdir: str):
     `blob://`, so it never exercises the verifier/safety-gate branch in
     flows.finalize. A real blob ref is required to reach that branch at
     all."""
-    import krisna_inference.backends.blob_store_singleton as blob_singleton
+    import krivex_inference.backends.blob_store_singleton as blob_singleton
     from PIL import Image
 
     monkeypatch.setenv("KRISNA_BLOB_ROOT", str(tmp_path / subdir))
@@ -201,7 +201,7 @@ async def test_critique_flow_oom_rolls_back_stage(
 async def test_critique_flow_builds_preference_pair_when_given_comparison(
     started_orchestrator: SwapOrchestrator, store: DesignStateStore, finalized_state
 ):
-    from krisna_training.dpo.preference_store import PreferenceStore
+    from krivex_training.dpo.preference_store import PreferenceStore
 
     pref_store = PreferenceStore(db_path=":memory:")
     try:

@@ -31,7 +31,7 @@ INFERENCE_SRC = REPO_ROOT / "inference" / "src"
 if str(INFERENCE_SRC) not in sys.path:
     sys.path.insert(0, str(INFERENCE_SRC))
 
-from krisna_training.dpo.preference_store import PreferencePair, PreferenceStore
+from krivex_training.dpo.preference_store import PreferencePair, PreferenceStore
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("collect_dpo_pairs")

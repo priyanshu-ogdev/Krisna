@@ -167,7 +167,7 @@ def main() -> int:
         else:
             print(f"\n[*] Syncing Polish Tier (Qwen-Image-2.1): {qwen_export} -> {qwen_target}...")
             try:
-                from krisna_training.data_forge_bridge.sync_polish_default import sync as sync_polish
+                from krivex_training.data_forge_bridge.sync_polish_default import sync as sync_polish
                 out = sync_polish(model_data_dir, qwen_target)
                 print(f"    [SUCCESS] Qwen Polish dataset synced to {out}")
                 results["polish"] = f"Synced (Qwen pairs in {out}) -> ready for training"
@@ -182,7 +182,7 @@ def main() -> int:
         else:
             print(f"\n[*] Syncing Polish Tier (Legacy Z-Image): {zimage_export} -> {polish_target}...")
             try:
-                from krisna_training.data_forge_bridge.sync_polish_default import sync as sync_polish
+                from krivex_training.data_forge_bridge.sync_polish_default import sync as sync_polish
                 out = sync_polish(model_data_dir, polish_target)
                 synced_count = len([p for p in polish_target.iterdir() if p.is_file() and p.name != "metadata.jsonl"])
                 print(f"    [SUCCESS] Polish dataset synced to {out} ({synced_count} images with metadata.jsonl)")
@@ -216,9 +216,9 @@ def main() -> int:
         else:
             print(f"\n[*] Syncing Preference Pairs: {pref_source} -> {args.pref_db}...")
             try:
-                from krisna_training.data_forge_bridge.sync_dpo_pairs import sync as sync_dpo
-                from krisna_training.dpo.preference_store import PreferenceStore
-                from krisna_inference.backends.common import BlobStore
+                from krivex_training.data_forge_bridge.sync_dpo_pairs import sync as sync_dpo
+                from krivex_training.dpo.preference_store import PreferenceStore
+                from krivex_inference.backends.common import BlobStore
 
                 blob_store = BlobStore(root=Path(args.blob_root))
                 pref_store = PreferenceStore(db_path=Path(args.pref_db))
@@ -270,7 +270,7 @@ def main() -> int:
         else:
             print(f"\n[*] Syncing Planner RAG Corpus: {rag_export} -> {rag_target_file}...")
             try:
-                from krisna_training.data_forge_bridge.sync_planner_rag import count_critiques, sync as sync_rag
+                from krivex_training.data_forge_bridge.sync_planner_rag import count_critiques, sync as sync_rag
                 synced_file = sync_rag(model_data_dir, target_dir)
                 rec_count = count_critiques(synced_file)
                 print(f"    [SUCCESS] Planner RAG corpus synced ({rec_count} records) -> {synced_file}")

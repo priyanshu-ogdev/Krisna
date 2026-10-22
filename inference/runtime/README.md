@@ -5,7 +5,7 @@ checkpoints in `models/` or with `MockBackend` — for manually testing trained 
 and validating multi-turn agentic orchestration without starting the web UI.
 
 `run_agentic_session.py` delegates directly to the canonical package CLI
-entry point `krisna-session` (`krisna_inference.cli:main`).
+entry point `krisna-session` (`krivex_inference.cli:main`).
 
 ## Usage
 

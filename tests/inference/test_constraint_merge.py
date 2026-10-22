@@ -14,7 +14,7 @@ can't drift out of sync with each other again.
 
 from __future__ import annotations
 
-from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
+from krivex_inference.orchestrator.constraint_merge import apply_constraint_updates
 
 
 def test_style_update_is_applied():

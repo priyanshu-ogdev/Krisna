@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.common import BlobStore
-from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-from krisna_inference.orchestrator.exceptions import SessionNotFoundError, StaleDesignStateError
-from krisna_inference.orchestrator.store import DesignStateStore
+from krivex_inference.backends.common import BlobStore
+from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+from krivex_inference.orchestrator.exceptions import SessionNotFoundError, StaleDesignStateError
+from krivex_inference.orchestrator.store import DesignStateStore
 
 
 # ---------------------------------------------------------------------------

@@ -3,11 +3,11 @@ from __future__ import annotations
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.verifiers.critique_adapter import from_planner_review
-from krisna_inference.verifiers.layout_iou import LayoutIoUVerifier
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.verifiers.critique_adapter import from_planner_review
+from krivex_inference.verifiers.layout_iou import LayoutIoUVerifier
 
 
 def test_locked_regions_bbox_handling_in_polish_backend():
@@ -95,7 +95,7 @@ def test_store_wal_mode_and_concurrency(tmp_path):
 def test_planner_reference_assets_payload_extraction(tmp_path):
     from pathlib import Path
     from PIL import Image
-    from krisna_inference.backends.planner_backend_llama import PlannerBackendLlama
+    from krivex_inference.backends.planner_backend_llama import PlannerBackendLlama
 
     img1_path = tmp_path / "subject1.png"
     Image.new("RGB", (32, 32), color=(255, 0, 0)).save(img1_path)

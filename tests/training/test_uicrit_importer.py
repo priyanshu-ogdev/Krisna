@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_training.dpo.preference_store import PreferenceStore
-from krisna_training.dpo.uicrit_importer import import_records
+from krivex_training.dpo.preference_store import PreferenceStore
+from krivex_training.dpo.uicrit_importer import import_records
 
 
 @pytest.fixture

@@ -33,7 +33,7 @@ Write-Host "Preparing polish-tier dataset: $ImageDir -> $OutputDir..." -Foregrou
 
 $pyCode = @'
 import sys
-from krisna_training.polish.prepare_dataset import prepare, count_prepared
+from krivex_training.polish.prepare_dataset import prepare, count_prepared
 
 image_dir, output_dir, captions_path = sys.argv[1:4]
 out = prepare(

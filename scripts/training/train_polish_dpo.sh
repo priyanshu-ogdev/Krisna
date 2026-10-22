@@ -34,7 +34,7 @@ print(message)
 # Filter out non-CLI keys (e.g. metadata/pipeline tags)
 IGNORED_KEYS = {"pipeline_class", "conditioning_contract", "ablation_id", "ablation_hypothesis"}
 
-args = ["accelerate", "launch", "-m", "krisna_training.polish.train_dpo"]
+args = ["accelerate", "launch", "-m", "krivex_training.polish.train_dpo"]
 for key, value in cfg.items():
     if key in IGNORED_KEYS or value is None:
         continue

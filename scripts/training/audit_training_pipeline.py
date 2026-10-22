@@ -60,7 +60,7 @@ def _preference_count(path: Path) -> dict[str, Any]:
 
 def collect() -> dict[str, Any]:
     config = ROOT / "training/configs/polish_qwen_image21_lora.yaml"
-    backend = ROOT / "inference/src/krisna_inference/backends/polish_backend_qwen.py"
+    backend = ROOT / "inference/src/krivex_inference/backends/polish_backend_qwen.py"
     planner_download = ROOT / "scripts/inference/download_planner_models.py"
 
     pair_dir = ROOT / "data/polish_qwen_image21_pairs"
@@ -89,16 +89,16 @@ def collect() -> dict[str, Any]:
             "polish_cfm": "active Consistency Flow Matching distillation (Luo et al. 2024; Song et al. 2023)",
         },
         "source_entry_points": {
-            "qwen_pair_builder": _exists("training/src/krisna_training/polish/prepare_dataset.py"),
-            "qwen_trainer_contract": _exists("training/src/krisna_training/polish/qwen_trainer_contract.py"),
+            "qwen_pair_builder": _exists("training/src/krivex_training/polish/prepare_dataset.py"),
+            "qwen_trainer_contract": _exists("training/src/krivex_training/polish/qwen_trainer_contract.py"),
             "external_qwen_trainer": qwen_trainer.exists(),
             "layout_model_primitive": False,
             "layout_trainer": False,
             "sketch_trainer": False,
-            "dpo_loss_source": _exists("training/src/krisna_training/polish/dpo_loss.py"),
-            "dpo_trainer": _exists("training/src/krisna_training/polish/train_dpo.py"),
-            "cfm_loss_source": _exists("training/src/krisna_training/polish/cfm_loss.py"),
-            "ablation_runner": _exists("training/src/krisna_training/polish/ablation_runner.py"),
+            "dpo_loss_source": _exists("training/src/krivex_training/polish/dpo_loss.py"),
+            "dpo_trainer": _exists("training/src/krivex_training/polish/train_dpo.py"),
+            "cfm_loss_source": _exists("training/src/krivex_training/polish/cfm_loss.py"),
+            "ablation_runner": _exists("training/src/krivex_training/polish/ablation_runner.py"),
         },
         "launchers": {
             "qwen_default_bash": _exists("scripts/training/train_polish_default_lora.sh"),

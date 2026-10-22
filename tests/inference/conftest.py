@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.orchestrator.design_state import DesignState
-from krisna_inference.orchestrator.model_registry import MockBackend, ModelSpec
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.orchestrator.design_state import DesignState
+from krivex_inference.orchestrator.model_registry import MockBackend, ModelSpec
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
 
 
 def fast_mock_factory(spec: ModelSpec) -> MockBackend:
@@ -42,7 +42,7 @@ def sketch_ready_state(store: DesignStateStore) -> DesignState:
 
 @pytest.fixture
 def finalized_state(store: DesignStateStore, sketch_ready_state: DesignState) -> DesignState:
-    from krisna_inference.orchestrator.design_state import SessionStage
+    from krivex_inference.orchestrator.design_state import SessionStage
 
     state = sketch_ready_state
     state.stage = SessionStage.FINALIZED

@@ -9,11 +9,11 @@ source .venv/bin/activate
 pip install --upgrade pip
 
 # Editable-installs both packages in the correct dependency order —
-# krisna_training depends on krisna_inference (shared CLIP utility, see
+# krivex_training depends on krivex_inference (shared CLIP utility, see
 # docs/architecture/DIRECTORY_LAYOUT.md), not the other way around, but a
 # single dev environment commonly wants both available together.
 pip install -e "./inference[dev]"
-pip install -e "./training[dev]" --no-deps   # --no-deps: krisna-inference already satisfied above
+pip install -e "./training[dev]" --no-deps   # --no-deps: krivex-inference already satisfied above
 
 echo -e "\033[1;32mEnvironment setup complete.\033[0m"
 echo -e "\033[1;33mActivate later with: source .venv/bin/activate\033[0m"

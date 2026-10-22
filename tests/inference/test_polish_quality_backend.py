@@ -4,10 +4,10 @@ import types
 import pytest
 from PIL import Image
 
-from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.backends.polish_backend_qwen import QWEN_IMAGE_21_REVISION
-from krisna_inference.backends.blob_store_singleton import get_blob_store
+from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.backends.polish_backend_qwen import QWEN_IMAGE_21_REVISION
+from krivex_inference.backends.blob_store_singleton import get_blob_store
 
 
 @pytest.mark.asyncio
@@ -186,7 +186,7 @@ def test_lora_manifest_verification(tmp_path):
 
 
 def test_flow_ode_scheduler_timesteps_and_guidance():
-    from krisna_inference.backends.polish_backend_qwen import FlowODEScheduler
+    from krivex_inference.backends.polish_backend_qwen import FlowODEScheduler
 
     sched = FlowODEScheduler(num_steps=10, strength=0.5, guidance_scale=4.0, guidance_schedule="cosine_decay")
     steps = sched.timesteps()
@@ -335,7 +335,7 @@ async def test_polish_full_donor_pasting_without_crop():
     center_pixel = out_img.getpixel((128, 128))
     assert center_pixel[0] == 255 and center_pixel[1] == 0 and center_pixel[2] == 0
 
-    from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+    from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
     verifier = LockPreservationVerifier()
     donor_map = {"red_box": donor}
     score = verifier.score(

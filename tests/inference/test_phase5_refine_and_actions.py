@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from krisna_inference.backends.planner_schema import (
+from krivex_inference.backends.planner_schema import (
     ActionType,
     AddComponentAction,
     DesignAction,
@@ -31,13 +31,13 @@ from krisna_inference.backends.planner_schema import (
     SetStyleAction,
     SetTextAction,
 )
-from krisna_inference.backends.polish_backend_qwen import FlowODEIntegrator
-from krisna_inference.orchestrator import flows
-from krisna_inference.orchestrator.constraint_merge import apply_constraint_updates
-from krisna_inference.orchestrator.design_state import DesignState, SessionStage
-from krisna_inference.orchestrator.store import DesignStateStore
-from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-from krisna_inference.verifiers.lock_preservation import LockPreservationVerifier
+from krivex_inference.backends.polish_backend_qwen import FlowODEIntegrator
+from krivex_inference.orchestrator import flows
+from krivex_inference.orchestrator.constraint_merge import apply_constraint_updates
+from krivex_inference.orchestrator.design_state import DesignState, SessionStage
+from krivex_inference.orchestrator.store import DesignStateStore
+from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+from krivex_inference.verifiers.lock_preservation import LockPreservationVerifier
 
 
 # ----------------------------------------------------------------------
@@ -149,7 +149,7 @@ async def test_iterative_refine_happy_path(
     sid = finalized_state.session_id
     prior_render = finalized_state.finalize_output.image_ref
 
-    from krisna_inference.orchestrator.design_state import CritiqueResult
+    from krivex_inference.orchestrator.design_state import CritiqueResult
     # Populate a dummy critique to verify it gets invalidated
     finalized_state.critique.requested = True
     finalized_state.critique.result = CritiqueResult(
@@ -234,8 +234,8 @@ async def test_iterative_refine_safety_gate_blocking(
     tmp_path,
 ):
     """Verify that failing the safety gate blocks the refinement and cleans up the blob."""
-    from krisna_inference.orchestrator.model_registry import Tier
-    import krisna_inference.backends.blob_store_singleton as blob_singleton
+    from krivex_inference.orchestrator.model_registry import Tier
+    import krivex_inference.backends.blob_store_singleton as blob_singleton
     monkeypatch.setenv("KRISNA_BLOB_ROOT", str(tmp_path / "blobs"))
     monkeypatch.setattr(blob_singleton, "_instance", None)
 
@@ -277,8 +277,8 @@ async def test_iterative_refine_safety_gate_blocking(
 
 def test_dual_layer_mask_conditioning_and_compositor():
     """Verify soft inpaint mask and bitwise invariance (0.00% pixel drift) on locked regions."""
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
     spec = ModelSpec(tier=Tier.POLISH_DEFAULT, name="Qwen-Image-2.1", vram_gb=16.0, quantization="bf16")
     backend = QwenImage21Backend(spec)

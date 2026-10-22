@@ -4,7 +4,7 @@ import pytest
 
 yaml = pytest.importorskip("yaml")
 
-from krisna_training.polish.qwen_trainer_contract import (
+from krivex_training.polish.qwen_trainer_contract import (
     CONDITIONING_CONTRACT,
     MODEL_ID,
     MODEL_REVISION,

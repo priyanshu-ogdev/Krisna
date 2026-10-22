@@ -13,7 +13,7 @@ python3 - "$CONDITION_DIR" "$TARGET_DIR" "$OUTPUT_DIR" "$CAPTIONS" <<'PYEOF'
 import json
 import sys
 from pathlib import Path
-from krisna_training.polish.prepare_dataset import prepare_image_pairs
+from krivex_training.polish.prepare_dataset import prepare_image_pairs
 
 condition_dir, target_dir, output_dir, captions_path = sys.argv[1:5]
 captions = json.loads(Path(captions_path).read_text()) if captions_path else {}

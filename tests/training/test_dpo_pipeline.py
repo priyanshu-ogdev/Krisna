@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_training.dpo.pair_builder import (
+from krivex_training.dpo.pair_builder import (
     aggregate_verifier_score,
     build_pair_from_candidates,
     rank_candidates,
 )
-from krisna_training.dpo.preference_store import PreferencePair, PreferenceStore
+from krivex_training.dpo.preference_store import PreferencePair, PreferenceStore
 
 
 @pytest.fixture
@@ -104,7 +104,7 @@ def test_build_pair_from_candidates_skips_when_fewer_than_two_scored(pref_store:
 
 
 def test_export_jsonl(pref_store: PreferenceStore, tmp_path):
-    from krisna_training.dpo.dpo_dataset_export import export_jsonl
+    from krivex_training.dpo.dpo_dataset_export import export_jsonl
 
     pref_store.add(PreferencePair(prompt="x", chosen_ref="a", rejected_ref="b", source="verifier_stack"))
     pref_store.add(PreferencePair(prompt="y", chosen_ref="c", rejected_ref="d", source="uicrit_seed"))
@@ -122,7 +122,7 @@ def test_export_jsonl(pref_store: PreferenceStore, tmp_path):
 
 
 def test_export_jsonl_filters_by_source(pref_store: PreferenceStore, tmp_path):
-    from krisna_training.dpo.dpo_dataset_export import export_jsonl
+    from krivex_training.dpo.dpo_dataset_export import export_jsonl
 
     pref_store.add(PreferencePair(prompt="x", chosen_ref="a", rejected_ref="b", source="verifier_stack"))
     pref_store.add(PreferencePair(prompt="y", chosen_ref="c", rejected_ref="d", source="uicrit_seed"))
@@ -138,7 +138,7 @@ def test_build_pair_from_candidates_raises_on_mismatched_prompt_used(pref_store:
     prompt_used field. A candidate reporting a DIFFERENT prompt_used
     than the pair's own `prompt` argument must raise, not silently write
     a pair with a wrong prompt for one of its two images."""
-    from krisna_training.dpo.pair_builder import MismatchedPromptError
+    from krivex_training.dpo.pair_builder import MismatchedPromptError
 
     candidates = [
         {"image_ref": "blob://a.png", "score": 0.9, "prompt_used": "dark dashboard"},

@@ -29,7 +29,7 @@ class TestConstraintStylePrompt:
     """_constraint_style_prompt() must always return a non-empty string."""
 
     def _fn(self):
-        from krisna_training.polish.dpo_dataset import _constraint_style_prompt
+        from krivex_training.polish.dpo_dataset import _constraint_style_prompt
         return _constraint_style_prompt
 
     def test_pair_with_style_attribute(self):
@@ -80,7 +80,7 @@ class TestAugmentationProbability(unittest.TestCase):
 
     def _make_mock_dataset(self):
         """Build a PreferencePairDataset with all I/O mocked out."""
-        from krisna_training.polish.dpo_dataset import (
+        from krivex_training.polish.dpo_dataset import (
             PreferencePairDataset,
             _CONSTRAINT_PROMPT_AUG_PROB,
         )
@@ -119,7 +119,7 @@ class TestAugmentationProbability(unittest.TestCase):
         """Over 500 calls, augmented fraction should be within ±8% of 30%."""
         ds, prob = self._make_mock_dataset()
 
-        from krisna_training.polish.dpo_dataset import _constraint_style_prompt
+        from krivex_training.polish.dpo_dataset import _constraint_style_prompt
 
         augmented = 0
         n = 500

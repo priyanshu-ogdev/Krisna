@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.orchestrator.design_state import CritiqueResult
-from krisna_inference.verifiers.critique_adapter import from_gemma_output, from_verifier_scores
+from krivex_inference.orchestrator.design_state import CritiqueResult
+from krivex_inference.verifiers.critique_adapter import from_gemma_output, from_verifier_scores
 
 
 def test_from_gemma_output_normalizes_full_payload():

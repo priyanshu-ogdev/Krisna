@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from krisna_inference.orchestrator.exceptions import InvalidTransitionError
-from krisna_inference.orchestrator.state_machine import ResidencyState, StateMachine, SwapTrigger
+from krivex_inference.orchestrator.exceptions import InvalidTransitionError
+from krivex_inference.orchestrator.state_machine import ResidencyState, StateMachine, SwapTrigger
 
 
 def test_initial_state_is_idle_resident():

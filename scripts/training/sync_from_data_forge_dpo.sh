@@ -9,9 +9,9 @@ source .venv/bin/activate
 
 python3 - "$DATA_FORGE_DATA_ROOT" "$PREF_DB" <<'PYEOF'
 import sys
-from krisna_training.dpo.preference_store import PreferenceStore
-from krisna_inference.backends.blob_store_singleton import get_blob_store
-from krisna_training.data_forge_bridge.sync_dpo_pairs import sync
+from krivex_training.dpo.preference_store import PreferenceStore
+from krivex_inference.backends.blob_store_singleton import get_blob_store
+from krivex_training.data_forge_bridge.sync_dpo_pairs import sync
 
 data_root, pref_db = sys.argv[1:3]
 store = PreferenceStore(db_path=pref_db)

@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from krisna_training.polish.prepare_dataset import count_prepared, load_captions, prepare
-from krisna_training.polish.dataset_prep import prepare as legacy_prepare
+from krivex_training.polish.prepare_dataset import count_prepared, load_captions, prepare
+from krivex_training.polish.dataset_prep import prepare as legacy_prepare
 
 
 def test_prepare_with_dict(tmp_path):

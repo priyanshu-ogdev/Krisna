@@ -47,7 +47,7 @@ Write-Host "[+] Ensuring pip, setuptools, and wheel are up to date..." -Foregrou
 & $PythonBin -m pip install --upgrade pip setuptools wheel
 
 # 3. Install packages in editable mode
-Write-Host "[+] Installing krisna-inference and krisna-training in editable mode..." -ForegroundColor Green
+Write-Host "[+] Installing krivex-inference and krivex-training in editable mode..." -ForegroundColor Green
 & $PythonBin -m pip install -e "$RepoRoot\inference"
 & $PythonBin -m pip install -e "$RepoRoot\training"
 

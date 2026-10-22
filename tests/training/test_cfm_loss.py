@@ -13,7 +13,7 @@ import pytest
 torch = pytest.importorskip("torch")
 from torch import nn
 
-from krisna_training.polish.cfm_loss import (
+from krivex_training.polish.cfm_loss import (
     CFMLossOutput,
     consistency_distillation_loss,
     consistency_flow_step,

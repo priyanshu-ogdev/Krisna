@@ -6,7 +6,7 @@
 #
 # Phases (run all by default, or pass specific ones as args, e.g.
 # ./setup.sh base sketch):
-#   base     - main .venv: krisna-inference[dev] + krisna-training[dev] +
+#   base     - main .venv: krivex-inference[dev] + krivex-training[dev] +
 #              krisna-data-forge (editable installs, CPU-only, no GPU
 #              backends yet). Always run this first.
 #   backends - adds the real inference backends (Planner/Sketch/Polish
@@ -22,7 +22,7 @@
 #              FastVisionModel pin), which directly conflicts with the
 #              "backends" extra's transformers@git+main install — the
 #              two cannot coexist in one environment. See
-#              inference/src/krisna_inference/backends/critic_worker.py's
+#              inference/src/krivex_inference/backends/critic_worker.py's
 #              module docstring and inference/pyproject.toml's comment
 #              on the "backends" extra for the full reasoning. Planner
 #              and Critic training are DEPRECATED under the final
@@ -69,7 +69,7 @@ for phase in "${PHASES[@]}"; do
             # data-forge/pyproject.toml) are intentionally NOT installed
             # here by default: they're large, mostly GPU/platform-specific,
             # and only needed to actually RUN the data pipeline, not to
-            # develop against krisna_training/krisna_inference. Install
+            # develop against krivex_training/krivex_inference. Install
             # them explicitly when you need to run data-forge for real:
             echo -e "\033[1;33m[base] To run the data pipeline for real: pip install -e \"./data-forge[dev]\" (or without [dev] for a leaner install) — see data-forge/pyproject.toml for the full dependency list; some entries are Linux-only (faiss-gpu).\033[0m"
             ;;

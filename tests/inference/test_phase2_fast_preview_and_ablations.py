@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 import numpy as np
 
-from krisna_inference.orchestrator.model_registry import (
+from krivex_inference.orchestrator.model_registry import (
     Tier,
     REGISTRY,
     LOW_VRAM_REGISTRY,
@@ -20,10 +20,10 @@ from krisna_inference.orchestrator.model_registry import (
     get_registry,
     ModelSpec,
 )
-from krisna_inference.backends.factory import real_backend_factory
-from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-from krisna_inference.orchestrator.service import app
-from krisna_training.polish.ablation_runner import (
+from krivex_inference.backends.factory import real_backend_factory
+from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+from krivex_inference.orchestrator.service import app
+from krivex_training.polish.ablation_runner import (
     load_ablation_config,
     evaluate_ablation_candidate,
     run_ablation,
@@ -154,11 +154,11 @@ def test_ablation_configs_and_runner(tmp_path):
 
 @pytest.mark.asyncio
 async def test_preview_output_tracking():
-    from krisna_inference.orchestrator.design_state import DesignState, PreviewOutput
-    from krisna_inference.orchestrator.flows import fast_preview
-    from krisna_inference.orchestrator.store import DesignStateStore
-    from krisna_inference.orchestrator.swap_orchestrator import SwapOrchestrator
-    from krisna_inference.orchestrator.vram_budget import VRAMLedger
+    from krivex_inference.orchestrator.design_state import DesignState, PreviewOutput
+    from krivex_inference.orchestrator.flows import fast_preview
+    from krivex_inference.orchestrator.store import DesignStateStore
+    from krivex_inference.orchestrator.swap_orchestrator import SwapOrchestrator
+    from krivex_inference.orchestrator.vram_budget import VRAMLedger
 
     state = DesignState()
     assert state.preview_output is None
@@ -205,8 +205,8 @@ async def test_preview_output_tracking():
 def test_locked_regions_corner_coordinates_support():
     from PIL import Image
     import numpy as np
-    from krisna_inference.backends.polish_backend_qwen import QwenImage21Backend
-    from krisna_inference.orchestrator.model_registry import ModelSpec, Tier
+    from krivex_inference.backends.polish_backend_qwen import QwenImage21Backend
+    from krivex_inference.orchestrator.model_registry import ModelSpec, Tier
 
     spec = ModelSpec(
         tier=Tier.POLISH_DEFAULT,
@@ -243,7 +243,7 @@ def test_locked_regions_corner_coordinates_support():
 
 
 def test_generate_ablation_summary_table(tmp_path):
-    from krisna_training.polish.ablation_runner import (
+    from krivex_training.polish.ablation_runner import (
         generate_ablation_summary,
         run_all_ablations,
     )
