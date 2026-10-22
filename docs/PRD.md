@@ -1,4 +1,4 @@
-# Krisna — Product Requirements Document
+# Krivex — Product Requirements Document
 
 **Status**: Final (no-RLHF-loop revision). This document is the
 canonical reference for every `PRD §X` citation appearing throughout
@@ -15,7 +15,7 @@ repository, not drafted independently and hoped to match).
 Turning a described intent ("a settings screen with a dark-mode
 toggle") into a finished, high-fidelity UI design normally takes a
 human designer multiple passes: rough layout, refinement, and review.
-Krisna automates this as a four-stage **agentic pipeline**, each stage
+Krivex automates this as a four-stage **agentic pipeline**, each stage
 handled by a purpose-fit model, coordinated by a single orchestrator
 that never keeps more than one large model resident on a single GPU at
 a time.
@@ -54,8 +54,8 @@ Two operating points, both real, both tested:
 
 | Mode | GPU envelope | System-RAM envelope | Selected via |
 |---|---|---|---|
-| Default | 16–24GB | not applicable (nothing offloads) | `KRISNA_LOW_VRAM_MODE` unset/`0` |
-| Low-VRAM / CPU-offload | 12–16GB | up to 48GB (Critic's offloaded weights are the dominant cost) | `KRISNA_LOW_VRAM_MODE=1` |
+| Default | 16–24GB | not applicable (nothing offloads) | `KRIVEX_LOW_VRAM_MODE` unset/`0` |
+| Low-VRAM / CPU-offload | 12–16GB | up to 48GB (Critic's offloaded weights are the dominant cost) | `KRIVEX_LOW_VRAM_MODE=1` |
 
 Admission against these envelopes is enforced by two independent
 ledgers (`VRAMLedger`, `RAMLedger` — see §7.2), against **declared**
@@ -87,7 +87,7 @@ The single source of truth for a session, persisted between turns
   `finalized` → `critiquing`, defined by `SessionStage`)
 - `conversation_history: list[{role, content, timestamp}]`
 - `constraints` (accumulated structured intent from the Planner)
-- `layout: LayoutDraft` (strongly-typed `krisna.layout.v1` draft:
+- `layout: LayoutDraft` (strongly-typed `krivex.layout.v1` draft:
   `layout_ref`, `wireframe_ref`, `segmentation_ref`, `mask_ref`, `revision`)
 - `finalize_output` (`image_ref`, `renderer_used`, `verifier_scores`,
   `prompt_used`, `evaluation_receipt`)
@@ -127,7 +127,7 @@ exceed ~10GB resident**, so that swapping in any single Polish/Critic
 tier still fits the smallest supported envelope (12GB, low-VRAM mode)
 with the baseline unloaded first (see §7.4's swap sequence — baseline
 is torn down *before* a swappable tier is admitted, not summed with
-it). Concretely: Planner (Q4_K_M GGUF, ~6.5GB) + Sketch (`krisna.layout.v1`,
+it). Concretely: Planner (Q4_K_M GGUF, ~6.5GB) + Sketch (`krivex.layout.v1`,
 0.0GB VRAM on CPU) = ~6.5GB, well under the 10GB ceiling with substantial margin.
 
 The flow itself: Sketch's `LayoutIR` DAG is converted via `render_dual_stream_sketch()`
@@ -153,9 +153,9 @@ In Phase 5, the iterative polish loop adds an explicit FlowEdit 8-step numerical
 - Spatial coordinate clamping (`_normalize_and_clamp_bbox`) ensures $x + w \le 1.0, y + h \le 1.0$ at all times.
 - Locked regions (`LOCK_REGION`) guarantee exact 0.00% pixel drift preservation via dual-layer inpainting masks and hard composite protection.
 
-### 5.5 Research Trajectory & Trace Recording Protocol (`krisna.research.trace.v1`)
+### 5.5 Research Trajectory & Trace Recording Protocol (`krivex.research.trace.v1`)
 
-For offline research paper analysis, ablation studies, and DPO alignment dataset construction, Krisna records full deliberation traces:
+For offline research paper analysis, ablation studies, and DPO alignment dataset construction, Krivex records full deliberation traces:
 - `RuntimeEnvironmentInfo`: Hardware specs, CUDA/PyTorch/Diffusers versions, GPU memory ledger status, active model weights.
 - `TurnTraceRecord`: Per-turn record tracking user prompt, assistant response, planner chain-of-thought (`reasoning_note`), discrete VLA actions, SHA-256 state digest, wireframe and image blob pointers, and multi-axis verifier score receipts.
 - `SessionResearchTrajectory`: Session-level aggregate available via `GET /session/{session_id}/research-trace` and exportable to JSON/JSONL (`export_trajectory_jsonl()`) for direct consumption by empirical evaluation harnesses.
@@ -165,7 +165,7 @@ For offline research paper analysis, ablation studies, and DPO alignment dataset
 To close the "Raster Image-to-Layout" gap and enable autonomous agentic workflows:
 - **Unified Plan-and-Sketch Layer (`UnifiedPlanSketchLayer`)**: Synchronizes the Sketch tier directly with the 9B model (`Qwen3.5-9B` with `mmproj` dynamic-resolution Vision Transformer) serving as the multimodal perception and deliberation module. The Flow-matching Polish DiT (Qwen-Image-2.1) operates strictly on continuous latent pixels and cannot emit discrete JSON coordinates; the 9B VLM module handles visual grounding, spatial perception, and layout decompilation.
 - **Autonomous Direct-to-Polish Execution (`POST /session/{session_id}/execute`)**: Enables a single-call autonomous cycle:
-  1. *Simultaneous Plan + Sketch*: Runs Qwen3.5-9B deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding) and `krisna.layout.v1` layout compilation simultaneously.
+  1. *Simultaneous Plan + Sketch*: Runs Qwen3.5-9B deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding) and `krivex.layout.v1` layout compilation simultaneously.
   2. *Direct Polish Progression*: Hands off wireframe, SPADE segmentation, and synthesized prompt directly to Qwen-Image-2.1 without intermediate user intervention.
   3. *Verifier Stack Evaluation*: Scores aesthetic quality, OCR readability, layout IoU, seam continuity, identity preservation, and enforces the safety gate.
   4. *Closed-Loop Post-Render Review & Further Planning*: Passes the verifier receipt and render metadata back into Qwen3.5-9B, formulating autonomous self-critique and next-step planning directives (`[Post-Render Deliberation]`) appended to conversation history. Supported via `POST /session/{session_id}/execute` or `auto_proceed: true` on `POST /session/{session_id}/message`.
@@ -192,7 +192,7 @@ was abandoned in favor of the following, final split:
 | Tier | Model | Trained? | Why |
 |---|---|---|---|
 | **Planner** | Qwen3.5-9B GGUF (Unsloth Dynamic Quantization) | **No — frozen** | Image-grounded structured planning with optional UICrit retrieval; no fine-tuning or judge-labeled data |
-| **Sketch / Structure** | Deterministic `krisna.layout.v1` Layout IR and wireframe renderer | **No** | Makes geometry, hierarchy, literals, and lock regions auditable with 0 MB VRAM and 0% overlap guarantee |
+| **Sketch / Structure** | Deterministic `krivex.layout.v1` Layout IR and wireframe renderer | **No** | Makes geometry, hierarchy, literals, and lock regions auditable with 0 MB VRAM and 0% overlap guarantee |
 | **Polish (Default)** | Qwen-Image-2.1 | **Base frozen; LoRA gated and trainable** | Supervised wireframe→screenshot adapter only after a real pair manifest and native trainer smoke test; preference alignment is optional later |
 | **Polish (Quality)** | Qwen-Image-2.1 without adapter | **Frozen** | Same-model no-adapter reference/ablation; must not inherit the Default LoRA through a global fallback |
 | **Critic / Review** | Deterministic verifiers plus optional frozen VLM evaluation | **No** | Review is not a training-label source; image-grounded Planner review must be proven before claiming visual self-review |
@@ -210,7 +210,7 @@ the live inference path, rather than silently orphaned).
 
 ### 6.1 Structure and Layout Strategy (Sketch Tier)
 
-The production baseline uses an open-domain Universal Scene DAG (`krisna.layout.v1`) with our Zero-VRAM Simplex collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024). It supports infinite design scenarios (UI mockups, marketing posters, editorial publishing, e-commerce showcases, infographics, diagrams, and freeform sketches) via polymorphic node types (`NODE_TYPES`), a 16-class universal semantic palette (`UNIVERSAL_SEMANTIC_PALETTE`, NVIDIA SPADE), automated turn-to-turn differential masking (`compute_differential_mask`, FlowEdit ICCV 2025), and 2D spatial quad-tree prompt indexing (Hybrid Layout Control, ICCV 2025).
+The production baseline uses an open-domain Universal Scene DAG (`krivex.layout.v1`) with our Zero-VRAM Simplex collision solver (`_resolve_flex_layout`) preserving locked region immutability and rendering high-entropy 3-channel RGB wireframes with anti-aliased TrueType typography (TextDiffuser-2 ECCV 2024; AnyText ICLR 2024). It supports infinite design scenarios (UI mockups, marketing posters, editorial publishing, e-commerce showcases, infographics, diagrams, and freeform sketches) via polymorphic node types (`NODE_TYPES`), a 16-class universal semantic palette (`UNIVERSAL_SEMANTIC_PALETTE`, NVIDIA SPADE), automated turn-to-turn differential masking (`compute_differential_mask`, FlowEdit ICCV 2025), and 2D spatial quad-tree prompt indexing (Hybrid Layout Control, ICCV 2025).
 
 The historical experimental continuous flow matching ablation (`LayoutFlow`, Guerreiro et al., ECCV 2024) and discrete MaskGIT token routes have been retired and removed in favor of the single production-locked neuro-symbolic engine.
 
@@ -250,7 +250,7 @@ target this table exists to satisfy (§5.3's Tier A rule). Every figure
 above is arithmetic-derived from real published model specs and
 measured quantization behavior, not yet confirmed by a live hardware
 run in this environment — flagged plainly rather than presented as
-measured (see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
+measured (see [Volume III: Systems Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 
 ### 7.4 Swap Orchestrator state machine
 
@@ -263,7 +263,7 @@ always resolving back to `IDLE_RESIDENT`. The baseline is fully
 unloaded *before* a swappable tier is admitted — admission is checked
 against the candidate tier's declared size alone, never baseline-plus-
 candidate summed (a distinction documented in
-[Volume I: Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
+[Volume I: Architecture Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
 
 ### 7.5 Serving strategy: plain `transformers`/`diffusers`, not a dedicated inference server
 
@@ -317,7 +317,7 @@ The escalation step's position (*before* recaption/structure, not after)
 is load-bearing: a record Tier-2 rescues from
 "borderline" to "safe" must still be reachable by the safety-tier
 filters that gate every later stage, or it's silently lost — a real bug
-this review found and fixed (see [Volume II: DataForge Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)).
+this review found and fixed (see [Volume II: DataForge Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)).
 
 ### 8.5 Preference pairs: a separate stream
 
@@ -329,7 +329,7 @@ sync_dpo_pairs.py` resolves them through the shared BlobStore into a
 `PreferenceStore`; `train_dpo.py` live-encodes through Z-Image-Turbo's
 own VAE at train time. (`s08_5_dpo_encoding.py`, an earlier attempt at
 pre-computing these latents, is disabled by default — confirmed to have
-zero real consumers; see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
+zero real consumers; see [Volume III: Systems Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 
 ### 8.6 Synthetic captions, kept from mismatching real usage
 
@@ -345,7 +345,7 @@ types at inference time (Ho & Salimans, 2022; see §12).
 ## 9. Known, disclosed gaps and fixes (a live document, not a static one)
 
 This PRD is written to match a system whose own review process
-([Volumes I–III](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md), 74 phases of rigorous verification) has repeatedly found
+([Volumes I–III](file:///d:/Krivex/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md), 74 phases of rigorous verification) has repeatedly found
 real bugs by tracing actual data paths rather than trusting
 documentation or prior claims. Two are structural enough to belong in
 this document rather than only the review log:
@@ -354,10 +354,10 @@ this document rather than only the review log:
   exploratory MaskGIT 2D VQGAN codebook token pipeline was completely retired.
   In production, the Sketch Tier generates deterministic `DualStreamSketch`
   artifacts (`wireframe_ref`, `segmentation_ref`, `mask_ref`) directly from `LayoutIR`,
-  completely eliminating the brittle VQGAN token decoding step and its crash vectors ([Final System Design](file:///d:/Krisna/docs/FINAL_SYSTEM_DESIGN.md)).
+  completely eliminating the brittle VQGAN token decoding step and its crash vectors ([Final System Design](file:///d:/Krivex/docs/FINAL_SYSTEM_DESIGN.md)).
 - **The safety gate**: `VerifierStack.safety_gate()` must run and must
   be able to block a Finalize result — it existed as a method for a
-  period without ever being called anywhere ([Volume I: Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
+  period without ever being called anywhere ([Volume I: Architecture Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)).
 
 ## 10. Success metrics (qualitative — no live model to benchmark in this environment)
 
@@ -407,7 +407,7 @@ this document rather than only the review log:
 Primary sources this PRD and the underlying implementation are built
 on — see `docs/architecture/RESEARCH_AND_CITATIONS.md` for the full,
 one-hundred-plus-line version with per-decision reasoning, and
-[citations.md](file:///d:/Krisna/docs/citations.md) for the complete list
+[citations.md](file:///d:/Krivex/docs/citations.md) for the complete list
 including every citation independently re-verified during this
 project's review process.
 

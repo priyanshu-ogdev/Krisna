@@ -1,6 +1,6 @@
 # Data-Forge: Academic Literature Survey & Prior Research Foundations
 
-**Canonical Scope**: Comprehensive academic literature survey and theoretical foundation for Krisna's Data-Forge multimodal data curation pipeline. This document provides deep academic analysis, methodology evaluation, and formal intellectual attribution to all prior research works that inform the ingestion, filtration, synthetic augmentation, and structural conditioning of Krisna's calibrated multimodal training portfolio (~400,000 pairs / ~550 GB).
+**Canonical Scope**: Comprehensive academic literature survey and theoretical foundation for Krivex's Data-Forge multimodal data curation pipeline. This document provides deep academic analysis, methodology evaluation, and formal intellectual attribution to all prior research works that inform the ingestion, filtration, synthetic augmentation, and structural conditioning of Krivex's calibrated multimodal training portfolio (~400,000 pairs / ~550 GB).
 
 ---
 
@@ -134,7 +134,7 @@ Standard diffusion models treat images as flattened, opaque RGB matrices ($H \ti
 
 ### 5.1 Theoretical Problem Formulation & Literature SOTA Alignment
 In modern web applications, SaaS analytics dashboards, and executive slide decks, information is communicated via structured **data visualizations, KPI widgets, flowcharts, infographics, and 16:9 presentation slides**.
-As demonstrated in our forensic audit ([Volume II: Data-Forge Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)), leading foundation models (Qwen2.5-VL, Florence-2, LLaVA-OneVision) cap dense document layout at **$6.5\% - 8.5\%$**, while dedicating **$12\% - 18\%$** to charts, diagrams, and infographics.
+As demonstrated in our forensic audit ([Volume II: Data-Forge Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)), leading foundation models (Qwen2.5-VL, Florence-2, LLaVA-OneVision) cap dense document layout at **$6.5\% - 8.5\%$**, while dedicating **$12\% - 18\%$** to charts, diagrams, and infographics.
 
 ### 5.2 Foundational Prior Research & Academic Credits
 

@@ -39,7 +39,7 @@ Transformers for High-Resolution Image Synthesis* show the value of rectified
 flow paths, resolution-aware noise-scale design, and bidirectional text/image
 token interaction in a transformer generator. This supports using the native
 Qwen scheduler and pipeline rather than implementing a second ODE solver in
-Krisna.
+Krivex.
 
 **Upgrade:** the repository no longer reports its compatibility Euler/RK2
 helper as the real Qwen solver. Real receipts record the loaded pipeline's
@@ -52,7 +52,7 @@ image editing without per-example optimization. ControlNet (ICCV 2023 Open
 Access) establishes a complementary pattern: preserve a strong generator and
 learn an explicit spatial conditioning path.
 
-**Upgrade:** Krisna keeps the deterministic wireframe as the condition and
+**Upgrade:** Krivex keeps the deterministic wireframe as the condition and
 freezes the Qwen base. The first experiment trains only a LoRA. A future
 ControlNet-like or mask-aware branch is a separate ablation, not an implicit
 change to the primary trainer.

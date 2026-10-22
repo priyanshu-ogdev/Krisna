@@ -18,7 +18,7 @@ training run.
 | Component | Current status |
 |---|---|
 | Planner | Frozen Qwen3.5-9B GGUF/RAG path; no active Planner LoRA training |
-| Structure | Deterministic `krisna.layout.v1` baseline; no complete learned Sketch trainer in this checkout |
+| Structure | Deterministic `krivex.layout.v1` baseline; no complete learned Sketch trainer in this checkout |
 | Polish Default | Intended Qwen-Image-2.1 supervised LoRA; pair preparation exists, external trainer/API still requires validation |
 | Polish Quality | Frozen Qwen-Image-2.1 comparison path |
 | DPO | Deferred historical path; not part of the active launcher |
@@ -43,5 +43,5 @@ dependencies, download weights, modify data, or start training.
 - **Measured** means a real run produced hardware and evaluation evidence.
 
 The research papers cited in this section are precedents for specific design
-choices only. They do not establish that Krisna has reproduced their scores or
+choices only. They do not establish that Krivex has reproduced their scores or
 that an external trainer accepts the repository's current flags.

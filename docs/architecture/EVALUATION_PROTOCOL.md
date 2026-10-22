@@ -2,7 +2,7 @@
 
 Status: implementation-aligned metric contract, 2026-10-14
 
-Krisna now emits a `krisna.eval.v1` receipt for verifier-backed finalization.
+Krivex now emits a `krivex.eval.v1` receipt for verifier-backed finalization.
 The receipt combines several dimensions, reports missing dimensions explicitly,
 and never turns a paper-reported correlation into an uncalibrated production
 pass/fail claim.
@@ -17,7 +17,7 @@ pass/fail claim.
 | Layout adherence | Contour-detected region IoU against Layout IR and lock regions | IoU is a structural metric, not an aesthetic metric; future semantic detector can replace contours | ≥ 0.70 |
 | Aesthetic quality | Existing aesthetic verifier | Must be calibrated against held-out human ratings; no universal threshold is assumed | ≥ 0.70 |
 | Handoff consistency | CLIP image-image similarity | Deep perceptual features outperform shallow pixel metrics in human similarity judgments (LPIPS, IEEE/CVF CVPR 2018, [DOI:10.1109/CVPR.2018.00068](https://doi.org/10.1109/CVPR.2018.00068)) | ≥ 0.65 |
-| Lock preservation | Normalized mean absolute error complement inside protected regions | Exact protected-pixel requirement is a Krisna product constraint | ≥ 0.95 |
+| Lock preservation | Normalized mean absolute error complement inside protected regions | Exact protected-pixel requirement is a Krivex product constraint | ≥ 0.95 |
 
 ## Aggregation
 
@@ -30,7 +30,7 @@ than an arithmetic mean. A receipt is:
 - `incomplete` when any required metric is unavailable;
 - safety remains a separate hard gate and is never averaged away.
 
-The current thresholds are **Krisna project targets**, not claimed universal
+The current thresholds are **Krivex project targets**, not claimed universal
 standards. They must be calibrated on a fixed source-disjoint validation set
 with bootstrap confidence intervals before being used as paper results.
 

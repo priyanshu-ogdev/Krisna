@@ -1,6 +1,6 @@
 # Data-Forge: Architecture Specification & Research Methodology
 
-**Canonical Scope**: Definitive technical architecture, mathematical methodology, and systems specification for Krisna's Data-Forge multimodal data curation engine. This document establishes the formal research paper methodology for data ingestion, deduplication, privacy scrubbing, structural extraction, continuous flow-matching conditioning, and model export across Krisna's calibrated portfolio (~400,000 pairs / ~550 GB).
+**Canonical Scope**: Definitive technical architecture, mathematical methodology, and systems specification for Krivex's Data-Forge multimodal data curation engine. This document establishes the formal research paper methodology for data ingestion, deduplication, privacy scrubbing, structural extraction, continuous flow-matching conditioning, and model export across Krivex's calibrated portfolio (~400,000 pairs / ~550 GB).
 
 ---
 
@@ -166,7 +166,7 @@ To eliminate identical templates and overlapping corporate websites across diffe
 
 ```
 ================================================================================
-KRISNA DATAFORGE MASTER STORAGE RECONCILIATION
+KRIVEX DATAFORGE MASTER STORAGE RECONCILIATION
 ================================================================================
 Hardware Envelope:               Single Workstation / 1.0 TB NVMe Scratch Disk
 Approved Production Cap:         356,721 paired training and evaluation examples

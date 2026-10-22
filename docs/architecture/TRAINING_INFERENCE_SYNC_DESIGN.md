@@ -10,13 +10,13 @@
 > statement in this document that calls a pair corpus, memory number, or
 > result “verified” is conditional on the receipts required there.
 
-This document details the verified synchronization contracts between **Krisna's Training Pipeline** and **Inference Orchestration Subsystem**, aligned with PRD §5.1 (Design State), §5.2 (Critique Adapter), §5.3 (Sequence Flows), §6.1 (Model Tiers), and §7.4 (Residency State Machine).
+This document details the verified synchronization contracts between **Krivex's Training Pipeline** and **Inference Orchestration Subsystem**, aligned with PRD §5.1 (Design State), §5.2 (Critique Adapter), §5.3 (Sequence Flows), §6.1 (Model Tiers), and §7.4 (Residency State Machine).
 
 ---
 
 ## 1. Model Tier Synchronization & Weight Contracts (PRD §6.1)
 
-Every tier in Krisna follows an explicit training-to-serving contract. Precision, checkpoint serialization, and vocabulary geometries match by construction:
+Every tier in Krivex follows an explicit training-to-serving contract. Precision, checkpoint serialization, and vocabulary geometries match by construction:
 
 ```
 [Training Pipeline]                                           [Inference Subsystem]
@@ -29,8 +29,8 @@ Resident Self-Critique ───────────(review=True mode)──
 
 | Tier | PRD Model | Training Status | Weight & Serialization Contract | Inference Backend |
 |---|---|---|---|---|
-| **Planner** | Qwen3.5-9B (Fast: 4B) | **Frozen** (RAG-only) | Grounded via UICrit sparse-dense RAG retrieval over human critique corpus. Grammar-constrained VLA action decoding (`krisna.delta.v1`). | `PlannerBackendLlama`: llama.cpp GGUF, 4-bit (6.5GB VRAM), always-resident. |
-| **Layout IR (Sketch)** | Krisna Structured Layout IR | **Deterministic / Dual-Stream** | Pure JSON geometry schema (`krisna.layout.v1`). Dual-stream rasterization: TrueType vector typography + NVIDIA SPADE semantic segmentation (Park et al., CVPR 2019 Oral) + FlowEdit differential mask $M_\Delta$ (Kulikov et al., ICCV 2025). | `LayoutBackend`: Deterministic renderer (0.2GB VRAM, <5ms CPU execution), always-resident. |
+| **Planner** | Qwen3.5-9B (Fast: 4B) | **Frozen** (RAG-only) | Grounded via UICrit sparse-dense RAG retrieval over human critique corpus. Grammar-constrained VLA action decoding (`krivex.delta.v1`). | `PlannerBackendLlama`: llama.cpp GGUF, 4-bit (6.5GB VRAM), always-resident. |
+| **Layout IR (Sketch)** | Krivex Structured Layout IR | **Deterministic / Dual-Stream** | Pure JSON geometry schema (`krivex.layout.v1`). Dual-stream rasterization: TrueType vector typography + NVIDIA SPADE semantic segmentation (Park et al., CVPR 2019 Oral) + FlowEdit differential mask $M_\Delta$ (Kulikov et al., ICCV 2025). | `LayoutBackend`: Deterministic renderer (0.2GB VRAM, <5ms CPU execution), always-resident. |
 | **Polish Default** | Qwen-Image-2.1 | **Trained (DPO / Flow-Matching LoRA)** | Base model: `Qwen/Qwen-Image-2.1` (7B MMDiT). Fine-tuned via flow-matching DPO (Kim et al., NeurIPS 2024; Croitoru et al., CVPR 2025). Multi-stream visual conditioning: `[wireframe, segmentation, lock_donor]` + differential inpaint mask (FlowEdit). | `QwenImage21Backend`: Diffusers pipeline with LoRA adapter (12.0GB VRAM / 8.0GB low-VRAM CPU-offload). |
 | **Polish Quality** | Qwen-Image-2.1 | **Frozen / High-step** | 40-step high-fidelity flow sampling with dynamic CFG and ConsisID multi-frequency exact region locking (Yuan et al., CVPR 2025; 0.00% facial drift). | `QwenImage21Backend`: 16.0GB VRAM / 10.0GB low-VRAM CPU-offload (fallback: Default). |
 | **Critic** | **RETIRED** (was Gemma 4 31B) | **REMOVED** | Subprocess Gemma-4 eliminated due to 18GB VRAM footprint and 45s cold-load latency. | **Replaced by Resident Planner Review** (`review=True` mode): 0GB added VRAM, 0s swap latency. |
@@ -115,11 +115,11 @@ sequenceDiagram
 1. **Multi-Turn Context Forwarding**:
    - `flows.conversational_turn` snapshots `conversation_history` before appending the current turn, forwarding prior turns to `orchestrator.run_conversational_turn`.
    - `PlannerBackendLlama` injects up to the last 6 turns into Qwen's chat template (`role="user"` and `role="assistant"`).
-   - `cli.py` (`krisna-session`) also accumulates turns in loop execution.
+   - `cli.py` (`krivex-session`) also accumulates turns in loop execution.
 
 2. **Planner JSON Delta Constraint Merging**:
-   - Planner produces a trailing JSON object conforming to `krisna.delta.v1`:
-     `{"schema_version": "krisna.delta.v1", "reply_text": "...", "design_state_delta": {"constraint_updates": {...}}, "retrieved_critique_ids": [...]}`
+   - Planner produces a trailing JSON object conforming to `krivex.delta.v1`:
+     `{"schema_version": "krivex.delta.v1", "reply_text": "...", "design_state_delta": {"constraint_updates": {...}}, "retrieved_critique_ids": [...]}`
    - `flows.conversational_turn` parses this delta and directly updates `state.constraints.style`, `state.constraints.palette`, `state.constraints.layout_hints`, and `state.constraints.locked_regions`.
 
 3. **Resident Review Feedback Loop Closure**:
@@ -174,4 +174,4 @@ Baseline residency maintains **Planner (Q4_K_M: 6.5GB)** + **Layout IR (0.2GB)**
 - **Conversational Turn**: Zero swaps. Always-resident high throughput.
 - **Review / Critique Pass**: **Zero swaps, 0GB added memory**. Runs directly on resident Planner (`review=True`) with zero cold-load latency (eliminates old 45s Gemma swap).
 - **Finalize**: Planner + Layout IR temporarily unloaded; Polish tier loaded (`POLISH_DEFAULT` 8–12GB / `POLISH_QUALITY` 10–16GB). Output generated, verifiers scored, baseline restored.
-- **Low-VRAM Envelope & Sequential Swapping**: On a 12GB consumer GPU, Planner (5.5–6GB) and Polish (5.5–6GB NF4 with CPU offload) cannot reside concurrently. Krisna's `SwapOrchestrator` performs **sequential model swapping** via `enable_model_cpu_offload()` and host RAM staging ($\ge 32\text{GB}$ host RAM recommended), trading PCI-e swap latency for single-GPU 12GB feasibility.
+- **Low-VRAM Envelope & Sequential Swapping**: On a 12GB consumer GPU, Planner (5.5–6GB) and Polish (5.5–6GB NF4 with CPU offload) cannot reside concurrently. Krivex's `SwapOrchestrator` performs **sequential model swapping** via `enable_model_cpu_offload()` and host RAM staging ($\ge 32\text{GB}$ host RAM recommended), trading PCI-e swap latency for single-GPU 12GB feasibility.

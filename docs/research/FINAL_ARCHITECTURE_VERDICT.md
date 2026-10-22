@@ -1,4 +1,4 @@
-# Krisna Final Training-Pipeline Audit and Architecture Verdict
+# Krivex Final Training-Pipeline Audit and Architecture Verdict
 
 **Audit date:** 2026-10-13
 **Scope:** repository implementation, training launchers/configuration, data contracts, model-selection proposal, planner/polish synchronization, and research-paper validity.
@@ -21,7 +21,7 @@ This document is the final decision record. It supersedes unqualified model-stac
 Qwen3.5-9B (frozen Planner; image-grounded review contract)
         │ image + text + Layout IR / verifier facts
         ▼
-krisna.delta.v1  ──► deterministic Layout IR / wireframe
+krivex.delta.v1  ──► deterministic Layout IR / wireframe
         │
         ▼
 Qwen-Image-2.1 (Polish Default: base frozen, LoRA trained only after gate)
@@ -77,7 +77,7 @@ The official Hugging Face card for `Qwen/Qwen-Image-2.1` currently labels it **`
 
 ### 3.1 Polish training: partial, not end-to-end validated
 
-The local code implements strict filename-based pair preparation in `training/src/krisna_training/polish/prepare_dataset.py`. It writes `image`, `condition_image`, and `caption` metadata and rejects missing target/condition matches. That is useful and should be retained.
+The local code implements strict filename-based pair preparation in `training/src/krivex_training/polish/prepare_dataset.py`. It writes `image`, `condition_image`, and `caption` metadata and rejects missing target/condition matches. That is useful and should be retained.
 
 The launcher `scripts/training/train_polish_default_lora.sh` then constructs:
 
@@ -159,7 +159,7 @@ The Planner receives:
 - verifier facts from the previous render;
 - optional UICrit retrieval results, marked as retrieval context rather than labels.
 
-It returns a grammar-constrained `krisna.delta.v1` object containing:
+It returns a grammar-constrained `krivex.delta.v1` object containing:
 
 - exact user-intent changes;
 - additions/removals/updates to Layout IR nodes;
@@ -293,7 +293,7 @@ The deterministic Layout IR baseline is a strength of the system, not a deficien
 
 ### Public VLM/UI reporting
 
-Qwen2.5-VL's published report provides a useful model capability reference, including OCR, spatial localization, and agent benchmarks such as ScreenSpot. Those are **Planner capability baselines**, not end-to-end UI-polish scores. Report them separately from Krisna's task-specific evaluation.
+Qwen2.5-VL's published report provides a useful model capability reference, including OCR, spatial localization, and agent benchmarks such as ScreenSpot. Those are **Planner capability baselines**, not end-to-end UI-polish scores. Report them separately from Krivex's task-specific evaluation.
 
 Do not use:
 
@@ -301,7 +301,7 @@ Do not use:
 - CLIP directional alignment as proof of exact instruction following;
 - a VLM judge as the only quality metric;
 - a benchmark score without split, prompt, seed, evaluator version, and sample count;
-- a model's public benchmark score as a prediction of Krisna's end-to-end score.
+- a model's public benchmark score as a prediction of Krivex's end-to-end score.
 
 ### Required ablations
 
@@ -325,7 +325,7 @@ Do not use:
 | “Planner visually reviews the wireframe today” | **Implemented contract; runtime pending** | The call now attaches a validated image payload, but target-GPU GGUF/mmproj execution is not yet measured. |
 | “Locked region MSE is guaranteed zero” | **False for current code** | Gaussian feathering changes edge pixels. |
 | “DPO is ready for the Qwen polish model” | **Not validated** | Current DPO launcher/source path is incomplete; flow objective is model-specific. |
-| “HART is the necessary Sketch replacement” | **Unsupported for this project** | HART is a pixel-generation architecture; Krisna's main geometry path is deterministic Layout IR. |
+| “HART is the necessary Sketch replacement” | **Unsupported for this project** | HART is a pixel-generation architecture; Krivex's main geometry path is deterministic Layout IR. |
 | “FLUX.2 is automatically better” | **Unsupported** | Any replacement needs matched UI data, resolution, conditioning, license, and task-specific evaluation. |
 | “Current paper table proves superiority” | **Rejected** | No run manifest, artifacts, split, seeds, confidence intervals, or independent reproduction is attached. |
 
@@ -353,7 +353,7 @@ These are the sources that support the decision, not claims that a future experi
 
 1. **Qwen Team, `Qwen/Qwen2.5-VL-7B-Instruct` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct). Supports the controlled multimodal Planner baseline and image-message input.
 2. **Qwen Team, `Qwen/Qwen2.5-VL-7B-Instruct` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct). Supports the concrete checkpoint, documented Transformers usage, image message format, and published model-card evaluation context.
-3. **Qwen Team, `Qwen/Qwen3.5-9B` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen3.5-9B). Supports the native vision-language architecture, image-text-to-text contract, 9B parameter scale, 262K context, and vLLM/SGLang serving guidance. It does not by itself prove GGUF/mmproj compatibility or Krisna task quality.
+3. **Qwen Team, `Qwen/Qwen3.5-9B` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen3.5-9B). Supports the native vision-language architecture, image-text-to-text contract, 9B parameter scale, 262K context, and vLLM/SGLang serving guidance. It does not by itself prove GGUF/mmproj compatibility or Krivex task quality.
 4. **Qwen Team, `Qwen/Qwen-Image-2.1` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen-Image-2.1). Supports the 7B visual-generation component, 32 single-stream DiT layers, native `QwenImage21Pipeline`, image editing, image conditioning, supported resolutions, CPU offload example, and Qwen Research License Agreement. It does not provide a validated DreamBooth-LoRA trainer for this repository.
 5. **Qwen Team, `Qwen/Qwen-Image-2.1` official model card and blog.** [Model card](https://huggingface.co/Qwen/Qwen-Image-2.1), [official blog](https://qwen.ai/blog?id=qwen-image-2.1). Supports the native pipeline, image-conditioning contract, supported resolutions, and license.
 6. **Qwen Team, `Qwen/Qwen-Image-Edit-2511` model card.** [Hugging Face](https://huggingface.co/Qwen/Qwen-Image-Edit-2511). Supports the separate 20B image-editing comparison and Apache 2.0 license; it must not be conflated with Qwen-Image-2.1.

@@ -49,7 +49,7 @@ Before any training run:
 The existing strict filename pair helper is:
 
 ```text
-training/src/krisna_training/polish/prepare_dataset.py
+training/src/krivex_training/polish/prepare_dataset.py
 ```
 
 It is a format bridge, not proof that a real corpus exists.

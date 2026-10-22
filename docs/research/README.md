@@ -1,6 +1,6 @@
-# Krisna: Research & Formal Specifications Index
+# Krivex: Research & Formal Specifications Index
 
-This directory holds the research records, architectural audits, and workflow designs guiding Krisna's development.
+This directory holds the research records, architectural audits, and workflow designs guiding Krivex's development.
 
 > **Start with the final audit:** [`FINAL_ARCHITECTURE_VERDICT.md`](FINAL_ARCHITECTURE_VERDICT.md)
 > is the binding model-selection, train/freeze, negative-finding, evaluation,
@@ -11,7 +11,7 @@ This directory holds the research records, architectural audits, and workflow de
 ## Core Documents
 
 1. **[Formal Research Paper Specification](../RESEARCH_PAPER.md)**:
-   - *Title*: "Krisna: Bounded Multi-Turn Agentic UI Design via Structured Layout IR and Unified Diffusion Rendering"
+   - *Title*: "Krivex: Bounded Multi-Turn Agentic UI Design via Structured Layout IR and Unified Diffusion Rendering"
    - Pre-registration/specification with historical result placeholders clearly marked as unvalidated.
 
 2. **[Final Architecture Verdict](FINAL_ARCHITECTURE_VERDICT.md)**:

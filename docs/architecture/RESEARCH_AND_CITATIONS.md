@@ -179,7 +179,7 @@ via DPO/LoRA. **Initially not wired in**: ships as a single 2.26GB
 `data.csv`, not parquet — doesn't fit either existing preference-pair
 fetch shape, and its exact column names weren't independently confirmed
 against the live file at the time. **Since integrated**
-(see [Volume I: System Architecture Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)): the live schema was
+(see [Volume I: System Architecture Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)): the live schema was
 confirmed directly (vote-count columns, not a fixed label; a
 non-standard base64+bytes-repr image encoding — neither matched what was
 initially assumed), a dedicated fetch adapter was written for that exact
@@ -341,7 +341,7 @@ number).
 
 ## 4.5 Diffusion-DPO for a flow-matching model — closing a previously-open gap
 
-**The gap, as it stood**: `training/src/krisna_training/dpo/` built and
+**The gap, as it stood**: `training/src/krivex_training/dpo/` built and
 exported real preference-pair data (§2's human-labeled sources), but
 nothing consumed it — there was no trainer.
 
@@ -360,7 +360,7 @@ rectified flows, replacing epsilon-prediction terms in Wallace et al.'s (IEEE/CV
 objective with velocity-prediction squared-error terms. Furthermore, Wallace et al. and
 Kim et al. document the known manifold-drift failure mode when optimizing preference alignment
 in isolation, addressing it with anchor regularization on the preferred trajectory —
-implemented in `training/src/krisna_training/polish/dpo_loss.py` (`fm_anchor_weight`).
+implemented in `training/src/krivex_training/polish/dpo_loss.py` (`fm_anchor_weight`).
 
 **What was verified vs. what needs a real GPU run**:
 - **Verified, via genuine mathematical tests** (`tests/training/
@@ -421,7 +421,7 @@ Documented here rather than silently resolved one way or the other:
   The training-time QLoRA degradation finding (§3.3) does not by itself
   say anything about inference-time NF4 quality — that's a different,
   separate, still-open question.
-- **`KRISNA_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
+- **`KRIVEX_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
   for `QwenImageEditPlusPipeline` specifically.** Confirmed real for
   `QwenImageImg2ImgPipeline`/`QwenImageInpaintPipeline` — architecturally
   different pipeline classes. If the installed diffusers version rejects
@@ -456,7 +456,7 @@ Every citation below is a confirmed primary source directly grounding decisions 
 4. **Croitoru, F. A., Hondru, V., Ionescu, R. T., Sebe, N., & Shah, M. (2025)**. *Curriculum Direct Preference Optimization for Diffusion and Consistency Models*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*.
    - *Role*: Curriculum margin scheduling dynamically re-weighting DPO loss according to difficulty thresholds ($\gamma$) to prevent gradient death on noisy UI pairs.
 4. **Flow-Matching Empirical Sweeps (2024/2025)**. Esser et al. (*ICML 2024*); Wallace et al. (*IEEE/CVF CVPR 2024*).
-   - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (see [Volume III: Systems Compendium](file:///d:/Krisna/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
+   - *Role*: Empirical $\beta$-sweep findings for flow-matching architectures (optimal $\beta=500$ for SD3-M on HPSv3; $\beta=250$ reward-hacking caution) (§11). Recommended hyperparameter grid for physical GPU runs: $\beta \in \{250, 500, 1000, 2000\}$ and LoRA rank $r \in \{16, 32, 64\}$ (see [Volume III: Systems Compendium](file:///d:/Krivex/docs/research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)).
 5. **Ho, J. & Salimans, T. (2022)**. *Classifier-Free Diffusion Guidance*. In *Advances in Neural Information Processing Systems (NeurIPS)*.
    - *Role*: Theoretical basis of joint conditional/unconditional score modeling with random conditioning dropout (§6.2).
 6. **Qwen Team, Alibaba (2026-03-02)**. *Qwen3.5 Small Model Series release notes*.
@@ -474,11 +474,11 @@ Every citation below is a confirmed primary source directly grounding decisions 
 12. **Betker, J., et al. (2023)**. *Improving Image Generation with Better Captions*. Computer Science Technical Report.
     - *Role*: Empirical 95/5 mix ratio of dense VLM-generated captions vs. original concise source captions to balance prompt adherence with conversational inference (§6.2, §8.6).
 13. **Feng, Y., et al. (2024)**. *PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation*. *IEEE Transactions on Visualization and Computer Graphics*, vol. 30, no. 1, pp. 295–305. DOI: [10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168).
-    - *Role*: Supports interactive, inspectable prompt/state refinement. Krisna applies this to artifact logging and user control without weakening hard Layout IR constraints.
+    - *Role*: Supports interactive, inspectable prompt/state refinement. Krivex applies this to artifact logging and user control without weakening hard Layout IR constraints.
 14. **Guerreiro, J. J. A., et al. (2024)**. *LayoutFlow: Flow Matching for Layout Generation*. In *Computer Vision – ECCV 2024*, Springer LNCS, vol. 15065, pp. 112–129. DOI: [10.1007/978-3-031-72670-5_7](https://doi.org/10.1007/978-3-031-72670-5_7).
     - *Role*: Springer-published learned-layout precedent. Used only to define a future LayoutFlow ablation gate; the production baseline remains deterministic until a complete learned checkpoint exists.
 15. **Hessel, J., et al. (2021)**. *CLIPScore: A Reference-free Evaluation Metric for Image Captioning*. In *Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, pp. 7530–7547. DOI: [10.18653/v1/2021.emnlp-main.595](https://doi.org/10.18653/v1/2021.emnlp-main.595).
-    - *Role*: Supports reference-free image/text compatibility measurement while documenting domain limitations; used as a metric-family reference, not a Krisna threshold.
+    - *Role*: Supports reference-free image/text compatibility measurement while documenting domain limitations; used as a metric-family reference, not a Krivex threshold.
 16. **Zhang, R., et al. (2018)**. *The Unreasonable Effectiveness of Deep Features as a Perceptual Metric*. In *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, pp. 586–595. DOI: [10.1109/CVPR.2018.00068](https://doi.org/10.1109/CVPR.2018.00068).
     - *Role*: LPIPS/deep-feature perceptual metric precedent. Supports semantic handoff comparison rather than treating pixel distance as the sole quality measure.
 
@@ -513,7 +513,7 @@ Every citation below is a confirmed primary source directly grounding decisions 
 | Tongyi-MAI, Alibaba — Z-Image technical report (`github.com/Tongyi-MAI/Z-Image/blob/main/Z_Image_Report.pdf`), 2025 | Primary source for Z-Image-Turbo's Decoupled-DMD/DMDR distillation and S3-DiT architecture — the Polish-Default tier's actual base model | 
 | `github.com/huggingface/peft/issues/2494`; PEFT quickstart docs | `transformer.add_adapter(LoraConfig(...))` and `model.save_pretrained()` confirmed real for diffusers models |
 | IEEE Xplore bibliographic record for PromptMagician | Interactive prompt-engineering design precedent; DOI `10.1109/TVCG.2023.3327168` |
-| Springer ECCV/LayoutFlow publication lineage | Learned continuous-layout precedent; not evidence of a Krisna checkpoint |
+| Springer ECCV/LayoutFlow publication lineage | Learned continuous-layout precedent; not evidence of a Krivex checkpoint |
 | Springer ECCV Workshops 2024 / ColPali (Faysse et al.) | Dual-encoder visual screenshot retrieval; DOI `10.1007/978-3-031-73021-4_23` |
 | IEEE TPAMI 2025 / InstructLayout | Instruction-driven layout synthesis with semantic graph priors; DOI `10.1109/TPAMI.2025.3595880` |
 | IEEE/CVF ICCV 2025 / FlowEdit (Kulikov et al.) | Inversion-free flow editing trajectories for few-step localized editing |
@@ -557,7 +557,7 @@ equivalence to the official runtime.
 
 `Qwen/Qwen2.5-VL-7B-Instruct` remains a controlled historical baseline. It is
 not silently pooled with Qwen3.5 benchmark claims; both require a matched
-Planner bake-off on the Krisna task.
+Planner bake-off on the Krivex task.
 
 ### 8.3 Pair-count correction
 
@@ -576,7 +576,7 @@ run receipts. Treat IoU, OCR CER, lock MSE, CLIP, VRAM, swap latency, “statist
 parity,” and superiority claims there as provisional placeholders until each
 has a checkpoint hash, dataset/split manifest, seed, evaluator version, sample
 count, hardware receipt, and uncertainty interval. A model card or a paper's
-benchmark table cannot substitute for an end-to-end Krisna run.
+benchmark table cannot substitute for an end-to-end Krivex run.
 
 ### 8.5 Primary-source peer-reviewed literature used by the final verdict
 
@@ -601,7 +601,7 @@ benchmark table cannot substitute for an end-to-end Krisna run.
 - CogAgent: W. Hong et al., *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, 2024.
 
 The final verdict deliberately does not cite community benchmark claims as
-proof of Krisna performance. Candidate upgrades must be selected by the
+proof of Krivex performance. Candidate upgrades must be selected by the
 project's own paired, source-disjoint evaluation protocol.
 
 ### 8.6 Data-source expansion references

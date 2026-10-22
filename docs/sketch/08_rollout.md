@@ -6,16 +6,16 @@ The Sketch Tier is configured via standard environment variables and runtime set
 
 ```bash
 # Core operational mode: 'layout' (production default) or 'ab' (diagnostic logging)
-KRISNA_SKETCH_MODE=layout
+KRIVEX_SKETCH_MODE=layout
 
 # Wireframe rendering style: 'gray' (default), 'dark', 'light', or 'transparent'
-KRISNA_LAYOUT_WIREFRAME_STYLE=gray
+KRIVEX_LAYOUT_WIREFRAME_STYLE=gray
 
 # Output directory for layout JSON and wireframe raster artifacts
-KRISNA_LAYOUT_OUTPUT_DIR=models/sketch/layout_runs
+KRIVEX_LAYOUT_OUTPUT_DIR=models/sketch/layout_runs
 
 # Verifier Stack strict safety gate threshold
-KRISNA_MIN_SAFETY_SCORE=0.90
+KRIVEX_MIN_SAFETY_SCORE=0.90
 ```
 
 ---

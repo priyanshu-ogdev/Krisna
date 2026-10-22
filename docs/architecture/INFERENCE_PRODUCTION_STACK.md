@@ -32,7 +32,7 @@ Node/Tauri frontend
 
 ### Real inference
 
-- `KRISNA_USE_REAL_BACKENDS=1` must never synthesize a replacement image.
+- `KRIVEX_USE_REAL_BACKENDS=1` must never synthesize a replacement image.
 - Missing `torch`, `diffusers`, CUDA, Qwen pipeline class, adapter manifest,
   conditioning image, or generation output is an error.
 - Synthetic output is allowed only in explicit test mode and carries
@@ -99,7 +99,7 @@ Feng et al., *PromptMagician: Interactive Prompt Engineering for Text-to-Image
 Creation*, IEEE Transactions on Visualization and Computer Graphics (2023),
 DOI: <https://doi.org/10.1109/TVCG.2023.3327168>, studies interactive prompt
 engineering rather than treating one prompt as a complete specification.
-The relevant design lesson for Krisna is to preserve an editable, inspectable
+The relevant design lesson for Krivex is to preserve an editable, inspectable
 prompt/state surface. We therefore keep the effective prompt, constraint delta,
 Layout IR revision, seed, and verifier receipt as separate artifacts. We do not
 replace Layout IR with prompt search: prompt optimization alone cannot provide
@@ -119,7 +119,7 @@ source-disjoint split, checkpoint receipt, and constraint-verification metrics.
 
 ControlNet's IEEE-adjacent spatial-control result and InstructPix2Pix's
 instruction-editing result support separating structural conditioning from
-pixel synthesis. Krisna's condition image is therefore a first-class artifact,
+pixel synthesis. Krivex's condition image is therefore a first-class artifact,
 not an inferred Canny map or a hidden annotation. This prevents the training
 pipeline from claiming a paired-edit objective that the native Qwen trainer
 has not yet demonstrated.
@@ -127,7 +127,7 @@ has not yet demonstrated.
 ### Serving implication
 
 The papers motivate capability boundaries, not a wholesale distributed serving
-rewrite. Krisna is a single-GPU local product, so the appropriate production
+rewrite. Krivex is a single-GPU local product, so the appropriate production
 optimization is admission control, warm baseline residency, asynchronous
 background warming, explicit OOM fallback, and low-cost Rust policy checks.
 Continuous batching or multi-replica serving should only be added after a

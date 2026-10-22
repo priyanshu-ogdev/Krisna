@@ -1,6 +1,6 @@
 # Volume II: Data-Forge 22-Stage Pipeline & ~400,000-Pair Multimodal Portfolio Evolution (~550 GB)
 **Compiled Research Compendium from 71 Forensic Design-Sync Audits**
-*Krisna Research Paper Technical Foundation*
+*Krivex Research Paper Technical Foundation*
 
 ---
 
@@ -11,7 +11,7 @@ Modern generative models for user interface design fail in the wild primarily du
 2. **Raw, Uncleaned Scraping**: Scraping raw app stores (e.g., uncleaned 2017 RICO dumps) ingests broken image links, privacy leaks, rendering artifacts, and corrupted coordinate trees.
 3. **Synthetic Drift**: Pure synthetic caption pipelines discard user intent language and overfit to robotic VLM phrases, destroying Classifier-Free Guidance (CFG) text controllability.
 
-To solve this, Krisna establishes the **Data-Forge Pipeline**: a 22-stage chunk-based ETL, quality-filtering, spatial-rasterization, and cryptographic-provenance pipeline that produces a curated, bounded **~400,000-Pair Multimodal Portfolio (~550 GB)** organized into 5 balanced design pillars (strictly aligned with `datasets.yaml` and verified by `audit_registry.py`).
+To solve this, Krivex establishes the **Data-Forge Pipeline**: a 22-stage chunk-based ETL, quality-filtering, spatial-rasterization, and cryptographic-provenance pipeline that produces a curated, bounded **~400,000-Pair Multimodal Portfolio (~550 GB)** organized into 5 balanced design pillars (strictly aligned with `datasets.yaml` and verified by `audit_registry.py`).
 
 ---
 
@@ -107,8 +107,8 @@ The final dataset portfolio represents an exact empirical balance across special
 ### 4.1 The Catastrophic Specialization Trap & Prior Art
 When fine-tuning diffusion foundation models naively on synthetic UI wireframes and vector rectangles, full-parameter gradient descent collapses the continuous probability flow velocity field across natural image sub-manifolds (human skin tones, textures, natural lighting). Ruiz et al. (*DreamBooth*, CVPR 2023) proposed mitigating this by injecting a general photographic prior loss $\mathcal{L}_{\text{prior}}$ over thousands of class images.
 
-### 4.2 The Krisna Architectural Resolution: Frozen Base Weights ($W_0$)
-In Krisna, we eliminate the need to download or train on 50,000 external stock photos by enforcing **Weight-Decomposed Low-Rank Adaptation (DoRA)** with strictly frozen base foundation weights:
+### 4.2 The Krivex Architectural Resolution: Frozen Base Weights ($W_0$)
+In Krivex, we eliminate the need to download or train on 50,000 external stock photos by enforcing **Weight-Decomposed Low-Rank Adaptation (DoRA)** with strictly frozen base foundation weights:
 $$W = m \frac{W_0 + \Delta W}{\| W_0 + \Delta W \|_c} = m \frac{W_0 + \frac{\alpha}{r} B A}{\| W_0 + \frac{\alpha}{r} B A \|_c}, \quad \text{where } \nabla_{W_0} \mathcal{L} \equiv 0$$
 - In `training/configs/polish_qwen_image21_lora.yaml` and enforced by `qwen_trainer_contract.py`, `base_weights_frozen: true` is an invariant.
 - Because the foundational parameters $W_0$ of `Qwen-Image-2.1` remain unaltered, natural image manifolds, photorealism, and physics priors are permanently preserved ($S_{\text{prior}} = 1.0$).
@@ -159,7 +159,7 @@ Across Reviews 55–65, the Data-Forge team conducted exhaustive negative audits
 To satisfy publication and reproducibility standards, every batch produced by Data-Forge generates a signed JSON manifest:
 ```json
 {
-  "$schema": "https://krisna.ai/schemas/data_forge_manifest_v2.json",
+  "$schema": "https://krivex.ai/schemas/data_forge_manifest_v2.json",
   "export_id": "forge_exp_20261020_p5_400k",
   "timestamp_utc": "2026-10-20T18:00:00Z",
   "total_records": 356721,

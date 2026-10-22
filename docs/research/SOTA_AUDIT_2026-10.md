@@ -1,11 +1,11 @@
-# Krisna SOTA Audit — October 2026
+# Krivex SOTA Audit — October 2026
 
 **Audit date:** 2026-10-15
 **Scope:** frozen Planner, deterministic Layout IR, Qwen-Image-2.1 Polish
 adapter, Data-Forge preprocessing, region locking, and research-paper claims.
 
 This is a research scan, not evidence that any external method has been
-reproduced in Krisna. It deliberately uses **publisher proceedings, official
+reproduced in Krivex. It deliberately uses **publisher proceedings, official
 model cards, and official implementation documentation only**. No arXiv-only
 paper is used as evidence for an upgrade. A method is marked **candidate**
 until its code, checkpoint, license, hardware footprint, and task-specific
@@ -28,10 +28,10 @@ ablation.
 
 ## Current stack versus relevant SOTA
 
-| Area | Current Krisna choice | Relevant 2025/2026 evidence | Decision |
+| Area | Current Krivex choice | Relevant 2025/2026 evidence | Decision |
 |---|---|---|---|
 | Planner | Frozen Qwen3.5-9B with image-grounded review contract | The official Qwen3.5-9B card is an image-text-to-text model and documents Transformers, vLLM, and SGLang image requests. OSWorld (NeurIPS 2024) establishes the multimodal desktop evaluation standard. | Keep frozen. Validate official multimodal serving before treating the llama.cpp GGUF path as equivalent. |
-| Layout | Deterministic `krisna.layout.v1` | InstructLayout (IEEE TPAMI 2025) proves semantic graph priors stabilize instruction-driven layout; LayoutFlow (ECCV 2024) demonstrates continuous flow matching. | Keep deterministic geometry. Any learned layout branch must be a separately implemented ablation with a publisher-backed source and matched evaluation. |
+| Layout | Deterministic `krivex.layout.v1` | InstructLayout (IEEE TPAMI 2025) proves semantic graph priors stabilize instruction-driven layout; LayoutFlow (ECCV 2024) demonstrates continuous flow matching. | Keep deterministic geometry. Any learned layout branch must be a separately implemented ablation with a publisher-backed source and matched evaluation. |
 | Polish | Qwen-Image-2.1, frozen base plus one supervised LoRA | The official card documents native image editing, up to ten reference images, masks/annotations, 2K-class aspect ratios, and `QwenImage21Pipeline`. | Keep as the first trainable path. The native trainer is externally pinned and contract-audited, but not yet GPU smoke-tested. |
 | Region locking | Binary exact compositor after generation | ControlNet (ICCV 2023 CVF) establishes spatial control through a trainable conditioning branch; FlowEdit (ICCV 2025 CVF) demonstrates inversion-free editing for pretrained flow models. | Preserve exact post-compositing as the hard guarantee. Treat native mask/control conditioning as a future controlled ablation, not a silent change. |
 | Typography & OCR | Deterministic Layout IR literal mapping | TextDiffuser-2 (ECCV 2024) and AnyText (ICLR 2024) prove diffusion models require language-guided layout bounding boxes for legible text synthesis. | Enforce literal string mapping in Layout IR before pixel diffusion. Bounding boxes are mandatory condition inputs. |
@@ -71,7 +71,7 @@ chain-of-thought:
 ```text
 retrieved layout exemplars + current Layout IR + verifier facts
     -> bounded structured review steps
-    -> krisna.delta.v1
+    -> krivex.delta.v1
     -> deterministic merge and render
 ```
 
@@ -99,7 +99,7 @@ paper result on FLUX is not a Qwen result.
 
 ### P3 — alternative foundation models
 
-Only after the Qwen baseline has a real receipt should Krisna compare Qwen-
+Only after the Qwen baseline has a real receipt should Krivex compare Qwen-
 Image-2.1 against FLUX.2-dev or Mage-Flow. The comparison must hold condition
 images, prompts, resolution, seeds, evaluation masks, and training budget
 constant, and must include license/deployment constraints.
@@ -110,9 +110,9 @@ constant, and must include license/deployment constraints.
 - “RICO/CLAY counts equal paired editing examples.” They require rendering and
   joining a condition image to a target.
 - “FLUX.2 is automatically better” or “25–35% better than Z-Image.” No matched
-  Krisna benchmark or primary-source evidence supports that claim.
+  Krivex benchmark or primary-source evidence supports that claim.
 - “HART is required.” HART/MaskGen are relevant masked-generation research,
-  but the main Krisna geometry path is deterministic Layout IR.
+  but the main Krivex geometry path is deterministic Layout IR.
 - “Qwen3.5 GGUF/mmproj is equivalent to official multimodal Qwen3.5 serving.”
   This remains a target-GPU compatibility question.
 - “MaskFlow/ReAL/Mage-Flow results transfer to Qwen-Image-2.1.” They require

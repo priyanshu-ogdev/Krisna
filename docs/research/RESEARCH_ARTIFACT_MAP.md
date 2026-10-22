@@ -7,11 +7,11 @@ measured result.
 
 | Paper section | Implementation boundary | Required artifact | Current status |
 |---|---|---|---|
-| Problem/system definition | `docs/RESEARCH_PAPER.md`, `inference/src/krisna_inference/` | Versioned architecture and API contracts | Defined |
-| Data construction | `data-forge/`, `training/src/krisna_training/data_forge_bridge/` | Source-disjoint pair manifest, provenance and license receipts | Not realized |
-| Planner/Layout IR | `inference/src/krisna_inference/layout_*`, planner backends | Fixed-seed planner and layout evaluation receipt | Contract-tested; not benchmarked |
-| Qwen-Image-2.1 training | `training/src/krisna_training/polish/` | Native one-batch GPU train/save/load receipt | Preflight and contract only |
-| Inference/locking | `inference/src/krisna_inference/backends/`, `verifiers/` | Native inference and protected-pixel evaluation receipts | Unit-tested; GPU gate pending |
+| Problem/system definition | `docs/RESEARCH_PAPER.md`, `inference/src/krivex_inference/` | Versioned architecture and API contracts | Defined |
+| Data construction | `data-forge/`, `training/src/krivex_training/data_forge_bridge/` | Source-disjoint pair manifest, provenance and license receipts | Not realized |
+| Planner/Layout IR | `inference/src/krivex_inference/layout_*`, planner backends | Fixed-seed planner and layout evaluation receipt | Contract-tested; not benchmarked |
+| Qwen-Image-2.1 training | `training/src/krivex_training/polish/` | Native one-batch GPU train/save/load receipt | Preflight and contract only |
+| Inference/locking | `inference/src/krivex_inference/backends/`, `verifiers/` | Native inference and protected-pixel evaluation receipts | Unit-tested; GPU gate pending |
 | Evaluation | `docs/architecture/EVALUATION_PROTOCOL.md`, `tests/inference/` | OCR/CER, layout, lock, latency, VRAM, and seed manifests | Protocol defined; measurements pending |
 | Ablations | `docs/research/FLOW_MATCHING_UPGRADE_PLAN.md` | Matched seeds, splits, hardware, and baseline outputs | Planned |
 

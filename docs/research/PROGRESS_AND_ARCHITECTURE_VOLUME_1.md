@@ -1,12 +1,12 @@
 # Volume I: Tier Architecture Evolution, Negative Results & Ablation Studies
 **Compiled Research Compendium from 71 Forensic Design-Sync Audits**
-*Krisna Research Paper Technical Foundation*
+*Krivex Research Paper Technical Foundation*
 
 ---
 
 ## 1. Executive Summary & Review Scope
 
-This compendium synthesizes the technical evolution, mathematical formulations, negative results, and ablation studies developed across the 71 formal review gates of project **Krisna**.
+This compendium synthesizes the technical evolution, mathematical formulations, negative results, and ablation studies developed across the 71 formal review gates of project **Krivex**.
 
 ### 1.1 The Central Research Problem
 Prior autonomous and agentic UI design systems suffer from three fundamental pathologies:
@@ -15,7 +15,7 @@ Prior autonomous and agentic UI design systems suffer from three fundamental pat
 3. **Discrete Token Quantization Bottlenecks**: Autoregressive discrete tokenizers (e.g., MaskGIT/VQ-GAN) quantize 2D coordinates into coarse grids (e.g., $16\times 16$ or $32\times 32$), causing codebook index collapse, jitter, and inability to resolve fine typography and fractional micro-layouts.
 
 ### 1.2 The Unified Breakthrough
-Krisna resolves this trilemma through an asymmetric **3-Tier Synchronized Architecture**:
+Krivex resolves this trilemma through an asymmetric **3-Tier Synchronized Architecture**:
 - **Tier 1 (Intent Planner)**: Qwen3.5-9B-Instruct (AWQ 4-bit) constrained by GBNF Context-Free Grammar (CFG) Pushdown Automata, guaranteeing $100\%$ schema conformance without syntax errors, coupled with ColPali visual RAG over curated UI components.
 - **Tier 2 (Layout Sketch)**: Zero-VRAM Neuro-Symbolic Simplex Engine executing on host CPU SIMD in $<25\text{ ms}$, solving exact Cassowary linear equality and inequality constraints with zero GPU memory overhead.
 - **Tier 3 (Visual Polish)**: Single Resident Qwen-Image-2.1 (7B MMDiT) backbone executing Continuous Flow Matching (CFM), providing continuous multi-fidelity preview ($N=6$ steps, $\sim 0.8\text{s}$) and publication masters ($N=40$ steps, $\sim 5.8\text{s}$) on identical resident weights with zero PCIe swapping, guided by dual-stream spatial conditioning (32px-padded wireframe + semantic segmentation) and FlowEdit inversion-free editing.
@@ -96,7 +96,7 @@ Krisna resolves this trilemma through an asymmetric **3-Tier Synchronized Archit
   Objective function:
   $$\mathcal{L}_{\text{CFM}}(\theta) = \mathbb{E}_{t, x_0, x_1} \left\| v_\theta(x_t, t, c) - (x_1 - x_0) \right\|_2^2$$
 - **Multi-Fidelity via ODE Step Scaling**:
-  Instead of swapping between distinct draft and quality checkpoints, Krisna integrates the reverse-time probability flow ODE:
+  Instead of swapping between distinct draft and quality checkpoints, Krivex integrates the reverse-time probability flow ODE:
   $$\frac{d x_t}{d t} = v_\theta(x_t, t, c)$$
   - **Draft Preview ($N=6$ steps)**: First-order Euler solver, $\Delta t = 1/6$. Execution time: $\sim 0.82\text{s}$. Latent trajectory exhibits low curvature ($\kappa \approx 0$), capturing $92\%$ of final spatial composition.
   - **Publication Master ($N=40$ steps)**: Midpoint / Runge-Kutta 2nd-order solver, $\Delta t = 1/40$. Execution time: $\sim 5.84\text{s}$. Eliminates high-frequency textural noise and renders crisp typography.
@@ -110,7 +110,7 @@ Krisna resolves this trilemma through an asymmetric **3-Tier Synchronized Archit
 
 ## 4. Forensic Negative Results: What Failed and Why
 
-The research rigor of Krisna is demonstrated by the systematic rejection of conventional but flawed paradigms:
+The research rigor of Krivex is demonstrated by the systematic rejection of conventional but flawed paradigms:
 
 ```
 +-------------------------------------------------------------------------------------------------+
@@ -150,7 +150,7 @@ The following ablation studies isolate the performance contribution of each arch
 ### Ablation A: Layout Representation & Solver
 - **Baseline 1**: Unconstrained LLM generating CSS Flexbox code.
 - **Baseline 2**: MaskGIT discrete token layout generator ($32\times 32$ codebook).
-- **Proposed**: Krisna Neuro-Symbolic Simplex Solver.
+- **Proposed**: Krivex Neuro-Symbolic Simplex Solver.
 - **Metrics**: Bounding Box IoU, Overlap Rate (%), Out-of-Bounds Rate (%), Runtime Latency (ms), GPU VRAM (MB).
 
 | Model Configuration | BB IoU ($\uparrow$) | Overlap % ($\downarrow$) | OOB % ($\downarrow$) | Latency ($\downarrow$) | VRAM ($\downarrow$) |

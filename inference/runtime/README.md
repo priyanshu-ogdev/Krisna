@@ -5,7 +5,7 @@ checkpoints in `models/` or with `MockBackend` — for manually testing trained 
 and validating multi-turn agentic orchestration without starting the web UI.
 
 `run_agentic_session.py` delegates directly to the canonical package CLI
-entry point `krisna-session` (`krivex_inference.cli:main`).
+entry point `krivex-session` (`krivex_inference.cli:main`).
 
 ## Usage
 
@@ -13,10 +13,10 @@ entry point `krisna-session` (`krivex_inference.cli:main`).
 # Safe default — MockBackend, no GPU, no models/ checkpoints needed.
 python inference/runtime/run_agentic_session.py --finalize --critique
 # Or via canonical console script:
-krisna-session --finalize --critique
+krivex-session --finalize --critique
 
 # Real backends — GPU required, reads models/ checkpoints via the same
-# KRISNA_* env vars scripts/inference/run_service.sh uses:
+# KRIVEX_* env vars scripts/inference/run_service.sh uses:
 python inference/runtime/run_agentic_session.py --real --finalize
 
 # Low-VRAM / CPU-offload mode (PRD §3, §7.3):

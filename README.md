@@ -1,6 +1,6 @@
-# Krisna
+# Krivex
 
-Krisna is a local-first, agentic UI design system. It separates intent
+Krivex is a local-first, agentic UI design system. It separates intent
 planning, deterministic layout state, image-conditioned polishing, verification,
 and dataset governance so every model boundary is inspectable and reproducible.
 
@@ -11,7 +11,7 @@ The current research system has **one intended trainable artifact**:
 | Responsibility | Current implementation | Trainable? |
 |---|---|---:|
 | Planner | Frozen `Qwen3.5-9B`, multimodal review contract | No |
-| Structure | Deterministic `krisna.layout.v1` Layout IR and renderer | No |
+| Structure | Deterministic `krivex.layout.v1` Layout IR and renderer | No |
 | Polish Default | `Qwen/Qwen-Image-2.1` native image-conditioned pipeline plus optional LoRA | LoRA only |
 | Polish Quality | Frozen Qwen-Image-2.1 without an adapter | No |
 | Data-Forge VLM | Local Qwen3.8-27B preprocessing/audit dependency | No |

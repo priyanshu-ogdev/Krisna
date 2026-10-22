@@ -10,7 +10,7 @@
 > 2. **[Volume I: Tier Architecture Evolution & Ablation Studies](../research/PROGRESS_AND_ARCHITECTURE_VOLUME_1.md)**: Detailed technical breakdown of Reviews 01–04, 17, 19, 31, 38, 41, 44, 46, 50, 64, 70, and 71. Details the deprecation of MaskGIT discrete VQ tokens, the Simplex layout solver, and Continuous Flow Matching.
 > 3. **[Volume II: Data-Forge 22-Stage Pipeline & 356,721-Record Portfolio](../research/PROGRESS_AND_DATAFORGE_VOLUME_2.md)**: Detailed technical breakdown of Reviews 05, 09, 10, 15, 16, 20, 23, 52–63, 65, 66, 68, and 69. Contains the 22-stage execution flow, forensic negative purges (PubLayNet, DocBank, raw 2017 RICO), and the architectural prior preservation proof via frozen base weights.
 > 4. **[Volume III: Systems Serving, Latency Foundations & Verification](../research/PROGRESS_AND_SYSTEMS_VOLUME_3.md)**: Detailed technical breakdown of Reviews 00, 06, 08, 11–14, 18, 21, 22, 24–29, 37, 67, and 71. Contains USENIX OSDI systems literature proofs, VRAM allocation ledgers, hardware preflight diagnostics, and 64 automated regression tests.
-> 5. **[RESEARCH_PAPER.md](../RESEARCH_PAPER.md)**: The publication-ready academic manuscript synthesizing the peer-reviewed contributions of the Krisna architecture.
+> 5. **[RESEARCH_PAPER.md](../RESEARCH_PAPER.md)**: The publication-ready academic manuscript synthesizing the peer-reviewed contributions of the Krivex architecture.
 
 ---
 

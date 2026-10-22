@@ -9,7 +9,7 @@
 
 This is the verified contract between `data-forge`'s export stage
 (`data_forge.stages.s12_model_data_export.ModelDataExportStage`) and
-`krisna_training.data_forge_bridge`'s three sync scripts. Every field and
+`krivex_training.data_forge_bridge`'s three sync scripts. Every field and
 path below was checked against real, running code on both sides in the
 same session this doc was written — not just cross-referenced as text.
 
@@ -92,7 +92,7 @@ behavior with a loud warning, rather than crashing.
 `sync_dpo_pairs.py` only imports pairs with `dedup_status == "unique"` —
 matches `s01_6_preference_pairs.py`'s guarantee that this field is only
 set after dedup + face-blur + NSFW safety classification all pass.
-`origin` maps directly to `krisna_training.dpo.preference_store.
+`origin` maps directly to `krivex_training.dpo.preference_store.
 VALID_SOURCES` — verified to contain the exact same four keys
 (`pickapic_v2`, `hpdv2`, `designsense_10k`, `designpref`) data-forge's
 `datasets.yaml` uses for its `preference_pair`/`hpdv2_ranked_list`
@@ -105,7 +105,7 @@ critique_output}`, where `critique_output` has `critique_source`,
 `overall_score`, four `<dimension>_score`/`<dimension>_note` pairs (all
 four `_note` fields are identical duplicates of the same truncated
 `critique_text` — UICrit's real rubric doesn't map 1:1 onto them),
-`suggested_edits`, `raw_fields`. `krisna_inference.backends.planner_rag.
+`suggested_edits`, `raw_fields`. `krivex_inference.backends.planner_rag.
 UICritRAGIndex` reads exactly this shape — verified directly against
 `data_forge.data.uicrit_ingest.to_critique_output_dict`, the actual
 function that produces it.
@@ -117,7 +117,7 @@ Two different, real reasons, one per tier:
 1. **Sketch tier**: data-forge's VQ tokenizer (Open-MAGVIT2) has an
    unverified `.encode()`/`.decode()` wrapper — its own `engine.py` raises
    `RuntimeError` on purpose rather than silently loading a checkpoint
-   that hasn't been confirmed to actually work. `krisna_training.sketch`
+   that hasn't been confirmed to actually work. `krivex_training.sketch`
    uses a different, real, working tokenizer (`boris/vqgan_f16_16384`).
    Rather than pretend these are interchangeable, `sync_sketch_tier.py`
    re-tokenizes the raw images through the working tokenizer.

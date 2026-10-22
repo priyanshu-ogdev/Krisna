@@ -1,12 +1,12 @@
-# Krisna Inference & Serving Architecture
+# Krivex Inference & Serving Architecture
 
 Comprehensive reference for consumer GPU serving, swap orchestration, and multi-turn agentic flows under the modernized architecture.
 
 > [!IMPORTANT]
 > **Canonical Specification**: Defined in [docs/PRD.md §5](../PRD.md#5-data-model--core-flows) (Data Model & Core Flows) and [docs/PRD.md §7](../PRD.md#7-inference-orchestration) (Inference Orchestration).
 > The modernized architecture strictly preserves a **12GB VRAM consumer target envelope** with a clear single-model-per-responsibility division:
-> - **Planner Tier**: Frozen Qwen-VL candidate selected by the bake-off, with a tested image-grounded request and versioned JSON delta (`krisna.delta.v1`).
-> - **Sketch Tier**: Structured Layout IR (`krisna.layout.v1`) and deterministic wireframe renderer (~0.2GB VRAM).
+> - **Planner Tier**: Frozen Qwen-VL candidate selected by the bake-off, with a tested image-grounded request and versioned JSON delta (`krivex.delta.v1`).
+> - **Sketch Tier**: Structured Layout IR (`krivex.layout.v1`) and deterministic wireframe renderer (~0.2GB VRAM).
 > - **Polish Tier**: Qwen-Image-2.1 native pipeline; the base is frozen and the LoRA adapter remains gated until the trainer/API smoke test passes. Low-VRAM CPU offload is a target, not a measured guarantee.
 > - **Review/Critique**: Planner self-review is resident and zero-swap; pixel verification is a separate post-generation stack with an explicit safety gate.
 >
@@ -47,7 +47,7 @@ re-admits Baseline Tier, returns to IDLE_RESIDENT.
 
 ## 2. Residency State Machine (PRD §7.4)
 
-Verified transition table implemented in `krisna_inference.orchestrator.state_machine`:
+Verified transition table implemented in `krivex_inference.orchestrator.state_machine`:
 
 ```mermaid
 stateDiagram-v2
@@ -86,7 +86,7 @@ Admission is deterministic and CI-tested, governed by `VRAMLedger` and `RAMLedge
    - Every `POST /session/{id}/message` carries cumulative `conversation_history` into the Planner backend.
    - Initial intent is locked in `constraints.original_intent` to prevent drift across extended dialogues.
 2. **Dynamic Constraints Merging**:
-   - Structured JSON output emitted by the Planner is parsed against `krisna.planner.v1`.
+   - Structured JSON output emitted by the Planner is parsed against `krivex.planner.v1`.
    - `constraint_updates` (style, palette, layout_hints, and `locked_regions: [{bbox, reason}]`) are merged into `DesignState.constraints`.
 3. **Structured Layout Handoff**:
    - Layout IR is persisted to `state.layout.layout_ref` (`.json`) with SVG/PNG wireframes (`.png`) saved to the blob store.

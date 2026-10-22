@@ -2,12 +2,12 @@
 
 ## 1. System Architecture Overview
 
-The production **Sketch Tier** in Krisna (`Tier.SKETCH`) is driven by the **Structured Layout Engine** (`krisna_inference.backends.layout_backend.LayoutBackend`), operating alongside the deterministic layout baseline (`layout_baseline.py`) and the high-entropy wireframe renderer (`layout_renderer.py`).
+The production **Sketch Tier** in Krivex (`Tier.SKETCH`) is driven by the **Structured Layout Engine** (`krivex_inference.backends.layout_backend.LayoutBackend`), operating alongside the deterministic layout baseline (`layout_baseline.py`) and the high-entropy wireframe renderer (`layout_renderer.py`).
 
 ### 1.1 Core Components
 
 1. **`LayoutBackend` (`ModelBackend`)**:
-   - Manages layout execution lifecycle in production deterministic mode (`krisna.layout.v1.production`), serialization (`layout_ref`), atomic multi-stream spatial condition rasterization (`DualStreamSketch`), and continuous optimal transport flow metrics computation.
+   - Manages layout execution lifecycle in production deterministic mode (`krivex.layout.v1.production`), serialization (`layout_ref`), atomic multi-stream spatial condition rasterization (`DualStreamSketch`), and continuous optimal transport flow metrics computation.
    - Coordinates with `BlobStore` to persist serialized JSON and condition artifacts: `wireframe_ref` (RGB/RGBA), `segmentation_ref` (universal 16-class SPADE map), and `mask_ref` (spatial alpha/differential inpaint mask).
    - Enforces strict multiple-of-32 canvas quantization ($W \equiv 0 \pmod{32}, H \equiv 0 \pmod{32}$) matching Qwen-Image-2.1's $16\times$ VAE downsampler and $2\times 2$ patch stride.
 
@@ -26,13 +26,13 @@ The production **Sketch Tier** in Krisna (`Tier.SKETCH`) is driven by the **Stru
 
 ## 2. Comparison: Structured Layout vs. Historical MaskGIT Baseline
 
-During early exploratory phases, Krisna investigated a 44M MaskGIT-lineage bidirectional Transformer operating over discrete 2D VQGAN codebook tokens (`boris/vqgan_f16_16384` at $16 \times 16$ and $32 \times 32$ grids). 
+During early exploratory phases, Krivex investigated a 44M MaskGIT-lineage bidirectional Transformer operating over discrete 2D VQGAN codebook tokens (`boris/vqgan_f16_16384` at $16 \times 16$ and $32 \times 32$ grids). 
 
 A rigorous architectural evaluation demonstrated that discrete tokenized rasterization is fundamentally mismatched with UI engineering requirements:
 
 | Dimension | Production Structured Layout Tier | Legacy 44M MaskGIT Token Model |
 | :--- | :--- | :--- |
-| **Representation** | Strongly-typed vector tree (`krisna.layout.v1`) | Discrete 2D codebook tokens ($32 \times 32$) |
+| **Representation** | Strongly-typed vector tree (`krivex.layout.v1`) | Discrete 2D codebook tokens ($32 \times 32$) |
 | **Legality Guarantee** | 100% mathematically bounded in $[0, 1]^4$ | Probabilistic; frequent overlapping & truncation |
 | **Typography Control** | Verbatim text strings rendered via TrueType | Degraded into blurry visual token blobs |
 | **Locked Region Handling**| Exact bounding box preservation & exemption | Token-level remasking artifacts and drift |
@@ -41,7 +41,7 @@ A rigorous architectural evaluation demonstrated that discrete tokenized rasteri
 | **Closed-Loop Feedback** | Direct IoU & OCR bounding box comparison | Indirect visual feature comparison |
 | **Transparency (RGBA)**| Native 4-channel alpha transparency | Forced 3-channel RGB VQGAN codebook |
 
-The legacy MaskGIT implementation is retained exclusively in `training/src/krisna_training/sketch/` as an academic baseline and historical artifact. The production inference pipeline executes exclusively on the Structured Layout Engine.
+The legacy MaskGIT implementation is retained exclusively in `training/src/krivex_training/sketch/` as an academic baseline and historical artifact. The production inference pipeline executes exclusively on the Structured Layout Engine.
 
 ---
 

@@ -2,9 +2,9 @@
 
 ## 1. Executive Summary
 
-The **Sketch Tier** (`Tier.SKETCH`) serves as the open-domain, general-purpose structural bridge in the Krisna inference pipeline, connecting high-level conversational planning (`Tier.PLANNER`) to continuous flow-matching diffusion synthesis (`Tier.POLISH`, powered by Qwen-Image-2.1).
+The **Sketch Tier** (`Tier.SKETCH`) serves as the open-domain, general-purpose structural bridge in the Krivex inference pipeline, connecting high-level conversational planning (`Tier.PLANNER`) to continuous flow-matching diffusion synthesis (`Tier.POLISH`, powered by Qwen-Image-2.1).
 
-Rather than forcing a deep neural network to hallucinate layout coordinates end-to-end, or restricting generation to narrow web flexbox templates, the production Sketch tier enforces a **Universal Polymorphic Scene DAG (`krisna.layout.v1`)** paired with deterministic multi-stream spatial condition synthesis. This accounts for **infinite creative design scenarios** (graphic design posters, marketing banners, editorial multi-column spreads, e-commerce showcases, visual infographics, and freeform sketches) while guaranteeing zero element overlap, pixel-perfect text placement, and exact lock preservation.
+Rather than forcing a deep neural network to hallucinate layout coordinates end-to-end, or restricting generation to narrow web flexbox templates, the production Sketch tier enforces a **Universal Polymorphic Scene DAG (`krivex.layout.v1`)** paired with deterministic multi-stream spatial condition synthesis. This accounts for **infinite creative design scenarios** (graphic design posters, marketing banners, editorial multi-column spreads, e-commerce showcases, visual infographics, and freeform sketches) while guaranteeing zero element overlap, pixel-perfect text placement, and exact lock preservation.
 
 ```text
 ┌────────────────────────────────────────────────────────┐
@@ -54,7 +54,7 @@ The Sketch Tier architecture directly implements the findings of accredited peer
 
 2. **Instruction-Driven Layout & Semantic Priors**:
    - *Tan, Z., et al.* (IEEE TPAMI 2025). *"InstructLayout: Instruction-Driven Graphic Layout Generation via Semantic Graph Priors."* IEEE Transactions on Pattern Analysis and Machine Intelligence.
-   - Grounding for Krisna's structured action decomposition (`AddComponentAction`, `SetTextAction`, `LockRegionAction`) and semantic hierarchy injection.
+   - Grounding for Krivex's structured action decomposition (`AddComponentAction`, `SetTextAction`, `LockRegionAction`) and semantic hierarchy injection.
 
 3. **Visual Grounding & GUI Coordinates**:
    - *Zhang, B., et al.* (IEEE/CVF CVPR 2025). *"ShowUI: One-Vision Multi-Scale Visual Coordinate Grounding for GUI Agents."* IEEE/CVF Computer Vision and Pattern Recognition.
@@ -109,11 +109,11 @@ Replaces 1D vertical splits with a 2D spatial layout indexer that analyzes multi
 
 ## 4. Documentation Index
 
-- [`01_current_model.md`](file:///d:/Krisna/docs/sketch/01_current_model.md) — Production Layout Engine vs Legacy MaskGIT Baseline
-- [`02_layout_ir.md`](file:///d:/Krisna/docs/sketch/02_layout_ir.md) — Canonical `krisna.layout.v1` Pydantic Schema & Invariants
-- [`03_data_contract.md`](file:///d:/Krisna/docs/sketch/03_data_contract.md) — Human/Public UI Dataset Pipeline & Provenance Policy
-- [`04_model_candidates.md`](file:///d:/Krisna/docs/sketch/04_model_candidates.md) — Peer-Reviewed Literature Survey & SOTA Citations
-- [`05_training_plan.md`](file:///d:/Krisna/docs/sketch/05_training_plan.md) — Flow-Matching & Layout Training Plan
-- [`06_inference_contract.md`](file:///d:/Krisna/docs/sketch/06_inference_contract.md) — Planner $\to$ Sketch $\to$ Polish Bridge Specification
-- [`07_evaluation.md`](file:///d:/Krisna/docs/sketch/07_evaluation.md) — Evaluation Suite & Closed-Loop Verifier Gating
-- [`08_rollout.md`](file:///d:/Krisna/docs/sketch/08_rollout.md) — Operational Deployment & Monitoring
+- [`01_current_model.md`](file:///d:/Krivex/docs/sketch/01_current_model.md) — Production Layout Engine vs Legacy MaskGIT Baseline
+- [`02_layout_ir.md`](file:///d:/Krivex/docs/sketch/02_layout_ir.md) — Canonical `krivex.layout.v1` Pydantic Schema & Invariants
+- [`03_data_contract.md`](file:///d:/Krivex/docs/sketch/03_data_contract.md) — Human/Public UI Dataset Pipeline & Provenance Policy
+- [`04_model_candidates.md`](file:///d:/Krivex/docs/sketch/04_model_candidates.md) — Peer-Reviewed Literature Survey & SOTA Citations
+- [`05_training_plan.md`](file:///d:/Krivex/docs/sketch/05_training_plan.md) — Flow-Matching & Layout Training Plan
+- [`06_inference_contract.md`](file:///d:/Krivex/docs/sketch/06_inference_contract.md) — Planner $\to$ Sketch $\to$ Polish Bridge Specification
+- [`07_evaluation.md`](file:///d:/Krivex/docs/sketch/07_evaluation.md) — Evaluation Suite & Closed-Loop Verifier Gating
+- [`08_rollout.md`](file:///d:/Krivex/docs/sketch/08_rollout.md) — Operational Deployment & Monitoring

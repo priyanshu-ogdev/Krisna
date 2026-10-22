@@ -1,6 +1,6 @@
 # Volume III: Systems Serving, Latency Foundations, Hardware Ledgers & Formal Verification
 **Compiled Research Compendium from 71 Forensic Design-Sync Audits**
-*Krisna Research Paper Technical Foundation*
+*Krivex Research Paper Technical Foundation*
 
 ---
 
@@ -8,13 +8,13 @@
 
 In production agentic and interactive design systems, system responsiveness (end-to-end user latency) directly determines interactive utility. Traditional multi-model generative pipelines swap weights into and out of GPU VRAM across tasks, creating severe latency bottlenecks.
 
-Project Krisna grounds its serving architecture on foundational systems literature:
+Project Krivex grounds its serving architecture on foundational systems literature:
 
 ```
 +---------------------------------------------------------------------------------------------------+
 |                            SYSTEMS SERVING ACADEMIC LITERATURE MATRIX                             |
 +-----------------------------------+---------------+-----------------------------------------------+
-| Landmark Paper                    | Venue         | System Principle Applied to Krisna            |
+| Landmark Paper                    | Venue         | System Principle Applied to Krivex            |
 +-----------------------------------+---------------+-----------------------------------------------+
 | PipeSwitch (Bai et al.)           | USENIX OSDI   | Proves PCIe Gen4 model reloading overhead     |
 |                                   | 2020          | (1.8s - 3.5s per turn) destroys user latency. |
@@ -47,8 +47,8 @@ Consider a conventional architecture that separates a "Draft Preview Generator" 
    $$T_{\text{swap\_total}} = 2 \times (T_{\text{reload}} + T_{\text{context}}) \approx 2.83\text{s} - 3.63\text{s}$$
    This latency penalty occurs before a single diffusion step is even calculated!
 
-### 1.2 The Krisna Solution: Zero-PCIe In-Memory Step Scaling
-Krisna eliminates $100\%$ of model-swapping latency by maintaining a **Single Resident Model** (`Qwen-Image-2.1`) permanently pinned in GPU VRAM.
+### 1.2 The Krivex Solution: Zero-PCIe In-Memory Step Scaling
+Krivex eliminates $100\%$ of model-swapping latency by maintaining a **Single Resident Model** (`Qwen-Image-2.1`) permanently pinned in GPU VRAM.
 
 Multi-fidelity generation is achieved purely through the numerical integration properties of Continuous Flow Matching (CFM):
 $$\frac{d x_t}{d t} = v_\theta(x_t, t, c)$$
@@ -61,7 +61,7 @@ Multi-Model Swapping Pipeline (Rejected):
 [Draft Model (3.5B)] --(Evict 7GB)--> [PCIe Gen4 Swap (2.8s)] --(Load 14GB)--> [Polish Model (7B)]
 Total Turn Latency: 0.8s + 2.8s + 5.8s = 9.4s  [FATAL LATENCY PENALTY]
 
-Krisna Single Resident Model Pipeline (Authoritative):
+Krivex Single Resident Model Pipeline (Authoritative):
 [Qwen-Image-2.1 (7B MMDiT)]  <=== Pinned Permanently in VRAM
   ├─ User edits layout  ──> ODE Step N=6   (Draft Preview: ~0.8s)  [0ms PCIe Overhead]
   └─ User locks design  ──> ODE Step N=40  (Final Master:  ~5.8s)  [0ms PCIe Overhead]
@@ -140,7 +140,7 @@ The inference stack enforces deterministic memory allocations across 3 supported
 ## 3. Production Isolation & Fail-Fast Hardware Preflight
 
 ### 3.1 Dual-Venv & Process Isolation
-To resolve dependency incompatibilities between vLLM (which pins specific torch and CUDA driver versions) and Diffusers/Transformers (which requires bleeding-edge PyTorch for MMDiT flow matching), Krisna implements a strict dual-venv architecture communicating over asynchronous Unix Domain Sockets (or Named Pipes on Windows):
+To resolve dependency incompatibilities between vLLM (which pins specific torch and CUDA driver versions) and Diffusers/Transformers (which requires bleeding-edge PyTorch for MMDiT flow matching), Krivex implements a strict dual-venv architecture communicating over asynchronous Unix Domain Sockets (or Named Pipes on Windows):
 - **Venv 1 (`venv-planner`)**: Pins `vllm>=0.6.0`, `triton>=3.0.0`, `outlines>=0.0.40`. Serves the Planner and GBNF grammar parser.
 - **Venv 2 (`venv-inference`)**: Pins `diffusers>=0.30.0`, `transformers>=4.46.0`, `torch>=2.4.0`. Serves the Qwen-Image-2.1 MMDiT resident backbone.
 - **IPC Protocol**: Protobuf over zero-copy shared memory (`/dev/shm`), reducing cross-process latency to $<1.2\text{ ms}$.
@@ -229,7 +229,7 @@ tests/data_forge/test_s12_qwen_image21_export.py (6 tests) .....................
 
 ## 5. Master Academic Bibliography (67 Verified Peer-Reviewed Citations)
 
-The technical foundations of Krisna cite 67 peer-reviewed landmark publications across IEEE, ACM, USENIX, MLSys, CVF, ICLR, ICML, and ACL, with verified digital object identifiers (DOIs):
+The technical foundations of Krivex cite 67 peer-reviewed landmark publications across IEEE, ACM, USENIX, MLSys, CVF, ICLR, ICML, and ACL, with verified digital object identifiers (DOIs):
 
 ```
 +---------------------------------------------------------------------------------------------------+

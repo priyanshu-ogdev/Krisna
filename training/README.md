@@ -1,8 +1,8 @@
-# Krisna Training Architecture & Specification
+# Krivex Training Architecture & Specification
 
 ## Canonical Architectural Model (PRD §6: Single-Trainable-Tier)
 
-Krisna establishes a decoupled, mathematically bounded agentic design architecture with **a single trainable foundation model**. The entire training pipeline is dedicated exclusively to adapting the **Visual Polish Tier** (`Qwen/Qwen-Image-2.1`), while the **Planner** and **Sketch** tiers operate strictly as frozen, deterministic engines.
+Krivex establishes a decoupled, mathematically bounded agentic design architecture with **a single trainable foundation model**. The entire training pipeline is dedicated exclusively to adapting the **Visual Polish Tier** (`Qwen/Qwen-Image-2.1`), while the **Planner** and **Sketch** tiers operate strictly as frozen, deterministic engines.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -13,7 +13,7 @@ Krisna establishes a decoupled, mathematically bounded agentic design architectu
 │ Tier 1: Planner    │ Qwen3.5-9B-Instruct GGUF    │ 100% FROZEN      │ Grounded via RAG │
 │                    │ (Unsloth W4A16 / AWQ)       │ (Zero training)  │ & CFG grammar    │
 ├────────────────────┼─────────────────────────────┼──────────────────┼──────────────────┤
-│ Tier 2: Sketch     │ krisna.layout.v1            │ 100% DETERMIN-   │ 0 MB GPU VRAM;   │
+│ Tier 2: Sketch     │ krivex.layout.v1            │ 100% DETERMIN-   │ 0 MB GPU VRAM;   │
 │                    │ (Simplex / Cassowary CPU)   │ ISTIC & FROZEN   │ 0% overlap proof │
 ├────────────────────┼─────────────────────────────┼──────────────────┼──────────────────┤
 │ Tier 3: Polish     │ Qwen-Image-2.1 (7B MMDiT)   │ ACTIVE TRAINABLE │ Adapts pixels to │
@@ -28,21 +28,21 @@ Krisna establishes a decoupled, mathematically bounded agentic design architectu
 ### 1.1 Tier 1: Planner (Frozen Vision-Language-Action)
 - **Zero AI-Judge RLHF Loops**: In accordance with PRD §6 ("The No-RLHF-Loop Architectural Revision"), using one model's subjective aesthetic judgments to train another introduces severe reward hacking, catastrophic aesthetic decay, and conversational drift.
 - **Empirical RAG Grounding**: Domain knowledge is supplied dynamically via the **UICrit Multi-Vector Visual RAG Index** (`planner_rag.py`, ColPali/CLIP multi-vector retrieval), pulling human-verified design guidelines directly into prompt context.
-- **Pushdown Automata GBNF Grammar**: Schema validity is enforced mathematically at generation time using Context-Free Grammar (CFG) logit masking (Geng et al., EMNLP 2023). Invalid schema tokens are masked with $-\infty$ prior to softmax, guaranteeing $100\%$ valid `krisna.delta.v1` JSON deltas without parameter fine-tuning.
+- **Pushdown Automata GBNF Grammar**: Schema validity is enforced mathematically at generation time using Context-Free Grammar (CFG) logit masking (Geng et al., EMNLP 2023). Invalid schema tokens are masked with $-\infty$ prior to softmax, guaranteeing $100\%$ valid `krivex.delta.v1` JSON deltas without parameter fine-tuning.
 - **Gated DeltaNet Stability**: Fine-tuning Qwen3.5 with low-rank quantization impairs its hybrid linear recurrence memory (Gated DeltaNet). The frozen W4A16 GGUF preserves maximum long-context reasoning.
 
 ### 1.2 Tier 2: Sketch (Deterministic Neuro-Symbolic Engine)
 - **0 MB GPU VRAM Guarantee**: Bounding box geometry, container hierarchy, and z-ordering are solved on the CPU via the dual-simplex algorithm (Cassowary, Badros et al., ACM TOCHI 2001), consuming $0\text{ MB}$ of VRAM and $<5\text{ms}$ latency.
-- **Elimination of Codebook Collapse**: Discrete token codebooks (MaskGIT / VQGAN) permanently discard sub-pixel typography anti-aliasing and 1px border strokes under $16\times$ downsampling. The deterministic `krisna.layout.v1` rasterizer produces mathematically exact 2D TrueType wireframes and NVIDIA SPADE segmentation maps without neural hallucination.
+- **Elimination of Codebook Collapse**: Discrete token codebooks (MaskGIT / VQGAN) permanently discard sub-pixel typography anti-aliasing and 1px border strokes under $16\times$ downsampling. The deterministic `krivex.layout.v1` rasterizer produces mathematically exact 2D TrueType wireframes and NVIDIA SPADE segmentation maps without neural hallucination.
 - **Legacy Purge**: All historical neural layout ablations (`LayoutFlow` neural ODE and discrete MaskGIT training code) have been decommissioned from the codebase.
 
 ---
 
 ## 2. Visual Polish Tier (`Qwen-Image-2.1`) Training Architecture
 
-In strict accordance with **PRD §6 ("Single-Trainable-Tier")** and **FINAL_ARCHITECTURE_VERDICT.md (§1, §2)**, Krisna does **NOT** require a complex 4-phase sequential training regimen. There is **EXACTLY ONE canonical production training target**: the **Supervised Polish LoRA/DoRA adapter (`polish-default`)**.
+In strict accordance with **PRD §6 ("Single-Trainable-Tier")** and **FINAL_ARCHITECTURE_VERDICT.md (§1, §2)**, Krivex does **NOT** require a complex 4-phase sequential training regimen. There is **EXACTLY ONE canonical production training target**: the **Supervised Polish LoRA/DoRA adapter (`polish-default`)**.
 
-The other modules in `training/src/krisna_training/polish/` represent **offline scientific ablations** and **optional/deferred post-convergence research branches**:
+The other modules in `training/src/krivex_training/polish/` represent **offline scientific ablations** and **optional/deferred post-convergence research branches**:
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -127,7 +127,7 @@ training/
 │       ├── ablation_b_dora_attn.yaml         # Ablation B: Attention-only DoRA
 │       ├── ablation_c_dora_no_wireframe.yaml # Ablation C: Text-only baseline
 │       └── ablation_d_dora_no_rag.yaml       # Ablation D: No RAG conditioning
-└── src/krisna_training/
+└── src/krivex_training/
     ├── __init__.py                           # Package specification & trainability matrix
     ├── polish/                               # Active Polish Tier training modules
     │   ├── prepare_dataset.py                # Pair dataset preparation & manifest builder
@@ -161,7 +161,7 @@ Reports active model IDs, source contracts, realized dataset pair counts, and ha
 ### 6.2 Synchronize Exported Data from Data-Forge
 ```bash
 # Sync Polish pairs, preference pairs, and Planner RAG corpus:
-python scripts/data-forge/sync_to_training.py --data-root D:\data_krisna
+python scripts/data-forge/sync_to_training.py --data-root D:\data_krivex
 ```
 
 ### 6.3 Primary Production Target: Launch Supervised Polish LoRA / DoRA Training
@@ -193,7 +193,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier 
 
 ### 6.6 Run Empirical Ablation Benchmark Matrix
 ```bash
-python -m krisna_training.polish.ablation_runner --all
+python -m krivex_training.polish.ablation_runner --all
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 ## 1. Executive Research Overview
 
-Krisna's Visual Polish Tier is anchored upon **`Qwen/Qwen-Image-2.1`**, Alibaba's open-weight visual foundation model specializing in unified text-to-image synthesis, multi-reference image editing, and complex typography rendering.
+Krivex's Visual Polish Tier is anchored upon **`Qwen/Qwen-Image-2.1`**, Alibaba's open-weight visual foundation model specializing in unified text-to-image synthesis, multi-reference image editing, and complex typography rendering.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -64,7 +64,7 @@ Unlike legacy dual-stream diffusion models (e.g., Stable Diffusion 1.5/2.1) that
 - Each transformer block features 7 critical linear projections:
   $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
   totaling 224 target modules across the 32 layers.
-- Krisna adapts these 224 modules using **Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024)** with rank $r=64$ and $\alpha=32$, freezing the 7B base weights $W_0$ in BF16 (or NF4 on consumer GPUs).
+- Krivex adapts these 224 modules using **Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024)** with rank $r=64$ and $\alpha=32$, freezing the 7B base weights $W_0$ in BF16 (or NF4 on consumer GPUs).
 
 ### 3.2 Mixed-Granularity Attention & Prefix KV Cache Reuse
 A signature innovation in Qwen-Image-2.1 is the **mixed-granularity attention schedule**:
@@ -74,13 +74,13 @@ A signature innovation in Qwen-Image-2.1 is the **mixed-granularity attention sc
 
 ### 3.3 Native Multi-Reference Asset Support (Up to 10 Images)
 The official Qwen-Image-2.1 model card and Diffusers pipeline natively accept a list of reference images (`image: list[PIL.Image]`). This supports:
-- **Multi-Subject Composition**: Ingesting distinct subject references (e.g., Person A in Image 1, Person B in Image 2) and allocating them to disjoint bounding boxes via Krisna's `ReferenceAsset` manifest.
+- **Multi-Subject Composition**: Ingesting distinct subject references (e.g., Person A in Image 1, Person B in Image 2) and allocating them to disjoint bounding boxes via Krivex's `ReferenceAsset` manifest.
 - **Product & Style Swapping**: Conditioning simultaneously on a background scene, a brand color palette swatch, and individual foreground assets without cross-identity bleed.
 
 ### 3.4 Native RGBA Transparency (Qwen-Image-Layered Grounding)
 Grounded in **Yin et al. (HKUST & Alibaba, 2025, *Qwen-Image-Layered: Towards Inherent Editability via Layer Decomposition*)**:
 - The model directly predicts 4-channel RGBA latents, generating transparent PNGs with alpha channels without color haloing or edge fringing.
-- Krisna exposes this directly via `Constraints.asset_mode = "transparent"`, rendering transparent wireframes and producing isolated UI components (modals, floating action buttons, stickers) for direct export to Figma and web code.
+- Krivex exposes this directly via `Constraints.asset_mode = "transparent"`, rendering transparent wireframes and producing isolated UI components (modals, floating action buttons, stickers) for direct export to Figma and web code.
 
 ### 3.5 Sub-Pixel Typographic Fidelity (Qwen-Image-VAE-2.0 Grounding)
 Grounded in the **Qwen-Image-VAE-2.0 Technical Report (Alibaba, May 2026)**:
@@ -90,7 +90,7 @@ Grounded in the **Qwen-Image-VAE-2.0 Technical Report (Alibaba, May 2026)**:
 ### 3.6 Few-Step Fast Preview Distillation (Qwen-Image-Flash Grounding)
 Grounded in **Wu et al. (CityU & Alibaba, 2026, *Qwen-Image-Flash: Rethinking the Training Recipe for Few-Step Distillation*)**:
 - Full 30-to-40 ODE step evaluation yields ~5.8s latency on RTX A6000.
-- Using Consistency Flow Distillation (`training/src/krisna_training/polish/cfm_loss.py`), the student network predicts the clean trajectory endpoint in 4 to 6 steps (~0.9s on A6000, ~2.5s on RTX 4070/4080) with minimal layout IoU loss ($\Delta \text{IoU} \le 0.02$).
+- Using Consistency Flow Distillation (`training/src/krivex_training/polish/cfm_loss.py`), the student network predicts the clean trajectory endpoint in 4 to 6 steps (~0.9s on A6000, ~2.5s on RTX 4070/4080) with minimal layout IoU loss ($\Delta \text{IoU} \le 0.02$).
 
 ---
 
@@ -98,7 +98,7 @@ Grounded in **Wu et al. (CityU & Alibaba, 2026, *Qwen-Image-Flash: Rethinking th
 
 To verify the broader scientific grounding beyond open preprints, academic queries were conducted across major refereed repositories utilizing institutional proxy credentials configured in `.env` (`IEEE_XPLORE_URL`, `SCOPUS_URL`, `SCIENCE_DIRECT_URL`, `SPRINGER_LINK_URL`) alongside CrossRef metadata indexing:
 
-| Publisher / Database | Verified Focus in Krisna Research Foundations | Associated DOIs / Venues |
+| Publisher / Database | Verified Focus in Krivex Research Foundations | Associated DOIs / Venues |
 | :--- | :--- | :--- |
 | **IEEE Xplore / Computer Society** | Spatial structural conditioning, flow trajectory editing, and multimodal UI grounding. | Zhang et al. (ICCV 2023, DOI: 10.1109/ICCV51070.2023.00355), Brooks et al. (CVPR 2023, DOI: 10.1109/CVPR52729.2023.01764), Wallace et al. (CVPR 2024, DOI: 10.1109/CVPR52733.2024.00784). |
 | **ACM Digital Library** | Large-scale UI hierarchy datasets and high-throughput attention serving. | Li et al. (CLAY, CHI 2022, DOI: 10.1145/3491102.3517436), Kwon et al. (PagedAttention, SOSP 2023, DOI: 10.1145/3600006.3613165). |
@@ -108,7 +108,7 @@ To verify the broader scientific grounding beyond open preprints, academic queri
 
 ## 5. The 6-Gate Project Finalization Plan
 
-To transition Krisna from an audited research specification to a fully validated production system, execution proceeds across six disciplined gates:
+To transition Krivex from an audited research specification to a fully validated production system, execution proceeds across six disciplined gates:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -145,12 +145,12 @@ To transition Krisna from an audited research specification to a fully validated
 
 ### Gate 1: Paired Dataset Materialization
 - Ingest structural annotations from **CLAY (ACM CHI 2022)**, **Figma2Code (ICLR 2026)**, and **Design2Code (ACL 2025)**.
-- Render deterministic condition wireframes and SPADE segmentation maps via `krisna.layout.v1`.
+- Render deterministic condition wireframes and SPADE segmentation maps via `krivex.layout.v1`.
 - Materialize split-isolated Parquet partitions with typed image bytes.
 - Emit `dataset_receipt.json` certifying non-empty, deduplicated, source-disjoint train/validation/test counts.
 
 ### Gate 2: One-Batch GPU Smoke Test
-- Run `krisna_training.polish.train_preflight` on target hardware (RTX A6000 or consumer RTX 4080).
+- Run `krivex_training.polish.train_preflight` on target hardware (RTX A6000 or consumer RTX 4080).
 - Confirm:
   1. Base weights have `requires_grad = False`.
   2. Exactly 224 declared DoRA sublayer projections have gradients.

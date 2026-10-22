@@ -1,6 +1,6 @@
 # Data-Forge: Multimodal Data Engine & Preprocessing Architecture
 
-Welcome to the definitive documentation suite for **Krisna's Data-Forge**. Data-Forge is the automated, 22-stage data curation, conditioning, and quality-gating pipeline that processes raw multimodal datasets into high-fidelity image-conditioned training pairs for fine-tuning **Qwen-Image-2.1** via QDoRA ($r=64, \alpha=32$).
+Welcome to the definitive documentation suite for **Krivex's Data-Forge**. Data-Forge is the automated, 22-stage data curation, conditioning, and quality-gating pipeline that processes raw multimodal datasets into high-fidelity image-conditioned training pairs for fine-tuning **Qwen-Image-2.1** via QDoRA ($r=64, \alpha=32$).
 
 ---
 

@@ -6,7 +6,7 @@
 ## Layer 1 — Product contracts
 
 The frozen Planner produces a validated design-state delta. Sketch produces
-`krisna.layout.v1`; neither model may bypass its contract.
+`krivex.layout.v1`; neither model may bypass its contract.
 
 ## Layer 2 — Planner inference
 
@@ -33,7 +33,7 @@ Planner deliberation is grounded via:
   paired with data-dependent erase ($b_t$) and write ($w_t$) gates. This linear recurrence selectively erases outdated contextual artifacts and prevents "memory fog" across long design sessions, maintaining $O(L)$ linear time complexity and $O(1)$ recurrent step decoding.
 - *Multimodal Rotary Position Embedding (M-RoPE)*: Decomposes positional embeddings into distinct 2D spatial coordinates $(x, y)$ and 1D sequence tokens, natively capturing arbitrary UI canvas aspect ratios without distortion.
 - *Unsloth FastVision & Dynamic Quantization*: Calibrated using `imatrix` data to dynamically allocate precision per tensor (upcasting critical visual projection matrices while quantizing non-critical linear layers to 4-bit), maintaining perplexity under a strict $<7\text{GB}$ VRAM footprint while skipping zero-padded visual compute tokens.
-- *Thinking Mode Decoupling*: Separates internal chain-of-thought (`<think> ... </think>`) from the emitted Pydantic JSON schema (`krisna.delta.v1`), ensuring zero formatting contamination in downstream parsing.
+- *Thinking Mode Decoupling*: Separates internal chain-of-thought (`<think> ... </think>`) from the emitted Pydantic JSON schema (`krivex.delta.v1`), ensuring zero formatting contamination in downstream parsing.
 - *Synchronized Pipeline Execution*: The Planner (Qwen3.5-9B) serves directly as the visual perception and layout deliberation engine. When given an uploaded UI screenshot or photo (`image_ref`, `wireframe_ref`, or `image_bytes`), the Planner VLM performs visual grounding, recognizes discrete UI components (hero, nav, cards, buttons, headings, focal subjects), grounds bounding boxes $[x_1, y_1, x_2, y_2]$ normalized to $0..1$, and outputs a versioned `DesignStateDelta` with discrete `DesignAction` items (`ADD_COMPONENT`, `MOVE_COMPONENT`, `LOCK_REGION`).
 - *Direct Sketch Tier Integration*: In the same turn, the Sketch Tier (`LayoutBackend`) receives `planner_output["design_state_delta"]`, parses the actions into a `LayoutIR` DAG, resolves constraints via deterministic simplex partitioning, and renders the dual-stream conditioning bundle (`DualStreamSketch`) with 0 MB VRAM overhead and $<5\text{ms}$ CPU latency.
 - *API & Sequence Flow*: Exposed via `flows.decompile_screenshot()` and FastAPI endpoint `POST /session/{session_id}/decompile`. A designer can upload a flat competitor screenshot and say *"Move the CTA to the bottom and make the headline bolder"*; the 9B VLM decompiles the screenshot into an editable layout tree on Turn 1.
@@ -68,7 +68,7 @@ When synthesizing multi-subject compositions (e.g., self + partner, duo portrait
 
 The Unified Plan-and-Sketch Layer (`UnifiedPlanSketchLayer` in `unified_plan_sketch.py` and `flows.plan_sketch_and_polish`) integrates Planner deliberation, Sketch spatial compilation, Polish rendering, and Verifier review into an autonomous 4-stage pipeline:
 1. **Simultaneous Plan + Sketch**:
-   - Executes Qwen3.5-9B VLM deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding) and `krisna.layout.v1` constraint compilation simultaneously in a single turn.
+   - Executes Qwen3.5-9B VLM deliberation (Gated DeltaNet linear recurrence, M-RoPE spatial grounding) and `krivex.layout.v1` constraint compilation simultaneously in a single turn.
    - Merges delta actions, clamps bounding boxes, enforces 8pt grid snapping and facial identity scale floors ($\ge 128\times 128\text{px}$), and renders `DualStreamSketch` (wireframe + 16-class SPADE segmentation + differential mask).
 2. **Direct-to-Polish Auto-Progression**:
    - Immediately progresses from Sketch completion directly into the Polish Tier (Qwen-Image-2.1) without pausing for manual client intervention or intermediate round-trips.
@@ -142,12 +142,12 @@ The Sketch Tier produces an atomic `DualStreamSketch` conditioning bundle (NVIDI
 ## Layer 6 — Training
 
 The Sketch Tier is entirely deterministic and requires no learned weights or training checkpoints.
-The experimental `LayoutFlow` neural ODE ablation (`krisna_training/layout/`) has been retired and removed.
-The production pipeline standardizes on the `krisna.layout.v1` neuro-symbolic engine (0 MB VRAM, <5ms CPU latency).
+The experimental `LayoutFlow` neural ODE ablation (`krivex_training/layout/`) has been retired and removed.
+The production pipeline standardizes on the `krivex.layout.v1` neuro-symbolic engine (0 MB VRAM, <5ms CPU latency).
 
 Training entry points for Planner LoRA and Gemma QLoRA have been completely purged from the repository.
-The Planner is 100% frozen (`training/src/krisna_training/planner/__init__.py`), grounded via UICrit RAG and pushdown automata CFG grammars.
-The Sketch tier is 100% deterministic (`training/src/krisna_training/sketch/__init__.py`), running on CPU with 0 MB VRAM.
+The Planner is 100% frozen (`training/src/krivex_training/planner/__init__.py`), grounded via UICrit RAG and pushdown automata CFG grammars.
+The Sketch tier is 100% deterministic (`training/src/krivex_training/sketch/__init__.py`), running on CPU with 0 MB VRAM.
 All legacy training scripts and unused helper remnants have been cleanly removed from the codebase.
 
 ## Layer 7 — Evaluation

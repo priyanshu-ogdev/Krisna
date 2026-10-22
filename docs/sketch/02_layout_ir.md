@@ -1,14 +1,14 @@
-# Layout Intermediate Representation (`krisna.layout.v1`)
+# Layout Intermediate Representation (`krivex.layout.v1`)
 
 ## 1. Specification Overview
 
-The canonical intermediate representation for graphic layouts in Krisna is **`LayoutIR`** (schema version `krisna.layout.v1`). 
+The canonical intermediate representation for graphic layouts in Krivex is **`LayoutIR`** (schema version `krivex.layout.v1`). 
 
 It decouples planning logic from generative image synthesis. Generative layout models (such as LayoutFlow), conversational planners (such as Llama-based Planner), and deterministic layout solvers emit and consume this typed tree before any rasterization or Polish-tier handoff occurs.
 
 ```json
 {
-  "version": "krisna.layout.v1",
+  "version": "krivex.layout.v1",
   "canvas_width": 1024,
   "canvas_height": 1024,
   "nodes": [
@@ -65,7 +65,7 @@ It decouples planning logic from generative image synthesis. Generative layout m
 
 ## 2. Pydantic Domain Models
 
-Defined in `inference/src/krisna_inference/layout_ir.py`:
+Defined in `inference/src/krivex_inference/layout_ir.py`:
 
 ### 2.1 `BBox`
 Normalized bounding box in unit canvas space $[0.0, 1.0]^4$:
@@ -98,7 +98,7 @@ Explicit spatial and topological constraints between pairs of nodes:
 
 ### 2.4 `LayoutIR`
 Root document container:
-- `version: str` (`"krisna.layout.v1"`)
+- `version: str` (`"krivex.layout.v1"`)
 - `canvas_width: int` ($1 \le W \le 8192$, enforced $W \equiv 0 \pmod{32}$)
 - `canvas_height: int` ($1 \le H \le 8192$, enforced $H \equiv 0 \pmod{32}$)
 - `nodes: list[LayoutNode]` (Max 64 nodes per layout)

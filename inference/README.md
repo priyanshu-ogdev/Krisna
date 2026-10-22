@@ -1,16 +1,16 @@
-> **Split from the original krisna-orchestrator README** as part of the
+> **Split from the original krivex-orchestrator README** as part of the
 > training/inference package separation — see
 > `docs/architecture/DIRECTORY_LAYOUT.md`. This covers the serving/
-> orchestration side (`krisna_inference`). For training code (sketch
+> orchestration side (`krivex_inference`). For training code (sketch
 > tier, Z-Image-Turbo LoRA, the data-forge sync bridge, DPO data prep),
 > see `../training/README.md`.
 
-# Krisna Swap Orchestrator
+# Krivex Swap Orchestrator
 
-Swap Orchestrator + Design State Manager for **Krisna's Agentic Design
+Swap Orchestrator + Design State Manager for **Krivex's Agentic Design
 System** — the coordination backbone described in §5.1 (Design State
 object), §5.2 (Critique Adapter contract), §5.3 (sequence flows), and
-§7.4 (formal swap-orchestration state machine). This README reflects the **final, canonical architecture**: the Planner (`Qwen3.5-9B`) ships **frozen** (RAG + GBNF grammar); the Sketch Tier (`krisna.layout.v1`) is **100% deterministic** (Cassowary/Simplex CPU solver, 0 MB GPU VRAM, 0% overlap proof); and the Visual Polish Tier (`Qwen/Qwen-Image-2.1` 7B MMDiT with DoRA adapter) is the **single active trainable foundation model**. Sections below are labeled FROZEN / DETERMINISTIC / TRAINED accordingly.
+§7.4 (formal swap-orchestration state machine). This README reflects the **final, canonical architecture**: the Planner (`Qwen3.5-9B`) ships **frozen** (RAG + GBNF grammar); the Sketch Tier (`krivex.layout.v1`) is **100% deterministic** (Cassowary/Simplex CPU solver, 0 MB GPU VRAM, 0% overlap proof); and the Visual Polish Tier (`Qwen/Qwen-Image-2.1` 7B MMDiT with DoRA adapter) is the **single active trainable foundation model**. Sections below are labeled FROZEN / DETERMINISTIC / TRAINED accordingly.
 
 ## What this is (and isn't)
 
@@ -31,10 +31,10 @@ implementations plus a real one:
   kept as the minimal interface reference.
 - `inference/factory.real_backend_factory` — the actual working
   implementations (Qwen3.5-9B planner GGUF via llama.cpp **[FROZEN — RAG]**,
-  Krisna structured Layout IR **[DETERMINISTIC / TRAINED]**,
+  Krivex structured Layout IR **[DETERMINISTIC / TRAINED]**,
   Qwen-Image-2.1 Polish **[TRAINED LoRA / HIGH-FIDELITY]**,
   Planner Review **[FROZEN RESIDENT]**). Swap it in via
-  `SwapOrchestrator(backend_factory=...)` or `KRISNA_USE_REAL_BACKENDS=1`
+  `SwapOrchestrator(backend_factory=...)` or `KRIVEX_USE_REAL_BACKENDS=1`
   — nothing in the orchestration layer itself changes (the orchestrator
   is training-status-agnostic by design: it only ever calls
   `load()`/`run()`/`unload()` through the common `ModelBackend`
@@ -51,7 +51,7 @@ all `ERROR_RECOVERY` transitions cleanly reverting to `IDLE_RESIDENT`.
 ## Layout
 
 ```
-inference/src/krisna_inference/
+inference/src/krivex_inference/
 ├── orchestrator/        # coordination layer — no GPU code
 │   ├── swap_orchestrator.py    # the state machine driving load/unload/swap
 │   ├── state_machine.py         # ResidencyState transitions (§7.4)
@@ -82,7 +82,7 @@ inference/src/krisna_inference/
 ./scripts/inference/run_service.sh
 # in another terminal:
 python inference/runtime/run_agentic_session.py --finalize --critique
-# or: krisna-session --finalize --critique
+# or: krivex-session --finalize --critique
 ```
 This exercises the full conversational-turn → finalize → critique
 sequence against `MockBackend` — real orchestration logic (VRAM/RAM
@@ -96,10 +96,10 @@ model output.
 Planner Review is used for critique; the former Gemma Critic setup is not part
 of the production path.
 
-export KRISNA_USE_REAL_BACKENDS=1
-export KRISNA_SKETCH_CHECKPOINT=./models/sketch_tier/checkpoint_final
-export KRISNA_POLISH_DEFAULT_LORA_PATH=./models/polish_default_lora
-export KRISNA_PLANNER_RAG_CORPUS_DIR=./models/planner_rag_index   # or data-forge's model_data/ directly
+export KRIVEX_USE_REAL_BACKENDS=1
+export KRIVEX_SKETCH_CHECKPOINT=./models/sketch_tier/checkpoint_final
+export KRIVEX_POLISH_DEFAULT_LORA_PATH=./models/polish_default_lora
+export KRIVEX_PLANNER_RAG_CORPUS_DIR=./models/planner_rag_index   # or data-forge's model_data/ directly
 
 ./scripts/inference/run_service.sh
 # or, for a scriptable smoke test instead of the full service:
@@ -112,8 +112,8 @@ dedicated section below.
 ## Setup (Linux)
 
 ```bash
-git clone <this-repo> krisna   # or unzip
-cd krisna
+git clone <this-repo> krivex   # or unzip
+cd krivex
 chmod +x scripts/*/*.sh   # if the executable bit didn't survive the zip
 ./scripts/inference/setup_env.sh
 ```
@@ -149,7 +149,7 @@ chmod +x scripts/*/*.sh   # if the executable bit didn't survive the zip
 
 ### Agentic Multi-Turn Pipeline Synchronization (§5.3)
 
-Krisna's conversational pipeline connects all tiers in a closed multi-turn feedback loop:
+Krivex's conversational pipeline connects all tiers in a closed multi-turn feedback loop:
 1. **Multi-Turn Context Forwarding**: Every conversational turn forwards prior dialog history (`[turn.model_dump() for turn in state.conversation_history]`) into `PlannerBackend.run()`. Turns 2+ maintain full conversational memory.
 2. **Structured Constraint Delta Merging**: Structured JSON updates emitted by the Planner (`style`, `palette`, `layout_hints`, `locked_regions`) are parsed and merged directly into `state.constraints`.
 3. **Critic Feedback Loop Closure**: Following a critique pass, `state.critique.result` is passed into `orchestrator.run_conversational_turn(prior_critique=...)`. The Planner formats critique scores, dimension evaluations, and suggested edits directly into its prompt.
@@ -193,13 +193,13 @@ curl -s $BASE/session/$SID/render -o render.png
 ## Low-VRAM / CPU-offload mode (12-16GB GPU, rest in system RAM)
 
 **Yes, this is possible, and it's real — not a resize of the numbers.**
-Set `KRISNA_LOW_VRAM_MODE=1` and construct the orchestrator with
+Set `KRIVEX_LOW_VRAM_MODE=1` and construct the orchestrator with
 `low_vram=True`:
 
 ```bash
-export KRISNA_LOW_VRAM_MODE=1
-export KRISNA_USE_REAL_BACKENDS=1
-./scripts/inference/run_service.sh   # reads KRISNA_LOW_VRAM_MODE and constructs
+export KRIVEX_LOW_VRAM_MODE=1
+export KRIVEX_USE_REAL_BACKENDS=1
+./scripts/inference/run_service.sh   # reads KRIVEX_LOW_VRAM_MODE and constructs
                              # SwapOrchestrator(low_vram=True, envelope_gb=12.0)
 ```
 
@@ -261,11 +261,11 @@ it). Both corrected here to match `model_registry.py`'s actual current
 values, not re-described from memory.
 
 Two configurable env vars for the Critic specifically:
-`KRISNA_CRITIC_MAX_GPU_GB` (default `11.5` — deliberately kept below the
+`KRIVEX_CRITIC_MAX_GPU_GB` (default `11.5` — deliberately kept below the
 12GB target card rather than equal to it, to leave real headroom for
 CUDA context/fragmentation/activation memory; must be changed together
 with `LOW_VRAM_REGISTRY[Tier.CRITIC].vram_gb` in `model_registry.py` if
-you override it), `KRISNA_CRITIC_MAX_CPU_GB`
+you override it), `KRIVEX_CRITIC_MAX_CPU_GB`
 (default `64`) — raise the CPU cap if your box has more RAM than the
 default assumes, or lower the GPU cap further if 11.5GB is still too much
 for your card (at the cost of an even larger RAM requirement, per the
@@ -287,7 +287,7 @@ doesn't have.
 ## Planner (FROZEN — no training, real RAG retrieval instead)
 
 **Under the final, no-RLHF-loop PRD revision, the Planner is never
-fine-tuned.** `training/src/krisna_training/planner/` (BF16 LoRA
+fine-tuned.** `training/src/krivex_training/planner/` (BF16 LoRA
 chat-SFT) still exists in this repo but is **deprecated** — it emits a
 `DeprecationWarning` on import and is not called by anything in the
 active pipeline. It's kept as a reference implementation in case a future
@@ -297,12 +297,12 @@ exactly what would need to change to revive it.
 Design-domain grounding instead comes from **real retrieval** over
 data-forge's UICrit corpus:
 
-- `inference/src/krisna_inference/backends/planner_rag.py` — a stdlib TF-IDF + cosine-similarity index
+- `inference/src/krivex_inference/backends/planner_rag.py` — a stdlib TF-IDF + cosine-similarity index
   over `model_data/planner_rag_corpus/uicrit_critiques.jsonl` (data-forge's
   real, human-annotated critique export — see data-forge's
   `s01_5_uicrit_join.py`/`s12_model_data_export.py`). Built once at
   `PlannerBackend.load()` time; queried per conversational turn.
-- `inference/src/krisna_inference/backends/planner_backend.py` — folds the top-k retrieved critique
+- `inference/src/krivex_inference/backends/planner_backend.py` — folds the top-k retrieved critique
   snippets into the system prompt, then uses a **generate-validate-retry**
   loop (not a hard grammar constraint — no verified constrained-decoding
   support was found for this tokenizer/attention combination) to get a
@@ -312,12 +312,12 @@ data-forge's UICrit corpus:
   failure.
 
 ```bash
-export KRISNA_PLANNER_RAG_CORPUS_DIR=/path/to/data-forge/model_data
-export KRISNA_USE_REAL_BACKENDS=1
+export KRIVEX_PLANNER_RAG_CORPUS_DIR=/path/to/data-forge/model_data
+export KRIVEX_USE_REAL_BACKENDS=1
 ./scripts/inference/run_service.sh
 ```
 
-If `KRISNA_PLANNER_RAG_CORPUS_DIR` isn't set, or the corpus file doesn't
+If `KRIVEX_PLANNER_RAG_CORPUS_DIR` isn't set, or the corpus file doesn't
 exist yet, the Planner degrades cleanly to an empty retrieval index (a
 warning is logged, not a crash) — the model still runs, just without
 grounding context for that turn.
@@ -327,7 +327,7 @@ grounding context for that turn.
 | `planner_rag.py::UICritRAGIndex` | TF-IDF index, built from data-forge's real critique corpus. `retrieve(query, k)` returns the top-k most relevant real human critiques. |
 | `planner_backend.py::_extract_json_delta` | Finds the last balanced `{...}` in the model's output, validates it has the required `stage` key against the five valid `SessionStage` values, and fills sane defaults for the optional keys. Pure logic, tested without a real model in `../tests/inference/test_planner_json_delta.py`. |
 
-`inference/src/krisna_inference/backends/` implements `TorchBackend`-equivalent
+`inference/src/krivex_inference/backends/` implements `TorchBackend`-equivalent
 classes for every tier, wired into the same `ModelBackend` interface
 `MockBackend` satisfies — the orchestrator, state machine, and tests don't
 change at all when you switch backends.
@@ -335,7 +335,7 @@ change at all when you switch backends.
 | Tier | Backend | Model | Status |
 |---|---|---|---|
 | Planner | `planner_backend_llama.PlannerBackendLlama` | Qwen3.5-9B GGUF via llama.cpp | Real, **frozen** — pinned runtime, RAG retrieval |
-| Sketch | `layout_backend.LayoutBackend` | Structured Layout IR `krisna.layout.v1` | Real, deterministic renderer / LayoutFlow base |
+| Sketch | `layout_backend.LayoutBackend` | Structured Layout IR `krivex.layout.v1` | Real, deterministic renderer / LayoutFlow base |
 | Polish (default) | `polish_backend_qwen.QwenImage21Backend` | Qwen-Image-2.1 | Real, DreamBooth LoRA adapter, 28 steps |
 | Polish (quality) | `polish_backend_qwen.QwenImage21Backend` | Qwen-Image-2.1 | Real, high-fidelity sampling, 40 steps |
 | Review | Resident Planner Review Mode | Qwen3.5-9B GGUF | In-place visual defect inspection & constraint updates |
@@ -344,23 +344,23 @@ change at all when you switch backends.
 
 ```bash
 ./scripts/inference/setup_env_inference.sh   # planner + sketch + both polish tiers, into .venv
-export KRISNA_USE_REAL_BACKENDS=1
+export KRIVEX_USE_REAL_BACKENDS=1
 ./scripts/inference/run_service.sh
 ```
 
-Optional env vars: `KRISNA_PLANNER_FAST_MODE=1` (Qwen3.5-4B instead of 9B),
-`KRISNA_PLANNER_RAG_CORPUS_DIR` (data-forge's `model_data/` directory —
-see "Planner" above), `KRISNA_SKETCH_CHECKPOINT`,
-`KRISNA_POLISH_DEFAULT_LORA_PATH` (Z-Image-Turbo's fine-tuned adapter —
-the one tier that still has one), `KRISNA_POLISH_QUALITY_EDIT_STRENGTH`
+Optional env vars: `KRIVEX_PLANNER_FAST_MODE=1` (Qwen3.5-4B instead of 9B),
+`KRIVEX_PLANNER_RAG_CORPUS_DIR` (data-forge's `model_data/` directory —
+see "Planner" above), `KRIVEX_SKETCH_CHECKPOINT`,
+`KRIVEX_POLISH_DEFAULT_LORA_PATH` (Z-Image-Turbo's fine-tuned adapter —
+the one tier that still has one), `KRIVEX_POLISH_QUALITY_EDIT_STRENGTH`
 (default `0.65` — SDEdit-style partial-denoising strength for
 Qwen-Image-Edit-2511, **not independently confirmed as a real kwarg on
 `QwenImageEditPlusPipeline` specifically** — see `polish_quality_backend.py`'s
-inline comment before relying on this in production), `KRISNA_BLOB_ROOT`
-(where generated images are written, default `./krisna_blobs`).
+inline comment before relying on this in production), `KRIVEX_BLOB_ROOT`
+(where generated images are written, default `./krivex_blobs`).
 
-`KRISNA_PLANNER_LORA_PATH`, `KRISNA_CRITIC_LORA_PATH`, and
-`KRISNA_POLISH_QUALITY_LORA_PATH` **no longer exist** — those three tiers
+`KRIVEX_PLANNER_LORA_PATH`, `KRIVEX_CRITIC_LORA_PATH`, and
+`KRIVEX_POLISH_QUALITY_LORA_PATH` **no longer exist** — those three tiers
 ship frozen. `tests/test_inference_factory.py::TestFrozenModelsHaveNoLoraWiring`
 checks this directly against `factory.py`'s source, not just behavior.
 
@@ -402,8 +402,8 @@ unsloth_zoo release pip happened to land on at build time.
 
 ```bash
 No separate Critic environment is required for the production path.
-export KRISNA_USE_REAL_BACKENDS=1
-# KRISNA_CRITIC_VENV_PYTHON defaults to ./venv-critic/bin/python
+export KRIVEX_USE_REAL_BACKENDS=1
+# KRIVEX_CRITIC_VENV_PYTHON defaults to ./venv-critic/bin/python
 ./scripts/inference/run_service.sh
 ```
 
@@ -457,9 +457,9 @@ docker build --build-arg INSTALL_VLLM_PLANNER=true -f docker/Dockerfile.inferenc
 python3.11 -m venv ./venv-planner
 ./venv-planner/bin/pip install -r inference/requirements-planner.txt
 
-export KRISNA_PLANNER_BACKEND=vllm
-export KRISNA_USE_REAL_BACKENDS=1
-# KRISNA_PLANNER_VLLM_VENV_PYTHON defaults to ./venv-planner/bin/python
+export KRIVEX_PLANNER_BACKEND=vllm
+export KRIVEX_USE_REAL_BACKENDS=1
+# KRIVEX_PLANNER_VLLM_VENV_PYTHON defaults to ./venv-planner/bin/python
 ./scripts/inference/run_service.sh
 ```
 
@@ -496,14 +496,14 @@ to override that.
   just asserting the two numbers individually.
 
 - **VQ-decode → pixel → renderer-latent handoff is now real** (see
-  `inference/src/krisna_inference/backends/sketch_handoff.py` + the sketch training package's
+  `inference/src/krivex_inference/backends/sketch_handoff.py` + the sketch training package's
   `vq_tokenizer.py`).
 - **Region-locking as a real pipeline parameter.** `QwenImageEditBackend`
   currently expresses `constraints.locked_regions` as a prompt-level
   instruction rather than a genuine differential-diffusion mask parameter
   — diffusers' locked-region API for `QwenImageEditPlusPipeline` was still
   moving as of this build; tighten this once it stabilizes.
-- **`KRISNA_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
+- **`KRIVEX_POLISH_QUALITY_EDIT_STRENGTH`'s `strength` kwarg is unverified
   for `QwenImageEditPlusPipeline` specifically** (confirmed only for
   `QwenImageImg2ImgPipeline`/`QwenImageInpaintPipeline` — architecturally
   different pipeline classes). Confirm against the installed diffusers
@@ -515,13 +515,13 @@ to override that.
   Diffusion-DPO). `training/planner/` and `training/critic/` are real,
   working code but deliberately deprecated (see their `__init__.py`
   docstrings) — the Planner and Critic ship frozen under the final PRD.
-  There is no DPO trainer consuming `../training/src/krisna_training/dpo/dpo_dataset_export.py`'s output
+  There is no DPO trainer consuming `../training/src/krivex_training/dpo/dpo_dataset_export.py`'s output
   either — that module builds and exports preference pairs, it doesn't
   train on them.
 
 ## Verifier stack + Critique Adapter + DPO pipeline
 
-`inference/src/krisna_inference/verifiers/` and `training/src/krisna_training/dpo/`
+`inference/src/krivex_inference/verifiers/` and `training/src/krivex_training/dpo/`
 implement §6's verifier stack ("CLIP/SigLIP, OCR, layout-IoU, aesthetic/
 safety, handoff-consistency. <1B combined, off-the-shelf") and the DPO
 preference-pair pipeline it feeds.
@@ -543,11 +543,11 @@ preference-pair pipeline it feeds.
 exactly `design_state.VerifierScores`' field names — `flows.finalize()`
 assigns it straight into `finalize_output.verifier_scores` when you pass a
 `VerifierStack` instance (the packaged service does this automatically
-when `KRISNA_USE_REAL_BACKENDS=1`).
+when `KRIVEX_USE_REAL_BACKENDS=1`).
 
 ### Critique Adapter (§5.2, formalized)
 
-`src/krisna_inference/verifiers/critique_adapter.py` has two entry points, both producing the
+`src/krivex_inference/verifiers/critique_adapter.py` has two entry points, both producing the
 exact same `CritiqueResult` shape:
 - `from_gemma_output(raw)` — re-validates whatever `critic_worker.py`'s
   subprocess returned through the same pydantic model every other source
@@ -560,7 +560,7 @@ exact same `CritiqueResult` shape:
 
 ### DPO preference pairs
 
-`../training/src/krisna_training/dpo/preference_store.py` is a SQLite table of `(chosen_ref, rejected_ref,
+`../training/src/krivex_training/dpo/preference_store.py` is a SQLite table of `(chosen_ref, rejected_ref,
 prompt, source)` rows. Three ways pairs get built:
 
 1. **`pair_builder.build_pair_from_candidates()`** — ranks any set of
@@ -581,14 +581,14 @@ prompt, source)` rows. Three ways pairs get built:
    plus field-name overrides rather than guessing wrong names silently.
    Check the real dataset before wiring this up for real.
 
-`../training/src/krisna_training/dpo/dpo_dataset_export.py` writes a standard `{"prompt", "chosen",
+`../training/src/krivex_training/dpo/dpo_dataset_export.py` writes a standard `{"prompt", "chosen",
 "rejected"}` JSONL, the shape `trl`'s `DPOTrainer` and most diffusion-DPO
 scripts expect — or hit `/preference-pairs/export` on the running service.
 The actual DPO training loop is a separate build, out of scope here.
 
 ## Production Docker Containerization & Dual-Venv Isolation
 
-For release and production deployments, Krisna Inference is containerized with strict dependency isolation:
+For release and production deployments, Krivex Inference is containerized with strict dependency isolation:
 
 ```bash
 # Launch multi-service GPU stack (FastAPI Inference on 8420 + Web Studio on 3000)

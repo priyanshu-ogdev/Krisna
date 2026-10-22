@@ -1,8 +1,8 @@
-# Contributing to Krisna
+# Contributing to Krivex
 
 ## Scope and ownership
 
-Krisna is a monorepo with explicit subsystem ownership:
+Krivex is a monorepo with explicit subsystem ownership:
 
 | Area | Ownership boundary |
 |---|---|
@@ -33,7 +33,7 @@ source changes.
 - A configured model is not a loaded model.
 - A registry count is not a realized dataset count.
 - A checkpoint path is not evidence of a completed training run.
-- A model-card capability is not evidence of Krisna task quality.
+- A model-card capability is not evidence of Krivex task quality.
 - A synthetic test artifact must be labeled synthetic.
 - Research claims require a receipt containing model revision, data hash,
   split policy, seed, evaluator, and hardware.

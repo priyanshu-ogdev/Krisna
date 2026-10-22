@@ -1,4 +1,4 @@
-# Krisna: Unified Final System Design & Architectural Specification
+# Krivex: Unified Final System Design & Architectural Specification
 
 **Document Version**: 2.0 (Canonical Production Release)  
 **System Classification**: Bounded Multi-Turn Agentic UI/UX Generation & Polishing Architecture  
@@ -45,7 +45,7 @@
 
 ## 1. Executive Summary & Architectural Paradigm
 
-**Krisna** is an enterprise-grade agentic system designed to synthesize, iterate, and refine graphical user interfaces, data visualizations, marketing banners, and web layouts through natural language conversation.
+**Krivex** is an enterprise-grade agentic system designed to synthesize, iterate, and refine graphical user interfaces, data visualizations, marketing banners, and web layouts through natural language conversation.
 
 ### Core Breakthrough
 Historically, UI generation pipelines suffered from three fatal flaws:
@@ -53,8 +53,8 @@ Historically, UI generation pipelines suffered from three fatal flaws:
 2. **PCIe Thrashing & Latency Spikes**: Systems attempting multi-tier orchestration (e.g., separate Planner, Sketch, Fast-Preview, and High-Quality Polish models) incurred severe 4s to 8s latency overheads swapping weights across the host-device PCIe bus.
 3. **Drab Academic Bias & Aesthetic Decay**: Training generative models on raw, uncurated document scans (PubLayNet, DocBank) or decade-old mobile dumps (raw 2017 RICO) caused catastrophic visual degradation.
 
-### The Krisna Solution
-Krisna solves these challenges by establishing:
+### The Krivex Solution
+Krivex solves these challenges by establishing:
 - A **Strict 3-Tier Separation of Concerns**: Conversational planning and layout generation are completely decoupled from pixel synthesis.
 - A **Single Unified Resident Backbone**: Qwen-Image-2.1 (7B MMDiT) remains permanently resident in GPU VRAM, serving both sub-second interactive draft previews and production-grade high-fidelity renders via **multi-fidelity Continuous Flow Matching (CFM) ODE step scaling**.
 - A **Zero-VRAM Neuro-Symbolic Layout Engine**: Bounding box geometry is resolved via continuous flow matching and exact Simplex/Cassowary constraint solving on the CPU in $<20\text{ ms}$, consuming $0\text{ MB}$ of GPU memory.
@@ -62,7 +62,7 @@ Krisna solves these challenges by establishing:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                               KRISNA MULTI-TURN AGENTIC ARCHITECTURE                                  │
+│                               KRIVEX MULTI-TURN AGENTIC ARCHITECTURE                                  │
 ├────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │                                            USER PROMPT                                                 │
 │                                                 │                                                      │
@@ -108,7 +108,7 @@ Krisna solves these challenges by establishing:
 ## 2. The Single Unified Resident Model Paradigm
 
 ### 2.1 The Catastrophe of Model Swapping (USENIX OSDI / MLSys Literature)
-The foundational motivation for Krisna's single resident model design stems from operating systems and computer systems literature:
+The foundational motivation for Krivex's single resident model design stems from operating systems and computer systems literature:
 
 1. **PCIe Transfer Latency Penalty (*PipeSwitch*, USENIX OSDI 2020)**:  
    Moving neural network weights across the host-device PCIe bus imposes an inescapable physical latency ceiling. Transferring a 7B parameter model in BF16 (~14.0 GB) across a PCIe 4.0 x16 link (effective throughput ~16–20 GB/s) requires:
@@ -160,7 +160,7 @@ This guarantees zero memory fragmentation, zero dynamic allocation thrashing, an
 ```
 
 ### 3.1 Tier 1: Intent & Reasoning Planner (Qwen3.5-9B-Instruct)
-- **Role**: Translates multi-turn user conversation, brand design constraints, and visual feedback into a strictly validated `krisna.layout.v1` intermediate representation (IR).
+- **Role**: Translates multi-turn user conversation, brand design constraints, and visual feedback into a strictly validated `krivex.layout.v1` intermediate representation (IR).
 - **Quantization & Execution**: Quantized via AWQ 4-bit (Lin et al., MLSys 2024), fitting into a 5.5 GB VRAM budget during conversational turns. If running on strict 16GB consumer hardware, it pages out in $<0.4\text{s}$ or executes via host RAM offloading.
 - **Pushdown Automata GBNF Grammar**: Employs formal Context-Free Grammar (CFG) logit masking (Geng et al., NeurIPS 2023). Tokens violating the JSON Schema specification are masked with $-\infty$ at the logits layer prior to softmax, guaranteeing $100\%$ syntactically valid JSON output with zero schema parse failures.
 - **Multi-Vector Visual RAG (ColPali Index)**: Implements ColPali (Faysse et al., ECCV Workshops 2024, LNCS 15145) multi-vector visual retrieval over the UICrit database, embedding design guideline screenshots and retrieving relevant design rules to condition the prompt.
@@ -195,7 +195,7 @@ The network $v_\theta(x_t, t, c)$ parameterized by QDoRA weights $\theta$ and co
 $$\mathcal{L}_{\text{CFM}}(\theta) = \mathbb{E}_{t \sim p(t), x_0 \sim p_0, x_1 \sim q(x_1), c} \left[ \| v_\theta(x_t, t, c) - (x_1 - x_0) \|^2 \right]$$
 
 ### 4.2 Logit-Normal Timestep Sampling
-Uniform sampling $t \sim \mathcal{U}(0, 1)$ allocates excessive gradient steps to $t \to 0$ (unstructured noise) and $t \to 1$ (micro-textures). Krisna enforces logit-normal timestep sampling (Esser et al., ICML 2024):
+Uniform sampling $t \sim \mathcal{U}(0, 1)$ allocates excessive gradient steps to $t \to 0$ (unstructured noise) and $t \to 1$ (micro-textures). Krivex enforces logit-normal timestep sampling (Esser et al., ICML 2024):
 $$t = \sigma(\mu + \sigma \epsilon), \quad \epsilon \sim \mathcal{N}(0, 1), \quad \operatorname{logit}(t) = \ln\left(\frac{t}{1-t}\right)$$
 The density function is:
 $$p(t) = \frac{1}{\sigma \sqrt{2\pi} \, t(1-t)} \exp\left( -\frac{(\operatorname{logit}(t) - \mu)^2}{2\sigma^2} \right)$$
@@ -217,7 +217,7 @@ $$x_{i,2} \le x_{j,1} \quad \lor \quad x_{j,2} \le x_{i,1} \quad \lor \quad y_{i
 The Cassowary dual-simplex algorithm solves this system incrementally in $O(N)$ expected time on the CPU.
 
 ### 4.5 Multi-Subject Spatial Gating & Localized Object Teleportation (MS-Diffusion, FastComposer, AnyDoor, ConsisID, PhotoMaker)
-In multi-subject synthesis (duo portraits, companion figures, character-environment insertion), standard unconstrained cross-attention causes visual identity bleeding and feature cross-talk. Furthermore, direct 1:1 canvas coordinate copying corrupts off-center reference subjects. Krisna mathematically resolves multi-subject composition across three tiers:
+In multi-subject synthesis (duo portraits, companion figures, character-environment insertion), standard unconstrained cross-attention causes visual identity bleeding and feature cross-talk. Furthermore, direct 1:1 canvas coordinate copying corrupts off-center reference subjects. Krivex mathematically resolves multi-subject composition across three tiers:
 1. **Multi-Asset Manifest ($\mathcal{A}$)**:
    Reference assets are formalized as $\mathcal{A} = \{A_1, \dots, A_K\}$, where each asset $A_k = \langle \text{id}_k, \mathcal{I}_k, \text{role}_k, \mathbf{b}_k^s, \mathbf{p}_k \rangle$ defines donor identity, source crop coordinates $\mathbf{b}_k^s = [x_s, y_s, w_s, h_s]$, and semantic role $\text{role}_k \in \{\text{subject}, \text{background}, \text{style}, \text{canvas}\}$.
 2. **Localized Cross-Attention Gating (MS-Diffusion & FastComposer)**:
@@ -321,13 +321,13 @@ The production training and evaluation portfolio is bounded at **356,721 records
 ```
 
 ### 6.2 Prior Preservation Invariant via Frozen Base Weights
-While naive full-model fine-tuning on synthetic UI layouts induces **catastrophic prior forgetting** of natural textures and photorealism, Krisna solves this architecturally:
+While naive full-model fine-tuning on synthetic UI layouts induces **catastrophic prior forgetting** of natural textures and photorealism, Krivex solves this architecturally:
 - In `training/configs/polish_qwen_image21_lora.yaml` and enforced by `qwen_trainer_contract.py`, base foundation weights remain completely frozen (`base_weights_frozen: true`).
 - Pretrained natural photographic manifolds, human skin tones, and lighting physics are permanently retained in $W_0$ ($S_{\text{prior}} = 1.0$).
 - Consequently, downloading external stock photography or enabling DreamBooth-style prior loss is unnecessary (`with_prior_preservation: false`), dedicating 100% of the rank-64 adapter capacity to UI and typography geometry without domain dilution or wasted storage.
 
 ### 6.3 Quarantine & Decontamination Log (Negative Audit)
-The following datasets were systematically quarantined and purged from Krisna's training pool:
+The following datasets were systematically quarantined and purged from Krivex's training pool:
 1. **PubLayNet & DocBank (PURGED)**: Overwhelming monochrome LaTeX academic papers. Induces drab aesthetic collapse in diffusion generative models.
 2. **Raw 2017 RICO (PURGED)**: $65\%$ duplicate screens, corrupted bounding boxes, and obsolete Android Marshmallow styling. Completely replaced by **CLAY (Google, 2022)**.
 3. **WebSight & AtomBlock (PURGED)**: Synthetic LLM-generated HTML/CSS with severe flex-wrap overflow bugs and overlapping elements. Replaced by real human-authored **Design2Code** and **Mind2Web**.
@@ -338,7 +338,7 @@ The following datasets were systematically quarantined and purged from Krisna's 
 ## 7. Training Methodology & Hyperparameter Envelope
 
 ### 7.1 Single-Model QDoRA Adaptation Architecture
-To train on a single 48GB NVIDIA RTX A6000 GPU without out-of-memory (OOM) crashes, Krisna implements **Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024)** combined with NF4 quantization:
+To train on a single 48GB NVIDIA RTX A6000 GPU without out-of-memory (OOM) crashes, Krivex implements **Weight-Decomposed Low-Rank Adaptation (DoRA, Liu et al., ICML 2024)** combined with NF4 quantization:
 $$W = m \frac{W_0 + \Delta W}{\| W_0 + \Delta W \|_c} = m \frac{W_0 + \frac{\alpha}{r} B A}{\| W_0 + \frac{\alpha}{r} B A \|_c}$$
 - Base weights $W_0$ are frozen in NormalFloat4 (NF4) with double dequantization (or full BF16 on 48GB A6000).
 - Directional adapter matrices $B \in \mathbb{R}^{d \times r}, A \in \mathbb{R}^{r \times k}$ are trained with rank $r=64$ and scaling factor $\alpha=32$.
@@ -377,7 +377,7 @@ training:
 ```
 
 ### 7.3 Direct Preference Optimization (DPO) Continuation (Deferred Extension)
-In accordance with **Gate 5 of FINAL_ARCHITECTURE_VERDICT.md** and **PRD §6**, preference alignment is an optional post-convergence research extension rather than a mandatory baseline training phase. Following supervised base QDoRA convergence and empirical validation of pair provenance, Krisna executes Continuous Flow-Matching DPO (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024) using human preference pairs from **GameLabel-10K** and verified UI ratings:
+In accordance with **Gate 5 of FINAL_ARCHITECTURE_VERDICT.md** and **PRD §6**, preference alignment is an optional post-convergence research extension rather than a mandatory baseline training phase. Following supervised base QDoRA convergence and empirical validation of pair provenance, Krivex executes Continuous Flow-Matching DPO (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024) using human preference pairs from **GameLabel-10K** and verified UI ratings:
 $$\mathcal{L}_{\text{DPO}}(\theta) = -\mathbb{E}_{(x_w, x_l, c)} \left[ \ln \sigma \left( \beta \left( \mathcal{L}_{\text{CFM}}^{\text{ref}}(x_l, c) - \mathcal{L}_{\text{CFM}}^\theta(x_l, c) \right) - \beta \left( \mathcal{L}_{\text{CFM}}^{\text{ref}}(x_w, c) - \mathcal{L}_{\text{CFM}}^\theta(x_w, c) \right) \right) \right]$$
 where $x_w$ is the winning UI design, $x_l$ is the losing UI design, and $\beta = 2000.0$.
 
@@ -386,7 +386,7 @@ where $x_w$ is the winning UI design, $x_l$ is the losing UI design, and $\beta 
 ## 8. Inference Serving, VRAM Ledgers & Control Plane
 
 ### 8.1 Inference Memory Budget Allocations
-Krisna enforces a strict, fail-fast VRAM allocation ceiling across three standardized hardware tiers:
+Krivex enforces a strict, fail-fast VRAM allocation ceiling across three standardized hardware tiers:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -407,7 +407,7 @@ Krisna enforces a strict, fail-fast VRAM allocation ceiling across three standar
 ```
 
 ### 8.2 Fail-Fast Hardware Diagnostics & Verification
-The inference service implements automated preflight checks (`inference/src/krisna_inference/common/hardware.py`):
+The inference service implements automated preflight checks (`inference/src/krivex_inference/common/hardware.py`):
 1. **CUDA Compute Capability**: Requires $\text{sm\_75}$ or higher (Turing, Ampere, Ada Lovelace, Hopper). Fails fast on unsupported legacy compute architectures.
 2. **VRAM Availability Probe**: Rejects service initialization if free memory is below $11.5\text{ GB}$ (Low-VRAM mode) or $16.0\text{ GB}$ (Standard mode).
 3. **Double-Venv Docker Isolation**: Containerized under `nvidia/cuda:12.4.1-runtime-ubuntu22.04` with strict virtualenv separation, preventing library collisions.
@@ -422,7 +422,7 @@ The native client runs via a lightweight Rust/Tauri desktop binary (`inference/f
 
 ## 9. Peer-Reviewed Scientific Bibliography (77 Citations)
 
-Every algorithmic component in Krisna is grounded in peer-reviewed computer science literature with verified digital object identifiers (DOIs):
+Every algorithmic component in Krivex is grounded in peer-reviewed computer science literature with verified digital object identifiers (DOIs):
 
 1. **[1] ControlNet** (Zhang et al.) — *Adding Conditional Control to Text-to-Image Diffusion Models*. IEEE/CVF ICCV 2023, pp. 3836–3847. [DOI: 10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355)
 2. **[2] InstructPix2Pix** (Brooks et al.) — *Learning to Follow Image Editing Instructions*. IEEE/CVF CVPR 2023, pp. 18392–18402. [DOI: 10.1109/CVPR52729.2023.01761](https://doi.org/10.1109/CVPR52729.2023.01761)

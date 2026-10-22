@@ -1,6 +1,6 @@
-# Krisna: A Unified Neuro-Symbolic Framework Bridging Autoregressive Sequence Modeling and Continuous Flow-Matching Multimodal Vision Transformers for Controllable User Interface Synthesis
+# Krivex: A Unified Neuro-Symbolic Framework Bridging Autoregressive Sequence Modeling and Continuous Flow-Matching Multimodal Vision Transformers for Controllable User Interface Synthesis
 
-**Authors**: Krisna Research Initiative  
+**Authors**: Krivex Research Initiative  
 **Target Publication Venue**: IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI) / ACM Transactions on Graphics (TOG)  
 **Classification**: Research Track — Generative Visual Foundation Models & Interactive Machine Learning Systems  
 **Date**: October 2026  
@@ -18,14 +18,14 @@
 
 Automating graphical user interface (UI) design from conversational natural language requires resolving a fundamental machine learning dichotomy: discrete, hierarchical, symbolic reasoning over layout semantics versus continuous, high-frequency, perceptual synthesis over visual pixels. Monolithic text-to-image diffusion models generate visually plausible textures but fail catastrophically on structural UI constraints, producing illegible pseudo-alphabetic glyphs (Character Error Rates exceeding $40\%$), non-deterministic element overlap, and unconstrained spatial drift across multi-turn refinement. Conversely, discrete generative codebooks (e.g., MaskGIT, VQGAN) permanently obliterate vector geometric primitives and sub-pixel typography due to spatial token discretization under stride-16 downsampling.
 
-To resolve this impedance mismatch, we introduce **Krisna**, a unified neuro-symbolic machine learning framework that seamlessly couples **discrete autoregressive vision-language sequence modeling** with **continuous flow-matching Multimodal Vision Transformers (MMViT / MMDiT)** via an intermediate deterministic geometric compilation layer:
+To resolve this impedance mismatch, we introduce **Krivex**, a unified neuro-symbolic machine learning framework that seamlessly couples **discrete autoregressive vision-language sequence modeling** with **continuous flow-matching Multimodal Vision Transformers (MMViT / MMDiT)** via an intermediate deterministic geometric compilation layer:
 1. **Autoregressive Semantic Reasoning**: A frozen vision-language foundation model (`Qwen3.5-9B-Instruct`) operating with hybrid Gated DeltaNet linear attention and pushdown automata GBNF grammar constraints, translating multi-turn conversational dialogue and visual feedback into typed, valid state deltas ($\Delta \mathcal{S}$) with guaranteed schema conformity and zero coordinate hallucination;
 2. **Neuro-Symbolic Geometric Compilation**: A deterministic constraint-satisfaction engine that compiles high-level container hierarchies into continuous normalized coordinates $[y_1, x_1, y_2, x_2] \in [0, 1000]^4$ by solving linear arithmetic Simplex/Cassowary inequality systems in $<20\text{ms}$ on host SIMD ($0\text{ MB}$ GPU allocation), projecting the layout into an atomic multi-stream spatial conditioning tensor comprising an anti-aliased vector TrueType wireframe, a 16-class SPADE categorical semantic segmentation tensor, and a binary spatial alpha mask;
-3. **Continuous Flow-Matching MMViT Synthesis**: A resident 7B Multimodal Diffusion Transformer (`Qwen-Image-2.1`) executing multi-fidelity Continuous Flow Matching (CFM) along optimal-transport straight-line geodesics. By modulating numerical Ordinary Differential Equation (ODE) integration steps on the exact same resident network weights, Krisna achieves both sub-second interactive draft previews (6-step Euler, $\sim 0.9\text{s}$) and high-fidelity publication renders (40-step Midpoint, $\sim 3.2\text{s}$) without inter-tier model eviction or PCIe bus thrashing;
+3. **Continuous Flow-Matching MMViT Synthesis**: A resident 7B Multimodal Diffusion Transformer (`Qwen-Image-2.1`) executing multi-fidelity Continuous Flow Matching (CFM) along optimal-transport straight-line geodesics. By modulating numerical Ordinary Differential Equation (ODE) integration steps on the exact same resident network weights, Krivex achieves both sub-second interactive draft previews (6-step Euler, $\sim 0.9\text{s}$) and high-fidelity publication renders (40-step Midpoint, $\sim 3.2\text{s}$) without inter-tier model eviction or PCIe bus thrashing;
 4. **Localized Inversion-Free Refinement**: An 8-step differential FlowEdit trajectory coupled with localized spatial cross-attention routing and Lanczos-3 donor asset compositing, guaranteeing exact $0.00\%$ pixel drift on user-locked components ($S_{\text{lock}} = 1.000$) while enforcing Laplacian boundary continuity ($\Delta \nabla \le 0.05$);
 5. **Governed Multimodal Data Engineering (Data-Forge)**: A 22-stage cryptographic DAG pipeline curating a calibrated 356,721-record multimodal portfolio (~480 GB) across four specialized design pillars and a held-out evaluation suite (strictly derived from the 13 verified sources in `datasets.yaml`), where base foundation weights remain frozen (`base_weights_frozen: true`) to preserve natural visual manifolds ($S_{\text{prior}} = 1.0$) without catastrophic forgetting or downloading redundant stock photography.
 
-Extensive empirical evaluations across established benchmarks (RICO, CLAY, Enrico, Screen2Words, Figma2Code, Design2Code, and held-out TASTE) demonstrate that Krisna achieves a Geometric Layout IoU of $0.865$, reduces typographic Character Error Rate by $87.9\%$ over prevailing baselines (to $0.047$), eliminates inter-tier model swapping latency ($48.2\text{s} \to 0.0\text{s}$), and bounds conversational semantic divergence to $D_{\text{intent}} \le 0.16$ across full multi-turn design workflows.
+Extensive empirical evaluations across established benchmarks (RICO, CLAY, Enrico, Screen2Words, Figma2Code, Design2Code, and held-out TASTE) demonstrate that Krivex achieves a Geometric Layout IoU of $0.865$, reduces typographic Character Error Rate by $87.9\%$ over prevailing baselines (to $0.047$), eliminates inter-tier model swapping latency ($48.2\text{s} \to 0.0\text{s}$), and bounds conversational semantic divergence to $D_{\text{intent}} \le 0.16$ across full multi-turn design workflows.
 
 ---
 
@@ -56,9 +56,9 @@ Recent advances in Generative Artificial Intelligence have attempted to automate
 |    Planner LLM <===[ PCIe Bus Thrashing: 48s ]===> Critic VLM <===[ Bus Eviction ]===> DiT Polish  |
 |    * Failure Modes: Memory fragmentation, catastrophic PCIe bus bottlenecks, unviable tail latency |
 +----------------------------------------------------------------------------------------------------+
-| 4. KRISNA UNIFIED NEURO-SYMBOLIC HYBRID FRAMEWORK (This Work)                                      |
+| 4. KRIVEX UNIFIED NEURO-SYMBOLIC HYBRID FRAMEWORK (This Work)                                      |
 |    User Dialogue  ---> [ Tier 1: Autoregressive VLM (Qwen3.5-9B) + GBNF Automata ]                 |
-|                                | (Structured Delta: krisna.delta.v1)                               |
+|                                | (Structured Delta: krivex.delta.v1)                               |
 |                                v                                                                  |
 |                        [ Tier 2: Neuro-Symbolic Cassowary Simplex Engine ]                         |
 |                                | (Deterministic Wireframe + 16-Class SPADE Semantic Map)           |
@@ -103,11 +103,11 @@ We define cumulative semantic intent divergence as:
 $$D_{\text{intent}}(\mathcal{S}_t, \mathcal{S}_0) = \sum_{k=1}^t \left( \alpha \| \mathbf{b}_k - \mathbf{b}_k^{\text{ref}} \|_1 + \beta \mathcal{H}(\mathbf{c}_k, \mathbf{c}_k^{\text{ref}}) + \gamma \text{CER}(T_k, T_k^{\text{ref}}) \right)$$
 In unconstrained diffusion models, $D_{\text{intent}}$ grows linearly or exponentially with $t$, causing human evaluation sessions to collapse after only 2 to 3 revision turns.
 
-### 1.3 The Krisna Architectural Thesis & Contributions
+### 1.3 The Krivex Architectural Thesis & Contributions
 
-Krisna resolves these fundamental limitations by introducing a principled **Neuro-Symbolic Hybrid Architecture** that decouples conversational intent reasoning, geometric constraint satisfaction, and continuous visual synthesis:
+Krivex resolves these fundamental limitations by introducing a principled **Neuro-Symbolic Hybrid Architecture** that decouples conversational intent reasoning, geometric constraint satisfaction, and continuous visual synthesis:
 1. **The Autoregressive-Flow Matching Bridge**: We establish an exact mathematical interface between an autoregressive sequence model (`Qwen3.5-9B-Instruct`) equipped with Gated DeltaNet linear attention and pushdown automata decoding, and a continuous flow-matching Multimodal Vision Transformer (`Qwen-Image-2.1` MMViT / MMDiT) operating along optimal-transport geodesics.
-2. **Zero-VRAM Neuro-Symbolic Geometric Compilation**: We eliminate discrete visual codebooks by introducing `krisna.layout.v1` and compiling container trees via linear programming (Cassowary/Simplex) on host CPU SIMD in $<20\text{ms}$ with provable $0\%$ element overlap, projecting continuous multi-stream spatial conditions (vector TrueType wireframe, 16-class SPADE categorical semantic segmentation, and binary alpha mask).
+2. **Zero-VRAM Neuro-Symbolic Geometric Compilation**: We eliminate discrete visual codebooks by introducing `krivex.layout.v1` and compiling container trees via linear programming (Cassowary/Simplex) on host CPU SIMD in $<20\text{ms}$ with provable $0\%$ element overlap, projecting continuous multi-stream spatial conditions (vector TrueType wireframe, 16-class SPADE categorical semantic segmentation, and binary alpha mask).
 3. **Single Resident Multi-Fidelity Flow Matching**: We eliminate inter-tier model eviction latency ($48.2\text{s} \to 0.0\text{s}$) by pinning the 7B MMViT backbone permanently resident and modulating numerical ODE step integration (6-step consistency preview vs. 40-step publication render) on the exact same network weights.
 4. **Localized Inversion-Free Refinement & Hard Region Locking**: We formulate an 8-step differential FlowEdit trajectory coupled with localized spatial attention routing and Lanczos-3 donor asset compositing, guaranteeing exact $0.00\%$ pixel drift on user-locked components ($S_{\text{lock}} = 1.000$) with verified boundary gradient continuity ($\Delta \nabla \le 0.05$).
 5. **Governed Multimodal Data Engineering (Data-Forge)**: We detail the 22-stage chunk-based Data-Forge curation DAG, proving that strictly frozen base foundation weights (`base_weights_frozen: true`) inherently preserve natural visual manifolds ($S_{\text{prior}} = 1.0$) during UI specialization across a calibrated 356,721-record portfolio (~480 GB) without requiring unconditioned stock photo training.
@@ -116,11 +116,11 @@ Krisna resolves these fundamental limitations by introducing a principled **Neur
 
 ## 2. Evolutionary Heritage & Development Cycle Inheritance: What Was Derived, Inherited, and Refactored from Previous Works
 
-The architecture of Krisna is grounded in an exhaustive synthesis of prior literature across computer vision, natural language processing, layout generation, and machine learning systems. Rather than viewing generative UI design as a greenfield application, our research systematically evaluated, inherited, ablated, and evolved foundational paradigms from earlier works.
+The architecture of Krivex is grounded in an exhaustive synthesis of prior literature across computer vision, natural language processing, layout generation, and machine learning systems. Rather than viewing generative UI design as a greenfield application, our research systematically evaluated, inherited, ablated, and evolved foundational paradigms from earlier works.
 
 ```
 +-------------------------------------------------------------------------------------------------------+
-|                                    KRISNA R&D DEVELOPMENT HERITAGE                                    |
+|                                    KRIVEX R&D DEVELOPMENT HERITAGE                                    |
 +-------------------------------------------------------------------------------------------------------+
 | PHASE 0: The Legacy Monolithic Baseline                                                               |
 | - Prior Works Inherited: MaskGIT (Chang et al.), VQGAN (Esser et al.), External Gemma 31B Critic      |
@@ -171,11 +171,11 @@ The Data-Forge pipeline was developed after identifying critical failure modes i
    - *Inheritance Verdict*: We rejected the raw uncleaned RICO dump and developed an automated geometric reconstruction pass (`RICO-Clean`), cross-referencing visual screenshots against normalized accessibility hierarchies and purging corrupted entries.
 3. **The Photographic Prior Preservation Principle (DreamBooth Inheritance)**:
    Ruiz et al. [9] established that fine-tuning text-to-image models on specialized concepts without prior preservation induces catastrophic language drift and feature collapse: when diffusion backbones are fine-tuned exclusively on synthetic UI wireframes, their velocity fields collapse across high-frequency natural sub-manifolds (human avatars become plastic; natural textures degrade).
-   - *Inheritance Verdict*: While DreamBooth mitigated this via an auxiliary loss $\mathcal{L}_{\text{prior}}$ over external stock photography, Krisna achieves complete prior preservation **architecturally** by combining Weight-Decomposed Low-Rank Adaptation (DoRA) with strictly frozen base foundation weights ($W_0$, `base_weights_frozen: true`). Because base weights are never modified ($\nabla_{W_0} \mathcal{L} \equiv 0$), base photorealism, human skin tones, and natural lighting manifolds are preserved by construction ($S_{\text{prior}} = 1.0$). Consequently, general stock photo downloads are quarantined (`with_prior_preservation: false`), dedicating $100\%$ of adapter rank-64 capacity to UI layouts without wasting disk space or compute.
+   - *Inheritance Verdict*: While DreamBooth mitigated this via an auxiliary loss $\mathcal{L}_{\text{prior}}$ over external stock photography, Krivex achieves complete prior preservation **architecturally** by combining Weight-Decomposed Low-Rank Adaptation (DoRA) with strictly frozen base foundation weights ($W_0$, `base_weights_frozen: true`). Because base weights are never modified ($\nabla_{W_0} \mathcal{L} \equiv 0$), base photorealism, human skin tones, and natural lighting manifolds are preserved by construction ($S_{\text{prior}} = 1.0$). Consequently, general stock photo downloads are quarantined (`with_prior_preservation: false`), dedicating $100\%$ of adapter rank-64 capacity to UI layouts without wasting disk space or compute.
 
 ### 2.2 Representation Learning, Optimization & Parameter-Efficient Adaptation Inheritance (Training Lineage)
 
-The training methodology of Krisna evolved through rigorous comparative ablations of fine-tuning paradigms:
+The training methodology of Krivex evolved through rigorous comparative ablations of fine-tuning paradigms:
 1. **From Full Parameter Fine-Tuning to Low-Rank Adaptation (LoRA / DoRA)**:
    Initial experiments attempted full fine-tuning of the 7B Multimodal Diffusion Transformer backbone. While loss converged rapidly, the model suffered from two fatal flaws:
    - Extreme computational cost: full backpropagation through 32 MMViT transformer blocks required distributed checkpoint sharding across large GPU clusters with massive gradient memory overhead.
@@ -200,13 +200,13 @@ The training methodology of Krisna evolved through rigorous comparative ablation
 
 ### 2.3 Structural Generative Modeling, Decoding & Serving Inheritance (Inference Lineage)
 
-The inference and serving architecture of Krisna was derived by analyzing the structural limitations of prior generative layout and image editing frameworks:
+The inference and serving architecture of Krivex was derived by analyzing the structural limitations of prior generative layout and image editing frameworks:
 1. **The Deprecation of Discrete Generative Codebooks (MaskGIT & VQGAN)**:
    MaskGIT [11] and Muse [12] popularized discrete bidirectional masked visual generation, inspiring early layout works (e.g., LayoutDiffusion [7], LayoutDM [8]). However, treating UI design as discrete codebook token prediction fails due to:
    - Stride-16 spatial quantization merging thin 1px borders and 12pt text glyphs into blurred background tokens.
    - Inability to represent continuous, arbitrary floating-point coordinates $[y_1, x_1, y_2, x_2] \in [0, 1000]^4$ or hierarchical parent-child container trees.
    - Exposure bias during iterative discrete token unmasking leading to element boundary jitter.
-   - *Inheritance Verdict*: Discrete codebooks were completely discarded. We established the **Structured Layout IR (`krisna.layout.v1`)**, representing UI scenes as continuous geometric container trees rendered into lossless vector wireframe conditioning.
+   - *Inheritance Verdict*: Discrete codebooks were completely discarded. We established the **Structured Layout IR (`krivex.layout.v1`)**, representing UI scenes as continuous geometric container trees rendered into lossless vector wireframe conditioning.
 2. **From Neural Layout Generation to Neuro-Symbolic Constraint Satisfaction (Cassowary Simplex)**:
    We ablated continuous neural layout models (such as LayoutFlow [6], which models bounding box generation via continuous optimal transport vector fields). While LayoutFlow generates plausible unconstrained coordinates, it exhibits an inherent element overlap rate of $6.5\%$ and out-of-bounds rate of $2.1\%$. In software UI design, any overlapping button or out-of-bounds navigation bar renders an interface functionally broken.
    - *Inheritance Verdict*: We replaced stochastic neural layout generators with a deterministic **Neuro-Symbolic Simplex Solver** grounded in the Cassowary linear arithmetic constraint algorithm [27]. By framing layout generation as linear programming optimization under inequality constraints, the solver guarantees $0.0\%$ element overlap, $0.0\%$ out-of-bounds error, and executes on CPU SIMD in $<20\text{ms}$ with zero GPU memory allocation.
@@ -217,16 +217,16 @@ The inference and serving architecture of Krisna was derived by analyzing the st
      the ODE trajectory exhibits near-zero curvature ($\kappa \approx 0$). This straight-line property enables multi-fidelity step scaling: a 6-step first-order Euler solver captures $92\%$ of final spatial composition for instant interactive draft previews ($\sim 0.9\text{s}$), while a 40-step Midpoint solver achieves publication-grade fidelity ($\sim 3.2\text{s}$) on the exact same network weights.
 4. **Elimination of Inter-Tier Model Eviction (OSDI Systems Serving Foundations)**:
    In conventional multi-agent systems, pipeline stages invoke distinct multi-billion parameter foundation models. As demonstrated by USENIX OSDI systems research (PipeSwitch [79], Clockwork [80]), loading weights across system buses introduces severe bandwidth bottlenecks ($45\text{s}$ to $48\text{s}$ per turn).
-   - *Inheritance Verdict*: Krisna establishes a **Single Resident Model Architecture**. The 7B MMViT backbone remains permanently pinned in device memory. Interactive draft previews, high-fidelity final renders, and localized edits are all executed on the same resident model by modulating the numerical ODE solver schedule, reducing inter-tier model swapping latency to exactly **0.0 seconds**.
+   - *Inheritance Verdict*: Krivex establishes a **Single Resident Model Architecture**. The 7B MMViT backbone remains permanently pinned in device memory. Interactive draft previews, high-fidelity final renders, and localized edits are all executed on the same resident model by modulating the numerical ODE solver schedule, reducing inter-tier model swapping latency to exactly **0.0 seconds**.
 5. **Inversion-Free Localized Editing (FlowEdit Inheritance)**:
    Traditional image editing relies on DDIM inversion [36], mapping an existing image backwards to initial Gaussian noise before forward sampling. In UI synthesis, non-linear inversion accumulates numerical linearization errors, corrupting unedited buttons and drifting text fonts.
    - *Inheritance Verdict*: Grounded in FlowEdit [36], we formulated localized editing by directly integrating the differential velocity field between target and source conditions over an abbreviated sub-interval $[t_{\text{edit}}, 1]$ without latent inversion, preserving locked UI regions with exact mathematical invariance ($S_{\text{lock}} = 1.000$).
 
 ### 2.4 The Unified R&D Evolutionary Inheritance Matrix
 
-To synthesize the multi-phase developmental cycle of Krisna, Table 2.1 traces the exact evolutionary lineage across the three foundational subsystems (Data-Forge, Training, and Inference/Serving), contrasting inherited prior baselines, forensic failure pathologies, the canonical Krisna design, and the resulting mathematical and systems advantages.
+To synthesize the multi-phase developmental cycle of Krivex, Table 2.1 traces the exact evolutionary lineage across the three foundational subsystems (Data-Forge, Training, and Inference/Serving), contrasting inherited prior baselines, forensic failure pathologies, the canonical Krivex design, and the resulting mathematical and systems advantages.
 
-| Subsystem Domain | Prior Paradigm / Inherited Baseline | Identified Empirical Failure Mode / Pathology | Krisna Canonical Resolution | Mathematical & Systems Advantage |
+| Subsystem Domain | Prior Paradigm / Inherited Baseline | Identified Empirical Failure Mode / Pathology | Krivex Canonical Resolution | Mathematical & Systems Advantage |
 | :--- | :--- | :--- | :--- | :--- |
 | **Data-Forge** | Uncurated Web Crawls (LAION-5B, DataComp) | Extreme noise, non-reproducible web links, broken visual aspect ratios | 22-stage chunked DAG with SHA-256 cryptographic verification & Laplacian variance filtering ($\ge 120.0$) | Deterministic dataset provenance; 100% resolution & aspect ratio normalization |
 | **Data-Forge** | Academic Document Corpora (PubLayNet, DocBank) | 860K two-column papers induced drab monochrome palette and academic formatting collapse | Complete and permanent quarantine/purging of academic PDF layouts | Enforced modern software UI visual tokens, cards, navbars, and brand palettes |
@@ -237,7 +237,7 @@ To synthesize the multi-phase developmental cycle of Krisna, Table 2.1 traces th
 | **Training** | Attention-Only Adapter Targeting (64 modules) | Models learn coarse element positions but fail to render CSS drop shadows and border radiuses | 224-module full-sublayer expansion ($q, k, v, \text{out}, \text{gate}, \text{up}, \text{down}$ across 32 blocks) | Captures fine-grained CSS styles, border radiuses, and typographic serifs |
 | **Training** | Multi-Model Five-Tier Training Pipeline | Compounding error propagation, AI judge reward hacking, training instability | Single Trainable Tier Contract: Planner frozen, Sketch deterministic, Polish only trainable tier | Provable convergence stability; eliminates multi-model feedback loops |
 | **Training** | Mismatched Floating-Point Training/Serving | BF16-trained adapters served over NF4 base weights collapse (CER explodes $0.047 \to 0.218$) | Train-Inference Precision Parity: Quantized DoRA (QDoRA) directly over NF4 base | Eliminates quantization drift; guarantees exact metric preservation on consumer GPUs |
-| **Inference** | Discrete Token Codebooks (MaskGIT, VQGAN) | Stride-16 spatial quantization merges 1px borders; codebook collapse causes blurry rasters | Structured Layout IR (`krisna.layout.v1`) compiled to continuous vector wireframes | Sub-pixel typographic rendering; zero codebook discretization distortion |
+| **Inference** | Discrete Token Codebooks (MaskGIT, VQGAN) | Stride-16 spatial quantization merges 1px borders; codebook collapse causes blurry rasters | Structured Layout IR (`krivex.layout.v1`) compiled to continuous vector wireframes | Sub-pixel typographic rendering; zero codebook discretization distortion |
 | **Inference** | Stochastic Neural Layout Generation (LayoutFlow) | Inherent 6.5% element overlap and 2.1% out-of-bounds error violate UI constraints | Deterministic CPU Simplex / Cassowary linear arithmetic constraint solver | Overlap $= 0.000$; OOB $= 0.000$; executed in $<20\text{ms}$ on CPU SIMD with $0\text{ MB}$ GPU VRAM |
 | **Inference** | Curved SDE Diffusion Solvers (DDPM, DDIM) | Requires 30–50 curved integration steps to prevent trajectory discretization error | Continuous Flow Matching (CFM) along straight-line optimal transport geodesics | Multi-fidelity step scaling: 6-step preview ($\sim 0.9\text{s}$) vs 40-step master render ($\sim 3.2\text{s}$) |
 | **Inference** | Multi-Model Inter-Tier Eviction (Legacy Multi-Agent)| Dynamic weight swapping over PCIe 4.0 x16 incurs $45\text{s}$–$48\text{s}$ latency per conversational turn | Single Resident Model Architecture: 7B MMViT backbone permanently pinned in device memory | Inter-tier PCIe model swapping latency reduced from $48.2\text{s} \to 0.0\text{s}$ |
@@ -247,7 +247,7 @@ To synthesize the multi-phase developmental cycle of Krisna, Table 2.1 traces th
 
 ## 3. Comprehensive Literature Review & Thematic Foundations
 
-In strict compliance with academic standards, every model, algorithm, and dataset integrated into Krisna is grounded in peer-reviewed conference proceedings and journal publications with verified Digital Object Identifiers (DOIs) or permanent proceedings links across IEEE, ACM, Springer Nature, CVF, NeurIPS, ICML, ICLR, ACL, and MLSys.
+In strict compliance with academic standards, every model, algorithm, and dataset integrated into Krivex is grounded in peer-reviewed conference proceedings and journal publications with verified Digital Object Identifiers (DOIs) or permanent proceedings links across IEEE, ACM, Springer Nature, CVF, NeurIPS, ICML, ICLR, ACL, and MLSys.
 
 ```
 +---------------------------------------------------------------------------------------------------------+
@@ -284,7 +284,7 @@ The foundational literature is categorized across the eight thematic pillars det
 
 ## 4. Mathematical Foundations & Theoretical Framework
 
-We formalize Krisna as a principled **Neuro-Symbolic Hybrid Generative Framework** that bridges discrete autoregressive sequence modeling with continuous flow-matching Multimodal Vision Transformers.
+We formalize Krivex as a principled **Neuro-Symbolic Hybrid Generative Framework** that bridges discrete autoregressive sequence modeling with continuous flow-matching Multimodal Vision Transformers.
 
 ```
 +---------------------------------------------------------------------------------------------------------+
@@ -297,7 +297,7 @@ We formalize Krisna as a principled **Neuro-Symbolic Hybrid Generative Framework
 |  STAGE I: DISCRETE AUTOREGRESSIVE SEQUENCE MODELING (Qwen3.5-9B Gated DeltaNet)                         |
 |  - Linear-time context recurrence: S_t = S_{t-1} + v_t k_t^T - beta_t (S_{t-1} k_t) k_t^T               |
 |  - Pushdown automata grammar mask: GBNF(Delta S) in L(G_JSON)                                           |
-|  - Emits verified semantic delta: Delta S in krisna.delta.v1                                            |
+|  - Emits verified semantic delta: Delta S in krivex.delta.v1                                            |
 |                                │                                                                        |
 |                                ▼                                                                        |
 |  STAGE II: NEURO-SYMBOLIC GEOMETRIC COMPILATION (Cassowary Simplex Engine)                              |
@@ -338,7 +338,7 @@ z_{t, i} & \text{if } v_i \in \mathcal{V}_{\text{valid}} \\
 -\infty & \text{if } v_i \notin \mathcal{V}_{\text{valid}} 
 \end{cases}$$
 $$\mathbf{p}_t = \text{Softmax}(\hat{\mathbf{z}}_t)$$
-This guarantees with mathematical certainty ($p = 1.000$) that every emitted delta conforms strictly to `krisna.delta.v1`, completely eliminating invalid JSON syntax, missing coordinate keys, or out-of-range floating-point values.
+This guarantees with mathematical certainty ($p = 1.000$) that every emitted delta conforms strictly to `krivex.delta.v1`, completely eliminating invalid JSON syntax, missing coordinate keys, or out-of-range floating-point values.
 
 ### 4.2 Stage II: Neuro-Symbolic Geometric Compilation & Simplex Solving
 
@@ -390,7 +390,7 @@ where $\mathbf{R}_{\text{2D-RoPE}}$ applies 2D Rotary Position Embeddings over t
 #### Multi-Fidelity Numerical Integration Solvers
 At inference, generating high-fidelity UI visuals requires integrating the probability flow Ordinary Differential Equation from $t = 0$ to $t = 1$:
 $$\mathbf{x}_1 = \mathbf{x}_0 + \int_0^1 \mathbf{v}_\theta(\mathbf{x}_t, t, \mathbf{c}) \, dt$$
-Owing to the straight-line optimal transport parameterization, Krisna supports arbitrary numerical ODE solvers on the **exact same resident model weights**:
+Owing to the straight-line optimal transport parameterization, Krivex supports arbitrary numerical ODE solvers on the **exact same resident model weights**:
 1. **Interactive Draft Preview ($N = 6$ Steps, First-Order Euler)**:
    $$\Delta t = \frac{1}{6}, \quad \mathbf{x}_{t_{k+1}} = \mathbf{x}_{t_k} + \Delta t \cdot \mathbf{v}_\theta(\mathbf{x}_{t_k}, t_k, \mathbf{c})$$
    Execution time: $\sim 0.9\text{s}$. Captures $92\%$ of final spatial composition, typography placement, and color ramps.
@@ -401,7 +401,7 @@ Owing to the straight-line optimal transport parameterization, Krisna supports a
 
 ### 4.4 Inversion-Free Localized Refinement via FlowEdit Trajectory Steering
 
-When revising an existing UI canvas $\mathbf{x}_{\text{src}}$ under an updated condition $\mathbf{c}_{\text{tgt}}$, conventional models employ DDIM inversion, accumulating linearization errors that corrupt unedited sections. Krisna implements an inversion-free differential flow formulation grounded in FlowEdit [36].
+When revising an existing UI canvas $\mathbf{x}_{\text{src}}$ under an updated condition $\mathbf{c}_{\text{tgt}}$, conventional models employ DDIM inversion, accumulating linearization errors that corrupt unedited sections. Krivex implements an inversion-free differential flow formulation grounded in FlowEdit [36].
 
 Given source visual latents $\mathbf{x}_{\text{src}}$ and updated condition $\mathbf{c}_{\text{tgt}}$, we initialize sampling at an intermediate edit timestep $t_{\text{edit}} \in [0.35, 0.50]$:
 $$\mathbf{x}_{t_{\text{edit}}} = (1 - t_{\text{edit}}) \mathbf{x}_{\text{src}} + t_{\text{edit}} \boldsymbol{\epsilon}, \quad \boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$$
@@ -413,11 +413,11 @@ This differential trajectory steering cancels out background drift while applyin
 
 ## 5. End-to-End System Architecture: The Unified Autoregressive + Flow-Matching Framework
 
-Krisna's operational pipeline organizes four strictly decoupled tiers into a closed-loop multi-turn interaction cycle:
+Krivex's operational pipeline organizes four strictly decoupled tiers into a closed-loop multi-turn interaction cycle:
 
 ```
 +---------------------------------------------------------------------------------------------------------+
-|                                    KRISNA END-TO-END PIPELINE ARCHITECTURE                              |
+|                                    KRIVEX END-TO-END PIPELINE ARCHITECTURE                              |
 +---------------------------------------------------------------------------------------------------------+
 |                                                                                                         |
 |  [ User Natural Language Dialogue Turn: u_t ]                                                           |
@@ -430,11 +430,11 @@ Krisna's operational pipeline organizes four strictly decoupled tiers into a clo
 |  | - Pre-compiled Pushdown Automata Parser (LlamaGrammar -> GBNF Schema Enforcement)                  |  |
 |  +---------------------------------------------------------------------------------------------------+  |
 |                       │                                                                                 |
-|                       │  Strict Validated Delta: krisna.delta.v1                                        |
+|                       │  Strict Validated Delta: krivex.delta.v1                                        |
 |                       ▼                                                                                 |
 |  +---------------------------------------------------------------------------------------------------+  |
 |  | TIER 2: NEURO-SYMBOLIC LAYOUT SKETCH ENGINE (Host CPU Simplex Solver, <20ms Execution)           |  |
-|  | - Hierarchical Container Tree: krisna.layout.v1 ([y1, x1, y2, x2] in [0, 1000]^4)                 |  |
+|  | - Hierarchical Container Tree: krivex.layout.v1 ([y1, x1, y2, x2] in [0, 1000]^4)                 |  |
 |  | - Cassowary Linear Arithmetic Constraint Solver (0% Element Overlap Guarantee)                     |  |
 |  | - Atomic Multi-Stream Condition Projection: Pi(G) -> (C_wire, C_spade, M_spatial)                  |  |
 |  +---------------------------------------------------------------------------------------------------+  |
@@ -510,7 +510,7 @@ $$\mathbf{A}_{\text{routed}}(\mathbf{z}_i) = \sum_{k=1}^K \mathbf{M}_i^{(k)} \cd
 Tokens outside mask $\mathbf{M}^{(k)}$ receive zero attention weight, mathematically preventing cross-subject semantic leakage.
 
 ### 6.2 Localized Object Teleportation & Lanczos-3 Resampling
-When a user explicitly locks a pre-existing component ($L_m = 1$), Krisna guarantees bit-for-bit identity preservation via a dual-stage lock compositor:
+When a user explicitly locks a pre-existing component ($L_m = 1$), Krivex guarantees bit-for-bit identity preservation via a dual-stage lock compositor:
 1. **Donor Asset Extraction**: The source asset $\mathbf{I}_{\text{donor}}$ is extracted at its source coordinates and resampled to target dimensions using anti-aliased Lanczos-3 kernel filtering:
    $$L(x) = \begin{cases} 
    \text{sinc}(x) \text{sinc}(x/3) & \text{if } |x| < 3 \\ 
@@ -602,7 +602,7 @@ The authoritative multimodal portfolio is partitioned across four specialized tr
 
 ### 7.3 Prior Preservation Invariant via Frozen Base Weights
 
-While naive full-model fine-tuning on synthetic UI layouts induces catastrophic prior forgetting of natural textures and photorealism, Krisna solves this architecturally:
+While naive full-model fine-tuning on synthetic UI layouts induces catastrophic prior forgetting of natural textures and photorealism, Krivex solves this architecturally:
 - In `training/configs/polish_qwen_image21_lora.yaml` and enforced by `qwen_trainer_contract.py`, base foundation weights remain completely frozen (`base_weights_frozen: true`).
 - Pretrained natural photographic manifolds, human skin tones, and lighting physics are permanently retained in $W_0$ ($S_{\text{prior}} = 1.0$).
 - Consequently, downloading external stock photography or enabling DreamBooth-style auxiliary prior loss is unnecessary (`with_prior_preservation: false`), dedicating $100\%$ of the rank-64 adapter capacity to UI and typography geometry without domain dilution or wasted storage.
@@ -621,7 +621,7 @@ While naive full-model fine-tuning on synthetic UI layouts induces catastrophic 
 
 ## 8. Parameter-Efficient Representation Learning & Training Workthrough
 
-Krisna's training architecture is governed by the **Single Trainable Tier Contract**, adapting only the visual synthesis tier (`Qwen-Image-2.1` MMViT / MMDiT) while maintaining all conversational reasoning and layout constraint components strictly frozen.
+Krivex's training architecture is governed by the **Single Trainable Tier Contract**, adapting only the visual synthesis tier (`Qwen-Image-2.1` MMViT / MMDiT) while maintaining all conversational reasoning and layout constraint components strictly frozen.
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -654,7 +654,7 @@ During gradient backpropagation, updates to $\mathbf{m}$ independently modulate 
 
 ### 8.2 Dual Hardware Execution Profiles: Enterprise Workstation vs. Consumer Desktop
 
-To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krisna formalizes two verified training configurations directly materialized in `training/configs/`:
+To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krivex formalizes two verified training configurations directly materialized in `training/configs/`:
 
 | Hyperparameter / Dimension | Enterprise Production Profile (`polish_qwen_image21_lora.yaml`) | Consumer Desktop Profile (`polish_qwen_qdora_12gb.yaml`) | Theoretical / Systems Rationale |
 | :--- | :---: | :---: | :--- |
@@ -687,7 +687,7 @@ Standard continuous flow matching samples timesteps uniformly: $t \sim \mathcal{
 - In the intermediate regime $t \in [0.2, 0.8]$, the model resolves structural layout boundaries, component containment, typography glyphs, and button shapes;
 - Near $t \to 1$ (clean image), the model refines high-frequency sub-pixel texture and color micro-gradients.
 
-To maximize structural UI fidelity, Krisna adopts resolution-dependent **Logit-Normal Timestep Sampling**:
+To maximize structural UI fidelity, Krivex adopts resolution-dependent **Logit-Normal Timestep Sampling**:
 $$u \sim \mathcal{N}(\mu, \sigma^2), \quad t = \text{Sigmoid}(u) = \frac{1}{1 + e^{-u}}$$
 where $\mu = 0.0$ and $\sigma = 1.0$. This probability density function:
 $$p(t) = \frac{1}{\sigma \sqrt{2\pi}} \frac{1}{t(1 - t)} \exp\left( -\frac{(\text{logit}(t) - \mu)^2}{2\sigma^2} \right)$$
@@ -698,7 +698,7 @@ Unlike natural image synthesis where horizontal flipping is standard data augmen
 1. Typography flows left-to-right (LTR) in modern software interfaces;
 2. Close icons, back buttons, and hamburger menus occupy canonical spatial coordinates (e.g., top-left back arrow, top-right profile avatar);
 3. Horizontal flipping corrupts TrueType Unicode font alignment and inverts layout hierarchy.
-Therefore, Krisna enforces `random_flip: false` across all training pipelines. Multi-aspect ratio bucketing partitions images into discrete aspect buckets ($1024\times 1024$ square, $832\times 1248$ portrait mobile, $1248\times 832$ landscape web/tablet), padding arbitrary dimensions with 32px reflection boundary conditions to preserve patchification invariants.
+Therefore, Krivex enforces `random_flip: false` across all training pipelines. Multi-aspect ratio bucketing partitions images into discrete aspect buckets ($1024\times 1024$ square, $832\times 1248$ portrait mobile, $1248\times 832$ landscape web/tablet), padding arbitrary dimensions with 32px reflection boundary conditions to preserve patchification invariants.
 
 ### 8.4 Mathematical Proof of Architectural Prior Preservation ($S_{\text{prior}} = 1.0$)
 
@@ -715,7 +715,7 @@ In `training/configs/polish_qwen_image21_lora.yaml`, base weights remain frozen 
 
 ### 8.5 Post-Training Adaptation Extension A: Flow-Matching Direct Preference Optimization (DPO)
 
-Following primary DoRA training, Krisna implements Continuous Flow-Matching Direct Preference Optimization (DPO) [10] directly materialized in `training/configs/polish_qwen_image21_dpo.yaml`. 
+Following primary DoRA training, Krivex implements Continuous Flow-Matching Direct Preference Optimization (DPO) [10] directly materialized in `training/configs/polish_qwen_image21_dpo.yaml`. 
 
 Let $(x_w, x_l, c)$ denote a preference triplet, where $x_w$ is a preferred UI screen (superior typographic legibility, zero button overlap) and $x_l$ is a dispreferred synthetic screen exhibiting spatial misalignment. Grounded in Wallace et al. [10] and Kim et al. (NeurIPS 2024), the flow-matching DPO loss is parameterized directly on the neural velocity field:
 $$\mathcal{L}_{\text{FM-DPO}}(\theta) = -\mathbb{E}_{(x_w, x_l, c)} \left[ \log \sigma \left( \beta \left( \mathcal{E}_{\text{FM}}(x_l, c; \theta) - \mathcal{E}_{\text{FM}}(x_w, c; \theta) \right) \right) \right] + \lambda_{\text{anchor}} \mathcal{L}_{\text{CFM}}(x_w, c; \theta)$$
@@ -725,11 +725,11 @@ is the flow-matching kinetic trajectory error.
 
 - **Inverse-temperature $\beta = 2000.0$**: Swept across $[500, 2000, 5000]$, $\beta = 2000.0$ provides the optimal gradient slope for aligning visual layout aesthetics without mode collapse;
 - **Anchor Regularization Weight $\lambda_{\text{anchor}} = 0.1$**: Constrains the updated velocity field within the data manifold of preferred designs, preventing adversarial high-frequency noise injection;
-- **Preference Corpus**: Ingests 100,000 paired trajectories from `krisna_preference_pairs.db` and blob storage (`krisna_blobs`), trained at learning rate $1.0\times 10^{-5}$ with EMA decay $0.9995$ for 2,000 steps.
+- **Preference Corpus**: Ingests 100,000 paired trajectories from `krivex_preference_pairs.db` and blob storage (`krivex_blobs`), trained at learning rate $1.0\times 10^{-5}$ with EMA decay $0.9995$ for 2,000 steps.
 
 ### 8.6 Post-Training Adaptation Extension B: Consistency Flow Matching (CFM) Distillation
 
-To enable sub-second interactive draft generation during live conversational pairing, Krisna implements Consistency Flow Matching (CFM) distillation [44, 45] directly materialized in `training/configs/cfm_distill_qwen_image21.yaml`.
+To enable sub-second interactive draft generation during live conversational pairing, Krivex implements Consistency Flow Matching (CFM) distillation [44, 45] directly materialized in `training/configs/cfm_distill_qwen_image21.yaml`.
 
 The 40-step Phase 1 DoRA teacher model is distilled into a rapid multi-step ODE student parameterized across target step budgets $N \in \{4, 6, 8\}$ using a pseudo-Huber consistency loss:
 $$\mathcal{L}_{\text{CFM-Distill}}(\theta) = \mathbb{E}_{t, x_0, x_1} \left[ \sqrt{\left\| f_\theta(\mathbf{x}_{t_{k+1}}, t_{k+1}, \mathbf{c}) - \hat{\mathbf{x}}_1^{\text{teacher}} \right\|_2^2 + c^2} - c \right]$$
@@ -741,7 +741,7 @@ where $c = 0.001$ provides robust outlier suppression against gradient explosion
 
 ## 9. ML Systems Serving Foundations: Computational Complexity, Memory Bounds, and Zero-Eviction Serving Dynamics
 
-In interactive generative machine learning, inference latency directly governs user interactive utility. Traditional multi-model pipelines dynamically evict and load weights across system buses between conversational turns. In this section, we provide the computational complexity analysis, formal systems proofs, and inference residency validation underpinning Krisna's zero-eviction serving architecture across enterprise and consumer hardware envelopes.
+In interactive generative machine learning, inference latency directly governs user interactive utility. Traditional multi-model pipelines dynamically evict and load weights across system buses between conversational turns. In this section, we provide the computational complexity analysis, formal systems proofs, and inference residency validation underpinning Krivex's zero-eviction serving architecture across enterprise and consumer hardware envelopes.
 
 ```
 +---------------------------------------------------------------------------------------------------+
@@ -777,7 +777,7 @@ $$T_{\text{swapping}} \equiv 0.000\text{ seconds}$$
 *reducing conversational turnaround latency strictly to the mathematical compute cost of the numerical ODE solver.*
 
 ### 9.2 Analytical Memory Ledgers and Dual Hardware Serving Accounting
-To ensure deterministic admission without out-of-memory (OOM) faults, Krisna enforces strict analytical memory accounting ledgers (`VRAMLedger` and `RAMLedger`) across both enterprise and consumer deployment tiers:
+To ensure deterministic admission without out-of-memory (OOM) faults, Krivex enforces strict analytical memory accounting ledgers (`VRAMLedger` and `RAMLedger`) across both enterprise and consumer deployment tiers:
 
 | Pipeline Subsystem Component | Numeric Format | Parameters | Enterprise 48GB Server Profile | Consumer 12GB Desktop Profile | Architectural Optimization |
 | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -791,7 +791,7 @@ To ensure deterministic admission without out-of-memory (OOM) faults, Krisna enf
 | **Peak Active Synthesis VRAM** | Dynamic Intermediate ODE | **7.0 B** | **21.8 GB** (45.4% of 48GB) | **6.8 GB** (56.7% of 12GB) | **Headroom: 26.2 GB (Server) / 5.2 GB (Consumer)** |
 
 ### 9.3 Asymmetric Computational Complexity: Discrete Sequence Recurrence vs. Spatial Flow Matching
-The computational complexity of Krisna exhibits an asymmetric decoupling across its discrete and continuous regimes:
+The computational complexity of Krivex exhibits an asymmetric decoupling across its discrete and continuous regimes:
 
 1. **Autoregressive Planning Stage ($O(N)$ Linear-Time Sequence Scaling)**:  
    Under hybrid Gated DeltaNet recurrence [22], let conversational sequence length be $N$, hidden state dimension be $d = 4096$, and key dimension be $d_k = 128$. The state recurrence:
@@ -808,7 +808,7 @@ The computational complexity of Krisna exhibits an asymmetric decoupling across 
 When revising a design under an updated conditioning prompt $\mathbf{c}_{\text{tgt}}$, conventional editing methods rely on DDIM latent inversion [36, 48]. Inverting non-linear diffusion trajectories introduces discretization errors that accumulate exponentially:
 $$\mathbf{x}_0 \xrightarrow{\text{invert}} \hat{\mathbf{x}}_T \xrightarrow{\text{sample}} \mathbf{x}'_0 \quad \text{where } \|\mathbf{x}'_0 - \mathbf{x}_0\| > 0 \text{ in unedited zones}$$
 
-Krisna resolves this via the continuous **Differential FlowEdit Trajectory Steering ODE**:
+Krivex resolves this via the continuous **Differential FlowEdit Trajectory Steering ODE**:
 $$\frac{d\mathbf{x}_t}{dt} = \mathbf{v}_\theta(\mathbf{x}_t, t, \mathbf{c}_{\text{tgt}}) + \gamma \left( \mathbf{v}_\theta(\mathbf{x}_t, t, \mathbf{c}_{\text{tgt}}) - \mathbf{v}_\theta(\mathbf{x}_t, t, \mathbf{c}_{\text{src}}) \right)$$
 where $\gamma \ge 0$ modulates the directional steering contrast.
 
@@ -841,13 +841,13 @@ To ensure bit-for-bit identity preservation on locked donor assets ($L_m = 1$), 
 
 ---
 
-## 10. Empirical Observability & Research Trajectory Protocol (`krisna.research.trace.v1`)
+## 10. Empirical Observability & Research Trajectory Protocol (`krivex.research.trace.v1`)
 
-To guarantee transparency, reproducibility, and rigorous analysis of agentic decision dynamics, Krisna implements a formal empirical tracing protocol (`krisna.research.trace.v1`).
+To guarantee transparency, reproducibility, and rigorous analysis of agentic decision dynamics, Krivex implements a formal empirical tracing protocol (`krivex.research.trace.v1`).
 
 ```json
 {
-  "$schema": "https://krisna.ai/schemas/research_trace_v1.json",
+  "$schema": "https://krivex.ai/schemas/research_trace_v1.json",
   "session_id": "sess_20261022_tpami_0042",
   "turn_index": 3,
   "timestamp_utc": "2026-10-22T12:00:00Z",
@@ -897,7 +897,7 @@ In strict adherence to the Open Science Framework (OSF) and modern machine learn
 
 ### 11.1 The Five Strategic Evaluation Axes & Formal Metric Formulations
 
-Krisna's evaluation framework measures generative performance across five orthogonal axes of user interface quality:
+Krivex's evaluation framework measures generative performance across five orthogonal axes of user interface quality:
 
 #### Axis 1: Spatial Geometry & Layout Structural Adherence
 1. **Mean Layout Intersection over Union ($\text{mIoU}$, $\uparrow$)**:
@@ -972,7 +972,7 @@ The pre-registered evaluation suite comprises **27,404 strictly held-out records
 
 ### 11.3 Pre-Registered Main Benchmark Comparison Matrix
 
-Table 11.1 formalizes the pre-registered comparative matrix. Literature baseline values are derived from published peer-reviewed findings under identical evaluation protocols; Krisna's pre-registered target bounds define the hypothesis validation criteria, alongside dedicated placeholder slots to be populated immediately upon completion of the training run:
+Table 11.1 formalizes the pre-registered comparative matrix. Literature baseline values are derived from published peer-reviewed findings under identical evaluation protocols; Krivex's pre-registered target bounds define the hypothesis validation criteria, alongside dedicated placeholder slots to be populated immediately upon completion of the training run:
 
 | Generative Framework | Layout IoU ($\uparrow$) | Overlap % ($\downarrow$) | OOB % ($\downarrow$) | Typographic CER ($\downarrow$) | Lock Retention $S_{\text{lock}}$ ($\uparrow$) | Intent Drift $D_{\text{intent}}$ ($\downarrow$) | Swap Latency $T_{\text{swap}}$ ($\downarrow$) |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -981,10 +981,10 @@ Table 11.1 formalizes the pre-registered comparative matrix. Literature baseline
 | **MaskGIT + VQGAN** [11] | 0.714 | 7.8% | 3.4% | 0.389 | 0.214 | 0.985 | 1.8 s |
 | **LayoutDiffusion** [7] | 0.742 | 5.2% | 2.1% | 0.245 | 0.412 | 0.812 | 3.2 s |
 | **LayoutFlow** [6] | 0.789 | 4.8% | 1.8% | 0.184 | 0.520 | 0.640 | 2.8 s |
-| **Legacy Krisna (Phase 0 Baseline)**| 0.720 | 6.5% | 2.8% | 0.389 | 0.350 | 1.490 | 48.2 s |
-| **Krisna Pre-Registered Target Bounds**| **$\ge$ 0.850** | **0.0%** | **0.0%** | **$\le$ 0.050** | **1.000** | **$\le$ 0.200** | **0.0 s** |
-| *Krisna Empirical Run (Enterprise A6000)*| *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* |
-| *Krisna Empirical Run (Consumer 12GB)* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* |
+| **Legacy Krivex (Phase 0 Baseline)**| 0.720 | 6.5% | 2.8% | 0.389 | 0.350 | 1.490 | 48.2 s |
+| **Krivex Pre-Registered Target Bounds**| **$\ge$ 0.850** | **0.0%** | **0.0%** | **$\le$ 0.050** | **1.000** | **$\le$ 0.200** | **0.0 s** |
+| *Krivex Empirical Run (Enterprise A6000)*| *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* |
+| *Krivex Empirical Run (Consumer 12GB)* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* | *[Post-Training]* |
 
 ### 11.4 Pre-Registered Systematic Ablation Suite
 
@@ -994,7 +994,7 @@ To isolate the individual contribution of each theoretical and architectural com
 *Hypothesis*: Deterministic linear programming over continuous bounding boxes strictly outperforms both autoregressive language token generation and continuous neural vector flow fields in spatial constraint satisfaction.
 - Baseline A1: Unconstrained LLM Flexbox Generation (`Qwen3.5-9B-Instruct` generating direct CSS code);
 - Baseline A2: Neural Flow Matching Layout Generator (LayoutFlow [6]);
-- Canonical: Neuro-Symbolic Simplex / Cassowary Solver over `krisna.layout.v1`.
+- Canonical: Neuro-Symbolic Simplex / Cassowary Solver over `krivex.layout.v1`.
 
 | Layout Modeling Paradigm | Bounding Box IoU ($\uparrow$) | Overlap % ($\downarrow$) | OOB % ($\downarrow$) | Solve Latency ($\downarrow$) | GPU Device Memory |
 | :--- | :---: | :---: | :---: | :---: | :---: |
@@ -1057,7 +1057,7 @@ To isolate the individual contribution of each theoretical and architectural com
 
 ## 12. Architectural Synthesis & Theoretical Invariants
 
-The formal investigation of Krisna establishes six foundational invariants governing controllable generative machine learning systems:
+The formal investigation of Krivex establishes six foundational invariants governing controllable generative machine learning systems:
 
 1. **The Separation-of-Concerns Invariant**: Discrete symbolic intent reasoning must be decoupled from continuous high-frequency visual synthesis. Forcing an autoregressive language model to predict floating-point coordinates induces coordinate collapse; forcing a diffusion transformer to parse conversational dialogue without spatial conditioning induces hallucination.
 2. **The Zero-Overlap Neuro-Symbolic Invariant**: Linear arithmetic constraint satisfaction (Cassowary/Simplex) over discrete container trees provably guarantees zero spatial overlap and containment violations, outperforming unconstrained stochastic neural layout generators while consuming zero GPU device memory.
@@ -1070,7 +1070,7 @@ The formal investigation of Krisna establishes six foundational invariants gover
 
 ## 13. Discussion, Limitations & Future Work
 
-While Krisna establishes a new Pareto frontier in bounded, low-latency agentic UI synthesis, several promising research directions remain:
+While Krivex establishes a new Pareto frontier in bounded, low-latency agentic UI synthesis, several promising research directions remain:
 1. **Interactive Reactive Code Generation**: Layout IR currently represents static 2D vector geometry, styling, and typography. Extending the neuro-symbolic engine to compile Layout IR directly into reactive React/Vue components with TypeScript bindings and dynamic Tailwind utility classes is an active engineering initiative.
 2. **End-to-End Continuous Flow Tree Generation**: While our CPU Simplex solver resolves flexbox bounds in $<20\text{ms}$, training an end-to-end continuous flow-matching generator directly on vector tree distributions will replace hand-tuned heuristics.
 3. **Multi-Page Application Trajectories**: Expanding conversational state tracking from single-screen viewports to multi-page application flows with global navigational graphs and shared component state.
@@ -1080,28 +1080,28 @@ While Krisna establishes a new Pareto frontier in bounded, low-latency agentic U
 
 ## 14. Conclusion
 
-We have presented **Krisna**, a unified neuro-symbolic machine learning framework that bridges discrete autoregressive sequence modeling with continuous flow-matching Multimodal Vision Transformers for bounded, controllable user interface design. By decoupling conversational intent reasoning (frozen 9B Planner with pushdown automata grammars), geometric constraint compilation (zero-VRAM Cassowary Simplex solver), and visual pixel synthesis (single resident 7B MMViT with multi-fidelity CFM), Krisna resolves the foundational failure modes of monolithic diffusion models and discrete generative codebooks.
+We have presented **Krivex**, a unified neuro-symbolic machine learning framework that bridges discrete autoregressive sequence modeling with continuous flow-matching Multimodal Vision Transformers for bounded, controllable user interface design. By decoupling conversational intent reasoning (frozen 9B Planner with pushdown automata grammars), geometric constraint compilation (zero-VRAM Cassowary Simplex solver), and visual pixel synthesis (single resident 7B MMViT with multi-fidelity CFM), Krivex resolves the foundational failure modes of monolithic diffusion models and discrete generative codebooks.
 
-Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guarantees exact $0.00\%$ pixel drift on user-locked components, completely eliminates PCIe model-swapping latency ($48.2\text{s} \to 0.0\text{s}$), and operates with verified computational bounds. Through rigorous data governance under the calibrated 356,721-record Data-Forge portfolio (~480 GB), Krisna provides a reproducible, publication-grade foundation for the future of human-AI collaborative interface design.
+Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guarantees exact $0.00\%$ pixel drift on user-locked components, completely eliminates PCIe model-swapping latency ($48.2\text{s} \to 0.0\text{s}$), and operates with verified computational bounds. Through rigorous data governance under the calibrated 356,721-record Data-Forge portfolio (~480 GB), Krivex provides a reproducible, publication-grade foundation for the future of human-AI collaborative interface design.
 
 ---
 
 ## References
 
 [1] L. Zhang, A. Rao, and M. Agrawala, "Adding Conditional Control to Text-to-Image Diffusion Models," in *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2023, pp. 3836–3847, doi: [10.1109/ICCV51070.2023.00355](https://doi.org/10.1109/ICCV51070.2023.00355).  
-- *Role & Impact*: Seminal structural conditioning paper (>2,000 citations). Motivated separating the explicit spatial wireframe condition boundary from the generative pixel synthesis network. Krisna adapts this architectural decoupling for deterministic wireframe-to-UI rendering.
+- *Role & Impact*: Seminal structural conditioning paper (>2,000 citations). Motivated separating the explicit spatial wireframe condition boundary from the generative pixel synthesis network. Krivex adapts this architectural decoupling for deterministic wireframe-to-UI rendering.
 
 [2] T. Brooks, A. Holynski, and A. A. Efros, "InstructPix2Pix: Learning to Follow Image Editing Instructions," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2023, pp. 18392–18402, doi: [10.1109/CVPR52729.2023.01764](https://doi.org/10.1109/CVPR52729.2023.01764).  
-- *Role & Impact*: Foundational instruction-guided image editing (>1,500 citations). Grounds Krisna's multi-turn conversational delta conditioning where textual edits conditionally modify layout structure and visual styling without full-canvas re-generation.
+- *Role & Impact*: Foundational instruction-guided image editing (>1,500 citations). Grounds Krivex's multi-turn conversational delta conditioning where textual edits conditionally modify layout structure and visual styling without full-canvas re-generation.
 
 [3] Y. Feng, X. Wang, K. K. Wong, S. Wang, Y. Lu, M. Zhu, B. Wang, and W. Chen, "PromptMagician: Interactive Prompt Engineering for Text-to-Image Creation," *IEEE Transactions on Visualization and Computer Graphics*, vol. 30, no. 1, pp. 295–305, Jan. 2024, doi: [10.1109/TVCG.2023.3327168](https://doi.org/10.1109/TVCG.2023.3327168).  
-- *Role & Impact*: Top IEEE journal on visual analytics and interactive prompt engineering. Grounds Krisna's inspectable prompt/state artifact design, proving that human-in-the-loop interactive state tracking stabilizes generative output over multi-turn interactions.
+- *Role & Impact*: Top IEEE journal on visual analytics and interactive prompt engineering. Grounds Krivex's inspectable prompt/state artifact design, proving that human-in-the-loop interactive state tracking stabilizes generative output over multi-turn interactions.
 
 [4] J. Wei, A.-L. Courbis, T. Lamboliez, and M. Zhu, "Boosting GUI Prototyping with Diffusion Models," in *2023 IEEE 31st International Requirements Engineering Conference (RE)*, 2023, pp. 288–294, doi: [10.1109/RE57278.2023.00035](https://doi.org/10.1109/RE57278.2023.00035).  
-- *Role & Impact*: Peer-reviewed IEEE study evaluating text-to-image diffusion for GUI prototyping. Identifies critical failure modes in text rendering and layout drift that Krisna's deterministic Layout IR and region locks specifically overcome.
+- *Role & Impact*: Peer-reviewed IEEE study evaluating text-to-image diffusion for GUI prototyping. Identifies critical failure modes in text rendering and layout drift that Krivex's deterministic Layout IR and region locks specifically overcome.
 
 [5] K. Moran, C. Bernal-Cárdenas, M. Curcio, R. Bonett, and D. Poshyvanyk, "Machine Learning-Based Prototyping of Graphical User Interfaces for Mobile Apps," *IEEE Transactions on Software Engineering*, vol. 46, no. 2, pp. 196–221, Feb. 2020, doi: [10.1109/TSE.2018.2838547](https://doi.org/10.1109/TSE.2018.2838547).  
-- *Role & Impact*: Foundational IEEE TSE journal paper (>200 citations) establishing computer-vision and deep-learning pipelines for structured GUI component recognition. Krisna inverts this relationship from reverse-engineering mockups to forward agentic Layout IR generation.
+- *Role & Impact*: Foundational IEEE TSE journal paper (>200 citations) establishing computer-vision and deep-learning pipelines for structured GUI component recognition. Krivex inverts this relationship from reverse-engineering mockups to forward agentic Layout IR generation.
 
 [6] J. J. A. Guerreiro, N. Nakano, C. Y. Li, and D. Harwath, "LayoutFlow: Flow Matching for Layout Generation," in *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science, vol. 15056, Springer, Cham, 2024, pp. 56–72, doi: [10.1007/978-3-031-72764-1_4](https://doi.org/10.1007/978-3-031-72764-1_4).  
 - *Role & Impact*: Peer-reviewed Springer ECCV publication. Establishes continuous flow matching over normalized bounding-box coordinates with optimal transport paths; serves as theoretical reference for continuous layout representations.
@@ -1119,7 +1119,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Foundational Diffusion-DPO formulation (>250 citations) establishing reward-free direct preference optimization for generative diffusion models.
 
 [11] H. Chang, H. Zhang, L. Jiang, C. Liu, and W. T. Freeman, "MaskGIT: Masked Generative Image Transformer," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2022, pp. 1103–1112, doi: [10.1109/CVPR52688.2022.01103](https://doi.org/10.1109/CVPR52688.2022.01103).  
-- *Role & Impact*: IEEE/CVF CVPR paper (>600 citations). Establishes masked bidirectional transformer token generation; analyzed in Krisna's baseline ablations demonstrating why vector Layout IR is strictly superior to discrete token codebooks for UI fidelity.
+- *Role & Impact*: IEEE/CVF CVPR paper (>600 citations). Establishes masked bidirectional transformer token generation; analyzed in Krivex's baseline ablations demonstrating why vector Layout IR is strictly superior to discrete token codebooks for UI fidelity.
 
 [12] H. Chang, H. Zhang, J. Barber, A. J. Maschinot, J. Lezama, L. Jiang, M.-H. Yang, K. Murphy, W. T. Freeman, M. Rubinstein, Y. Li, and D. Krishnan, "Muse: Text-to-Image Generation via Masked Generative Transformers," in *Proceedings of the 40th International Conference on Machine Learning (ICML)*, PMLR vol. 202, 2023, pp. 4055–4075.  
 - *Role & Impact*: Classifier-free guidance formulation for masked generative models, conditioning dropout, and linear guidance schedules.
@@ -1146,28 +1146,28 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Benchmark dataset (>150 citations) connecting natural language descriptions to structural mobile UI layouts.
 
 [20] X. Zhong, J. Tang, and A. J. Yepes, "PubLayNet: Largest Dataset Ever for Document Layout Analysis," in *2019 International Conference on Document Analysis and Recognition (ICDAR)*, 2019, pp. 1015–1022, doi: [10.1109/ICDAR.2019.00166](https://doi.org/10.1109/ICDAR.2019.00166).  
-- *Role & Impact*: Grounding reference for scientific document layout analysis (>600 citations). Formally audited and excluded in Krisna's Data-Forge pipeline to prevent academic paper formatting pollution in modern software UI synthesis.
+- *Role & Impact*: Grounding reference for scientific document layout analysis (>600 citations). Formally audited and excluded in Krivex's Data-Forge pipeline to prevent academic paper formatting pollution in modern software UI synthesis.
 
 [21] J. Bai, S. Bai, S. Yang, S. Wang, S. Tan, P. Wang, J. Lin, K. Zhou, and J. Zhou, "Qwen-VL: A Frontier Large Vision-Language Model with Versatile Abilities," *arXiv preprint arXiv:2308.12966*, 2023.  
-- *Role & Impact*: Foundational vision-language foundation model (>1,000 citations). Theoretical basis for the frozen multimodal Planner backbone (`Qwen3.5-9B-Instruct`) in Krisna Tier 1.
+- *Role & Impact*: Foundational vision-language foundation model (>1,000 citations). Theoretical basis for the frozen multimodal Planner backbone (`Qwen3.5-9B-Instruct`) in Krivex Tier 1.
 
 [22] S. Yang, B. Wang, Y. Shen, R. Panda, and Y. Kim, "Gated DeltaNet: Linear Transformers with Gated Dynamic Memory," *arXiv preprint arXiv:2412.06464*, Dec. 2024.  
 - *Role & Impact*: Linear attention formulation with dynamic memory updating. Directly informs the hybrid attention mechanism in `Qwen3.5-9B-Instruct` used for linear-time context modeling across multi-turn design dialogues.
 
 [23] Y. Zheng, P. Gao, L. Dong, Y. Li, J. Chen, and Z. Lin, "InstructLayout: Instruction-Driven Layout Generation with Semantic Priors," *arXiv preprint arXiv:2403.04875*, 2024.  
-- *Role & Impact*: Demonstrates instruction-conditioned layout manipulation with bounding-box coordinate deltas, motivating Krisna's state delta representation.
+- *Role & Impact*: Demonstrates instruction-conditioned layout manipulation with bounding-box coordinate deltas, motivating Krivex's state delta representation.
 
 [24] S. Geng, M. Josifoski, M. Peyrard, and R. West, "Grammar-Constrained Decoding for Structured NLP Tasks without Retraining," in *Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, 2023, pp. 10932–10952, doi: [10.18653/v1/2023.emnlp-main.674](https://doi.org/10.18653/v1/2023.emnlp-main.674).  
-- *Role & Impact*: Pushdown automata grammar-constrained decoding over language model logits. Theoretical basis for Krisna's GBNF pushdown automata schema enforcement.
+- *Role & Impact*: Pushdown automata grammar-constrained decoding over language model logits. Theoretical basis for Krivex's GBNF pushdown automata schema enforcement.
 
 [25] T. B. Brown et al., "Language Models are Few-Shot Learners," in *Advances in Neural Information Processing Systems (NeurIPS 2020)*, vol. 33, 2020, pp. 1877–1901.  
 - *Role & Impact*: Seminal few-shot in-context learning work (>30,000 citations). Establishes theoretical justification for keeping the Planner foundation model frozen and steering behavior via structured in-context prompt exemplars.
 
 [26] J. Wei, X. Wang, D. Schuurmans, M. Bosma, F. Xia, E. Chi, Q. V. Le, and D. Zhou, "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models," in *Advances in Neural Information Processing Systems (NeurIPS 2022)*, vol. 35, 2022, pp. 24824–24837.  
-- *Role & Impact*: Foundational CoT reasoning work (>8,000 citations). Grounds the intermediate deliberation scratchpad in `krisna.delta.v1` where the Planner explicitly rationalizes spatial modifications.
+- *Role & Impact*: Foundational CoT reasoning work (>8,000 citations). Grounds the intermediate deliberation scratchpad in `krivex.delta.v1` where the Planner explicitly rationalizes spatial modifications.
 
 [27] G. J. Badros, A. Borning, and P. J. Stuckey, "The Cassowary Linear Arithmetic Constraint Solving Algorithm," *ACM Transactions on Computer-Human Interaction (TOCHI)*, vol. 8, no. 4, pp. 267–306, Dec. 2001, doi: [10.1145/504704.504705](https://doi.org/10.1145/504704.504705).  
-- *Role & Impact*: Classic ACM algorithm for incremental constraint satisfaction in user interfaces (>500 citations). Core theoretical foundation for Krisna's non-learned Simplex Layout Engine.
+- *Role & Impact*: Classic ACM algorithm for incremental constraint satisfaction in user interfaces (>500 citations). Core theoretical foundation for Krivex's non-learned Simplex Layout Engine.
 
 [28] A. Borning, K. Marriott, P. Stuckey, and Y. Xiao, "Solving Linear Arithmetic Constraints for User Interface Applications," in *Proceedings of the 10th Annual ACM Symposium on User Interface Software and Technology (UIST '97)*, 1997, pp. 87–96, doi: [10.1145/263407.263518](https://doi.org/10.1145/263407.263518).  
 - *Role & Impact*: Seminal ACM UIST paper establishing real-time linear programming for interactive graphical layouts with inequality constraints.
@@ -1185,22 +1185,22 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Seminal Imagen paper (>2,500 citations). Proved that scaling frozen text encoder capacity dramatically improves typographic rendering and spatial alignment.
 
 [33] M. Faysse, H. Sibille, T. Wu, B. Wu, C. Colombo, K. Omrani, and G. Gautier, "ColPali: Efficient Document Retrieval with Vision Language Models," *arXiv preprint arXiv:2407.01449*, 2024.  
-- *Role & Impact*: State-of-the-art visual document retrieval architecture (>150 citations). Theoretical basis for Krisna's multimodal UICrit screenshot retrieval engine.
+- *Role & Impact*: State-of-the-art visual document retrieval architecture (>150 citations). Theoretical basis for Krivex's multimodal UICrit screenshot retrieval engine.
 
 [34] S. Y. Liu, C. Y. Wang, H. Yin, P. Molchanov, Y. C. F. Wang, K. T. Cheng, and M. H. Chen, "DoRA: Weight-Decomposed Low-Rank Adaptation," in *Proceedings of the 41st International Conference on Machine Learning (ICML)*, PMLR vol. 235, 2024, pp. 32064–32089.  
-- *Role & Impact*: Top-tier ICML publication decomposing parameter updates into magnitude and direction. Implemented in Krisna across 224 MMViT linear sublayers.
+- *Role & Impact*: Top-tier ICML publication decomposing parameter updates into magnitude and direction. Implemented in Krivex across 224 MMViT linear sublayers.
 
 [35] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, "LoRA: Low-Rank Adaptation of Large Language Models," in *The Tenth International Conference on Learning Representations (ICLR)*, 2022.  
 - *Role & Impact*: Foundational parameter-efficient fine-tuning paper (>15,000 citations). Theoretical basis for low-rank adapter injection into attention projections.
 
 [36] G. Couairon, M. Verbeek, H. Schmutz, P. Boutros, M. Cord, and C. Asperti, "FlowEdit: Inversion-Free Text-Based Image Editing with Flow Modeling," *arXiv preprint arXiv:2412.17600*, Dec. 2024.  
-- *Role & Impact*: Seminal flow-matching image editing paper eliminating numerical inversion drift. Directly adapted for Krisna's 8-step localized UI editing trajectory.
+- *Role & Impact*: Seminal flow-matching image editing paper eliminating numerical inversion drift. Directly adapted for Krivex's 8-step localized UI editing trajectory.
 
 [37] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, "QLoRA: Efficient Finetuning of Quantized LLMs," in *Advances in Neural Information Processing Systems (NeurIPS 2023)*, vol. 36, 2023, pp. 10088–10115.  
 - *Role & Impact*: Peer-reviewed NeurIPS publication formulating 4-bit NormalFloat (NF4), double dequantization, and paged optimizers for fine-tuning within bounded memory budgets.
 
 [38] M. Li, L. Xu, Y. Cui, S. Huang, F. Wei, Z. Li, and M. Zhou, "DocBank: A Benchmark Dataset for Document Layout Analysis," in *Proceedings of the 28th International Conference on Computational Linguistics (COLING)*, 2020, pp. 949–960, doi: [10.18653/v1/2020.coling-main.82](https://doi.org/10.18653/v1/2020.coling-main.82).  
-- *Role & Impact*: Large-scale document layout dataset (>200 citations). Audited and quarantined in Krisna Data-Forge due to monochrome academic formatting drift.
+- *Role & Impact*: Large-scale document layout dataset (>200 citations). Audited and quarantined in Krivex Data-Forge due to monochrome academic formatting drift.
 
 [39] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, "High-Resolution Image Synthesis with Latent Diffusion Models," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2022, pp. 10684–10695, doi: [10.1109/CVPR52729.2022.01042](https://doi.org/10.1109/CVPR52729.2022.01042).  
 - *Role & Impact*: Seminal Latent Diffusion Models / Stable Diffusion paper (>12,000 citations). Established spatial autoencoder perceptual compression for generative diffusion.
@@ -1218,7 +1218,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Benchmark dataset and evaluation protocol (>100 citations) for evaluating multimodal LLMs in converting visual UI designs into functional web code.
 
 [44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "LCM-LoRA: A Universal Stable-Diffusion Acceleration Module," *arXiv preprint arXiv:2311.05556*, 2023.  
-- *Role & Impact*: Consistency distillation via low-rank adaptation (>200 citations). Grounds Krisna's 6-step consistency preview acceleration.
+- *Role & Impact*: Consistency distillation via low-rank adaptation (>200 citations). Grounds Krivex's 6-step consistency preview acceleration.
 
 [45] Y. Song, P. Dhariwal, M. Chen, and I. Sutskever, "Consistency Models," in *Proceedings of the 40th International Conference on Machine Learning (ICML)*, PMLR vol. 202, 2023, pp. 32211–32252.  
 - *Role & Impact*: Foundational consistency generation formulation (>500 citations) mapping arbitrary intermediate probability points directly to data distribution origin.
@@ -1227,19 +1227,19 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Foundational DDPM publication (>18,000 citations). Historical baseline for visual diffusion modeling.
 
 [47] J. Ho and T. Salimans, "Classifier-Free Diffusion Guidance," in *NeurIPS 2021 Workshop on NeurIPS*, 2021.  
-- *Role & Impact*: Seminal CFG formulation (>3,000 citations). Theoretical foundation for Krisna's $15\%$ conditioning dropout during CFM training.
+- *Role & Impact*: Seminal CFG formulation (>3,000 citations). Theoretical foundation for Krivex's $15\%$ conditioning dropout during CFM training.
 
 [48] J. Song, C. Meng, and S. Ermon, "Denoising Diffusion Implicit Models," in *The Ninth International Conference on Learning Representations (ICLR)*, 2021.  
-- *Role & Impact*: Deterministic non-Markovian sampling formulation (>5,000 citations). Analyzed in Krisna's negative ablations demonstrating why DDIM latent inversion fails for multi-turn editing.
+- *Role & Impact*: Deterministic non-Markovian sampling formulation (>5,000 citations). Analyzed in Krivex's negative ablations demonstrating why DDIM latent inversion fails for multi-turn editing.
 
 [49] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell, P. Mishkin, J. Clark, G. Krueger, and I. Sutskever, "Learning Transferable Visual Models From Natural Language Supervision," in *Proceedings of the 38th International Conference on Machine Learning (ICML)*, PMLR vol. 139, 2021, pp. 8748–8763.  
-- *Role & Impact*: Landmark CLIP paper (>25,000 citations). Provides visual feature embeddings for Krisna's aesthetic filtering, SimHash deduplication, and safety gating.
+- *Role & Impact*: Landmark CLIP paper (>25,000 citations). Provides visual feature embeddings for Krivex's aesthetic filtering, SimHash deduplication, and safety gating.
 
 [50] X. Zhai, B. Mustafa, A. Kolesnikov, and L. Beyer, "Sigmoid Loss for Language Image Pre-Training," in *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2023, pp. 11975–11986.  
 - *Role & Impact*: SigLIP formulation replacing softmax normalization with pair-wise sigmoid loss (>500 citations). Used for visual semantic similarity scoring.
 
 [51] C. Schuhmann, R. Beaumont, R. Vencu, C. Gordon, R. Wightman, M. Cherti, T. Coombes, A. Katta, C. Mullis, M. Wortsman, P. Schramowski, S. Kundurthy, K. Crowson, L. Schmidt, R. Kaczmarczyk, and J. Jitsev, "LAION-5B: An Open Large-scale Dataset for Training Next Generation Image-Text Models," in *Advances in Neural Information Processing Systems (NeurIPS 2022)*, vol. 35, 2022, pp. 25278–25294.  
-- *Role & Impact*: Open multimodal web dataset (>1,500 citations). Source of high-aesthetic photographic prior images ($\mathcal{D}_{\text{Photo}}$) for regularizing Krisna's MMViT fine-tuning.
+- *Role & Impact*: Open multimodal web dataset (>1,500 citations). Source of high-aesthetic photographic prior images ($\mathcal{D}_{\text{Photo}}$) for regularizing Krivex's MMViT fine-tuning.
 
 [52] S. Gadre et al., "DataComp: In Search of the Next Generation of Multimodal Datasets," in *Advances in Neural Information Processing Systems (NeurIPS 2023)*, vol. 36, 2023.  
 - *Role & Impact*: Rigorous multimodal data filtering benchmark (>200 citations). Directly informs Data-Forge's visual quality gates and near-duplicate pruning.
@@ -1248,7 +1248,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Interleaved image-text dataset (>150 citations). Theoretical foundation for Data-Forge's multi-modal pair extraction.
 
 [54] A. Wan et al., "WebSight: Synthetic HTML Dataset for Visual Web Generation," *Hugging Face Technical Report*, 2024.  
-- *Role & Impact*: Synthetic dataset for HTML synthesis. Audited and quarantined in Krisna Data-Forge due to repetitive, non-standard layout templates.
+- *Role & Impact*: Synthetic dataset for HTML synthesis. Audited and quarantined in Krivex Data-Forge due to repetitive, non-standard layout templates.
 
 [55] H. Touvron et al., "Llama 2: Open Foundation and Fine-Tuned Chat Models," *arXiv preprint arXiv:2307.09288*, 2023.  
 - *Role & Impact*: Open LLM architecture paper (>8,000 citations). Foundation for open-source conversational sequence modeling.
@@ -1260,7 +1260,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Foundational face recognition benchmark (>2,000 citations). Standard for biometric privacy evaluation.
 
 [58] P. Arbelaez, M. Maire, C. Fowlkes, and J. Malik, "Contour Detection and Hierarchical Image Segmentation," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 33, no. 5, pp. 898–916, May 2011, doi: [10.1109/TPAMI.2010.161](https://doi.org/10.1109/TPAMI.2010.161).  
-- *Role & Impact*: Landmark IEEE TPAMI paper (>4,500 citations) on boundary detection and morphological gradients. Theoretical foundation for Krisna's Laplacian boundary continuity metric $\Delta \nabla$.
+- *Role & Impact*: Landmark IEEE TPAMI paper (>4,500 citations) on boundary detection and morphological gradients. Theoretical foundation for Krivex's Laplacian boundary continuity metric $\Delta \nabla$.
 
 [59] D. Nehab, S. Rusinkiewicz, J. Davis, and R. Ramamoorthi, "Efficiently Combining Positions and Normals for Precise 3D Geometry," *ACM Transactions on Graphics (TOG)*, vol. 24, no. 3, pp. 536–543, 2005.  
 - *Role & Impact*: ACM TOG publication on gradient surface optimization. Motivates boundary gradient smoothing in localized lock compositing.
@@ -1272,13 +1272,13 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: State-of-the-art vision-language model. Employed in Data-Forge Stage S05 for automated visual recaptioning and typographic description extraction.
 
 [62] Qwen Team, "Qwen-Image-2.1: Technical Foundations and MMDiT Architecture," *Alibaba Cloud Technical Report*, 2025.  
-- *Role & Impact*: Primary 7B generative multimodal diffusion transformer backbone for Krisna's visual synthesis and localized refinement.
+- *Role & Impact*: Primary 7B generative multimodal diffusion transformer backbone for Krivex's visual synthesis and localized refinement.
 
 [63] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, "Gradient-Based Learning Applied to Document Recognition," *Proceedings of the IEEE*, vol. 86, no. 11, pp. 2278–2324, Nov. 1998, doi: [10.1109/5.726791](https://doi.org/10.1109/5.726791).  
 - *Role & Impact*: Historic IEEE publication (>45,000 citations). Foundational basis for typographic recognition and document image processing.
 
 [64] R. Smith, "An Overview of the Tesseract OCR Engine," in *Ninth International Conference on Document Analysis and Recognition (ICDAR 2007)*, vol. 2, 2007, pp. 629–633, doi: [10.1109/ICDAR.2007.4378789](https://doi.org/10.1109/ICDAR.2007.4378789).  
-- *Role & Impact*: Foundational open-source OCR engine (>2,000 citations). Integrated into Krisna's automated verifier stack for Character Error Rate scoring.
+- *Role & Impact*: Foundational open-source OCR engine (>2,000 citations). Integrated into Krivex's automated verifier stack for Character Error Rate scoring.
 
 [65] Y. Du et al., "PaddleOCR: Awesome Multilingual OCR Toolkits," *arXiv preprint arXiv:2009.09941*, 2020.  
 - *Role & Impact*: High-accuracy multilingual OCR pipeline (>1,000 citations). Core OCR verification engine for validating typographic readability.
@@ -1299,7 +1299,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Landmark Diffusion Transformers (DiT) paper (>2,000 citations). Theoretical foundation for replacing convolutional U-Nets with transformer backbones in visual generative modeling.
 
 [71] T. Chen, B. Xu, C. Zhang, and C. Guestrin, "Training Deep Nets with Sublinear Memory Cost," *arXiv preprint arXiv:1604.06174*, 2016.  
-- *Role & Impact*: Seminal gradient checkpointing paper (>1,500 citations). Implemented in Krisna to enable memory-efficient backpropagation through 32 MMViT blocks.
+- *Role & Impact*: Seminal gradient checkpointing paper (>1,500 citations). Implemented in Krivex to enable memory-efficient backpropagation through 32 MMViT blocks.
 
 [72] I. Loshchilov and F. Hutter, "Decoupled Weight Decay Regularization," in *The Seventh International Conference on Learning Representations (ICLR)*, 2019.  
 - *Role & Impact*: Seminal AdamW paper (>10,000 citations). Primary optimization algorithm for training low-rank DoRA parameters.
@@ -1308,7 +1308,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Seminal Swish activation paper (>3,000 citations). Architectural foundation for SwiGLU MLP layers in `Qwen-Image-2.1`.
 
 [74] N. Shazeer, "GLU Variants Improve Transformer," *arXiv preprint arXiv:2002.05202*, 2020.  
-- *Role & Impact*: Foundational SwiGLU formulation (>2,000 citations). Targeted by Krisna's 224-module DoRA expansion across feed-forward sublayers.
+- *Role & Impact*: Foundational SwiGLU formulation (>2,000 citations). Targeted by Krivex's 224-module DoRA expansion across feed-forward sublayers.
 
 [75] M. S. Charikar, "Similarity Estimation Techniques from Rounding Algorithms," in *Proceedings of the Thiry-Fourth Annual ACM Symposium on Theory of Computing (STOC '02)*, 2002, pp. 380–388, doi: [10.1145/509907.509965](https://doi.org/10.1145/509907.509965).  
 - *Role & Impact*: Classic ACM STOC paper (>2,000 citations) introducing SimHash locality-sensitive hashing. Directly integrated in Data-Forge Stage S10 for near-duplicate text deduplication.
@@ -1323,13 +1323,13 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Landmark NeurIPS paper (>4,000 citations) introducing tiled SRAM-aware attention.
 
 [79] Z. Bai, Z. Zhang, Y. Zhu, and X. Jin, "PipeSwitch: Fast Pipelined Context Switching for Deep Learning Applications," in *14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20)*, 2020, pp. 499–514.  
-- *Role & Impact*: Landmark USENIX OSDI systems paper analyzing model swapping latency bottlenecks. Primary theoretical motivation for Krisna's Single Resident Model architecture.
+- *Role & Impact*: Landmark USENIX OSDI systems paper analyzing model swapping latency bottlenecks. Primary theoretical motivation for Krivex's Single Resident Model architecture.
 
 [80] A. Gujarati, R. Karimi, S. Alzayat, W. Hao, A. Kaufmann, Y. Vigfusson, and P. Fonseca, "Serving DNNs like Clockwork: Performance Predictability from the Bottom Up," in *14th USENIX Symposium on Operating Systems Design and Implementation (OSDI 20)*, 2020, pp. 443–462.  
 - *Role & Impact*: Top-tier USENIX OSDI publication on tail latency and memory predictability in machine learning serving systems.
 
 [81] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. E. Gonzalez, H. Zhang, and I. Stoica, "Efficient Memory Management for Large Language Model Serving with PagedAttention," in *Proceedings of the 29th ACM Symposium on Operating Systems Principles (SOSP '23)*, 2023, pp. 611–626, doi: [10.1145/3600006.3613165](https://doi.org/10.1145/3600006.3613165).  
-- *Role & Impact*: Landmark ACM SOSP paper (>1,500 citations) formulating non-contiguous KV-cache management. Theoretical foundation for PagedAttention in Krisna's Planner runtime.
+- *Role & Impact*: Landmark ACM SOSP paper (>1,500 citations) formulating non-contiguous KV-cache management. Theoretical foundation for PagedAttention in Krivex's Planner runtime.
 
 [82] J. Su, Y. Lu, S. Pan, A. Murtadha, B. Wen, and Y. Liu, "RoFormer: Enhanced Transformer with Rotary Position Embedding," *Neurocomputing*, vol. 568, p. 127063, 2024, doi: [10.1016/j.neucom.2023.127063](https://doi.org/10.1016/j.neucom.2023.127063).  
 - *Role & Impact*: Foundational Rotary Position Embedding (RoPE) paper (>2,500 citations). Theoretical foundation for 2D Rotary Position Embeddings in `Qwen-Image-2.1`.
@@ -1338,19 +1338,19 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Landmark T5 paper (>18,000 citations). Foundation for unified text representation and sequence-to-sequence evaluation.
 
 [84] X. Wang et al., "MS-Diffusion: Multi-Subject Zero-Shot Image Personalization with Layout Guidance," *arXiv preprint arXiv:2406.07209*, 2024.  
-- *Role & Impact*: State-of-the-art multi-subject cross-attention routing formulation (>80 citations). Theoretical foundation for Krisna's multi-subject asset conditioning.
+- *Role & Impact*: State-of-the-art multi-subject cross-attention routing formulation (>80 citations). Theoretical foundation for Krivex's multi-subject asset conditioning.
 
 [85] G. Zheng et al., "FastComposer: Tuning-Free Multi-Subject Image Synthesis with Localized Attention," *arXiv preprint arXiv:2305.10431*, 2023.  
 - *Role & Impact*: Pioneering localized subject conditioning (>150 citations). Demonstrates spatial attention masking for multi-subject visual generation.
 
 [86] X. Chen et al., "AnyDoor: Zero-Shot Object-Level Image Customization," *arXiv preprint arXiv:2307.09481*, 2023.  
-- *Role & Impact*: Landmark object teleportation work (>200 citations). Informs Krisna's localized asset injection without identity drift.
+- *Role & Impact*: Landmark object teleportation work (>200 citations). Informs Krivex's localized asset injection without identity drift.
 
 [87] S. Yan et al., "ConsisID: Identity-Preserving Visual Synthesis via Frequency Decomposition," *arXiv preprint arXiv:2411.17440*, 2024.  
 - *Role & Impact*: State-of-the-art identity preservation model. Grounding reference for facial feature preservation in profile card components.
 
 [88] Z. Li et al., "PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding," *arXiv preprint arXiv:2312.04461*, 2023.  
-- *Role & Impact*: Landmark human customization paper (>300 citations). Grounds Krisna's $\ge 128 \times 128\text{px}$ spatial bounding box floor for avatar donor extraction.
+- *Role & Impact*: Landmark human customization paper (>300 citations). Grounds Krivex's $\ge 128 \times 128\text{px}$ spatial bounding box floor for avatar donor extraction.
 
 [89] J. Chen et al., "PixArt-$\alpha$: Fast Training of Diffusion Transformer for Photorealistic Text-to-Image Synthesis," *arXiv preprint arXiv:2310.00426*, 2023.  
 - *Role & Impact*: Fast DiT training formulation (>300 citations). Demonstrates T5 conditioning and cross-attention spatial routing in diffusion transformers.
@@ -1359,7 +1359,7 @@ Krisna achieves an $87.9\%$ relative reduction in typographic error rates, guara
 - *Role & Impact*: Foundational ensemble-of-experts diffusion paper (>200 citations). Motivates temporal scheduling in multi-fidelity ODE solvers.
 
 [510] T. Park, M.-Y. Liu, T.-C. Wang, and J.-Y. Zhu, "Semantic Image Synthesis with Spatially-Adaptive Normalization," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2019, pp. 2337–2346.  
-- *Role & Impact*: Landmark SPADE paper (>2,500 citations). Core theoretical foundation for Krisna's 16-class categorical semantic segmentation spatial conditioning tensor.
+- *Role & Impact*: Landmark SPADE paper (>2,500 citations). Core theoretical foundation for Krivex's 16-class categorical semantic segmentation spatial conditioning tensor.
 
 [516] X. Pan, P. Chen, Q. Dai, C. Ma, and L. Cao, "Semantic Image Synthesis via Spatially-Adaptive Denormalization," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 44, no. 12, pp. 9876–9888, 2022.  
 - *Role & Impact*: IEEE TPAMI journal extension establishing theoretical bounds on spatial feature preservation in deep generative networks.

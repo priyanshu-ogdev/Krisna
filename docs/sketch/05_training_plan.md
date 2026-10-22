@@ -2,14 +2,14 @@
 
 ## 1. Overview & Phased Roadmap
 
-The Krisna Sketch Tier leverages a phased curriculum designed to maximize layout stability, spatial precision, and zero-hallucination compliance.
+The Krivex Sketch Tier leverages a phased curriculum designed to maximize layout stability, spatial precision, and zero-hallucination compliance.
 
 ---
 
 ## 2. Curriculum Phases
 
 ### Phase A — Layout IR & Deterministic Renderer (Completed)
-- Canonical Pydantic schema: `LayoutIR` (`krisna.layout.v1`).
+- Canonical Pydantic schema: `LayoutIR` (`krivex.layout.v1`).
 - Deterministic Flexbox Collision Partitioner with 8pt grid snapping (`_resolve_flex_layout`).
 - TrueType Typography Renderer with measured text boundary wrapping (`_wrap_text_measured`) and minimum 12px font clamping.
 - Native RGBA transparent canvas support (`(0, 0, 0, 0)`).

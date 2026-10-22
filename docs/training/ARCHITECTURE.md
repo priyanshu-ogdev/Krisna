@@ -1,4 +1,4 @@
-# Krisna Training Architecture
+# Krivex Training Architecture
 
 **Status:** current implementation and research plan
 **Scope:** training, data contracts, checkpoint provenance, and the training-side
@@ -8,7 +8,7 @@ in [`../inference/README.md`](../inference/README.md).
 > **Evidence rule.** This document distinguishes code-supported facts,
 > primary-source-supported design choices, and proposals that still require a
 > real data build or GPU run. A paper that motivates an architecture does not
-> prove that Krisna has implemented or measured it.
+> prove that Krivex has implemented or measured it.
 
 ## 1. Current answer: what is actually trained?
 
@@ -17,12 +17,12 @@ product paths, and one separate preprocessing-only VLM:
 
 | Component | Code-selected model | Trainability | Current source status | Decision |
 |---|---|---:|---|---|
-| Preprocessing VLM | `Qwen/Qwen3.8-27B` FP8, pinned revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | Not trained by Krisna | Strict local Data-Forge VLM bundle and stage runtime | Annotation/quality/structure tool only; never a final trained model or training signal authority |
+| Preprocessing VLM | `Qwen/Qwen3.8-27B` FP8, pinned revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | Not trained by Krivex | Strict local Data-Forge VLM bundle and stage runtime | Annotation/quality/structure tool only; never a final trained model or training signal authority |
 | Planner | `Qwen3.5-9B`; official revision `c202236235762e1c871ad0ccb60c8ee5ba337b9a` | Frozen | `PlannerBackendLlama` plus UICrit RAG; image-grounded review contract is now wired, but real GGUF/mmproj smoke validation remains required | Keep frozen for the main system; no Planner LoRA unless the predeclared visual/JSON gates fail |
-| Structure / Sketch | `krisna.layout.v1` deterministic neuro-symbolic engine | Deterministic (0 MB VRAM, <5ms CPU) | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; legacy neural LayoutFlow ablation retired | Production uses deterministic Cassowary solver and DualStreamSketch; 0 MB VRAM and 0% overlap guarantee. |
+| Structure / Sketch | `krivex.layout.v1` deterministic neuro-symbolic engine | Deterministic (0 MB VRAM, <5ms CPU) | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; legacy neural LayoutFlow ablation retired | Production uses deterministic Cassowary solver and DualStreamSketch; 0 MB VRAM and 0% overlap guarantee. |
 | Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | LoRA only; base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; pair manifest and accelerate training entry point verified | Primary trainable generative model artifact. |
 | Polish Quality | `Qwen/Qwen-Image-2.1` | Frozen reference/ablation | Same backend, intended without an adapter | Frozen comparison baseline without adapter. |
-| Preference alignment | Continuous Flow Matching DPO (`dpo_loss.py`) | Post-training alignment | `krisna_training/polish/dpo_loss.py` is implemented and unit-tested for velocity-based MMDiT flow matching | Trainable on human preference pairs (Pick-a-Pic v2, HPDv2, GameLabel-10K) after base LoRA convergence. |
+| Preference alignment | Continuous Flow Matching DPO (`dpo_loss.py`) | Post-training alignment | `krivex_training/polish/dpo_loss.py` is implemented and unit-tested for velocity-based MMDiT flow matching | Trainable on human preference pairs (Pick-a-Pic v2, HPDv2, GameLabel-10K) after base LoRA convergence. |
 
 The intended training answer is therefore **one trainable model artifact**,
 not two or three independently trained models. The accurate answer is:
@@ -40,13 +40,13 @@ not two or three independently trained models. The accurate answer is:
 ### Direct source evidence
 
 - Qwen model ID and columns: `training/configs/polish_qwen_image21_lora.yaml`.
-- Pair builder: `training/src/krisna_training/polish/prepare_dataset.py`.
-- Planner freeze guard: `training/src/krisna_training/planner/__init__.py` (sealed frozen VLA).
-- Deterministic structure path: `inference/src/krisna_inference/layout_baseline.py`,
-  `training/src/krisna_training/sketch/__init__.py`, and `inference/src/krisna_inference/backends/layout_backend.py`.
+- Pair builder: `training/src/krivex_training/polish/prepare_dataset.py`.
+- Planner freeze guard: `training/src/krivex_training/planner/__init__.py` (sealed frozen VLA).
+- Deterministic structure path: `inference/src/krivex_inference/layout_baseline.py`,
+  `training/src/krivex_training/sketch/__init__.py`, and `inference/src/krivex_inference/backends/layout_backend.py`.
 - Registry and inference model selection:
-  `inference/src/krisna_inference/orchestrator/model_registry.py` and
-  `inference/src/krisna_inference/backends/factory.py`.
+  `inference/src/krivex_inference/orchestrator/model_registry.py` and
+  `inference/src/krivex_inference/backends/factory.py`.
 
 ## 2. The authoritative training pipeline
 
@@ -161,10 +161,10 @@ valid research direction for human preference data, but the original paper is
 derived for diffusion likelihoods and must not be transferred to a flow model
 without verifying the prediction target and model API.
 
-## 3. Research comparison and what it implies for Krisna
+## 3. Research comparison and what it implies for Krivex
 
 The following papers are relevant because they share a component of the design;
-none is evidence that Krisna has reproduced its results.
+none is evidence that Krivex has reproduced its results.
 
 ### 3.1 Structured visual planning: Qwen2.5-VL
 
@@ -173,7 +173,7 @@ none is evidence that Krisna has reproduced its results.
 multimodal image-message input and the controlled Planner baseline.
 
 **Implication:** a Planner that must inspect a wireframe should be a genuinely
-multimodal model request. Krisna's current Planner review text says it reviews a
+multimodal model request. Krivex's current Planner review text says it reviews a
 wireframe, but the request path does not attach an image. The primary architecture
 should either:
 
@@ -233,7 +233,7 @@ Feng et al., *PromptMagician: Interactive Prompt Engineering for Text-to-Image
 Creation*, IEEE Transactions on Visualization and Computer Graphics (2023),
 DOI <https://doi.org/10.1109/TVCG.2023.3327168>, supports treating prompt
 construction as an interactive, inspectable process rather than a single opaque
-string. For Krisna this reinforces the artifact boundary already used by the
+string. For Krivex this reinforces the artifact boundary already used by the
 inference service: the effective prompt, original intent, constraint delta,
 Layout IR revision, seed, and verifier receipt must remain separately logged.
 Prompt refinement is not allowed to override hard geometry or protected regions.
@@ -243,7 +243,7 @@ Prompt refinement is not allowed to override hard geometry or protected regions.
 LayoutFlow was published in the Springer ECCV 2024 proceedings and proposes
 continuous flow matching for layout generation. It is a useful learned-layout
 ablation, but the current production path stays deterministic until a learned
-checkpoint can reproduce `krisna.layout.v1`, lock masks, and source-disjoint
+checkpoint can reproduce `krivex.layout.v1`, lock masks, and source-disjoint
 evaluation metrics. This avoids turning a promising paper architecture into an
 unverified production dependency.
 
@@ -364,7 +364,7 @@ image hashes, source groups, and schema columns before launch.
 
 ### 6.2 CPU-only launch gate
 
-`krisna_training.polish.train_preflight` verifies the exact Diffusers commit,
+`krivex_training.polish.train_preflight` verifies the exact Diffusers commit,
 native trainer markers, dataset receipt, typed image columns, path/hash
 integrity, train count, and source-group disjointness before `accelerate`
 starts. It emits a redacted command and reports dirty external checkout state.

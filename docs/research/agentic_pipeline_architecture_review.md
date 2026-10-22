@@ -156,7 +156,7 @@ The first policy slice is implemented:
 The inactivity coordinator is now implemented in
 `orchestrator/session_coordinator.py`. It debounces per-session user activity,
 cancels pending work on a new message, dispatches self-review after
-`KRISNA_SELF_REVIEW_IDLE_SECONDS` (default 30 seconds), and reschedules only
+`KRIVEX_SELF_REVIEW_IDLE_SECONDS` (default 30 seconds), and reschedules only
 while the persisted four-turn budget remains. Shutdown cancels and awaits all
 pending tasks.
 

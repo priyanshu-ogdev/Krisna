@@ -1,4 +1,4 @@
-# Krisna: Complete Agentic Architecture Audit & SOTA Upgrade Report
+# Krivex: Complete Agentic Architecture Audit & SOTA Upgrade Report
 
 > **Audit status (2026-10-13): superseded for final model selection.** This
 > document contains candidate SOTA upgrades and several estimates. It is not
@@ -20,7 +20,7 @@
 
 ## 1. Executive Summary
 
-The Krisna system is a **5-tier agentic UI-design pipeline**: conversational planning -> draft sketch generation -> quality polish (two paths) -> visual critique. Two tiers are actively trained (Sketch, Polish-Default); three ship frozen (Planner, Polish-Quality, Critic). The overall design is sound, but every tier has a concrete SOTA replacement or upgrade path identified below.
+The Krivex system is a **5-tier agentic UI-design pipeline**: conversational planning -> draft sketch generation -> quality polish (two paths) -> visual critique. Two tiers are actively trained (Sketch, Polish-Default); three ship frozen (Planner, Polish-Quality, Critic). The overall design is sound, but every tier has a concrete SOTA replacement or upgrade path identified below.
 
 **Highest-impact single change**: swap the Sketch tier's custom MaskGIT from scratch for **HART** (Hybrid AR Transformer, ICLR 2025) — 4.5-7.7x faster throughput and fundamentally better discrete+continuous token fidelity.
 
@@ -173,14 +173,14 @@ Phase 2 (512px progressive, 30k steps):
 **Historical candidate claim: FLUX.2 [dev] (Black Forest Labs)**
 
 The earlier audit described FLUX.2 as a current open-weight design leader, but
-that claim was not backed by a matched Krisna benchmark. The current model card
+that claim was not backed by a matched Krivex benchmark. The current model card
 does establish a 32B rectified-flow image-generation/editing model with
 multi-reference support, but its license and footprint make it a comparison
 candidate rather than an automatic replacement:
 - Native 2K resolution support
 - Superior typography and layout coherence (the exact UI capabilities needed)
 - Multi-reference conditioning without specialized fine-tuning
-- No Krisna-specific percentage gain is established; remove the former
+- No Krivex-specific percentage gain is established; remove the former
   community-benchmark estimate from paper claims.
 
 **Architecture: FLUX Dual-Stream vs Z-Image Single-Stream**
@@ -278,7 +278,7 @@ Gemma 4's Thinking Mode and 256K context are not currently used by the Critic. F
 
 ## 4. Flow-Matching DPO Pipeline Audit
 
-**File**: `training/src/krisna_training/polish/dpo_loss.py`
+**File**: `training/src/krivex_training/polish/dpo_loss.py`
 
 ### 4.1 Current Implementation: What's Correct
 
