@@ -1,63 +1,132 @@
 #!/usr/bin/env bash
 # =============================================================================
 # scripts/data-forge/run_data_forge.sh
-# Core launcher for the Krivex Data-Forge automated pipeline.
+# Master launcher & orchestrator for the Krivex Data-Forge pipeline (Linux / WSL2).
 #
-# Usage:
-#   ./scripts/data-forge/run_data_forge.sh doctor
-#   ./scripts/data-forge/run_data_forge.sh run --dry-run
-#   ./scripts/data-forge/run_data_forge.sh run --resume
-#   ./scripts/data-forge/run_data_forge.sh run --stages 0,1,2
-#   ./scripts/data-forge/run_data_forge.sh manifest stats
-#   ./scripts/data-forge/run_data_forge.sh manifest query --status routed
+# Commands:
+#   ./scripts/data-forge/run_data_forge.sh doctor                  # Pre-flight environment validation
+#   ./scripts/data-forge/run_data_forge.sh run [--dry-run]         # Run data pipeline (or dry run)
+#   ./scripts/data-forge/run_data_forge.sh run --stages 0,1,2      # Run specific stages
+#   ./scripts/data-forge/run_data_forge.sh manifest stats          # Inspect SQLite manifest metrics
+#   ./scripts/data-forge/run_data_forge.sh sync-training           # Bridge exported model_data into training
+#   ./scripts/data-forge/run_data_forge.sh all [--dry-run]         # Complete end-to-end flow
+#   ./scripts/data-forge/run_data_forge.sh setup                   # Automated environment setup
 # =============================================================================
 
 set -euo pipefail
 
-# Navigate to monorepo root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Auto-load .env from repo root if present
-if [ -f ".env" ]; then
-    echo -e "\033[1;36mLoading environment variables from .env...\033[0m"
-    set -a
-    # shellcheck disable=SC1091
-    source .env
-    set +a
+COLOR_CYAN="\033[1;36m"
+COLOR_GREEN="\033[1;32m"
+COLOR_YELLOW="\033[1;33m"
+COLOR_RED="\033[1;31m"
+COLOR_RESET="\033[0m"
+
+echo -e "${COLOR_CYAN}================================================================${COLOR_RESET}"
+echo -e "${COLOR_CYAN}   Krivex Data-Forge — Master Pipeline Launcher                ${COLOR_RESET}"
+echo -e "${COLOR_CYAN}================================================================${COLOR_RESET}"
+
+# 1. Check or initialize .env
+ENV_FILE="${REPO_ROOT}/.env"
+if [ ! -f "${ENV_FILE}" ]; then
+    echo -e "${COLOR_YELLOW}[!] .env not found at repo root. Initializing from .env.example...${COLOR_RESET}"
+    cp "${REPO_ROOT}/.env.example" "${ENV_FILE}"
+    echo -e "${COLOR_YELLOW}[!] Please update .env with your Hugging Face HF_TOKEN before production runs.${COLOR_RESET}"
 fi
 
-# Detect virtual environment (.venv)
-if [ -d ".venv" ]; then
-    if [ -f ".venv/bin/activate" ]; then
-        # shellcheck disable=SC1091
-        source ".venv/bin/activate"
-    elif [ -f ".venv/Scripts/activate" ]; then
-        # shellcheck disable=SC1091
-        source ".venv/Scripts/activate"
+# 2. Source .env variables
+set -a
+# shellcheck disable=SC1091
+source "${ENV_FILE}"
+set +a
+
+# 3. Detect and activate Python virtual environment
+VENV_ACTIVATED=0
+for venv_candidate in "${REPO_ROOT}/.venv" "${REPO_ROOT}/.venv-forge"; do
+    if [ -d "${venv_candidate}" ]; then
+        if [ -f "${venv_candidate}/bin/activate" ]; then
+            # shellcheck disable=SC1091
+            source "${venv_candidate}/bin/activate"
+            VENV_ACTIVATED=1
+            break
+        fi
     fi
-fi
+done
 
-# Ensure data-forge package is in PYTHONPATH
-export PYTHONPATH="${REPO_ROOT}/data-forge:${REPO_ROOT}/data-forge/src:${PYTHONPATH:-}"
-
-# Check Python availability
-if ! command -v python >/dev/null 2>&1; then
-    echo -e "\033[1;31mERROR: python not found in PATH.\033[0m"
+# 4. Check for python and data_forge
+if ! command -v python3 &>/dev/null && ! command -v python &>/dev/null; then
+    echo -e "${COLOR_RED}[X] Python not found in environment.${COLOR_RESET}"
+    echo -e "${COLOR_YELLOW}Run './scripts/data-forge/run_data_forge.sh setup' to configure the environment.${COLOR_RESET}"
     exit 1
 fi
 
-# Verify data_forge importability
-if ! python -c "import data_forge" 2>/dev/null; then
-    echo -e "\033[1;31mERROR: data_forge package could not be imported.\033[0m"
-    echo -e "\033[1;33mEnsure dependencies are installed: pip install -e ./data-forge\033[0m"
-    exit 1
+PYTHON_CMD="python3"
+if ! command -v python3 &>/dev/null; then
+    PYTHON_CMD="python"
 fi
 
-if [ $# -eq 0 ]; then
-    echo -e "\033[1;33mNo command given — showing data-forge help:\033[0m"
-    exec python -m data_forge.cli --help
-fi
+export PYTHONPATH="${REPO_ROOT}/data-forge/src:${REPO_ROOT}/training/src:${REPO_ROOT}/inference/src:${REPO_ROOT}:${PYTHONPATH:-}"
 
-exec python -m data_forge.cli "$@"
+COMMAND="${1:-help}"
+shift || true
+
+case "${COMMAND}" in
+    setup)
+        echo -e "${COLOR_CYAN}[*] Running setup_env.sh...${COLOR_RESET}"
+        exec "${REPO_ROOT}/scripts/data-forge/setup_env.sh" "$@"
+        ;;
+    doctor)
+        echo -e "${COLOR_CYAN}[*] Running Data-Forge Pre-Flight Diagnostics...${COLOR_RESET}"
+        "${PYTHON_CMD}" -m data_forge.cli doctor "$@"
+        ;;
+    run)
+        echo -e "${COLOR_CYAN}[*] Executing Data-Forge Pipeline Engine...${COLOR_RESET}"
+        "${PYTHON_CMD}" -m data_forge.cli run "$@"
+        ;;
+    manifest)
+        echo -e "${COLOR_CYAN}[*] Querying Data-Forge Manifest SQLite Database...${COLOR_RESET}"
+        "${PYTHON_CMD}" -m data_forge.cli manifest "$@"
+        ;;
+    registry)
+        echo -e "${COLOR_CYAN}[*] Inspecting upstream Hugging Face & GitHub asset registry...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/audit_registry.py" "$@"
+        ;;
+    sync-training)
+        echo -e "${COLOR_CYAN}[*] Synchronizing processed model data into training directory...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/sync_to_training.py" "$@"
+        ;;
+    all)
+        echo -e "${COLOR_CYAN}[Step 1/3] Pre-flight Environment Validation (doctor)...${COLOR_RESET}"
+        "${PYTHON_CMD}" -m data_forge.cli doctor || echo -e "${COLOR_YELLOW}[!] Doctor reported warnings; continuing...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}[Step 2/3] Pipeline Execution...${COLOR_RESET}"
+        "${PYTHON_CMD}" -m data_forge.cli run "$@"
+        echo -e "${COLOR_CYAN}[Step 3/3] Synchronizing Exported Datasets to Training Pool...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/sync_to_training.py"
+        echo -e "${COLOR_GREEN}================================================================${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}   Data-Forge Complete Workflow Finished Successfully!         ${COLOR_RESET}"
+        echo -e "${COLOR_GREEN}================================================================${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}Ready for training:${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   ./scripts/training/train.sh polish-default${COLOR_RESET}"
+        echo -e "${COLOR_YELLOW}   ./scripts/training/train.sh polish-dpo${COLOR_RESET}"
+        ;;
+    help|--help|-h|*)
+        echo -e "${COLOR_YELLOW}Usage: ./scripts/data-forge/run_data_forge.sh <command> [options]${COLOR_RESET}"
+        echo ""
+        echo "Commands:"
+        echo "  doctor         Run pre-flight checks (stage graph, toolchains, APIs)"
+        echo "  run            Run the data pipeline (supports --dry-run, --resume, --stages)"
+        echo "  manifest       Inspect SQLite database (stats, query, export)"
+        echo "  registry       Check models and datasets upstream releases"
+        echo "  sync-training  Bridge model_data/ into training directory"
+        echo "  all            Complete flow: doctor -> run -> sync-training"
+        echo "  setup          Set up Linux/WSL2 environment"
+        echo ""
+        echo "Examples:"
+        echo "  ./scripts/data-forge/run_data_forge.sh run --dry-run"
+        echo "  ./scripts/data-forge/run_data_forge.sh run --stages 0,1,2"
+        echo "  ./scripts/data-forge/run_data_forge.sh sync-training"
+        echo "  ./scripts/data-forge/run_data_forge.sh all"
+        ;;
+esac

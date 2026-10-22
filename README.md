@@ -39,14 +39,14 @@ Canonical decisions and evidence:
 ├── inference/frontend/      Node/Tauri control panel
 ├── training/                Dataset bridges, native trainer contracts, adapters
 ├── scripts/                 Operational entry points grouped by subsystem
+│   ├── setup.sh             Environment setup entry point
+│   ├── data-forge/          Data-Forge runners and sync bridges
+│   ├── inference/           Inference service launchers (run_inference.ps1/sh)
+│   └── training/            Training orchestrators (train.sh, train_all.ps1)
 ├── tests/                   Cross-package tests grouped by subsystem
 ├── docs/                    Product, architecture, research, operations, review
 ├── .github/                 CI and repository automation
-├── pytest.ini               Root test discovery and import-path configuration
-├── setup.sh                 Environment setup entry point
-├── run_data_forge.sh        Data-Forge entry point
-├── train.sh                 Training entry point
-└── run_inference.sh         Inference service entry point
+└── pytest.ini               Root test discovery and import-path configuration
 ```
 
 Generated state is deliberately kept outside version control: datasets,
