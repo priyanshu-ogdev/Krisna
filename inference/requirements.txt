@@ -1,6 +1,44 @@
-pydantic>=2.7
-fastapi>=0.111
-uvicorn[standard]>=0.30
-pytest>=8.2
-pytest-asyncio>=0.23
-httpx>=0.27
+# =============================================================================
+# Krivex Unified Inference Backend Dependencies
+# Canonical production stack for all Qwen-based foundation tiers:
+# - Planner: Qwen3.5-9B GGUF via llama.cpp + opt-in vLLM 0.29 engine
+# - Sketch: Deterministic Layout IR Engine (0 MB VRAM, CPU SIMD)
+# - Polish: Qwen-Image-2.1 (7B Flow-Matching MMDiT) + LoRA via Diffusers
+# - Review: Resident Planner Review (0 MB added VRAM)
+# - Verifiers: Layout-IoU, OCR Readability, and ONNX Safety Gate
+# =============================================================================
+
+# Core API & Service Framework
+pydantic>=2.7.0
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+httpx>=0.27.0
+pytest>=8.2.0
+pytest-asyncio>=0.23.0
+
+# Deep Learning Foundation (PyTorch 2.11 + CUDA 12.4 compatible)
+torch>=2.11.0
+torchvision>=0.26.0
+accelerate>=1.0.0
+peft>=0.13.0
+bitsandbytes>=0.43.0
+
+# Hugging Face Ecosystem & Flow-Matching Architecture
+transformers>=5.17.0
+diffusers @ git+https://github.com/huggingface/diffusers.git@d26bb61231c349cf6b7896fa83353113880e1ba3
+huggingface-hub>=0.25.0
+sentence-transformers>=3.0.0
+
+# Qwen3.5-9B Multi-Modal VLM & High-Performance GGUF Runtime
+llama-cpp-python>=0.3.16
+vllm==0.29.0
+
+# Visual Processing, OCR & Layout Conditioning
+pillow>=10.4.0
+opencv-python-headless>=4.10.0
+easyocr>=1.7.0
+onnxruntime>=1.18.0
+
+# Fast Linear Attention & DeltaNet Recurrence Kernels (Linux GPU targets)
+causal-conv1d>=1.4.0; sys_platform == "linux"
+flash-linear-attention>=0.3.0; sys_platform == "linux"

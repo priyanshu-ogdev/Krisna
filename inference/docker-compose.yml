@@ -11,12 +11,11 @@ services:
       - "8420:8420"
     environment:
       - KRIVEX_USE_REAL_BACKENDS=1
-      - KRIVEX_LOW_VRAM_MODE=${KRIVEX_LOW_VRAM_MODE:-0}
-      - KRIVEX_VRAM_ENVELOPE_GB=${KRIVEX_VRAM_ENVELOPE_GB:-24.0}
-      - KRIVEX_RAM_ENVELOPE_GB=${KRIVEX_RAM_ENVELOPE_GB:-64.0}
+      - KRIVEX_LOW_VRAM_MODE=${KRIVEX_LOW_VRAM_MODE:-1}
+      - KRIVEX_VRAM_ENVELOPE_GB=${KRIVEX_VRAM_ENVELOPE_GB:-12.0}
+      - KRIVEX_RAM_ENVELOPE_GB=${KRIVEX_RAM_ENVELOPE_GB:-16.0}
       - KRIVEX_BIND_HOST=0.0.0.0
       - KRIVEX_PORT=8420
-      - KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python
       - KRIVEX_BLOB_ROOT=/app/data/blobs
       - KRIVEX_SESSIONS_DB=/app/data/krivex_sessions.db
       - KRIVEX_PREFERENCE_DB=/app/data/krivex_preference_pairs.db

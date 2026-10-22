@@ -18,18 +18,16 @@ def test_dockerfile_inference_structure():
     # Base image with CUDA 12.4.1
     assert "FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04" in content
 
-    # Multi-venv isolation
+    # Unified venv architecture (all Qwen-based models in single runtime)
     assert "/opt/venv-inference" in content
-    assert "/opt/venv-critic" in content
+    assert "/opt/venv-critic" not in content
 
     # Environment variables
-    assert "KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in content
     assert "KRIVEX_USE_REAL_BACKENDS=1" in content
     assert "KRIVEX_PORT=8420" in content
 
     # Requirements installations
-    assert "requirements-inference.txt" in content
-    assert "requirements-critic.txt" in content
+    assert "requirements.txt" in content
 
     # Port and Entrypoint
     assert "EXPOSE 8420" in content
@@ -65,7 +63,6 @@ def test_docker_compose_valid_yaml_and_services():
     inf = services["inference"]
     assert "8420:8420" in inf["ports"]
     assert "KRIVEX_USE_REAL_BACKENDS=1" in inf["environment"]
-    assert "KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in inf["environment"]
     assert "deploy" in inf
     reservations = inf["deploy"]["resources"]["reservations"]["devices"][0]
     assert reservations["driver"] == "nvidia"

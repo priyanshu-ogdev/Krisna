@@ -21,11 +21,8 @@ dev = [
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
 ]
-# Real backends (Planner, Sketch, Polish Default/Quality) — GPU required.
-# Does NOT include the Critic — that runs in its own isolated venv (see
-# backends/critic_worker.py's module docstring for the transformers
-# version-pin conflict this exists to avoid) via
-# scripts/inference/setup_env_critic.sh, not this extra.
+# Real backends (Planner Qwen3.5-9B, Sketch Cassowary Simplex, Polish Qwen-Image-2.1) — GPU required.
+# Unified all-Qwen architecture running in a single virtual environment.
 backends = [
     "torch>=2.11.0",
     "transformers>=5.17.0",
