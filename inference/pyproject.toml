@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "krivex-inference"
 version = "0.2.0"
-description = "Krisna Inference — Swap Orchestrator, Design State Manager, real model backends, and the verifier stack (final no-RLHF-loop PRD revision). Split out of krisna-orchestrator v0.1.0 as part of the training/inference separation — see docs/inference/ARCHITECTURE.md."
+description = "Krivex Inference — Swap Orchestrator, Design State Manager, real model backends, and the verifier stack (final no-RLHF-loop PRD revision). Split out of krivex-orchestrator v0.1.0 as part of the training/inference separation — see docs/inference/ARCHITECTURE.md."
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
@@ -55,5 +55,5 @@ krivex_inference = ["assets/fonts/*.ttf"]
 asyncio_mode = "auto"
 # Tests live at the monorepo root now, not nested in this package — see
 # docs/architecture/DIRECTORY_LAYOUT.md. Run pytest from the repo root
-# (krisna/), not from inference/, for this path to resolve.
+# (krivex/), not from inference/, for this path to resolve.
 testpaths = ["../tests/inference"]

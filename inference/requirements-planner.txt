@@ -3,7 +3,7 @@
 #
 # STATUS: opt-in upgrade, NOT the default — see planner_backend_vllm.py's
 # module docstring and docs/review/29_vllm_planner_migration_research.md
-# for the full research trail. Enable via KRISNA_PLANNER_BACKEND=vllm;
+# for the full research trail. Enable via KRIVEX_PLANNER_BACKEND=vllm;
 # the default (unset) keeps using the existing transformers-based
 # planner_backend.py in the main venv, unchanged. This is deliberate:
 # nothing here has been validated against real GPU hardware in this
@@ -50,7 +50,7 @@ torch==2.13.0
 transformers==5.17.0
 
 # Native-PC runtime. Install this in the main inference environment only when
-# selecting KRISNA_PLANNER_BACKEND=llama. CUDA wheels are platform-specific;
+# selecting KRIVEX_PLANNER_BACKEND=llama. CUDA wheels are platform-specific;
 # pin the locally validated wheel in deployment lockfiles after the hardware
 # bake-off rather than pretending one wheel fits every Windows/Linux GPU.
 llama-cpp-python>=0.3.16

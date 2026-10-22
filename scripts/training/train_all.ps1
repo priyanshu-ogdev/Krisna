@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Krisna Model Training Pipeline Launcher for Windows (PowerShell)
+    Krivex Model Training Pipeline Launcher for Windows (PowerShell)
     Target Hardware: Intel Core i9, NVIDIA RTX A6000 (48GB VRAM), 128GB RAM.
 
 .DESCRIPTION
-    Native PowerShell dispatcher for the current Krisna training contract.
+    Native PowerShell dispatcher for the current Krivex training contract.
     Only the Qwen-Image-2.1 paired image-edit LoRA path is an active intended
     training path. Planner is frozen, Layout IR is deterministic, and the
     historical Sketch/DPO launchers are not source-backed active trainers.
@@ -22,7 +22,7 @@
     Run Data-Forge -> Training bridge sync (sync_to_training.py) before training.
 
 .PARAMETER DataRoot
-    Root directory where Data-Forge exported data lives (default: $env:DATA_ROOT or D:\data_krisna).
+    Root directory where Data-Forge exported data lives (default: $env:DATA_ROOT or D:\data_krivex).
 
 .PARAMETER DryRun
     Perform pre-flight verification without executing training commands.
@@ -36,7 +36,7 @@
 .EXAMPLE
     .\scripts\training\train_all.ps1 -List
     .\scripts\training\train_all.ps1 -All -DryRun
-    .\scripts\training\train_all.ps1 -Sync -DataRoot "D:\data_krisna" -All
+    .\scripts\training\train_all.ps1 -Sync -DataRoot "D:\data_krivex" -All
     .\scripts\training\train_all.ps1 -Tier sketch-stage1
 #>
 
@@ -65,7 +65,7 @@ function Show-Tiers {
     Write-Host @'
 Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krisna.layout.v1; 0 MB VRAM, <5ms CPU).
+sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krivex.layout.v1; 0 MB VRAM, <5ms CPU).
 sketch-stage2   RETIRED      Legacy LayoutFlow neural ablation deleted; production mainline is deterministic.
 
 polish-default  ACTIVE       Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
@@ -183,7 +183,7 @@ function Test-Preflight {
             }
         }
         "polish-dpo" {
-            $db = "$RepoRoot\krisna_preference_pairs.db"
+            $db = "$RepoRoot\krivex_preference_pairs.db"
             $cfg = if ($ConfigPath) { $ConfigPath } else { "$RepoRoot\training\configs\polish_qwen_image21_dpo.yaml" }
             if (-not (Test-Path $db)) {
                 Write-Host "  [PRE-FLIGHT FAILED] Preference pairs DB not found: $db" -ForegroundColor Red
@@ -264,7 +264,7 @@ function Execute-Tier {
         return
     }
     if ($StageName -in @("sketch-stage1", "sketch-stage2")) {
-        Write-Host "  [SEALED] Sketch tier is 100% DETERMINISTIC Layout IR (krisna.layout.v1; 0 MB VRAM, <5ms CPU)." -ForegroundColor Yellow
+        Write-Host "  [SEALED] Sketch tier is 100% DETERMINISTIC Layout IR (krivex.layout.v1; 0 MB VRAM, <5ms CPU)." -ForegroundColor Yellow
         Write-Host "  No training occurs; geometry is resolved via CPU simplex constraint solving." -ForegroundColor Yellow
         return
     }
@@ -339,7 +339,7 @@ if ($All) {
     $idx = 1
 
     Write-Host "`n============================================================" -ForegroundColor Magenta
-    Write-Host (" KRISNA FULL SEQUENTIAL TRAINING PIPELINE ({0} stages)" -f $total) -ForegroundColor Magenta
+    Write-Host (" KRIVEX FULL SEQUENTIAL TRAINING PIPELINE ({0} stages)" -f $total) -ForegroundColor Magenta
     if ($DryRun) { Write-Host " [DRY RUN MODE - NO COMMANDS WILL ACTUALLY BE EXECUTED]" -ForegroundColor Yellow }
     if ($Log) { Write-Host " Pipeline log destination: $Log" -ForegroundColor Cyan }
     Write-Host "============================================================" -ForegroundColor Magenta

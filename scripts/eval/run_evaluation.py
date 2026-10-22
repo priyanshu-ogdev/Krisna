@@ -1,5 +1,5 @@
 """
-Multi-Hardware Evaluation Harness -- Krisna Research Paper (2026).
+Multi-Hardware Evaluation Harness -- Krivex Research Paper (2026).
 
 Evaluates generated UIs using identical metrics across all three hardware profiles
 (48GB / 24GB / 12GB) to produce the comparative ablation table for the paper.
@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
-log = logging.getLogger("krisna.eval")
+log = logging.getLogger("krivex.eval")
 
 
 class EvalConfig(NamedTuple):
@@ -333,7 +333,7 @@ def output_comparison_table(results: dict[str, dict], output_dir: Path) -> None:
             row_vals.append(f"{v:.4f}" if isinstance(v, float) else "N/A")
         md_rows.append(f"| **{m}** | " + " | ".join(row_vals) + " |")
 
-    md_content = "# Krisna Evaluation — Hardware Profile Comparison\n\n" + "\n".join(md_rows)
+    md_content = "# Krivex Evaluation — Hardware Profile Comparison\n\n" + "\n".join(md_rows)
     (output_dir / "eval_comparison.md").write_text(md_content)
 
     # JSON for programmatic use

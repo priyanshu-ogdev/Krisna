@@ -1,6 +1,6 @@
 """
-Phase 3 Preference Pair Collector and Importer for Krisna DPO Alignment.
-Generates and populates verified preference pairs into krisna_preference_pairs.db
+Phase 3 Preference Pair Collector and Importer for Krivex DPO Alignment.
+Generates and populates verified preference pairs into krivex_preference_pairs.db
 across public UI/aesthetic sources and live verifier-ranked sessions.
 """
 
@@ -198,8 +198,8 @@ def populate_preference_database(
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", default="krisna_preference_pairs.db", help="Path to preference db")
-    parser.add_argument("--blob-root", default="krisna_blobs", help="Path to blob storage root")
+    parser.add_argument("--output", default="krivex_preference_pairs.db", help="Path to preference db")
+    parser.add_argument("--blob-root", default="krivex_blobs", help="Path to blob storage root")
     parser.add_argument("--count", type=int, default=2200, help="Minimum pair count to ensure")
     parser.add_argument("--sources", nargs="*", default=None, help="Sources to sample from")
     args = parser.parse_args()

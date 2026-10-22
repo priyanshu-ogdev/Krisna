@@ -1,6 +1,6 @@
 # =============================================================================
 # scripts/inference/setup_env_inference.ps1
-# Sets up virtual environment and installs dependencies for Krisna Inference.
+# Sets up virtual environment and installs dependencies for Krivex Inference.
 #
 # Usage:
 #   .\scripts\inference\setup_env_inference.ps1
@@ -25,7 +25,7 @@ if ([Console]::OutputEncoding.CodePage -ne 65001) {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "       Krisna Inference -- Environment Setup (PowerShell)       " -ForegroundColor Cyan
+Write-Host "       Krivex Inference -- Environment Setup (PowerShell)       " -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 
 # 1. Resolve or create virtualenv

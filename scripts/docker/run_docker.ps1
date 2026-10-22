@@ -1,6 +1,6 @@
 # =============================================================================
 # scripts/docker/run_docker.ps1
-# Host preflight check and launcher for Krisna Docker services (PowerShell)
+# Host preflight check and launcher for Krivex Docker services (PowerShell)
 #
 # Usage:
 #   .\scripts\docker\run_docker.ps1            # Launch inference + frontend
@@ -29,7 +29,7 @@ if ([Console]::OutputEncoding.CodePage -ne 65001) {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "       Krisna Docker Deployment & Preflight (PowerShell)        " -ForegroundColor Cyan
+Write-Host "       Krivex Docker Deployment & Preflight (PowerShell)        " -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 
 # 1. Verify Docker installation
@@ -54,7 +54,7 @@ try {
 
 # 3. Handle stop action
 if ($Down) {
-    Write-Host "[+] Stopping Krisna Docker services..." -ForegroundColor Yellow
+    Write-Host "[+] Stopping Krivex Docker services..." -ForegroundColor Yellow
     docker compose down
     exit 0
 }
@@ -71,7 +71,7 @@ if ($dockerInfo -match "nvidia") {
 
 # 5. Low-VRAM setting
 if ($LowVram) {
-    $env:KRISNA_LOW_VRAM_MODE = "1"
+    $env:KRIVEX_LOW_VRAM_MODE = "1"
     Write-Host "[i] Low-VRAM mode enabled (target: 12GB envelope)." -ForegroundColor Green
 }
 
@@ -88,7 +88,7 @@ Write-Host "[+] Starting services: docker $($composeArgs -join ' ')..." -Foregro
 & docker @composeArgs
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "Krisna services started." -ForegroundColor Cyan
+Write-Host "Krivex services started." -ForegroundColor Cyan
 Write-Host "Inference API : http://localhost:8420 (health: http://localhost:8420/healthz)" -ForegroundColor Cyan
 Write-Host "Web Studio UI : http://localhost:3000" -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan

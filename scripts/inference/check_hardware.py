@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Krisna Inference -- Hardware and Deployment Preflight Check.
+"""Krivex Inference -- Hardware and Deployment Preflight Check.
 
-Runs preflight hardware and environment checks for Krisna Inference.
+Runs preflight hardware and environment checks for Krivex Inference.
 Verifies NVIDIA GPU availability, CUDA driver version, PyTorch CUDA capability,
 VRAM envelope, model configuration, and isolated Critic tier virtualenv.
 

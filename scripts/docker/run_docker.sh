@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # scripts/docker/run_docker.sh
-# Host preflight check and launcher for Krisna Docker services
+# Host preflight check and launcher for Krivex Docker services
 #
 # Usage:
 #   ./scripts/docker/run_docker.sh            # Launch inference + frontend
@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$REPO_ROOT"
 
 echo "================================================================="
-echo "       Krisna Docker Deployment & Preflight Launcher             "
+echo "       Krivex Docker Deployment & Preflight Launcher             "
 echo "================================================================="
 
 # 1. Verify Docker installation
@@ -46,7 +46,7 @@ fi
 BUILD_FLAG=""
 DETACH_FLAG=""
 ACTION="up"
-export KRISNA_LOW_VRAM_MODE="${KRISNA_LOW_VRAM_MODE:-0}"
+export KRIVEX_LOW_VRAM_MODE="${KRIVEX_LOW_VRAM_MODE:-0}"
 
 for arg in "$@"; do
     case "$arg" in
@@ -57,7 +57,7 @@ for arg in "$@"; do
             DETACH_FLAG="-d"
             ;;
         --low-vram)
-            export KRISNA_LOW_VRAM_MODE="1"
+            export KRIVEX_LOW_VRAM_MODE="1"
             echo "[i] Low-VRAM mode enabled (target: 12GB envelope)."
             ;;
         --down)
@@ -71,7 +71,7 @@ for arg in "$@"; do
 done
 
 if [ "$ACTION" = "down" ]; then
-    echo "[+] Stopping Krisna Docker services..."
+    echo "[+] Stopping Krivex Docker services..."
     $COMPOSE_CMD down
     exit 0
 fi
@@ -92,7 +92,7 @@ echo "[+] Starting services with $COMPOSE_CMD $ACTION $BUILD_FLAG $DETACH_FLAG..
 $COMPOSE_CMD up $BUILD_FLAG $DETACH_FLAG
 
 echo "================================================================="
-echo "Krisna services started."
+echo "Krivex services started."
 echo "Inference API : http://localhost:8420 (health: http://localhost:8420/healthz)"
 echo "Web Studio UI : http://localhost:3000"
 echo "================================================================="

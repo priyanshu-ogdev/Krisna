@@ -1,6 +1,6 @@
 # =============================================================================
 # scripts/inference/run_service.ps1
-# Runs the Krisna Inference FastAPI service on Windows native PowerShell.
+# Runs the Krivex Inference FastAPI service on Windows native PowerShell.
 #
 # Usage:
 #   .\scripts\inference\run_service.ps1
@@ -27,17 +27,17 @@ if ([Console]::OutputEncoding.CodePage -ne 65001) {
     [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 }
 
-Write-Host "Starting Krisna Inference service on http://$($BindHost):$Port..." -ForegroundColor Cyan
+Write-Host "Starting Krivex Inference service on http://$($BindHost):$Port..." -ForegroundColor Cyan
 
-if ($env:KRISNA_USE_REAL_BACKENDS -eq "1") {
-    Write-Host "KRISNA_USE_REAL_BACKENDS=1 -- real model backends, GPU required." -ForegroundColor Yellow
-    Write-Host "Critic tier launches subprocess interpreter (override with KRISNA_CRITIC_VENV_PYTHON)." -ForegroundColor Yellow
-    if ($env:KRISNA_LOW_VRAM_MODE -eq "1") {
-        Write-Host "KRISNA_LOW_VRAM_MODE=1 -- targeting low-VRAM envelope with system RAM offload." -ForegroundColor Magenta
+if ($env:KRIVEX_USE_REAL_BACKENDS -eq "1") {
+    Write-Host "KRIVEX_USE_REAL_BACKENDS=1 -- real model backends, GPU required." -ForegroundColor Yellow
+    Write-Host "Critic tier launches subprocess interpreter (override with KRIVEX_CRITIC_VENV_PYTHON)." -ForegroundColor Yellow
+    if ($env:KRIVEX_LOW_VRAM_MODE -eq "1") {
+        Write-Host "KRIVEX_LOW_VRAM_MODE=1 -- targeting low-VRAM envelope with system RAM offload." -ForegroundColor Magenta
     }
 } else {
     Write-Host "MockBackend mode (default) -- no GPU/weights needed." -ForegroundColor DarkCyan
-    Write-Host "Set `$env:KRISNA_USE_REAL_BACKENDS='1' to use real model backends." -ForegroundColor DarkGray
+    Write-Host "Set `$env:KRIVEX_USE_REAL_BACKENDS='1' to use real model backends." -ForegroundColor DarkGray
 }
 
 # Resolve Python interpreter

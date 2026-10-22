@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Set up Python virtual environment and dependencies for Krisna Model Training on Windows.
+    Set up Python virtual environment and dependencies for Krivex Model Training on Windows.
 #>
 
 [CmdletBinding()]
@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
 Set-Location $RepoRoot
 
-Write-Host "Setting up Krisna training environment on Windows..." -ForegroundColor Cyan
+Write-Host "Setting up Krivex training environment on Windows..." -ForegroundColor Cyan
 
 if (-not (Test-Path "$RepoRoot\.venv")) {
     Write-Host "Creating Python virtual environment in .venv..." -ForegroundColor DarkGray

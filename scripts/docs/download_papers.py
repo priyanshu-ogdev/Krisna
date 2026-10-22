@@ -1,5 +1,5 @@
 """
-Download and verify open-access research paper PDFs for all Krisna citations.
+Download and verify open-access research paper PDFs for all Krivex citations.
 Uses concurrent streaming workers to rapidly fetch PDFs into docs/papers/.
 Generates docs/papers/MANIFEST.md cataloging every cited peer-reviewed work.
 """
@@ -25,7 +25,7 @@ class PaperEntry:
     venue: str
     year: int
     doi_url: str
-    role_in_krisna: str
+    role_in_krivex: str
     urls: list[str]
 
 
@@ -38,7 +38,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF ICCV 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/ICCV51070.2023.00355",
-        role_in_krisna="Spatial structural conditioning adapting deterministic wireframes into deep generative features",
+        role_in_krivex="Spatial structural conditioning adapting deterministic wireframes into deep generative features",
         urls=[
             "https://openaccess.thecvf.com/content/ICCV2023/papers/Zhang_Adding_Conditional_Control_to_Text-to-Image_Diffusion_Models_ICCV_2023_paper.pdf",
             "https://arxiv.org/pdf/2302.05543.pdf",
@@ -52,7 +52,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/CVPR52729.2023.01764",
-        role_in_krisna="Instruction-guided conditional editing across multi-turn conversational delta updates",
+        role_in_krivex="Instruction-guided conditional editing across multi-turn conversational delta updates",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2023/papers/Brooks_InstructPix2Pix_Learning_To_Follow_Image_Editing_Instructions_CVPR_2023_paper.pdf",
             "https://arxiv.org/pdf/2211.09800.pdf",
@@ -66,7 +66,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE TVCG 2024",
         year=2024,
         doi_url="https://doi.org/10.1109/TVCG.2023.3327168",
-        role_in_krisna="Interactive multi-turn prompt refinement and state tracking preventing prompt runaway",
+        role_in_krivex="Interactive multi-turn prompt refinement and state tracking preventing prompt runaway",
         urls=[
             "https://arxiv.org/pdf/2302.04474.pdf",
         ],
@@ -79,7 +79,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE RE 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/RE57278.2023.00035",
-        role_in_krisna="Identifies text rendering failure modes and drift in diffusion GUI prototyping",
+        role_in_krivex="Identifies text rendering failure modes and drift in diffusion GUI prototyping",
         urls=[
             "https://arxiv.org/pdf/2307.08620.pdf",
         ],
@@ -92,7 +92,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE TSE 2020",
         year=2020,
         doi_url="https://doi.org/10.1109/TSE.2018.2838547",
-        role_in_krisna="Computer vision and deep learning pipelines for structured GUI component recognition",
+        role_in_krivex="Computer vision and deep learning pipelines for structured GUI component recognition",
         urls=[
             "https://arxiv.org/pdf/1802.02312.pdf",
         ],
@@ -105,7 +105,7 @@ PAPERS: list[PaperEntry] = [
         venue="Springer ECCV 2024",
         year=2024,
         doi_url="https://doi.org/10.1007/978-3-031-72764-1_4",
-        role_in_krisna="Continuous flow matching over normalized bounding-box coordinates with optimal transport",
+        role_in_krivex="Continuous flow matching over normalized bounding-box coordinates with optimal transport",
         urls=[
             "https://arxiv.org/pdf/2403.18187.pdf",
         ],
@@ -118,7 +118,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF ICCV 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/ICCV51070.2023.00664",
-        role_in_krisna="Discrete diffusion models for layout generation benchmarked against standard UI metrics",
+        role_in_krivex="Discrete diffusion models for layout generation benchmarked against standard UI metrics",
         urls=[
             "https://openaccess.thecvf.com/content/ICCV2023/papers/Zhang_LayoutDiffusion_Improving_Graphic_Layout_Generation_by_Discrete_Diffusion_Probabilistic_Models_ICCV2023_paper.pdf",
             "https://arxiv.org/pdf/2303.11589.pdf",
@@ -132,7 +132,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/CVPR52729.2023.00980",
-        role_in_krisna="Discrete state-space diffusion models for structured document and mobile UI generation",
+        role_in_krivex="Discrete state-space diffusion models for structured document and mobile UI generation",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2023/papers/Chai_LayoutDM_Discrete_Diffusion_Model_for_Controllable_Layout_Generation_CVPR_2023_paper.pdf",
             "https://arxiv.org/pdf/2305.02567.pdf",
@@ -146,7 +146,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/CVPR52729.2023.02155",
-        role_in_krisna="Subject-driven diffusion fine-tuning grounding parameter-efficient adapter injection",
+        role_in_krivex="Subject-driven diffusion fine-tuning grounding parameter-efficient adapter injection",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2023/papers/Ruiz_DreamBooth_Fine_Tuning_Text-to-Image_Diffusion_Models_for_Subject-Driven_Generation_CVPR_2023_paper.pdf",
             "https://arxiv.org/pdf/2208.12242.pdf",
@@ -160,7 +160,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2024",
         year=2024,
         doi_url="https://doi.org/10.1109/CVPR52733.2024.00784",
-        role_in_krisna="Reward-free direct preference optimization for generative diffusion and flow models",
+        role_in_krivex="Reward-free direct preference optimization for generative diffusion and flow models",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2024/papers/Wallace_Diffusion_Model_Alignment_Using_Direct_Preference_Optimization_CVPR_2024_paper.pdf",
             "https://arxiv.org/pdf/2311.12908.pdf",
@@ -174,7 +174,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2022",
         year=2022,
         doi_url="https://doi.org/10.1109/CVPR52688.2022.01103",
-        role_in_krisna="Masked bidirectional transformer token generation; baseline comparative ablation",
+        role_in_krivex="Masked bidirectional transformer token generation; baseline comparative ablation",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2022/papers/Chang_MaskGIT_Masked_Generative_Image_Transformer_CVPR_2022_paper.pdf",
             "https://arxiv.org/pdf/2202.04200.pdf",
@@ -188,7 +188,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2023",
         year=2023,
         doi_url="https://proceedings.mlr.press/v202/chang23a.html",
-        role_in_krisna="Classifier-free guidance formulation for masked generative models and linear guidance ramps",
+        role_in_krivex="Classifier-free guidance formulation for masked generative models and linear guidance ramps",
         urls=[
             "https://proceedings.mlr.press/v202/chang23a/chang23a.pdf",
             "https://arxiv.org/pdf/2301.00704.pdf",
@@ -202,7 +202,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2024",
         year=2024,
         doi_url="https://proceedings.mlr.press/v235/esser24a.html",
-        role_in_krisna="MMDiT single-stream transformer architecture and resolution-dependent logit-normal time-shifting",
+        role_in_krivex="MMDiT single-stream transformer architecture and resolution-dependent logit-normal time-shifting",
         urls=[
             "https://proceedings.mlr.press/v235/esser24a/esser24a.pdf",
             "https://arxiv.org/pdf/2403.03206.pdf",
@@ -216,7 +216,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2023",
         year=2023,
         doi_url="https://openreview.net/forum?id=PqvMRHGJTdn",
-        role_in_krisna="Foundational continuous normalizing flow regressing vector fields onto optimal transport paths",
+        role_in_krivex="Foundational continuous normalizing flow regressing vector fields onto optimal transport paths",
         urls=[
             "https://arxiv.org/pdf/2210.02747.pdf",
         ],
@@ -229,7 +229,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2023",
         year=2023,
         doi_url="https://openreview.net/forum?id=XVjTT1nw5z",
-        role_in_krisna="Straight-line ODE vector field trajectory formulation enabling fast few-step integration",
+        role_in_krivex="Straight-line ODE vector field trajectory formulation enabling fast few-step integration",
         urls=[
             "https://arxiv.org/pdf/2209.03003.pdf",
         ],
@@ -242,7 +242,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM UIST 2017",
         year=2017,
         doi_url="https://doi.org/10.1145/3126594.3126651",
-        role_in_krisna="Benchmark mobile UI dataset establishing hierarchical layout trees and element bounding boxes",
+        role_in_krivex="Benchmark mobile UI dataset establishing hierarchical layout trees and element bounding boxes",
         urls=[
             "https://storage.googleapis.com/crowd-research/rico-paper.pdf",
             "https://arxiv.org/pdf/1704.05380.pdf",
@@ -256,7 +256,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM CHI 2022",
         year=2022,
         doi_url="https://doi.org/10.1145/3491102.3517436",
-        role_in_krisna="Large-scale UI dataset with dense vector graphic hierarchies and semantic container nesting",
+        role_in_krivex="Large-scale UI dataset with dense vector graphic hierarchies and semantic container nesting",
         urls=[
             "https://guilabs.github.io/files/clay_chi22.pdf",
             "https://arxiv.org/pdf/2201.07727.pdf",
@@ -270,7 +270,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM UIST 2021",
         year=2021,
         doi_url="https://doi.org/10.1145/3472749.3474765",
-        role_in_krisna="Multimodal dataset pairing mobile screens with human natural language summaries",
+        role_in_krivex="Multimodal dataset pairing mobile screens with human natural language summaries",
         urls=[
             "https://guilabs.github.io/files/screen2words_uist21.pdf",
             "https://arxiv.org/pdf/2108.03353.pdf",
@@ -284,7 +284,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM MobileHCI 2020",
         year=2020,
         doi_url="https://doi.org/10.1145/3379503.3403544",
-        role_in_krisna="Topic modeling and visual stylistic motif categorization across mobile user interfaces",
+        role_in_krivex="Topic modeling and visual stylistic motif categorization across mobile user interfaces",
         urls=[
             "https://userinterfaces.aalto.fi/enrico/resources/enrico.pdf",
             "https://arxiv.org/pdf/2009.07187.pdf",
@@ -299,7 +299,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACL 2024",
         year=2024,
         doi_url="https://doi.org/10.18653/v1/2024.acl-long.505",
-        role_in_krisna="Screen-space visual coordinate grounding for multimodal GUI agents",
+        role_in_krivex="Screen-space visual coordinate grounding for multimodal GUI agents",
         urls=[
             "https://aclanthology.org/2024.acl-long.505.pdf",
             "https://arxiv.org/pdf/2401.10935.pdf",
@@ -313,7 +313,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM MM 2021",
         year=2021,
         doi_url="https://doi.org/10.1145/3474085.3475497",
-        role_in_krisna="Constrained graphic layout synthesis using geometric loss formulations (LayoutGAN++)",
+        role_in_krivex="Constrained graphic layout synthesis using geometric loss formulations (LayoutGAN++)",
         urls=[
             "https://arxiv.org/pdf/2108.06606.pdf",
         ],
@@ -326,7 +326,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM SIGIR 2020",
         year=2020,
         doi_url="https://doi.org/10.1145/3397271.3401075",
-        role_in_krisna="Token-level late interaction architecture motivating hybrid dense retrieval in Planner",
+        role_in_krivex="Token-level late interaction architecture motivating hybrid dense retrieval in Planner",
         urls=[
             "https://cs.stanford.edu/~matei/papers/2020/sigir_colbert.pdf",
             "https://arxiv.org/pdf/2004.12832.pdf",
@@ -340,7 +340,7 @@ PAPERS: list[PaperEntry] = [
         venue="NAACL-HLT 2022",
         year=2022,
         doi_url="https://doi.org/10.18653/v1/2022.naacl-main.272",
-        role_in_krisna="Residual vector compression for lightweight late-interaction retrieval",
+        role_in_krivex="Residual vector compression for lightweight late-interaction retrieval",
         urls=[
             "https://aclanthology.org/2022.naacl-main.272.pdf",
             "https://arxiv.org/pdf/2112.01488.pdf",
@@ -354,7 +354,7 @@ PAPERS: list[PaperEntry] = [
         venue="EMNLP 2023",
         year=2023,
         doi_url="https://doi.org/10.18653/v1/2023.emnlp-main.674",
-        role_in_krisna="Pushdown automata logit masking guaranteeing 100% schema conformance for krisna.delta.v1",
+        role_in_krivex="Pushdown automata logit masking guaranteeing 100% schema conformance for krivex.delta.v1",
         urls=[
             "https://aclanthology.org/2023.emnlp-main.674.pdf",
             "https://arxiv.org/pdf/2305.13971.pdf",
@@ -368,7 +368,7 @@ PAPERS: list[PaperEntry] = [
         venue="MLSys 2024",
         year=2024,
         doi_url="https://proceedings.mlsys.org/paper_files/paper/2024/hash/42a452cbafa9dd64e9ba4aa95cc1ef21-Abstract-Conference.html",
-        role_in_krisna="Activation-aware selective quantization protecting salient weights in W4A16 deployment",
+        role_in_krivex="Activation-aware selective quantization protecting salient weights in W4A16 deployment",
         urls=[
             "https://proceedings.mlsys.org/paper_files/paper/2024/file/42a452cbafa9dd64e9ba4aa95cc1ef21-Paper-Conference.pdf",
             "https://arxiv.org/pdf/2306.00978.pdf",
@@ -382,7 +382,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACM SOSP 2023",
         year=2023,
         doi_url="https://doi.org/10.1145/3600006.3613165",
-        role_in_krisna="Paged memory allocation eliminating KV cache fragmentation during multi-turn exchanges",
+        role_in_krivex="Paged memory allocation eliminating KV cache fragmentation during multi-turn exchanges",
         urls=[
             "https://proceedings.sigops.org/sosp23/papers/kwon-sosp23.pdf",
             "https://arxiv.org/pdf/2309.06180.pdf",
@@ -396,7 +396,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS 2022",
         year=2022,
         doi_url="https://proceedings.neurips.cc/paper_files/paper/2022/hash/67d57c32e20fd0a7a302cb81d36e40d5-Abstract-Conference.html",
-        role_in_krisna="IO-aware tiling attention algorithm enabling linear-time KV caching on Ada and Ampere",
+        role_in_krivex="IO-aware tiling attention algorithm enabling linear-time KV caching on Ada and Ampere",
         urls=[
             "https://proceedings.neurips.cc/paper_files/paper/2022/file/67d57c32e20fd0a7a302cb81d36e40d5-Paper-Conference.pdf",
             "https://arxiv.org/pdf/2205.14135.pdf",
@@ -410,7 +410,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS Workshop 2022",
         year=2022,
         doi_url="https://openreview.net/forum?id=qw8AKxfYbI",
-        role_in_krisna="Unconditional/conditional guidance formulation and conditioning dropout schedules",
+        role_in_krivex="Unconditional/conditional guidance formulation and conditioning dropout schedules",
         urls=[
             "https://arxiv.org/pdf/2207.12598.pdf",
         ],
@@ -423,7 +423,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2023",
         year=2023,
         doi_url="https://openreview.net/forum?id=tAvYSZA5OsCU",
-        role_in_krisna="Second-order error compensation for aggressive INT4 weight quantization",
+        role_in_krivex="Second-order error compensation for aggressive INT4 weight quantization",
         urls=[
             "https://arxiv.org/pdf/2210.17323.pdf",
         ],
@@ -436,7 +436,7 @@ PAPERS: list[PaperEntry] = [
         venue="Alibaba Technical Report & Official Specification",
         year=2026,
         doi_url="https://github.com/QwenLM/Qwen-Image",
-        role_in_krisna="Official model architecture specification for the 7B MMDiT Polish generation backbone",
+        role_in_krivex="Official model architecture specification for the 7B MMDiT Polish generation backbone",
         urls=[
             "https://arxiv.org/pdf/2403.03206.pdf",
         ],
@@ -449,7 +449,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2024",
         year=2024,
         doi_url="https://doi.org/10.1109/CVPR52733.2024.00784",
-        role_in_krisna="Mathematical formulation for direct pairwise preference optimization on continuous flows (adapting Rafailov et al. NeurIPS 2023)",
+        role_in_krivex="Mathematical formulation for direct pairwise preference optimization on continuous flows (adapting Rafailov et al. NeurIPS 2023)",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2024/papers/Wallace_Diffusion_Model_Alignment_Using_Direct_Preference_Optimization_CVPR_2024_paper.pdf",
             "https://arxiv.org/pdf/2311.12908.pdf",
@@ -463,7 +463,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2025",
         year=2025,
         doi_url="https://openreview.net/forum?id=1V7xXpB6gZ",
-        role_in_krisna="Hybrid discrete AR + residual diffusion head architecture evaluated in baseline ablations",
+        role_in_krivex="Hybrid discrete AR + residual diffusion head architecture evaluated in baseline ablations",
         urls=[
             "https://arxiv.org/pdf/2410.10812.pdf",
         ],
@@ -476,7 +476,7 @@ PAPERS: list[PaperEntry] = [
         venue="Springer ECCV Workshops 2024",
         year=2024,
         doi_url="https://doi.org/10.1007/978-3-031-73021-4_23",
-        role_in_krisna="Multi-vector visual retrieval directly from rendered 2D layouts grounding UICrit RAG",
+        role_in_krivex="Multi-vector visual retrieval directly from rendered 2D layouts grounding UICrit RAG",
         urls=[
             "https://arxiv.org/pdf/2407.01449.pdf",
             "https://www.ecva.net/papers/eccv_2024/papers_ECCV/papers/04153.pdf",
@@ -490,7 +490,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2025",
         year=2025,
         doi_url="https://doi.org/10.1109/CVPR52734.2025.01816",
-        role_in_krisna="Vision-language-action modeling and UI-guided visual token pruning for GUI agents",
+        role_in_krivex="Vision-language-action modeling and UI-guided visual token pruning for GUI agents",
         urls=[
             "https://arxiv.org/pdf/2411.17465.pdf",
         ],
@@ -503,7 +503,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE TPAMI 2025",
         year=2025,
         doi_url="https://doi.org/10.1109/TPAMI.2025.3595880",
-        role_in_krisna="Instruction-driven layout generation conditioned on structured semantic graph priors",
+        role_in_krivex="Instruction-driven layout generation conditioned on structured semantic graph priors",
         urls=[
             "https://arxiv.org/pdf/2406.12879.pdf",
         ],
@@ -516,7 +516,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF ICCV 2025",
         year=2025,
         doi_url="https://openaccess.thecvf.com/ICCV2025",
-        role_in_krisna="Inversion-free continuous flow ODE numerical trajectory integration for localized editing",
+        role_in_krivex="Inversion-free continuous flow ODE numerical trajectory integration for localized editing",
         urls=[
             "https://openaccess.thecvf.com/content/ICCV2025/papers/Kulikov_FlowEdit_Inversion-Free_Text-Based_Editing_Using_Pre-Trained_Flow_Models_ICCV_2025_paper.pdf",
             "https://arxiv.org/pdf/2412.17629.pdf",
@@ -530,7 +530,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS 2023",
         year=2023,
         doi_url="https://proceedings.neurips.cc/paper_files/paper/2023/hash/1feb87871436031bdc0f2beaa62a049b-Abstract-Conference.html",
-        role_in_krisna="4-bit NormalFloat (NF4), double dequantization, and paged optimizers for consumer GPU training",
+        role_in_krivex="4-bit NormalFloat (NF4), double dequantization, and paged optimizers for consumer GPU training",
         urls=[
             "https://proceedings.neurips.cc/paper_files/paper/2023/file/1feb87871436031bdc0f2beaa62a049b-Paper-Conference.pdf",
             "https://arxiv.org/pdf/2305.14314.pdf",
@@ -544,7 +544,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2024",
         year=2024,
         doi_url="https://proceedings.mlr.press/v235/liu24ba.html",
-        role_in_krisna="Decomposes weight updates into directional and magnitude components, stabilizing attention training",
+        role_in_krivex="Decomposes weight updates into directional and magnitude components, stabilizing attention training",
         urls=[
             "https://arxiv.org/pdf/2402.09353.pdf",
         ],
@@ -557,7 +557,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2024",
         year=2024,
         doi_url="https://openreview.net/forum?id=m7524wcfv3",
-        role_in_krisna="High-throughput IO-aware attention enabling linear-time KV cache management in Planner",
+        role_in_krivex="High-throughput IO-aware attention enabling linear-time KV cache management in Planner",
         urls=[
             "https://arxiv.org/pdf/2307.08691.pdf",
         ],
@@ -570,7 +570,7 @@ PAPERS: list[PaperEntry] = [
         venue="Springer ECCV 2024",
         year=2024,
         doi_url="https://doi.org/10.1007/978-3-031-72761-0_1",
-        role_in_krisna="Language-model layout planning for exact typographic text rendering in diffusion models",
+        role_in_krivex="Language-model layout planning for exact typographic text rendering in diffusion models",
         urls=[
             "https://arxiv.org/pdf/2311.10391.pdf",
         ],
@@ -583,7 +583,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2024",
         year=2024,
         doi_url="https://openreview.net/forum?id=5iTq0n0fG7",
-        role_in_krisna="Dual-stream diffusion framework with glyph and position perceptual priors",
+        role_in_krivex="Dual-stream diffusion framework with glyph and position perceptual priors",
         urls=[
             "https://arxiv.org/pdf/2311.03054.pdf",
         ],
@@ -596,7 +596,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS 2024",
         year=2024,
         doi_url="https://proceedings.neurips.cc/paper_files/paper/2024/hash/b6bfb578c7c988a649ef2cf13f8aa312-Abstract-Conference.html",
-        role_in_krisna="Multimodal GUI agent benchmark across desktop and operating system interfaces",
+        role_in_krivex="Multimodal GUI agent benchmark across desktop and operating system interfaces",
         urls=[
             "https://proceedings.neurips.cc/paper_files/paper/2024/file/b6bfb578c7c988a649ef2cf13f8aa312-Paper-Conference.pdf",
             "https://arxiv.org/pdf/2404.07972.pdf",
@@ -610,7 +610,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2026",
         year=2026,
         doi_url="https://openreview.net/forum?id=figma2code2026",
-        role_in_krisna="Multimodal benchmark linking Figma vectors and component hierarchies with production rendering",
+        role_in_krivex="Multimodal benchmark linking Figma vectors and component hierarchies with production rendering",
         urls=[
             "https://arxiv.org/pdf/2411.03312.pdf",
         ],
@@ -623,7 +623,7 @@ PAPERS: list[PaperEntry] = [
         venue="Springer ECCV 2024",
         year=2024,
         doi_url="https://doi.org/10.1007/978-3-031-72995-9_7",
-        role_in_krisna="Consistency flow trajectory distillation delivering ~0.9s real-time UI preview (Tier.POLISH_FAST)",
+        role_in_krivex="Consistency flow trajectory distillation delivering ~0.9s real-time UI preview (Tier.POLISH_FAST)",
         urls=[
             "https://arxiv.org/pdf/2311.05556.pdf",
             "https://arxiv.org/pdf/2310.04378.pdf",
@@ -637,7 +637,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS 2024",
         year=2024,
         doi_url="https://proceedings.neurips.cc/paper_files/paper/2024/hash/8575a6c1171ff76ba54414b2cf6ee2a6-Abstract-Conference.html",
-        role_in_krisna="Direct probability trajectory optimization mapping dispreferred paths to preferred paths without reward models",
+        role_in_krivex="Direct probability trajectory optimization mapping dispreferred paths to preferred paths without reward models",
         urls=[
             "https://proceedings.neurips.cc/paper_files/paper/2024/file/8575a6c1171ff76ba54414b2cf6ee2a6-Paper-Conference.pdf",
             "https://arxiv.org/pdf/2406.02437.pdf",
@@ -651,7 +651,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2025",
         year=2025,
         doi_url="https://openaccess.thecvf.com/CVPR2025",
-        role_in_krisna="Curriculum difficulty scheduling for generative preference optimization, stabilizing LoRA adapter updates",
+        role_in_krivex="Curriculum difficulty scheduling for generative preference optimization, stabilizing LoRA adapter updates",
         urls=[
             "https://arxiv.org/pdf/2412.08587.pdf",
         ],
@@ -664,7 +664,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF CVPR 2024",
         year=2024,
         doi_url="https://doi.org/10.1109/CVPR52733.2024.01358",
-        role_in_krisna="High-resolution dual-stream visual attention for detailed GUI component recognition",
+        role_in_krivex="High-resolution dual-stream visual attention for detailed GUI component recognition",
         urls=[
             "https://openaccess.thecvf.com/content/CVPR2024/papers/Hong_CogAgent_A_Visual_Language_Model_for_GUI_Agents_CVPR_2024_paper.pdf",
             "https://arxiv.org/pdf/2312.08914.pdf",
@@ -679,7 +679,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2021",
         year=2021,
         doi_url="https://proceedings.mlr.press/v139/radford21a.html",
-        role_in_krisna="Primary dual-encoder vision backbone for screenshot critique and visual RAG retrieval",
+        role_in_krivex="Primary dual-encoder vision backbone for screenshot critique and visual RAG retrieval",
         urls=[
             "https://proceedings.mlr.press/v139/radford21a/radford21a.pdf",
             "https://arxiv.org/pdf/2103.00020.pdf",
@@ -693,7 +693,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2022",
         year=2022,
         doi_url="https://openreview.net/forum?id=nZeVKeeFYf9",
-        role_in_krisna="Parameter-efficient low-rank adaptation matrix decomposition targeting attention projections",
+        role_in_krivex="Parameter-efficient low-rank adaptation matrix decomposition targeting attention projections",
         urls=[
             "https://arxiv.org/pdf/2106.09685.pdf",
         ],
@@ -706,7 +706,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2022",
         year=2022,
         doi_url="https://openreview.net/forum?id=nCStswh11L",
-        role_in_krisna="8-bit matrix multiplication and 8-bit Adam optimizer reducing VRAM to 2 bytes per param",
+        role_in_krivex="8-bit matrix multiplication and 8-bit Adam optimizer reducing VRAM to 2 bytes per param",
         urls=[
             "https://arxiv.org/pdf/2208.07339.pdf",
         ],
@@ -719,7 +719,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2023",
         year=2023,
         doi_url="https://proceedings.mlr.press/v202/xiao23c.html",
-        role_in_krisna="Cross-layer channel smoothing transferring quantization difficulty from activations to weights",
+        role_in_krivex="Cross-layer channel smoothing transferring quantization difficulty from activations to weights",
         urls=[
             "https://proceedings.mlr.press/v202/xiao23c/xiao23c.pdf",
             "https://arxiv.org/pdf/2211.10438.pdf",
@@ -733,7 +733,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICML 2023",
         year=2023,
         doi_url="https://proceedings.mlr.press/v202/song23a.html",
-        role_in_krisna="Theoretical foundation for consistency distillation enabling 4-8 step fast preview sampling",
+        role_in_krivex="Theoretical foundation for consistency distillation enabling 4-8 step fast preview sampling",
         urls=[
             "https://proceedings.mlr.press/v202/song23a/song23a.pdf",
             "https://arxiv.org/pdf/2303.01469.pdf",
@@ -747,7 +747,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2024",
         year=2024,
         doi_url="https://openreview.net/forum?id=WNzy9bRdFh",
-        role_in_krisna="Pseudo-Huber metric and improved EMA schedule for stable consistency flow matching training",
+        role_in_krivex="Pseudo-Huber metric and improved EMA schedule for stable consistency flow matching training",
         urls=[
             "https://openreview.net/pdf?id=WNzy9bRdFh",
             "https://arxiv.org/pdf/2310.14189.pdf",
@@ -761,7 +761,7 @@ PAPERS: list[PaperEntry] = [
         venue="IEEE/CVF ICCV 2023",
         year=2023,
         doi_url="https://doi.org/10.1109/ICCV51070.2023.01019",
-        role_in_krisna="Mutual self-attention control for non-rigid image editing and mask-aware flow guidance across iterative turns",
+        role_in_krivex="Mutual self-attention control for non-rigid image editing and mask-aware flow guidance across iterative turns",
         urls=[
             "https://openaccess.thecvf.com/content/ICCV2023/papers/Cao_MasaCtrl_Tuning-Free_Mutual_Self-Attention_Control_for_Consistent_Image_Synthesis_and_ICCV_2023_paper.pdf",
             "https://arxiv.org/pdf/2304.08465.pdf",
@@ -775,7 +775,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACL 2024",
         year=2024,
         doi_url="https://doi.org/10.18653/v1/2024.acl-long.114",
-        role_in_krisna="Multimodal benchmark establishing evaluation methodology for visual web agents on realistic GUI tasks",
+        role_in_krivex="Multimodal benchmark establishing evaluation methodology for visual web agents on realistic GUI tasks",
         urls=[
             "https://aclanthology.org/2024.acl-long.114.pdf",
             "https://arxiv.org/pdf/2401.13649.pdf",
@@ -789,7 +789,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2024",
         year=2024,
         doi_url="https://openreview.net/forum?id=FB9zYUn_Vb",
-        role_in_krisna="Reproducible web environment defining functional correctness metrics and execution validation for UI agents",
+        role_in_krivex="Reproducible web environment defining functional correctness metrics and execution validation for UI agents",
         urls=[
             "https://openreview.net/pdf?id=FB9zYUn_Vb",
             "https://arxiv.org/pdf/2307.13854.pdf",
@@ -803,7 +803,7 @@ PAPERS: list[PaperEntry] = [
         venue="Springer ECCV 2024",
         year=2024,
         doi_url="https://doi.org/10.1007/978-3-031-72995-9_2",
-        role_in_krisna="Any-resolution spatial grid grounding and fine-grained visual referential grounding for UI screens",
+        role_in_krivex="Any-resolution spatial grid grounding and fine-grained visual referential grounding for UI screens",
         urls=[
             "https://arxiv.org/pdf/2404.05719.pdf",
         ],
@@ -816,7 +816,7 @@ PAPERS: list[PaperEntry] = [
         venue="ICLR 2025",
         year=2025,
         doi_url="https://openreview.net/forum?id=GM_EjJVbg3",
-        role_in_krisna="Cross-platform high-density visual grounding across mobile, tablet, and web interfaces",
+        role_in_krivex="Cross-platform high-density visual grounding across mobile, tablet, and web interfaces",
         urls=[
             "https://openreview.net/pdf?id=GM_EjJVbg3",
             "https://arxiv.org/pdf/2410.18975.pdf",
@@ -830,7 +830,7 @@ PAPERS: list[PaperEntry] = [
         venue="NeurIPS 2023",
         year=2023,
         doi_url="https://openreview.net/forum?id=GNmrqNFlHt",
-        role_in_krisna="Foundational dataset and evaluation protocol for generalist web agents across multi-domain sites",
+        role_in_krivex="Foundational dataset and evaluation protocol for generalist web agents across multi-domain sites",
         urls=[
             "https://openreview.net/pdf?id=GNmrqNFlHt",
             "https://arxiv.org/pdf/2306.06070.pdf",
@@ -844,7 +844,7 @@ PAPERS: list[PaperEntry] = [
         venue="ACL 2025",
         year=2025,
         doi_url="https://doi.org/10.18653/v1/2025.acl-long.110",
-        role_in_krisna="Multimodal visual-to-code benchmarking protocol and automatic visual evaluation metrics for front-end synthesis",
+        role_in_krivex="Multimodal visual-to-code benchmarking protocol and automatic visual evaluation metrics for front-end synthesis",
         urls=[
             "https://aclanthology.org/2025.acl-long.110.pdf",
             "https://arxiv.org/pdf/2403.03163.pdf",
@@ -921,15 +921,15 @@ def _download_single(paper: PaperEntry, out_dir: Path) -> dict:
 def _generate_pdf_stub(paper: PaperEntry) -> bytes:
     """Generate a clean, specification-compliant PDF-1.4 document containing the paper credentials."""
     lines = [
-        f"KRISNA RESEARCH RECORD - ACADEMIC CITATION [{paper.cite_id}]",
+        f"KRIVEX RESEARCH RECORD - ACADEMIC CITATION [{paper.cite_id}]",
         "",
         f"Title: {paper.title}",
         f"Authors: {paper.authors}",
         f"Publication Venue: {paper.venue} ({paper.year})",
         f"Official DOI / Permanent Link: {paper.doi_url}",
         "",
-        "Technical Role in Krisna Architecture:",
-        paper.role_in_krisna,
+        "Technical Role in Krivex Architecture:",
+        paper.role_in_krivex,
         "",
         "Compliance: Peer-reviewed conference/journal publication with verified DOI.",
     ]
@@ -984,7 +984,7 @@ def main():
     # Write MANIFEST.md
     manifest_path = papers_dir / "MANIFEST.md"
     with open(manifest_path, "w", encoding="utf-8") as f:
-        f.write("# Krisna Architecture: Academic Research Papers Manifest\n\n")
+        f.write("# Krivex Architecture: Academic Research Papers Manifest\n\n")
         f.write("**Official Repository of Cited Peer-Reviewed Publications**  \n")
         f.write(f"**Total Papers Archived**: {len(PAPERS)}  \n")
         f.write("**Compliance**: IEEE, ACM, Springer Nature, CVF, NeurIPS, ICML, ICLR, ACL. Strictly zero arXiv preprints.\n\n")
@@ -1007,7 +1007,7 @@ def main():
             f.write(f"- **Accredited Venue**: {p.venue} ({p.year})\n")
             f.write(f"- **Official Link**: [{p.doi_url}]({p.doi_url})\n")
             f.write(f"- **Local PDF File**: [`docs/papers/{p.filename}`](file:///{papers_dir.as_posix()}/{p.filename})\n")
-            f.write(f"- **Role in Krisna**: {p.role_in_krisna}\n\n")
+            f.write(f"- **Role in Krivex**: {p.role_in_krivex}\n\n")
 
     print(f"\nManifest successfully written to {manifest_path}", flush=True)
 

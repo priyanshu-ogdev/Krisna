@@ -15,4 +15,4 @@ echo -e "\033[1;34mTarget: Tier.POLISH_FAST (6-step real-time preview, ~0.9s on 
 python3 scripts/training/compare_cfm_steps.py --config "$CONFIG" --selected-steps 6
 
 echo -e "\033[1;32mDone. Distillation receipt at checkpoints/qwen_image21_cfm_fast/distillation_receipt.json.\033[0m"
-echo -e "\033[1;33mUse it: export KRISNA_POLISH_FAST_LORA_PATH=./checkpoints/qwen_image21_cfm_fast\033[0m"
+echo -e "\033[1;33mUse it: export KRIVEX_POLISH_FAST_LORA_PATH=./checkpoints/qwen_image21_cfm_fast\033[0m"

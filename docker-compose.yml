@@ -5,23 +5,23 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.inference
-    image: krisna-inference:latest
-    container_name: krisna-inference
+    image: krivex-inference:latest
+    container_name: krivex-inference
     ports:
       - "8420:8420"
     environment:
-      - KRISNA_USE_REAL_BACKENDS=1
-      - KRISNA_LOW_VRAM_MODE=${KRISNA_LOW_VRAM_MODE:-0}
-      - KRISNA_VRAM_ENVELOPE_GB=${KRISNA_VRAM_ENVELOPE_GB:-24.0}
-      - KRISNA_RAM_ENVELOPE_GB=${KRISNA_RAM_ENVELOPE_GB:-64.0}
-      - KRISNA_BIND_HOST=0.0.0.0
-      - KRISNA_PORT=8420
-      - KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python
+      - KRIVEX_USE_REAL_BACKENDS=1
+      - KRIVEX_LOW_VRAM_MODE=${KRIVEX_LOW_VRAM_MODE:-0}
+      - KRIVEX_VRAM_ENVELOPE_GB=${KRIVEX_VRAM_ENVELOPE_GB:-24.0}
+      - KRIVEX_RAM_ENVELOPE_GB=${KRIVEX_RAM_ENVELOPE_GB:-64.0}
+      - KRIVEX_BIND_HOST=0.0.0.0
+      - KRIVEX_PORT=8420
+      - KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python
     volumes:
       - ./models:/app/models:ro
       - ./checkpoints:/app/checkpoints:ro
       - ./weights:/app/weights:ro
-      - ./krisna_blobs:/app/krisna_blobs
+      - ./krivex_blobs:/app/krivex_blobs
       - ./.env.inference:/app/.env.inference:ro
     deploy:
       resources:
@@ -38,28 +38,28 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - krisna-network
+      - krivex-network
 
   frontend:
     build:
       context: .
       dockerfile: docker/Dockerfile.frontend
-    image: krisna-frontend:latest
-    container_name: krisna-frontend
+    image: krivex-frontend:latest
+    container_name: krivex-frontend
     ports:
       - "3000:3000"
     environment:
       - PORT=3000
-      - KRISNA_BACKEND_URL=http://inference:8420
-      - KRISNA_BACKEND_HOST=inference
-      - KRISNA_BACKEND_PORT=8420
+      - KRIVEX_BACKEND_URL=http://inference:8420
+      - KRIVEX_BACKEND_HOST=inference
+      - KRIVEX_BACKEND_PORT=8420
     depends_on:
       inference:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - krisna-network
+      - krivex-network
 
 networks:
-  krisna-network:
+  krivex-network:
     driver: bridge

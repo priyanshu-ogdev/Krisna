@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Krisna Inference Preflight: Base Qwen-Image-2.1 Parameter & Pipeline Validation.
+"""Krivex Inference Preflight: Base Qwen-Image-2.1 Parameter & Pipeline Validation.
 
 Tests base Qwen-Image-2.1 inference end-to-end on CUDA GPUs before launching training:
 1. Probes hardware (CUDA compute capability, VRAM envelope).
@@ -59,7 +59,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("krisna.inference_preflight")
+log = logging.getLogger("krivex.inference_preflight")
 
 
 def create_sample_ui_layout() -> LayoutIR:
@@ -76,7 +76,7 @@ def create_sample_ui_layout() -> LayoutIR:
             type="icon",
             bbox=BBox(x1=0.04, y1=0.02, x2=0.18, y2=0.08),
             locked=True,
-            text="Krisna OS",
+            text="Krivex OS",
         ),
         LayoutNode(
             id="hero_card",
@@ -104,7 +104,7 @@ def create_sample_ui_layout() -> LayoutIR:
             type="container",
             bbox=BBox(x1=0.0, y1=0.90, x2=1.0, y2=1.0),
             locked=True,
-            text="(c) 2026 Krisna Design Systems. All rights reserved.",
+            text="(c) 2026 Krivex Design Systems. All rights reserved.",
         ),
     ]
     return LayoutIR(
@@ -119,7 +119,7 @@ async def run_inference_preflight(args: argparse.Namespace) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     log.info("=" * 70)
-    log.info("KRISNA PREFLIGHT: BASE QWEN-IMAGE-2.1 INFERENCE AUDIT")
+    log.info("KRIVEX PREFLIGHT: BASE QWEN-IMAGE-2.1 INFERENCE AUDIT")
     log.info("=" * 70)
 
     # 1. Hardware Detection
@@ -285,7 +285,7 @@ async def run_inference_preflight(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Krisna Inference Preflight: Base Qwen-Image-2.1 Audit")
+    parser = argparse.ArgumentParser(description="Krivex Inference Preflight: Base Qwen-Image-2.1 Audit")
     parser.add_argument("--model-id", default=QWEN_IMAGE_21_MODEL_ID, help="HF model ID or path")
     parser.add_argument("--dtype", default="bfloat16", choices=["bfloat16", "float16", "float32"])
     parser.add_argument("--steps", type=int, default=28, help="Number of scratch generation steps")

@@ -1,23 +1,23 @@
 # =============================================================================
-# Krisna Inference -- Production GPU Container with Isolated Critic Tier
+# Krivex Inference -- Production GPU Container with Isolated Critic Tier
 # (+ optional isolated vLLM Planner tier, see INSTALL_VLLM_PLANNER below)
 # Base: NVIDIA CUDA 12.4.1 Runtime on Ubuntu 22.04 LTS
 # =============================================================================
 FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
 
-LABEL maintainer="Krisna AI Team"
-LABEL description="Production GPU inference container for Krisna with multi-tier venv isolation"
+LABEL maintainer="Krivex AI Team"
+LABEL description="Production GPU inference container for Krivex with multi-tier venv isolation"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     CUDA_HOME=/usr/local/cuda \
     PATH=/opt/venv-inference/bin:/usr/local/cuda/bin:$PATH \
-    KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python \
-    KRISNA_PLANNER_VLLM_VENV_PYTHON=/opt/venv-planner/bin/python \
-    KRISNA_USE_REAL_BACKENDS=1 \
-    KRISNA_BIND_HOST=0.0.0.0 \
-    KRISNA_PORT=8420
+    KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python \
+    KRIVEX_PLANNER_VLLM_VENV_PYTHON=/opt/venv-planner/bin/python \
+    KRIVEX_USE_REAL_BACKENDS=1 \
+    KRIVEX_BIND_HOST=0.0.0.0 \
+    KRIVEX_PORT=8420
 
 # OPT-IN third venv for the vLLM Planner backend
 # (docs/review/29_vllm_planner_migration_research.md). Gated behind a
@@ -25,7 +25,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # is ~316MB before its dependency tree (torch==2.13.0, compressed-tensors,
 # flashinfer-python, triton, etc. — verified via a real `pip install
 # --dry-run` during this project's review), adding real image size and
-# build time for a feature that KRISNA_PLANNER_BACKEND (unset by default)
+# build time for a feature that KRIVEX_PLANNER_BACKEND (unset by default)
 # doesn't even use. Build with `--build-arg INSTALL_VLLM_PLANNER=true` to
 # include it. This mirrors the project's own discipline of never silently
 # changing defaults/costs without an explicit opt-in, extended here to
@@ -104,7 +104,7 @@ RUN if [ "$INSTALL_VLLM_PLANNER" = "true" ]; then \
 # 5. Copy repo source code into container
 COPY . /app
 
-# 6. Install krisna_inference and krisna_training in editable mode inside /opt/venv-inference
+# 6. Install krivex_inference and krivex_training in editable mode inside /opt/venv-inference
 RUN /opt/venv-inference/bin/pip install --no-cache-dir -e /app/inference --no-deps \
     && /opt/venv-inference/bin/pip install --no-cache-dir -e /app/training --no-deps
 
@@ -112,9 +112,9 @@ RUN /opt/venv-inference/bin/pip install --no-cache-dir -e /app/inference --no-de
 RUN chmod +x /app/docker/entrypoint.sh
 
 # Persistent volume targets for models and checkpoints
-VOLUME ["/app/models", "/app/checkpoints", "/app/krisna_blobs"]
+VOLUME ["/app/models", "/app/checkpoints", "/app/krivex_blobs"]
 
 EXPOSE 8420
 
 ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["python", "-m", "krisna_inference.orchestrator.service"]
+CMD ["python", "-m", "krivex_inference.orchestrator.service"]

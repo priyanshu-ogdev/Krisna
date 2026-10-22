@@ -5,7 +5,7 @@ Bridges the data-forge output to the training tier configurations:
 1. Polish default LoRA:
    DATA_ROOT/model_data/polish_zimage_turbo -> ./data/polish_default_train (images + metadata.jsonl)
 2. Diffusion-DPO preference pairs:
-   DATA_ROOT/preference_pairs -> ./krisna_preference_pairs.db + ./krisna_blobs/
+   DATA_ROOT/preference_pairs -> ./krivex_preference_pairs.db + ./krivex_blobs/
 3. Sketch tier (MaskGIT):
    DATA_ROOT/model_data/sketch_tier_maskgit -> ./data/sketch_train_256 (256px VQ tokens + manifest.jsonl)
    DATA_ROOT/model_data/sketch_tier_maskgit -> ./data/sketch_train_512 (512px VQ tokens + manifest.jsonl)
@@ -14,7 +14,7 @@ Bridges the data-forge output to the training tier configurations:
 
 Usage:
     python scripts/data-forge/sync_to_training.py
-    python scripts/data-forge/sync_to_training.py --data-root D:\\data_krisna
+    python scripts/data-forge/sync_to_training.py --data-root D:\\data_krivex
     python scripts/data-forge/sync_to_training.py --check-only
     python scripts/data-forge/sync_to_training.py --no-sketch-512
 """
@@ -61,13 +61,13 @@ def main() -> int:
     parser.add_argument(
         "--data-root",
         # Matches data_forge/config.py's _default_data_root() exactly
-        # (REPO_ROOT-relative "data_krisna") so an unset DATA_ROOT
+        # (REPO_ROOT-relative "data_krivex") so an unset DATA_ROOT
         # resolves to the same folder for both the pipeline and this
         # sync step. See docs/review/26_data_root_path_consistency.md —
         # this used to silently diverge whenever the committed .env's
         # hardcoded Windows path took effect on Linux/WSL2.
-        default=os.environ.get("DATA_ROOT", str(REPO_ROOT / "data_krisna")),
-        help="Root storage directory where data-forge outputs land (default: $DATA_ROOT or ./data_krisna)",
+        default=os.environ.get("DATA_ROOT", str(REPO_ROOT / "data_krivex")),
+        help="Root storage directory where data-forge outputs land (default: $DATA_ROOT or ./data_krivex)",
     )
     parser.add_argument(
         "--target-dir",
@@ -76,13 +76,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--pref-db",
-        default=str(REPO_ROOT / "krisna_preference_pairs.db"),
-        help="Path to preference pairs SQLite DB (default: ./krisna_preference_pairs.db)",
+        default=str(REPO_ROOT / "krivex_preference_pairs.db"),
+        help="Path to preference pairs SQLite DB (default: ./krivex_preference_pairs.db)",
     )
     parser.add_argument(
         "--blob-root",
-        default=str(REPO_ROOT / "krisna_blobs"),
-        help="Path to shared BlobStore root (default: ./krisna_blobs)",
+        default=str(REPO_ROOT / "krivex_blobs"),
+        help="Path to shared BlobStore root (default: ./krivex_blobs)",
     )
     parser.add_argument(
         "--check-only",
@@ -121,10 +121,10 @@ def main() -> int:
     model_data_dir = data_root / "model_data"
 
     print("=" * 70)
-    print("  Krisna Data-Forge -> Model Training Bridge")
+    print("  Krivex Data-Forge -> Model Training Bridge")
     print("=" * 70)
     # Printed resolved/absolute so a platform-mismatched DATA_ROOT (e.g. a
-    # literal "D:\data_krisna" string on Linux/WSL2) is visually obvious
+    # literal "D:\data_krivex" string on Linux/WSL2) is visually obvious
     # as one strange path segment rather than looking like a normal path.
     print(f"  DATA_ROOT:          {data_root}")
     print(f"  Model Data Export:  {model_data_dir}")
@@ -244,7 +244,7 @@ def main() -> int:
     if sketch_export.exists() and (sketch_export / "images").exists():
         count = len(list((sketch_export / "images").glob("*.*")))
         print(f"\n[OK] Sketch Tier: Found {count} exported layout images.")
-        print("     Sketch tier operates as deterministic neuro-symbolic Layout IR (krisna.layout.v1; 0 MB VRAM).")
+        print("     Sketch tier operates as deterministic neuro-symbolic Layout IR (krivex.layout.v1; 0 MB VRAM).")
         print("     Bypassing token shard generation (MaskGIT/LayoutFlow retired; no training required).")
         if args.sketch_256:
             results["sketch_256"] = "Deterministic (no training required)"

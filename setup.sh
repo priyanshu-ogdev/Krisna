@@ -7,7 +7,7 @@
 # Phases (run all by default, or pass specific ones as args, e.g.
 # ./setup.sh base sketch):
 #   base     - main .venv: krivex-inference[dev] + krivex-training[dev] +
-#              krisna-data-forge (editable installs, CPU-only, no GPU
+#              krivex-data-forge (editable installs, CPU-only, no GPU
 #              backends yet). Always run this first.
 #   backends - adds the real inference backends (Planner/Sketch/Polish
 #              Default+Quality) to the SAME .venv — torch/diffusers/
@@ -54,7 +54,7 @@ if [ ${#PHASES[@]} -eq 0 ]; then
 fi
 
 echo -e "\033[1;35m=========================================================\033[0m"
-echo -e "\033[1;35mKrisna monorepo setup — phases: ${PHASES[*]}\033[0m"
+echo -e "\033[1;35mKrivex monorepo setup — phases: ${PHASES[*]}\033[0m"
 echo -e "\033[1;35m=========================================================\033[0m"
 
 for phase in "${PHASES[@]}"; do
@@ -62,7 +62,7 @@ for phase in "${PHASES[@]}"; do
         base)
             echo -e "\033[1;36m[base] main .venv: inference[dev] + training[dev] + data-forge\033[0m"
             ./scripts/inference/setup_env.sh
-            echo -e "\033[1;36m[base] adding krisna-data-forge (editable, --no-deps: shared deps already satisfied above)\033[0m"
+            echo -e "\033[1;36m[base] adding krivex-data-forge (editable, --no-deps: shared deps already satisfied above)\033[0m"
             source .venv/bin/activate
             pip install -e "./data-forge" --no-deps
             # data-forge's OWN heavy deps (vllm, faiss, opencv, etc. — see

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "krivex-training"
 version = "0.2.0"
-description = "Krisna Training — Diffusion Polish Tier (Qwen-Image-2.1 Supervised LoRA/DoRA, Flow-Matching DPO, and Consistency Flow Matching Distillation), Data-Forge sync bridge, and preference tooling. Planner and Sketch tiers are 100% frozen."
+description = "Krivex Training — Diffusion Polish Tier (Qwen-Image-2.1 Supervised LoRA/DoRA, Flow-Matching DPO, and Consistency Flow Matching Distillation), Data-Forge sync bridge, and preference tooling. Planner and Sketch tiers are 100% frozen."
 requires-python = ">=3.11"
 dependencies = [
     "krivex-inference",

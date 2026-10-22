@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # run_data_forge.sh (Repository Root)
-# Master launcher & orchestrator for the Krisna Data-Forge pipeline.
+# Master launcher & orchestrator for the Krivex Data-Forge pipeline.
 #
 # Optimized for:
 #   - NVIDIA RTX A6000 (48GB VRAM) / 128GB RAM / Core i9
@@ -29,7 +29,7 @@ COLOR_RED="\033[1;31m"
 COLOR_RESET="\033[0m"
 
 echo -e "${COLOR_CYAN}================================================================${COLOR_RESET}"
-echo -e "${COLOR_CYAN}   Krisna Data-Forge — Master Pipeline Launcher                ${COLOR_RESET}"
+echo -e "${COLOR_CYAN}   Krivex Data-Forge — Master Pipeline Launcher                ${COLOR_RESET}"
 echo -e "${COLOR_CYAN}================================================================${COLOR_RESET}"
 
 # 1. Check or initialize .env

@@ -23,9 +23,9 @@ def test_dockerfile_inference_structure():
     assert "/opt/venv-critic" in content
 
     # Environment variables
-    assert "KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in content
-    assert "KRISNA_USE_REAL_BACKENDS=1" in content
-    assert "KRISNA_PORT=8420" in content
+    assert "KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in content
+    assert "KRIVEX_USE_REAL_BACKENDS=1" in content
+    assert "KRIVEX_PORT=8420" in content
 
     # Requirements installations
     assert "requirements-inference.txt" in content
@@ -54,7 +54,7 @@ def test_entrypoint_script_validation():
 
     content = entrypoint.read_text(encoding="utf-8")
     assert "check_hardware.py --require-gpu" in content
-    assert "KRISNA_USE_REAL_BACKENDS" in content
+    assert "KRIVEX_USE_REAL_BACKENDS" in content
     assert 'exec "$@"' in content
 
 
@@ -74,8 +74,8 @@ def test_docker_compose_valid_yaml_and_services():
     # Inference service verification
     inf = services["inference"]
     assert "8420:8420" in inf["ports"]
-    assert "KRISNA_USE_REAL_BACKENDS=1" in inf["environment"]
-    assert "KRISNA_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in inf["environment"]
+    assert "KRIVEX_USE_REAL_BACKENDS=1" in inf["environment"]
+    assert "KRIVEX_CRITIC_VENV_PYTHON=/opt/venv-critic/bin/python" in inf["environment"]
     assert "deploy" in inf
     reservations = inf["deploy"]["resources"]["reservations"]["devices"][0]
     assert reservations["driver"] == "nvidia"
@@ -89,7 +89,7 @@ def test_docker_compose_valid_yaml_and_services():
     vols = inf.get("volumes", [])
     assert any("./models:" in v for v in vols)
     assert any("./checkpoints:" in v for v in vols)
-    assert any("./krisna_blobs:" in v for v in vols)
+    assert any("./krivex_blobs:" in v for v in vols)
 
     # Frontend service verification
     fe = services["frontend"]
@@ -98,7 +98,7 @@ def test_docker_compose_valid_yaml_and_services():
 
     # Networks
     assert "networks" in config
-    assert "krisna-network" in config["networks"]
+    assert "krivex-network" in config["networks"]
 
 
 def test_dockerignore_exclusions():
@@ -107,7 +107,7 @@ def test_dockerignore_exclusions():
     assert dockerignore.is_file(), ".dockerignore must exist"
 
     content = dockerignore.read_text(encoding="utf-8")
-    for pattern in [".git", "__pycache__", ".venv", "*.zip", "krisna_sessions.db"]:
+    for pattern in [".git", "__pycache__", ".venv", "*.zip", "krivex_sessions.db"]:
         assert pattern in content
 
 

@@ -22,7 +22,7 @@ def fetch_dataset_info(dataset_name: str, timeout: float = 10.0) -> dict | None:
     url = f"https://datasets-server.huggingface.co/info?dataset={dataset_name}"
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "krisna-data-forge/1.0"},
+        headers={"User-Agent": "krivex-data-forge/1.0"},
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:

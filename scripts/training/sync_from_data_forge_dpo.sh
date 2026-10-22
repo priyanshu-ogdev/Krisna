@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DATA_FORGE_DATA_ROOT="${1:?Usage: sync_from_data_forge_dpo.sh <data_forge_data_root> [preference_pairs.db]}"
-PREF_DB="${2:-krisna_preference_pairs.db}"
+PREF_DB="${2:-krivex_preference_pairs.db}"
 
 echo -e "\033[1;36mSyncing preference pairs from data-forge ($DATA_FORGE_DATA_ROOT) -> $PREF_DB...\033[0m"
 source .venv/bin/activate

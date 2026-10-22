@@ -23,7 +23,7 @@ pillow
 torch>=2.6.0
 peft>=0.13.0
 
-# Planner RAG retrieval upgrade (opt-in, KRISNA_PLANNER_RAG_EMBEDDINGS=1 —
+# Planner RAG retrieval upgrade (opt-in, KRIVEX_PLANNER_RAG_EMBEDDINGS=1 —
 # see docs/review/31_planner_retrieval_upgrade.md and planner_rag.py's
 # module docstring). CPU-only, ~80MB weights — the UICrit corpus this
 # indexes is far too small (~1,000 documents) to justify GPU residency

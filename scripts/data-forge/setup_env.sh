@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # scripts/data-forge/setup_env.sh
-# Linux & Windows WSL2 environment setup for Krisna Data-Forge.
+# Linux & Windows WSL2 environment setup for Krivex Data-Forge.
 #
 # Optimized for:
 #   - NVIDIA RTX A6000 (48GB VRAM) / CUDA 12.4+
@@ -19,7 +19,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 echo -e "\033[1;36m================================================================\033[0m"
-echo -e "\033[1;36m   Krisna Data-Forge — Linux / WSL2 Environment Setup           \033[0m"
+echo -e "\033[1;36m   Krivex Data-Forge — Linux / WSL2 Environment Setup           \033[0m"
 echo -e "\033[1;36m================================================================\033[0m"
 
 # 1. Check Python version

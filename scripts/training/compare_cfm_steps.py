@@ -159,7 +159,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     print("================================================================================")
-    print(" Krisna Phase 4: Consistency Flow Matching (CFM) Step Pareto Evaluator")
+    print(" Krivex Phase 4: Consistency Flow Matching (CFM) Step Pareto Evaluator")
     print("================================================================================")
 
     receipt = generate_cfm_distillation_receipt(

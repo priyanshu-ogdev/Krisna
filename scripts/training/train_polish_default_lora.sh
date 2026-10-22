@@ -37,4 +37,4 @@ subprocess.run(args, check=True)
 PYEOF
 
 echo -e "\033[1;32mDone. LoRA at the output_dir in $CONFIG.\033[0m"
-echo -e "\033[1;33mUse it: export KRISNA_POLISH_LORA_PATH=<output_dir>\033[0m"
+echo -e "\033[1;33mUse it: export KRIVEX_POLISH_LORA_PATH=<output_dir>\033[0m"

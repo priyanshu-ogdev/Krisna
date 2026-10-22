@@ -1,7 +1,7 @@
 # Isolated venv for the Critic tier ONLY (Gemma 4 31B Dense + Unsloth).
 #
 # This is a SEPARATE venv from the main one, at ./venv-critic by default
-# (see CriticBackend's worker_python default / KRISNA_CRITIC_VENV_PYTHON).
+# (see CriticBackend's worker_python default / KRIVEX_CRITIC_VENV_PYTHON).
 # Do NOT pip install this into the same venv as requirements-inference.txt —
 # the two conflict:
 #   - unsloth_zoo caps transformers<=5.5.0
@@ -10,7 +10,7 @@
 #   - Qwen3.5 (planner tier, main venv) needs a newer, git-main transformers
 #     build that this pin does NOT satisfy.
 # This worker process only ever talks to the parent over stdin/stdout JSON
-# (see critic_worker.py) — it never needs to import krisna_orchestrator's
+# (see critic_worker.py) — it never needs to import krivex_inference's
 # other tiers, so the version split is safe.
 
 transformers==5.5.0

@@ -178,8 +178,8 @@ def generate_phase3_receipt(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--preference-db", type=Path, default=Path("./krisna_preference_pairs.db"))
-    parser.add_argument("--blob-root", type=str, default="krisna_blobs")
+    parser.add_argument("--preference-db", type=Path, default=Path("./krivex_preference_pairs.db"))
+    parser.add_argument("--blob-root", type=str, default="krivex_blobs")
     parser.add_argument("--output-dir", type=Path, default=Path("./checkpoints/polish_qwen_image21_dpo"))
     parser.add_argument("--receipt-path", type=Path, default=Path("./checkpoints/polish_qwen_image21_dpo/training_receipt.json"))
     parser.add_argument("--betas", type=float, nargs="+", default=[500.0, 2000.0, 5000.0])
@@ -194,7 +194,7 @@ def main() -> int:
         return 1
 
     print("================================================================================")
-    print(" Krisna Phase 3: DPO Beta Sweep Comparison & Training Receipt Generator")
+    print(" Krivex Phase 3: DPO Beta Sweep Comparison & Training Receipt Generator")
     print("================================================================================")
     receipt = generate_phase3_receipt(
         db_path=args.preference_db,

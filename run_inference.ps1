@@ -1,6 +1,6 @@
 # =============================================================================
 # run_inference.ps1 (Repository Root)
-# Master launcher & orchestrator for the Krisna Inference subsystem (Windows native).
+# Master launcher & orchestrator for the Krivex Inference subsystem (Windows native).
 #
 # Usage:
 #   .\run_inference.ps1                     # MockBackend, no GPU needed (port 8420)
@@ -38,7 +38,7 @@ if ([Console]::OutputEncoding.CodePage -ne 65001) {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "     Krisna Inference -- Master Service Launcher (PowerShell)   " -ForegroundColor Cyan
+Write-Host "     Krivex Inference -- Master Service Launcher (PowerShell)   " -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 
 if ($Help) {
@@ -95,24 +95,24 @@ if ($ActiveEnvFile) {
 
 # 2. Configure Execution Mode
 if ($Real) {
-    $env:KRISNA_USE_REAL_BACKENDS = "1"
+    $env:KRIVEX_USE_REAL_BACKENDS = "1"
     Write-Host "[!] Mode: REAL MODEL BACKENDS (GPU + weights required)" -ForegroundColor Yellow
     if ($LowVram) {
-        $env:KRISNA_LOW_VRAM_MODE = "1"
-        $env:KRISNA_RAM_ENVELOPE_GB = [string]$RamEnvelopeGb
+        $env:KRIVEX_LOW_VRAM_MODE = "1"
+        $env:KRIVEX_RAM_ENVELOPE_GB = [string]$RamEnvelopeGb
         if ($VramEnvelopeGb -gt 0) {
-            $env:KRISNA_VRAM_ENVELOPE_GB = [string]$VramEnvelopeGb
+            $env:KRIVEX_VRAM_ENVELOPE_GB = [string]$VramEnvelopeGb
         } else {
-            $env:KRISNA_VRAM_ENVELOPE_GB = "12.0"
+            $env:KRIVEX_VRAM_ENVELOPE_GB = "12.0"
         }
-        Write-Host "    Low-VRAM mode active: VRAM=$($env:KRISNA_VRAM_ENVELOPE_GB)GB, RAM Offload=$($env:KRISNA_RAM_ENVELOPE_GB)GB" -ForegroundColor Magenta
+        Write-Host "    Low-VRAM mode active: VRAM=$($env:KRIVEX_VRAM_ENVELOPE_GB)GB, RAM Offload=$($env:KRIVEX_RAM_ENVELOPE_GB)GB" -ForegroundColor Magenta
     } else {
         if ($VramEnvelopeGb -gt 0) {
-            $env:KRISNA_VRAM_ENVELOPE_GB = [string]$VramEnvelopeGb
+            $env:KRIVEX_VRAM_ENVELOPE_GB = [string]$VramEnvelopeGb
         } else {
-            $env:KRISNA_VRAM_ENVELOPE_GB = "48.0"
+            $env:KRIVEX_VRAM_ENVELOPE_GB = "48.0"
         }
-        Write-Host "    Targeting high-capacity envelope: VRAM=$($env:KRISNA_VRAM_ENVELOPE_GB)GB, RAM=$RamEnvelopeGb GB" -ForegroundColor Green
+        Write-Host "    Targeting high-capacity envelope: VRAM=$($env:KRIVEX_VRAM_ENVELOPE_GB)GB, RAM=$RamEnvelopeGb GB" -ForegroundColor Green
     }
 } else {
     Write-Host "[i] Mode: MockBackend (safe, zero GPU/weights needed)" -ForegroundColor DarkCyan
@@ -133,8 +133,8 @@ $env:PYTHONPATH = "$InfSrc;$TrainSrc;$env:PYTHONPATH"
 
 # 4. Handle CLI Session mode
 if ($CliSession) {
-    Write-Host "[+] Launching Krisna Agentic Session CLI..." -ForegroundColor Cyan
-    $CliArgs = @("-m", "krisna_inference.cli")
+    Write-Host "[+] Launching Krivex Agentic Session CLI..." -ForegroundColor Cyan
+    $CliArgs = @("-m", "krivex_inference.cli")
     if ($Real) { $CliArgs += "--real" }
     if ($LowVram) { $CliArgs += "--low-vram" }
     if ($RemainingArgs) { $CliArgs += $RemainingArgs }
@@ -170,5 +170,5 @@ if ($Real) {
 }
 
 # 7. Launch Backend Service
-Write-Host "[+] Starting Krisna Inference Service on http://$($BindHost):$Port..." -ForegroundColor Green
+Write-Host "[+] Starting Krivex Inference Service on http://$($BindHost):$Port..." -ForegroundColor Green
 & "$RepoRoot\scripts\inference\run_service.ps1" -BindHost $BindHost -Port $Port -RemainingArgs $RemainingArgs

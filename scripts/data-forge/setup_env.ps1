@@ -1,4 +1,4 @@
-Write-Host "Setting up Krisna Data-Forge Environment (Windows)..." -ForegroundColor Cyan
+Write-Host "Setting up Krivex Data-Forge Environment (Windows)..." -ForegroundColor Cyan
 Write-Host "IMPORTANT: vLLM has no official native-Windows build (the vLLM team's" -ForegroundColor Yellow
 Write-Host "own guidance is WSL2). Tier-1, Tier-2, OCR, and the audit pass all go" -ForegroundColor Yellow
 Write-Host "through vLLM, so most of this pipeline's GPU-model stages will NOT run" -ForegroundColor Yellow
@@ -7,8 +7,8 @@ Write-Host "(Ubuntu) for anything past the deterministic stages, or pin/adopt an
 Write-Host "unofficial native-Windows vLLM fork explicitly if you need one." -ForegroundColor Yellow
 
 # 1. Create and activate Conda environment
-conda create -n krisna-forge python=3.10 -y
-conda activate krisna-forge
+conda create -n krivex-forge python=3.10 -y
+conda activate krivex-forge
 
 # 2. Install FAISS via Conda
 # faiss-gpu is published for Linux x86-64 only (CUDA 11.4/12.1 builds) across
@@ -29,5 +29,5 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install openai pydantic click pyyaml jsonschema structlog rich httpx Pillow
 pip install -e .[dev]
 
-Write-Host "Environment setup complete. Run: conda activate krisna-forge" -ForegroundColor Green
+Write-Host "Environment setup complete. Run: conda activate krivex-forge" -ForegroundColor Green
 Write-Host "Remember: vLLM-backed stages need WSL2 — see the warning above." -ForegroundColor Yellow

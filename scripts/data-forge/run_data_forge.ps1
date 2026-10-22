@@ -1,6 +1,6 @@
 # =============================================================================
 # scripts/data-forge/run_data_forge.ps1
-# Native PowerShell launcher for the Krisna Data-Forge automated pipeline.
+# Native PowerShell launcher for the Krivex Data-Forge automated pipeline.
 #
 # Usage:
 #   .\scripts\data-forge\run_data_forge.ps1 doctor

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Krisna Inference — Production-Grade Local Runner.
+"""Krivex Inference — Production-Grade Local Runner.
 
 Performs hardware preflight checks (VRAM, Host RAM, CUDA compute capabilities),
 discovers local model artifacts (GGUF, LoRA), configures low-VRAM modes,
@@ -40,7 +40,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-log = logging.getLogger("krisna.local_runner")
+log = logging.getLogger("krivex.local_runner")
 
 
 def preflight_hardware() -> dict:
@@ -99,8 +99,8 @@ def preflight_models() -> dict:
     if mmproj_gguf:
         log.info("Discovered multimodal projector: %s", mmproj_gguf)
 
-    polish_id = os.environ.get("KRISNA_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
-    lora_path = os.environ.get("KRISNA_POLISH_LORA_PATH") or os.environ.get("KRISNA_POLISH_DEFAULT_LORA_PATH")
+    polish_id = os.environ.get("KRIVEX_POLISH_MODEL_ID", "Qwen/Qwen-Image-2.1")
+    lora_path = os.environ.get("KRIVEX_POLISH_LORA_PATH") or os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
     log.info("Polish model ID: %s", polish_id)
     if lora_path and Path(lora_path).exists():
         log.info("Polish LoRA adapter: %s", lora_path)
@@ -114,7 +114,7 @@ def preflight_models() -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Krisna Inference Local Runner")
+    parser = argparse.ArgumentParser(description="Krivex Inference Local Runner")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8420, help="Bind port (default: 8420)")
     parser.add_argument("--real", action="store_true", help="Enable real backends (requires GPU and weights)")
@@ -128,19 +128,19 @@ def main() -> None:
     # Automatically calibrate low-VRAM mode
     cuda_hw = hw_info["cuda"]
     if cuda_hw["cuda_available"] and cuda_hw["vram_total_gb"] < 16.0:
-        log.info("VRAM < 16GB (%.1f GB). Auto-enabling KRISNA_LOW_VRAM_MODE=1.", cuda_hw["vram_total_gb"])
-        os.environ["KRISNA_LOW_VRAM_MODE"] = "1"
+        log.info("VRAM < 16GB (%.1f GB). Auto-enabling KRIVEX_LOW_VRAM_MODE=1.", cuda_hw["vram_total_gb"])
+        os.environ["KRIVEX_LOW_VRAM_MODE"] = "1"
 
     if args.real:
-        os.environ["KRISNA_USE_REAL_BACKENDS"] = "1"
-        log.info("KRISNA_USE_REAL_BACKENDS=1 enabled.")
+        os.environ["KRIVEX_USE_REAL_BACKENDS"] = "1"
+        log.info("KRIVEX_USE_REAL_BACKENDS=1 enabled.")
 
     if models_info["planner_gguf"]:
-        os.environ["KRISNA_PLANNER_GGUF"] = str(models_info["planner_gguf"])
+        os.environ["KRIVEX_PLANNER_GGUF"] = str(models_info["planner_gguf"])
     if models_info["mmproj_gguf"]:
-        os.environ["KRISNA_PLANNER_MMPROJ"] = str(models_info["mmproj_gguf"])
+        os.environ["KRIVEX_PLANNER_MMPROJ"] = str(models_info["mmproj_gguf"])
 
-    log.info("==> Starting Krisna Inference Service on http://%s:%d ...", args.host, args.port)
+    log.info("==> Starting Krivex Inference Service on http://%s:%d ...", args.host, args.port)
     log.info("    Health endpoint:     http://%s:%d/health", args.host, args.port)
     log.info("    Readiness endpoint:  http://%s:%d/ready", args.host, args.port)
     log.info("    Model status:        http://%s:%d/models/status", args.host, args.port)

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Krisna Data-Forge: 1% Target Dataset Downloader & Local Validator
+Krivex Data-Forge: 1% Target Dataset Downloader & Local Validator
 ================================================================
 
 Downloads and verifies a 1% representative sample of every dataset
-required by the Krisna data pipeline for end-to-end validation on
+required by the Krivex data pipeline for end-to-end validation on
 the development machine (12GB RTX 3060, 32GB RAM).
 
 Target Footprints:
@@ -44,7 +44,7 @@ import pyarrow.parquet as pq
 from huggingface_hub import HfFileSystem, hf_hub_download
 from PIL import Image
 
-DATA_ROOT = Path(os.environ.get("DATA_ROOT", "D:/data_krisna"))
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", "D:/data_krivex"))
 RAW_DIR = DATA_ROOT / "raw"
 PREF_DIR = DATA_ROOT / "preference_pairs"
 EVAL_DIR = DATA_ROOT / "heldout" / "external_eval"
@@ -538,7 +538,7 @@ def verify_disk_usage():
 
 async def main():
     start_time = time.time()
-    log("=== Krisna Data-Forge: Starting 1% Dataset Slice Ingestion ===")
+    log("=== Krivex Data-Forge: Starting 1% Dataset Slice Ingestion ===")
     setup_directories()
 
     # 1. Eval References (TASTE, PartiPrompts)

@@ -25,7 +25,7 @@ list_tiers() {
     cat <<'EOF'
 Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
-sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krisna.layout.v1; 0 MB VRAM, <5ms CPU).
+sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krivex.layout.v1; 0 MB VRAM, <5ms CPU).
 sketch-stage2   RETIRED      Legacy LayoutFlow neural ablation deleted; production mainline is deterministic.
 polish-default  PENDING      Qwen/Qwen-Image-2.1 paired image-conditioned LoRA;
                                external trainer must be pinned and smoke-tested.
@@ -38,7 +38,7 @@ EOF
 confirm_deprecated() {
     local tier="$1"
     echo -e "\033[1;31m$tier is DEPRECATED — the live inference stack cannot load its output.\033[0m"
-    echo -e "\033[1;31mSee training/src/krisna_training/$tier/__init__.py's DeprecationWarning\033[0m"
+    echo -e "\033[1;31mSee training/src/krivex_training/$tier/__init__.py's DeprecationWarning\033[0m"
     echo -e "\033[1;31mand docs/review/README.md for the full history. Proceed anyway? [y/N]\033[0m"
     read -r reply
     [ "$reply" = "y" ] || [ "$reply" = "Y" ] || exit 1
@@ -52,7 +52,7 @@ case "${1:-}" in
         exec python3 scripts/training/audit_training_pipeline.py
         ;;
     sketch-stage1|sketch-stage2)
-        echo "Sketch tier is 100% deterministic Layout IR (krisna.layout.v1; 0 MB VRAM, <5ms CPU). No training occurs." >&2
+        echo "Sketch tier is 100% deterministic Layout IR (krivex.layout.v1; 0 MB VRAM, <5ms CPU). No training occurs." >&2
         exit 0
         ;;
     polish-default)

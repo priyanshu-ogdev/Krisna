@@ -54,4 +54,4 @@ subprocess.run(args, check=True)
 PYEOF
 
 echo -e "\033[1;32mDone. Checkpoint at the output-dir in $CONFIG.\033[0m"
-echo -e "\033[1;33mUse it: export KRISNA_POLISH_DEFAULT_LORA_PATH=<output-dir>/final\033[0m"
+echo -e "\033[1;33mUse it: export KRIVEX_POLISH_DEFAULT_LORA_PATH=<output-dir>/final\033[0m"

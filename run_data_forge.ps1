@@ -1,6 +1,6 @@
 # =============================================================================
 # run_data_forge.ps1 (Repository Root)
-# Master launcher & orchestrator for the Krisna Data-Forge pipeline (Windows native).
+# Master launcher & orchestrator for the Krivex Data-Forge pipeline (Windows native).
 #
 # Usage:
 #   .\run_data_forge.ps1 doctor
@@ -29,7 +29,7 @@ if ([Console]::OutputEncoding.CodePage -ne 65001) {
 }
 
 Write-Host "================================================================" -ForegroundColor Cyan
-Write-Host "   Krisna Data-Forge -- Master Pipeline Launcher (PowerShell)   " -ForegroundColor Cyan
+Write-Host "   Krivex Data-Forge -- Master Pipeline Launcher (PowerShell)   " -ForegroundColor Cyan
 Write-Host "================================================================" -ForegroundColor Cyan
 
 # 1. Check or initialize .env

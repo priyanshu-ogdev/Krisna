@@ -1,11 +1,11 @@
 # =============================================================================
-# Krisna Frontend -- Web Studio & Control Plane Container
+# Krivex Frontend -- Web Studio & Control Plane Container
 # Base: Node.js 20 on Alpine Linux
 # =============================================================================
 FROM node:20-alpine
 
-LABEL maintainer="Krisna AI Team"
-LABEL description="Production Web Studio & Control Plane for Krisna"
+LABEL maintainer="Krivex AI Team"
+LABEL description="Production Web Studio & Control Plane for Krivex"
 
 WORKDIR /app
 
@@ -18,9 +18,9 @@ COPY inference/frontend/ ./
 
 ENV PORT=3000 \
     NODE_ENV=production \
-    KRISNA_BACKEND_URL=http://inference:8420 \
-    KRISNA_BACKEND_HOST=inference \
-    KRISNA_BACKEND_PORT=8420
+    KRIVEX_BACKEND_URL=http://inference:8420 \
+    KRIVEX_BACKEND_HOST=inference \
+    KRIVEX_BACKEND_PORT=8420
 
 EXPOSE 3000
 

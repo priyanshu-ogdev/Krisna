@@ -64,7 +64,7 @@ def collect() -> dict[str, Any]:
     planner_download = ROOT / "scripts/inference/download_planner_models.py"
 
     pair_dir = ROOT / "data/polish_qwen_image21_pairs"
-    data_roots = [ROOT / "data_krisna", ROOT / "custom_data_root"]
+    data_roots = [ROOT / "data_krivex", ROOT / "custom_data_root"]
 
     qwen_trainer = ROOT / "third_party/diffusers/examples/dreambooth/train_dreambooth_lora_qwenimage21_img2img.py"
     report: dict[str, Any] = {
@@ -74,15 +74,15 @@ def collect() -> dict[str, Any]:
                 config, r'^pretrained_model_name_or_path:\s*["\']([^"\']+)', "Qwen/Qwen-Image-2.1"
             ),
             "polish_backend_default": _regex(
-                backend, r'KRISNA_POLISH_MODEL_ID",\s*"([^"]+)"', "Qwen/Qwen-Image-2.1"
+                backend, r'KRIVEX_POLISH_MODEL_ID",\s*"([^"]+)"', "Qwen/Qwen-Image-2.1"
             ),
             "planner_gguf_repository": _regex(
-                planner_download, r'KRISNA_PLANNER_GGUF_REPO",\s*"([^"]+)"', "unsloth/Qwen3.5-9B-GGUF"
+                planner_download, r'KRIVEX_PLANNER_GGUF_REPO",\s*"([^"]+)"', "unsloth/Qwen3.5-9B-GGUF"
             ),
         },
         "trainability": {
             "planner": "frozen (Qwen3.5-9B canonical + UICrit RAG, PRD §6 no-RLHF)",
-            "layout": "deterministic baseline (krisna.layout.v1 Layout IR); LayoutFlow/MaskGIT retired",
+            "layout": "deterministic baseline (krivex.layout.v1 Layout IR); LayoutFlow/MaskGIT retired",
             "polish_default": "intended LoRA/DoRA; trainer contract pinned to Qwen-Image-2.1",
             "polish_quality": "intended frozen; verify no adapter is injected",
             "polish_dpo": "active Flow-Matching DPO preference alignment (Wallace et al. 2024; Kim et al. 2024)",
@@ -113,7 +113,7 @@ def collect() -> dict[str, Any]:
             "qwen_pair_files": _file_count(pair_dir),
             "qwen_metadata_rows": _metadata_rows(pair_dir / "metadata.jsonl"),
             "data_roots": [],
-            "preference_db": _preference_count(ROOT / "krisna_preference_pairs.db"),
+            "preference_db": _preference_count(ROOT / "krivex_preference_pairs.db"),
         },
         "artifacts": {
             "models_files": _file_count(ROOT / "models", "*") if (ROOT / "models").is_dir() else 0,
@@ -163,7 +163,7 @@ def main() -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
 
-    print("Krisna training pipeline audit (read-only)")
+    print("Krivex training pipeline audit (read-only)")
     print(f"Repository: {report['repository']}")
     print("Primary trainable tier (PRD §6 Single-Trainable-Tier):")
     for m in report['verdict']['active_trainable_models']:

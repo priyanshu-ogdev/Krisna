@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # scripts/data-forge/run_data_forge.sh
-# Core launcher for the Krisna Data-Forge automated pipeline.
+# Core launcher for the Krivex Data-Forge automated pipeline.
 #
 # Usage:
 #   ./scripts/data-forge/run_data_forge.sh doctor

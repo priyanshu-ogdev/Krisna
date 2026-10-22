@@ -2,7 +2,7 @@
 set -euo pipefail
 # Run from the monorepo root: ./scripts/inference/setup_env.sh
 
-echo -e "\033[1;36mSetting up Krisna Inference environment (Linux)...\033[0m"
+echo -e "\033[1;36mSetting up Krivex Inference environment (Linux)...\033[0m"
 
 python3 -m venv .venv
 source .venv/bin/activate
