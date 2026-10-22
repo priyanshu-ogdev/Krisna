@@ -1,7 +1,7 @@
 {
-  "name": "krisna-inference-frontend",
+  "name": "krivex-inference-frontend",
   "version": "0.1.0",
-  "description": "Lightweight Node.js frontend for the Krisna Swap Orchestrator (inference service) — a Setup/Install view that drives scripts/inference/download_weights.py, and a Studio view that drives the FastAPI session API.",
+  "description": "Lightweight Node.js frontend for the Krivex Swap Orchestrator (inference service) — a Setup/Install view that drives scripts/inference/download_weights.py, and a Studio view that drives the FastAPI session API.",
   "type": "module",
   "main": "server.js",
   "scripts": {

@@ -1,4 +1,4 @@
-// Krisna inference control panel — frontend logic.
+// Krivex inference control panel — frontend logic.
 //
 // Three visual systems live here, each mirroring a real backend concept
 // rather than decorating one:
@@ -1261,7 +1261,7 @@ class GeneralizationEngine {
 
     const grid = 14;
     const cell = w / grid;
-    const seedBase = [...(sessionId || "krisna")].reduce((a, c) => a + c.charCodeAt(0), 0);
+    const seedBase = [...(sessionId || "krivex")].reduce((a, c) => a + c.charCodeAt(0), 0);
 
     for (let y = 0; y < grid; y++) {
       for (let x = 0; x < grid; x++) {
@@ -2302,7 +2302,7 @@ function downloadRenderPng() {
   if (!sessionState?.session_id) return;
   const a = document.createElement("a");
   a.href = `/api/session/${sessionState.session_id}/render`;
-  a.download = `krisna-render-${sessionState.session_id}.png`;
+  a.download = `krivex-render-${sessionState.session_id}.png`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -2314,7 +2314,7 @@ function exportDesignStateJson() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `krisna-design-state-${sessionState.session_id || "session"}.json`;
+  a.download = `krivex-design-state-${sessionState.session_id || "session"}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

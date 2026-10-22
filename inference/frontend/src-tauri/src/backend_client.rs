@@ -20,8 +20,8 @@ pub struct BackendClient {
 
 impl Default for BackendClient {
     fn default() -> Self {
-        let host = std::env::var("KRISNA_BACKEND_HOST").unwrap_or_else(|_| DEFAULT_HOST.into());
-        let port = std::env::var("KRISNA_BACKEND_PORT")
+        let host = std::env::var("KRIVEX_BACKEND_HOST").unwrap_or_else(|_| DEFAULT_HOST.into());
+        let port = std::env::var("KRIVEX_BACKEND_PORT")
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(DEFAULT_PORT);

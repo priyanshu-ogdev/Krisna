@@ -1,7 +1,7 @@
-# Krisna Inference — Node.js control panel
+# Krivex Inference — Node.js control panel
 
 A lightweight Node.js frontend (Express, one dependency) for the Python
-inference service (`inference/src/krisna_inference/orchestrator/service.py`).
+inference service (`inference/src/krivex_inference/orchestrator/service.py`).
 It does three jobs, and none of them touch MockBackend — this panel only
 ever drives the real inference stack:
 
@@ -9,9 +9,9 @@ ever drives the real inference stack:
    (spawned as a child process, streamed to the browser over Server-Sent
    Events) to download the configured model artifacts and locate this
    repo's own trained artifacts, then writes `.env.inference` at the repo
-   root with `KRISNA_USE_REAL_BACKENDS=1`.
+   root with `KRIVEX_USE_REAL_BACKENDS=1`.
 2. **Backend management** — starts/stops the real FastAPI/uvicorn service
-   itself, as a child process, with `KRISNA_USE_REAL_BACKENDS=1` forced
+   itself, as a child process, with `KRIVEX_USE_REAL_BACKENDS=1` forced
    regardless of what's in `.env.inference`. If `.env.inference` already
    exists when `npm start` runs, the backend comes up automatically — no
    second terminal, no command to remember.
@@ -79,11 +79,11 @@ Env vars (all optional):
 | Var                       | Default                     | Meaning                                          |
 |----------------------------|------------------------------|---------------------------------------------------|
 | `PORT`                     | `3100`                       | This frontend's own port                           |
-| `KRISNA_BACKEND_URL`       | `http://127.0.0.1:8420`      | Where the Studio tab's proxy sends session calls    |
-| `KRISNA_BACKEND_HOST`      | `127.0.0.1`                  | Host this panel binds the backend to when it starts |
-| `KRISNA_BACKEND_PORT`      | `8420`                       | Port this panel binds the backend to when it starts |
-| `KRISNA_PYTHON_BIN`        | `<repo>/.venv/bin/python`    | Interpreter used for both the installer and the backend |
-| `KRISNA_INFERENCE_APP_DIR` | (unset — normal package import) | Only set this if running against the source tree instead of a `pip install -e` |
+| `KRIVEX_BACKEND_URL`       | `http://127.0.0.1:8420`      | Where the Studio tab's proxy sends session calls    |
+| `KRIVEX_BACKEND_HOST`      | `127.0.0.1`                  | Host this panel binds the backend to when it starts |
+| `KRIVEX_BACKEND_PORT`      | `8420`                       | Port this panel binds the backend to when it starts |
+| `KRIVEX_PYTHON_BIN`        | `<repo>/.venv/bin/python`    | Interpreter used for both the installer and the backend |
+| `KRIVEX_INFERENCE_APP_DIR` | (unset — normal package import) | Only set this if running against the source tree instead of a `pip install -e` |
 
 ## Where the real, this-repo-trained artifacts actually come from
 
@@ -118,7 +118,7 @@ name alone.
   Python orchestrator, which is the actual product of this repo's
   `inference/` package. This frontend never talks to a GPU, a model, or
   the SQLite session store directly — it manages the *process* that does.
-- `KRISNA_USE_REAL_BACKENDS=1` is forced by `BackendProcess.start()`
+- `KRIVEX_USE_REAL_BACKENDS=1` is forced by `BackendProcess.start()`
   regardless of what's already in the environment or `.env.inference`.
   MockBackend remains a legitimate, useful mode inside
   `orchestrator/service.py` (tests rely on it), but this control panel

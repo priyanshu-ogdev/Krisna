@@ -1,4 +1,4 @@
-// Lightweight Node.js frontend for the Krisna inference service.
+// Lightweight Node.js frontend for the Krivex inference service.
 //
 // Two jobs, on purpose kept in one small Express app rather than a
 // framework: (1) proxy the Studio UI's session calls to the real FastAPI
@@ -8,7 +8,7 @@
 //
 // This process holds NO model weights and does NO GPU work itself — it's
 // a thin control-plane in front of the Python service, which is the
-// actual inference layer (see inference/src/krisna_inference/orchestrator).
+// actual inference layer (see inference/src/krivex_inference/orchestrator).
 
 import express from "express";
 import { spawn } from "node:child_process";
@@ -30,14 +30,14 @@ function findRepoRoot(startDir) {
   return path.resolve(startDir, "..", "..");
 }
 
-const REPO_ROOT = process.env.KRISNA_REPO_ROOT || findRepoRoot(__dirname);
+const REPO_ROOT = process.env.KRIVEX_REPO_ROOT || findRepoRoot(__dirname);
 const ENV_FILE = path.join(REPO_ROOT, ".env.inference");
 const DOWNLOAD_SCRIPT = path.join(REPO_ROOT, "scripts", "inference", "download_weights.py");
 
 const PORT = process.env.PORT || 3100;
-const BACKEND_URL = process.env.KRISNA_BACKEND_URL || "http://127.0.0.1:8420";
+const BACKEND_URL = process.env.KRIVEX_BACKEND_URL || "http://127.0.0.1:8420";
 function resolvePythonBin() {
-  if (process.env.KRISNA_PYTHON_BIN) return process.env.KRISNA_PYTHON_BIN;
+  if (process.env.KRIVEX_PYTHON_BIN) return process.env.KRIVEX_PYTHON_BIN;
   const isWin = process.platform === "win32";
   const venvPython = isWin
     ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
@@ -47,14 +47,14 @@ function resolvePythonBin() {
 }
 
 const PYTHON_BIN = resolvePythonBin();
-const BACKEND_HOST = process.env.KRISNA_BACKEND_HOST || "127.0.0.1";
-const BACKEND_PORT = process.env.KRISNA_BACKEND_PORT || "8420";
-// Where the installed `krisna_inference`/`krisna_training` packages live.
+const BACKEND_HOST = process.env.KRIVEX_BACKEND_HOST || "127.0.0.1";
+const BACKEND_PORT = process.env.KRIVEX_BACKEND_PORT || "8420";
+// Where the installed `krivex_inference`/`krivex_training` packages live.
 // `pip install -e inference/` + `pip install -e training/` (see
 // inference-frontend/README.md) puts them on the interpreter's own
 // site-packages, so no --app-dir is needed by default; set this only if
 // running uvicorn against the source tree directly instead of an install.
-const BACKEND_APP_DIR = process.env.KRISNA_INFERENCE_APP_DIR || null;
+const BACKEND_APP_DIR = process.env.KRIVEX_INFERENCE_APP_DIR || null;
 
 const app = express();
 app.use(express.json());
@@ -162,13 +162,13 @@ function scanCheckpoints() {
 
 app.get("/api/checkpoints/scan", (_req, res) => res.json(scanCheckpoints()));
 app.get("/api/system/info", (_req, res) => res.json({
-  targetGpu: process.env.KRISNA_TARGET_GPU || "NVIDIA RTX A6000 (48GB VRAM)",
-  targetRam: process.env.KRISNA_TARGET_RAM || "128GB System RAM",
-  lowVramTarget: process.env.KRISNA_VRAM_ENVELOPE_GB
-    ? `${process.env.KRISNA_VRAM_ENVELOPE_GB}GB envelope`
+  targetGpu: process.env.KRIVEX_TARGET_GPU || "NVIDIA RTX A6000 (48GB VRAM)",
+  targetRam: process.env.KRIVEX_TARGET_RAM || "128GB System RAM",
+  lowVramTarget: process.env.KRIVEX_VRAM_ENVELOPE_GB
+    ? `${process.env.KRIVEX_VRAM_ENVELOPE_GB}GB envelope`
     : "12-16GB envelope",
   backendUrl: BACKEND_URL,
-  backendMode: process.env.KRISNA_USE_REAL_BACKENDS === "1" ? "real" : "mock",
+  backendMode: process.env.KRIVEX_USE_REAL_BACKENDS === "1" ? "real" : "mock",
   os: process.platform,
   arch: process.arch,
 }));
@@ -209,7 +209,7 @@ function parseEnvFile() {
 // here (not just documented as a second terminal command) so "npm start"
 // is the whole seamless flow: install once in the Setup tab, then this
 // process brings the real backend up itself, every time, with
-// KRISNA_USE_REAL_BACKENDS=1 forced — MockBackend is a legitimate test
+// KRIVEX_USE_REAL_BACKENDS=1 forced — MockBackend is a legitimate test
 // mode inside the Python package (see orchestrator/service.py), but this
 // control panel never launches it. If .env.inference doesn't exist yet
 // (install hasn't run), this stays idle rather than guessing at env vars
@@ -244,7 +244,7 @@ class BackendProcess extends EventEmitter {
 
     const args = [
       "-m", "uvicorn",
-      "krisna_inference.orchestrator.service:app",
+      "krivex_inference.orchestrator.service:app",
       "--host", BACKEND_HOST,
       "--port", String(BACKEND_PORT),
     ];
@@ -257,7 +257,7 @@ class BackendProcess extends EventEmitter {
       // has exactly one supported way to run the backend, and it isn't
       // the mock one. If envVars already says 1 (the installer always
       // writes it), this is a no-op; it only matters as a hard guarantee.
-      KRISNA_USE_REAL_BACKENDS: "1",
+      KRIVEX_USE_REAL_BACKENDS: "1",
     };
 
     const child = spawn(PYTHON_BIN, args, { cwd: REPO_ROOT, env: childEnv });
@@ -627,7 +627,7 @@ app.post("/api/session/:id/critique", (req, res) =>
 app.get("/api/preference-pairs/stats", (_req, res) => proxyJson(res, "GET", "/preference-pairs/stats"));
 
 app.listen(PORT, () => {
-  console.log(`Krisna inference frontend listening on http://127.0.0.1:${PORT}`);
+  console.log(`Krivex inference frontend listening on http://127.0.0.1:${PORT}`);
   console.log(`Proxying Studio API calls to backend at ${BACKEND_URL}`);
   console.log(`Install job runs: ${PYTHON_BIN} ${DOWNLOAD_SCRIPT}`);
 });
