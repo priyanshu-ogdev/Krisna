@@ -71,11 +71,12 @@ def test_default_data_root_matches_sync_to_training_default(tmp_path, monkeypatc
     ],
 )
 def test_explicit_data_root_env_var_is_still_honored_verbatim(
-    env_value: str, monkeypatch
+    env_value: str, monkeypatch, tmp_path: Path
 ) -> None:
     """An explicit DATA_ROOT override (the supported escape hatch) must
     still be honored exactly as given — this fix only changes the
     fallback used when nothing is set."""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DATA_ROOT", env_value)
     config = load_config()
     assert config.data_root == Path(env_value)
