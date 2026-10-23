@@ -30,6 +30,7 @@ args = [
     "--inference-steps", str(config.get("validation_num_inference_steps", 40)),
     "--rank", str(config["rank"]), "--lora-alpha", str(config["lora_alpha"]),
     "--lora-target-modules", config.get("lora_layers", ""),
+    "--adaptation", "dora" if config.get("use_dora", True) else "lora",
     "--dataset-manifest-sha256", receipt["manifest_sha256"],
     "--split-counts-json", json.dumps(receipt["split_counts"], sort_keys=True),
 ]

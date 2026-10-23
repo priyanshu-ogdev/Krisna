@@ -27,4 +27,37 @@ pip install -r "$DIFFUSERS_DIR/examples/dreambooth/requirements.txt"
 pip install "accelerate==1.10.1" "peft==0.17.1" "datasets==4.2.1" "pyarrow==21.0.0"
 
 test -f "$DIFFUSERS_DIR/examples/dreambooth/train_dreambooth_lora_qwenimage21_img2img.py"
+
+# Idempotently inject native DoRA (Weight-Decomposed Low-Rank Adaptation, Liu et al. ICML 2024)
+# into the pinned Qwen DreamBooth img2img trainer script.
+python3 -c "
+import sys
+from pathlib import Path
+
+script_path = Path('$DIFFUSERS_DIR/examples/dreambooth/train_dreambooth_lora_qwenimage21_img2img.py')
+if not script_path.is_file():
+    sys.exit(0)
+content = script_path.read_text(encoding='utf-8')
+if '--use_dora' not in content:
+    arg_target = 'parser.add_argument(\"--lora_dropout\", type=float, default=0.0, help=\"Dropout probability for LoRA layers\")'
+    dora_arg = '\n    parser.add_argument(\n        \"--use_dora\",\n        action=\"store_true\",\n        default=False,\n        help=\"Whether to use DoRA (Weight-Decomposed Low-Rank Adaptation) instead of standard LoRA.\",\n    )'
+    if arg_target in content:
+        content = content.replace(arg_target, arg_target + dora_arg)
+    else:
+        sys.exit('Missing parser lora_dropout anchor')
+
+    lora_target = 'init_lora_weights=\"gaussian\",\n        target_modules=target_modules,'
+    dora_lora = 'init_lora_weights=\"gaussian\",\n        target_modules=target_modules,\n        use_dora=args.use_dora,'
+    if lora_target in content:
+        content = content.replace(lora_target, dora_lora)
+    else:
+        sys.exit('Missing LoraConfig target_modules anchor')
+
+    script_path.write_text(content, encoding='utf-8')
+    print('Successfully applied native DoRA patch to ' + str(script_path))
+else:
+    print('Native DoRA patch already present in ' + str(script_path))
+"
+
 echo "Pinned native Qwen-Image-2.1 trainer ready at $DIFFUSERS_DIR/examples/dreambooth/train_dreambooth_lora_qwenimage21_img2img.py"
+

@@ -118,3 +118,77 @@ def test_qlora_rejects_invalid_quant_type() -> None:
     cfg["bnb_4bit_quant_type"] = "invalid_quant"
     with pytest.raises(ValueError, match="unsupported bnb_4bit_quant_type"):
         prepare_trainer_config(cfg)
+
+
+def test_command_builder_emits_use_dora_flag_when_true() -> None:
+    cfg = _config()
+    cfg["use_dora"] = True
+    cmd = build_accelerate_command(cfg, "third_party/diffusers")
+    assert "--use_dora" in cmd
+
+
+def test_command_builder_omits_use_dora_flag_when_false() -> None:
+    cfg = _config()
+    cfg["use_dora"] = False
+    cmd = build_accelerate_command(cfg, "third_party/diffusers")
+    assert "--use_dora" not in cmd
+    assert not any("--use_dora" in arg for arg in cmd)
+
+
+def test_checked_in_config_emits_use_dora_in_accelerate_command() -> None:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    cfg = yaml.safe_load((root / "training/configs/polish_qwen_image21_lora.yaml").read_text())
+    cmd = build_accelerate_command(cfg, "third_party/diffusers")
+    assert "--use_dora" in cmd
+
+
+def test_verify_diffusers_checkout_rejects_missing_dora_markers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from krivex_training.polish.qwen_trainer_contract import DIFFUSERS_REVISION, verify_diffusers_checkout
+
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    trainer_dir = tmp_path / "examples" / "dreambooth"
+    trainer_dir.mkdir(parents=True)
+    trainer_script = trainer_dir / "train_dreambooth_lora_qwenimage21_img2img.py"
+
+    # Script without --use_dora or use_dora
+    trainer_script.write_text("class QwenImage21Pipeline:\n    cond_image_column = 'cond'\n    image_column = 'img'\n")
+
+    monkeypatch.setattr(
+        "subprocess.check_output",
+        lambda cmd, **kwargs: DIFFUSERS_REVISION if "rev-parse" in cmd else "",
+    )
+
+    with pytest.raises(ValueError, match="missing.*use_dora"):
+        verify_diffusers_checkout(tmp_path)
+
+
+def test_verify_diffusers_checkout_accepts_patched_dora_script(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from krivex_training.polish.qwen_trainer_contract import DIFFUSERS_REVISION, verify_diffusers_checkout
+
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    trainer_dir = tmp_path / "examples" / "dreambooth"
+    trainer_dir.mkdir(parents=True)
+    trainer_script = trainer_dir / "train_dreambooth_lora_qwenimage21_img2img.py"
+
+    # Fully patched script
+    trainer_script.write_text(
+        "class QwenImage21Pipeline:\n"
+        "    cond_image_column = 'cond'\n"
+        "    image_column = 'img'\n"
+        "    # --use_dora flag\n"
+        "    use_dora = True\n"
+    )
+
+    monkeypatch.setattr(
+        "subprocess.check_output",
+        lambda cmd, **kwargs: DIFFUSERS_REVISION if "rev-parse" in cmd else "",
+    )
+
+    script, dirty = verify_diffusers_checkout(tmp_path)
+    assert script == trainer_script
+    assert dirty is False
+

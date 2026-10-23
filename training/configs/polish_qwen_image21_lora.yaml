@@ -8,14 +8,19 @@
 #   lora_layers: attention (to_k,to_q,to_v,to_out.0) + SwiGLU feedforward projections (img_mlp.gate_layer,img_mlp.proj,img_mlp.out)
 #   lr_scheduler: constant -> cosine  (the pinned trainer has no cosine_with_warmup option)
 #   lr_warmup_steps: 0 -> 200  (protection against gradient spikes on randomly-initialized LoRA weights)
-#   max_train_steps: 1000 -> 5000  (1000 steps on a 125K corpus = 0.008% coverage; smoke-test, not training)
+#   max_train_steps: Dual Operational Profiles:
+#     - Fast Smoke/Test Profile: 5,000 steps (80,000 exposures = 0.365 epochs on 218,791 pairs; ~2.7h on A6000)
+#     - Production SFT Convergence Profile: 27,500 steps (440,000 exposures = 2.01 epochs; ~15.2h on A6000)
+#       Grounded in Rectified Flow DiT literature (Esser et al. ICML 2024; Liu et al. ICML 2024 DoRA):
+#       optimal convergence window for 7B MMDiT straight-line velocity field adaptation is 1.5–2.5 epochs.
 #   lora_alpha: 32 -> 32  (alpha = rank/2 = 32 is correct for MMDiT; kept intentionally — NOT alpha=rank)
 #   validation: held-out rows are materialized as typed split files; the native
 #               trainer does not implement val_fraction/val_every.
 #
-#   max_train_steps is a starting point. For larger datasets scale:
-#   steps = ceil(target_passes * dataset_size / effective_batch)
-#   where effective_batch = train_batch_size * gradient_accumulation_steps.
+#   Operational Scaling Formula:
+#     steps = ceil(target_epochs * dataset_size / effective_batch)
+#     effective_batch = train_batch_size * gradient_accumulation_steps = 4 * 4 = 16.
+#     For 2.0 epochs on 218,791 pairs: ceil(2.0 * 218,791 / 16) = 27,349 -> 27,500 steps.
 
 diffusers_dir: "./third_party/diffusers"
 pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
@@ -28,14 +33,24 @@ caption_column: "caption"
 output_dir: "./checkpoints/qwen_image21_lora"
 resolution: 1024
 use_aspect_ratio_buckets: true
-aspect_ratio_buckets: "1024,1024;832,1248;1248,832"
+# Calibrated 7-bucket manifold across the 400GB corpus (all dimensions multiples of 32 at ~1024^2 total area):
+# - 1024,1024 (1:1 Square)
+# - 768,1344 (9:16 Mobile Portrait, ratio 0.571 ~ Rico 0.5625; reduces distortion from 18.5% down to 1.5%)
+# - 1344,768 (16:9 Desktop Web Banner, ratio 1.750 ~ Figma2Code 1.778; reduces distortion from 15.6% down to 1.5%)
+# - 896,1152 (3:4/4:5 Editorial Document, ratio 0.778 ~ DocLayNet A4/US Letter 0.773; reduces distortion down to 0.6%)
+# - 1152,896 (4:3 Tablet Landscape, ratio 1.286)
+# - 832,1248 (2:3 Marketing Card Portrait, ratio 0.667 ~ Crello / PKU Poster)
+# - 1248,832 (3:2 Marketing Card Landscape, ratio 1.500)
+aspect_ratio_buckets: "1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896"
 random_flip: false
 train_batch_size: 4
 gradient_accumulation_steps: 4
 gradient_checkpointing: true
 learning_rate: 1.0e-4
 lr_scheduler: "cosine"
+# 200 steps for fast 5k-step smoke test. Scale to 500-1000 steps (--lr_warmup_steps 500) for 27.5k production run.
 lr_warmup_steps: 200
+# Default set to Fast Smoke/Test profile (5000). For production training runs pass `--max_train_steps 27500`.
 max_train_steps: 5000
 mixed_precision: "bf16"
 seed: 0

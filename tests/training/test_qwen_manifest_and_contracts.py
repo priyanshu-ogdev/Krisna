@@ -77,7 +77,27 @@ def test_qwen_manifest_records_training_serving_boundary() -> None:
 
     assert manifest["base_model"] == MODEL_ID
     assert manifest["pipeline"] == "QwenImage21Pipeline"
+    assert manifest["adaptation"] == "dora"
+    assert manifest["use_dora"] is True
     assert validate_manifest(manifest)["split_counts"]["train"] == 10
+
+
+def test_qwen_manifest_supports_lora_adaptation_toggle() -> None:
+    manifest = build_manifest(
+        adapter_path="checkpoints/qwen_lora",
+        base_revision=BASE_REVISION,
+        dataset_manifest_sha256="c" * 64,
+        split_counts={"train": 5},
+        lora_target_modules=["to_q"],
+        rank=32,
+        adaptation="lora",
+        use_dora=False,
+    )
+    assert manifest["adaptation"] == "lora"
+    assert manifest["use_dora"] is False
+    assert validate_manifest(manifest)["split_counts"]["train"] == 5
+
+
 
 
 def test_strict_qwen_manifest_rejects_missing_receipt() -> None:

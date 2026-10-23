@@ -23,10 +23,15 @@ def main() -> int:
     parser.add_argument("--dataset-manifest-sha256")
     parser.add_argument("--split-counts-json")
     parser.add_argument("--lora-target-modules", default="")
+    parser.add_argument("--adaptation", default="dora", choices=["dora", "lora", "adalora"])
+    parser.add_argument("--use-dora", dest="use_dora", action="store_true", default=None)
+    parser.add_argument("--no-use-dora", dest="use_dora", action="store_false")
     args = parser.parse_args()
+    use_dora = args.use_dora if args.use_dora is not None else (args.adaptation == "dora")
     print(write_manifest(args.adapter_path, dataset_dir=args.dataset_dir, resolution=args.resolution,
                          inference_steps=args.inference_steps, rank=args.rank,
                          lora_alpha=args.lora_alpha, base_revision=args.base_revision,
+                         adaptation=args.adaptation, use_dora=use_dora,
                          dataset_manifest_sha256=args.dataset_manifest_sha256,
                          split_counts=json.loads(args.split_counts_json) if args.split_counts_json else None,
                          lora_target_modules=[item for item in args.lora_target_modules.split(",") if item]))

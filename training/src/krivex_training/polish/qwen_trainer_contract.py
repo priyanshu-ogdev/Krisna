@@ -45,6 +45,7 @@ SUPPORTED_OPTIONS = {
     "rank",
     "lora_alpha",
     "lora_dropout",
+    "use_dora",
     "with_prior_preservation",
     "prior_loss_weight",
     "num_class_images",
@@ -107,7 +108,6 @@ METADATA_ONLY_KEYS = {
     "base_weights_frozen",
     "val_fraction",
     "val_every",
-    "use_dora",
     "load_in_4bit",
     "bnb_4bit_quant_type",
     "bnb_4bit_compute_dtype",
@@ -155,7 +155,8 @@ def prepare_trainer_config(raw: dict[str, Any]) -> dict[str, Any]:
     if "use_dora" in cfg:
         if not isinstance(cfg["use_dora"], bool):
             raise ValueError("use_dora must be a boolean")
-        cfg.pop("use_dora")
+    else:
+        cfg["use_dora"] = False
     if "load_in_4bit" in cfg:
         if not isinstance(cfg["load_in_4bit"], bool):
             raise ValueError("load_in_4bit must be a boolean")
@@ -269,7 +270,7 @@ def verify_diffusers_checkout(diffusers_dir: str | Path) -> tuple[Path, bool]:
     if not script.is_file():
         raise ValueError(f"native Qwen trainer is missing: {script}")
     source = script.read_text(encoding="utf-8", errors="replace")
-    required_markers = ("QwenImage21Pipeline", "cond_image_column", "image_column")
+    required_markers = ("QwenImage21Pipeline", "cond_image_column", "image_column", "--use_dora", "use_dora")
     missing = [marker for marker in required_markers if marker not in source]
     if missing:
         raise ValueError(f"trainer is not the native typed Qwen img2img contract; missing {missing}")
