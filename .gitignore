@@ -117,6 +117,8 @@ data-forge/**/*.tfrecord
 data-forge/**/*.npz
 reports/generated/
 *.safetensors.index.json
+*receipt*.json
+eval_results/
 
 # OS, IDE, and local runner files
 .DS_Store

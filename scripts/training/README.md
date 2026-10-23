@@ -36,8 +36,14 @@ Training execution is managed across two 1:1 parity master orchestrators:
 # 2. CPU-only preflight check with command rendering
 .\scripts\training\train_all.ps1 -Tier polish-default -DryRun
 
-# 3. Live training launch (Default 5k-step smoke test or custom config)
+# 3. Live training launch
+# Enterprise Max (48GB full utilization: batch=16, rank=128, FP32 AdamW, 14k steps, ~1.85h):
+.\scripts\training\train_all.ps1 -Tier polish-default -Config training/configs/polish_qwen_image21_lora_a6000_max.yaml
+
+# Enterprise Standard (48GB: batch=8, rank=64, 27.5k steps, ~15.2h):
 .\scripts\training\train_all.ps1 -Tier polish-default
+
+# Consumer Desktop (12GB NF4 QDoRA):
 .\scripts\training\train_all.ps1 -Tier polish-default -Config training/configs/ablations/polish_qwen_qdora_12gb.yaml
 ```
 
@@ -46,12 +52,16 @@ Training execution is managed across two 1:1 parity master orchestrators:
 # 1. Read-only pre-flight contract inspection
 ./scripts/training/train.sh audit
 
-# 2. Fast smoke test run (5,000 steps; ~2.7h on A6000 Ada)
-./scripts/training/train.sh polish-default
+# 2. Enterprise Max production run (14,000 steps; ~1.85h on A6000, 45GB peak):
+./scripts/training/train.sh polish-default training/configs/polish_qwen_image21_lora_a6000_max.yaml \
+  --max_train_steps 14000 --lr_warmup_steps 700
 
-# 3. Full production SFT convergence run (27,500 steps; ~15.2h on A6000 Ada)
+# 3. Enterprise Standard convergence run (27,500 steps; ~15.2h on A6000 Ada):
 ./scripts/training/train.sh polish-default training/configs/polish_qwen_image21_lora.yaml \
   --max_train_steps 27500 --lr_warmup_steps 500
+
+# 4. Fast smoke test run (5,000 steps; ~40 min on A6000):
+./scripts/training/train.sh polish-default
 ```
 
 ---

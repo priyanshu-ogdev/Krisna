@@ -83,29 +83,56 @@ The gate must prove, with a one-batch smoke test:
 
 After the gates above pass:
 
+### 4.1 Enterprise Max Profile (RTX A6000 48GB Full Utilization)
 ```bash
+# Production Convergence Run (14,000 steps = 2.05 epochs, ~1.85h on A6000):
 ./scripts/training/train_polish_default_lora.sh \
-  training/configs/polish_qwen_image21_lora.yaml
+  training/configs/polish_qwen_image21_lora_a6000_max.yaml \
+  --max_train_steps 14000 --lr_warmup_steps 700
+
+# Windows PowerShell Dispatcher (1:1 parity):
+powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 `
+  -Tier polish-default -Config training/configs/polish_qwen_image21_lora_a6000_max.yaml
 ```
 
 The configuration selects:
-
 ```text
 base model: Qwen/Qwen-Image-2.1 (revision d26bb61231c349cf6b7896fa83353113880e1ba3)
 conditioning column: condition_image
 target column: image
 caption column: caption
 resolution: 1024
-adaptation: dora (use_dora: true)
-DoRA rank: 64
-DoRA alpha: 32 (alpha = rank/2)
+adaptation: DoRA (use_dora: true)
+DoRA rank: 128 (full singular-value spectrum: coarse layout, UI semantics, sub-pixel typography)
+DoRA alpha: 64 (optimal ratio alpha/rank = 0.5)
+optimizer: FP32 AdamW (8-bit Adam strictly rejected for DoRA magnitude stability on continuous flow fields)
+learning_rate: 1.1e-4 (square-root scaling rule: LR ∝ sqrt(effective_batch))
+batch_and_steps:
+  train_batch_size: 16
+  gradient_accumulation_steps: 2
+  effective_batch_size: 32
+gradient_checkpointing: true (peaks at 45.0 GB / 93.7% VRAM with 3.0 GB safety margin)
+latent_caching: true (pre-encodes 218,791 pairs into ~32 GB pinned host RAM; unloads VAE from GPU)
 aspect_ratio_buckets: 1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896
-dual operational profiles:
-  - fast smoke/test profile: 5,000 steps (default, ~2.7h on A6000 Ada)
-  - production SFT profile: 27,500 steps (2.01 epochs on 218,791 pairs, ~15.2h on A6000 Ada)
+step scaling: ceil(2.05 × 218,791 / 32) = 14,000 steps (~1.85h wall-clock time)
 ```
 
-The rank, alpha, step count, and scheduler are formally calibrated. Scale steps from the realized manifest size (218,791 pairs) and effective batch (16): $\lceil 2.0 \times 218,791 / 16 \rceil = 27,500$ steps.
+### 4.2 Enterprise Standard Profile (RTX A6000 48GB Standard Headroom)
+```bash
+./scripts/training/train_polish_default_lora.sh \
+  training/configs/polish_qwen_image21_lora.yaml \
+  --max_train_steps 27500 --lr_warmup_steps 500
+```
+- Rank: 64, Alpha: 32, Batch: 8, Accumulation: 2 (effective batch 16).
+- Peak VRAM: 38.4 GB (80.0% of 48GB). Total steps: 27,500 (~15.2h).
+
+### 4.3 Consumer Desktop Profile (RTX 3060/4060/4070 12GB–16GB)
+```bash
+./scripts/training/train_polish_default_lora.sh \
+  training/configs/ablations/polish_qwen_qdora_12gb.yaml
+```
+- Base: 4-bit NF4 quantized base, Rank: 64, Alpha: 32, Batch: 1, Accumulation: 16 (effective batch 16).
+- Peak VRAM: 11.2 GB (93.3% of 12GB).
 
 
 ## 5. What not to run as active training

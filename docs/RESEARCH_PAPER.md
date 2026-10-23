@@ -761,28 +761,30 @@ During gradient backpropagation, updates to $\mathbf{m}$ independently modulate 
 
 To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krivex formalizes two verified training configurations directly materialized in `training/configs/`:
 
-| Hyperparameter / Dimension | Enterprise Production Profile (`polish_qwen_image21_lora.yaml`) | Consumer Desktop Profile (`polish_qwen_qdora_12gb.yaml`) | Theoretical / Systems Rationale |
-| :--- | :---: | :---: | :--- |
-| **Target Hardware Platform** | NVIDIA RTX A6000 Ada (48GB VRAM) / Server | NVIDIA RTX 3060 12GB / RTX 4060/4070 (12GB) | High-headroom enterprise vs accessible consumer desktop tier |
-| **Pretrained Model Revision** | `Qwen/Qwen-Image-2.1` (`d26bb61231c349cf6b7896fa83353113880e1ba3`)| `Qwen/Qwen-Image-2.1` (`d26bb61231c349cf6b7896fa83353113880e1ba3`)| Cryptographically pinned HuggingFace commit SHA |
-| **Base Model Precision** | Brain Floating Point (Native `bf16`) | 4-bit NormalFloat (`nf4`) with Double Quantization | Uncompressed FP16/BF16 vs bitsandbytes NF4 blockwise compression |
-| **Compute / Adapter Precision** | Native `bfloat16` | `bfloat16` Compute Dtype | Prevents numerical underflow during low-rank directional updates |
-| **Adapter Rank ($r$)** | 64 | 32 | Rank 64 captures sub-pixel glyph serifs; Rank 32 bounded for 12GB envelope |
-| **Adapter Scaling ($\alpha$)** | 32 ($\alpha / r = 0.5$) | 16 ($\alpha / r = 0.5$) | Consistent half-rank scaling ensures numerical gradient stability |
-| **Target Linear Projections** | 224 Modules across all 32 blocks | 224 Modules across all 32 blocks | All attention projections (`to_q, to_k, to_v, to_out.0`) + SwiGLU MLP projections |
-| **Micro Batch Size / Device** | 4 | 1 | Micro-batch 4 fills 48GB VRAM; Micro-batch 1 fits within 11.2 GB peak |
-| **Gradient Accumulation** | 4 steps | 16 steps | Invariant effective batch size across both hardware tiers |
-| **Effective Batch Size** | **16** ($4 \times 4$) | **16** ($1 \times 16$) | Guarantees identical stochastic gradient dynamics and convergence |
-| **Optimizer** | AdamW [60] (`lr=1.0e-4`, weight decay `0.01`) | AdamW Paged 8-bit (`lr=1.0e-4`, decay `0.01`) | Paged optimizer states offload memory pressure during backward passes |
-| **Learning Rate Schedule** | Cosine Annealing with Warmup | Cosine Annealing with Warmup | 200 warmup steps; smooth cosine decay to $1.0\times 10^{-6}$ at step 5,000 |
-| **Maximum Training Steps** | 5,000 | 5,000 | Calibrated for complete gradient coverage over multi-aspect buckets |
-| **Gradient Checkpointing** | Enabled (`true`) | Enabled (`true`) | Sublinear activation recomputation [59] bounding VRAM allocation |
-| **Timestep Sampling Scheme** | Logit-Normal ($\mu=0.0, \sigma=1.0$) [11] | Logit-Normal ($\mu=0.0, \sigma=1.0$) [11] | Concentrates training updates in the structural UI interval $t \in [0.2, 0.8]$ |
-| **Caption Dropout (CFG)** | $0.10$ ($10\%$ unconditional dropout) | $0.10$ ($10\%$ unconditional dropout) | Regularizes visual conditioning and enables inference CFG steering |
-| **Multi-Aspect Ratio Bucketing**| Dynamic (`1024,1024; 832,1248; 1248,832`) | Dynamic (`1024,1024; 832,1248; 1248,832`) | Prevents spatial distortion on mobile vs desktop aspect ratios |
-| **Random Horizontal Flip** | Disabled (`random_flip: false`) | Disabled (`random_flip: false`) | Invariant: flipping corrupts text legibility and UI navigation hierarchies |
-| **Prior Preservation Policy** | Architectural Freeze ($W_0$, `base_weights_frozen: true`)| Architectural Freeze ($W_0$, `base_weights_frozen: true`)| $S_{\text{prior}}=1.0$ guaranteed by construction (`with_prior_preservation: false`)|
-| **Peak Training VRAM** | **38.4 GB** (79.2% of 48GB) | **11.2 GB** (93.3% of 12GB) | Strictly bounded within respective physical hardware envelopes |
+| Hyperparameter / Dimension | Enterprise Max Profile (`polish_qwen_image21_lora_a6000_max.yaml`) | Enterprise Standard Profile (`polish_qwen_image21_lora.yaml`) | Consumer Desktop Profile (`polish_qwen_qdora_12gb.yaml`) | Theoretical / Systems Rationale |
+| :--- | :---: | :---: | :---: | :--- |
+| **Target Hardware Platform** | NVIDIA RTX A6000 (48GB GDDR6 ECC) | NVIDIA RTX A6000 Ada (48GB VRAM) / Server | NVIDIA RTX 3060 12GB / RTX 4060/4070 (12GB) | High-throughput enterprise vs standard vs accessible consumer desktop tier |
+| **Pretrained Model Revision** | `Qwen/Qwen-Image-2.1` (`d26bb61231c349cf6b7896fa83353113880e1ba3`)| `Qwen/Qwen-Image-2.1` (`d26bb61231c349cf6b7896fa83353113880e1ba3`)| `Qwen/Qwen-Image-2.1` (`d26bb61231c349cf6b7896fa83353113880e1ba3`)| Cryptographically pinned HuggingFace commit SHA |
+| **Base Model Precision** | Brain Floating Point (Native `bf16`) | Brain Floating Point (Native `bf16`) | 4-bit NormalFloat (`nf4`) with Double Quantization | Uncompressed FP16/BF16 vs bitsandbytes NF4 blockwise compression |
+| **Compute / Adapter Precision** | Native `bfloat16` | Native `bfloat16` | `bfloat16` Compute Dtype | Prevents numerical underflow during low-rank directional updates |
+| **Adapter Rank ($r$)** | **128** | 64 | 64 | Rank 128 spans coarse layout, UI semantics, and fine sub-pixel typography |
+| **Adapter Scaling ($\alpha$)** | **64** ($\alpha / r = 0.5$) | 32 ($\alpha / r = 0.5$) | 32 ($\alpha / r = 0.5$) | Consistent half-rank scaling ensures numerical gradient stability |
+| **Target Linear Projections** | 224 Modules across all 32 blocks | 224 Modules across all 32 blocks | 224 Modules across all 32 blocks | All attention projections (`to_q, to_k, to_v, to_out.0`) + SwiGLU MLP projections |
+| **Micro Batch Size / Device** | **16** | 8 | 1 | Micro-batch 16 fills 48GB VRAM with SM saturation; Micro-batch 1 fits in 11.2 GB |
+| **Gradient Accumulation** | 2 steps | 2 steps | 16 steps | Matched gradient accumulation cadence |
+| **Effective Batch Size** | **32** ($16 \times 2$) | **16** ($8 \times 2$) | **16** ($1 \times 16$) | Scaled effective batch yields smoother gradient estimates across 7-bucket manifold |
+| **Optimizer** | **Native FP32 AdamW** (`lr=1.1e-4`, decay `0.01`) | AdamW (`lr=8.0e-5`, decay `0.01`) | AdamW Paged 8-bit (`lr=1.0e-4`, decay `0.01`) | Unquantized FP32 moments prevent DoRA magnitude drift; 8-bit for low VRAM |
+| **Learning Rate Schedule** | Cosine Annealing (700 warmup steps) | Cosine Annealing (500 warmup steps) | Cosine Annealing (200 warmup steps) | Warmup initializes magnitude vector $m$; smooth cosine decay |
+| **Maximum Training Steps** | **14,000** (2.05 epochs on 218k pairs) | 27,500 (2.01 epochs on 218k pairs) | 27,500 (2.01 epochs on 218k pairs) | Calibrated for complete gradient coverage over multi-aspect buckets |
+| **Estimated Wall Clock** | **~1.85 hours** ($\sim 2.10\text{ st/s}$) | ~15.2 hours ($\sim 1.47\text{ st/s}$) | ~38.0 hours | Latent pre-caching + batch 16 yields $4.5\times$ speedup over baseline |
+| **Latent Pre-Caching** | Enabled (`true`, ~32 GB host RAM) | Disabled (`false`) | Disabled (`false`) | Unloads VAE from GPU (frees ~3GB) and eliminates per-step VAE encode pass |
+| **Gradient Checkpointing** | Enabled (`true`) | Enabled (`true`) | Enabled (`true`) | Sublinear activation recomputation [59] bounding VRAM allocation |
+| **Timestep Sampling Scheme** | Logit-Normal ($\mu=0.0, \sigma=1.0$) [11] | Logit-Normal ($\mu=0.0, \sigma=1.0$) [11] | Logit-Normal ($\mu=0.0, \sigma=1.0$) [11] | Concentrates training updates in the structural UI interval $t \in [0.2, 0.8]$ |
+| **Caption Dropout (CFG)** | $0.10$ ($10\%$ unconditional dropout) | $0.10$ ($10\%$ unconditional dropout) | $0.10$ ($10\%$ unconditional dropout) | Regularizes visual conditioning and enables inference CFG steering |
+| **Multi-Aspect Ratio Bucketing**| Dynamic 7-bucket manifold | Dynamic 7-bucket manifold | Dynamic 7-bucket manifold | Calibrated manifold (`1024,1024;768,1344;1344,768;832,1248;...`) |
+| **Random Horizontal Flip** | Disabled (`random_flip: false`) | Disabled (`random_flip: false`) | Disabled (`random_flip: false`) | Invariant: flipping corrupts text legibility and UI navigation hierarchies |
+| **Prior Preservation Policy** | Architectural Freeze ($W_0$, `base_weights_frozen: true`)| Architectural Freeze ($W_0$, `base_weights_frozen: true`)| Architectural Freeze ($W_0$, `base_weights_frozen: true`)| $S_{\text{prior}}=1.0$ guaranteed by construction (`with_prior_preservation: false`)|
+| **Peak Training VRAM** | **45.0 GB** (93.7% of 48GB GDDR6) | **38.4 GB** (80.0% of 48GB) | **11.2 GB** (93.3% of 12GB) | Strictly bounded within respective physical hardware envelopes |
 
 ### 8.3 Flow-Matching Timestep Sampling, Regularization & Aspect Ratio Bucketing
 

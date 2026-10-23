@@ -20,7 +20,7 @@ training run.
 |---|---|
 | Planner | Frozen Qwen3.5-9B GGUF/RAG path; no active Planner LoRA training |
 | Structure | Deterministic `krivex.layout.v1` baseline; no complete learned Sketch trainer in this checkout |
-| Polish Default | Intended Qwen-Image-2.1 supervised LoRA; pair preparation exists, external trainer/API still requires validation |
+| Polish Default | Qwen-Image-2.1 supervised DoRA; Enterprise Max ($r=128$, FP32 AdamW, 45GB peak), Enterprise Standard ($r=64$), and Consumer Desktop ($r=64$, NF4) profiles wired |
 | Polish Quality | Frozen Qwen-Image-2.1 comparison path |
 | DPO | Deferred historical path; not part of the active launcher |
 

@@ -1,8 +1,8 @@
 # Krivex: Unified Final System Design & Architectural Specification
 
-**Document Version**: 2.0 (Canonical Production Release)  
-**System Classification**: Bounded Multi-Turn Agentic UI/UX Generation & Polishing Architecture  
-**Hardware Profile**: Single NVIDIA GPU (Consumer 16GB VRAM, Workstation 24GB/48GB VRAM)  
+**Document Version**: 2.0 (Canonical Production Release)
+**System Classification**: Bounded Multi-Turn Agentic UI/UX Generation & Polishing Architecture
+**Hardware Profile**: Single NVIDIA GPU (Consumer 16GB VRAM, Workstation 24GB/48GB VRAM)
 **Compilation Origin**: Consolidated from 71 Forensic Review Gates, Formal Verification Audits, and Peer-Reviewed Literature (IEEE, ACM, USENIX, MLSys, CVF, ICLR, ICML)
 
 ---
@@ -111,15 +111,15 @@ Krivex solves these challenges by establishing:
 ### 2.1 The Catastrophe of Model Swapping (USENIX OSDI / MLSys Literature)
 The foundational motivation for Krivex's single resident model design stems from operating systems and computer systems literature:
 
-1. **PCIe Transfer Latency Penalty (*PipeSwitch*, USENIX OSDI 2020)**:  
+1. **PCIe Transfer Latency Penalty (*PipeSwitch*, USENIX OSDI 2020)**:
    Moving neural network weights across the host-device PCIe bus imposes an inescapable physical latency ceiling. Transferring a 7B parameter model in BF16 (~14.0 GB) across a PCIe 4.0 x16 link (effective throughput ~16–20 GB/s) requires:
    $$t_{\text{swap}} = t_{\text{evict}} + \frac{\text{Model Size (GB)}}{\text{PCIe Bandwidth (GB/s)}} + t_{\text{init}} \approx 0.2\text{s} + 0.78\text{s} + 0.5\text{s} = 1.48\text{s (theoretical)}, \quad \mathbf{4.5\text{s} \text{ to } 8.0\text{s} \text{ (real-world)}}$$
    If an architecture uses distinct models for fast preview and high-quality rendering, the user experiences a 5 to 8 second freeze every time they transition between drafting and rendering.
 
-2. **Tail-Latency Thrashing in Dynamic Eviction (*Clockwork*, USENIX OSDI 2020)**:  
+2. **Tail-Latency Thrashing in Dynamic Eviction (*Clockwork*, USENIX OSDI 2020)**:
    Deep neural network execution on GPUs is intrinsically deterministic ($p99 \approx p50$). However, reactive model eviction and dynamic memory allocation cause memory fragmentation and bus contention, exploding tail latency ($p99.9$) by up to $100\times$.
 
-3. **The Resident Foundation Principle (*S-LoRA*, MLSys 2024; *Punica*, MLSys 2024)**:  
+3. **The Resident Foundation Principle (*S-LoRA*, MLSys 2024; *Punica*, MLSys 2024)**:
    Foundation weights must remain **permanently pinned and resident in GPU memory**. Task variations and domain specializations must be realized via low-rank adapter tensors ($\Delta W = \frac{\alpha}{r} B A$, where adapter size for $r=64$ is $<150\text{ MB}$), which can be toggled or blended in $<1.0\text{ ms}$ with zero PCIe memory traffic.
 
 ### 2.2 Mathematical Multi-Fidelity via Continuous Flow Matching (CFM)
@@ -363,27 +363,68 @@ $$W = m \frac{W_0 + \Delta W}{\| W_0 + \Delta W \|_c} = m \frac{W_0 + \frac{\alp
 
 ### 7.2 Exact Hyperparameters for A6000 (48GB)
 
+Krivex formalizes two enterprise execution profiles for the NVIDIA RTX A6000 (48GB GDDR6 ECC):
+
+#### 7.2.1 Enterprise Max Full-Utilization Profile (`training/configs/polish_qwen_image21_lora_a6000_max.yaml`)
+Designed to saturate the 48GB GDDR6 VRAM envelope at **$45.0\text{ GB}$ peak allocation ($93.7\%$ utilization)** with a $3.0\text{ GB}$ safety buffer:
+
 ```yaml
-# Authoritative Training Configuration (training/configs/polish_qwen_image21_lora.yaml)
+# Enterprise Max Training Configuration (training/configs/polish_qwen_image21_lora_a6000_max.yaml)
+training:
+  hardware:
+    gpu: "NVIDIA RTX A6000 (48GB GDDR6 ECC)"
+    gradient_checkpointing: true
+    mixed_precision: "bf16"
+    allow_tf32: true
+
+  optimization:
+    optimizer: "AdamW" # FP32 AdamW moments (8-bit Adam strictly rejected for DoRA magnitude stability)
+    learning_rate: 1.1e-4 # Square-root scaling rule: LR ∝ sqrt(effective_batch)
+    lr_scheduler: "cosine"
+    lr_warmup_steps: 700
+    seed: 0
+
+  batch_and_steps:
+    train_batch_size: 16
+    gradient_accumulation_steps: 2
+    effective_batch_size: 32
+    max_train_steps: 14000 # 2.05 epochs across 218,791 pairs (~1.85h wall-clock time)
+
+  lora:
+    rank: 128 # Full singular-value spectrum: coarse layout, UI semantics, sub-pixel typography
+    lora_alpha: 64 # Optimal ratio: alpha/rank = 0.5
+    use_dora: true
+    lora_dropout: 0.05
+    base_weights_frozen: true
+    lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
+
+  acceleration:
+    cache_latents: true # Pre-encodes 218,791 pairs to ~32GB host RAM; unloads VAE from GPU (frees ~3GB)
+    dataloader_num_workers: 16
+```
+
+#### 7.2.2 Enterprise Standard Profile (`training/configs/polish_qwen_image21_lora.yaml`)
+```yaml
+# Enterprise Standard Training Configuration (training/configs/polish_qwen_image21_lora.yaml)
 training:
   hardware:
     gpu: "NVIDIA RTX A6000 (48GB GDDR6)"
     gradient_checkpointing: true
     mixed_precision: "bf16"
-  
+
   optimization:
     optimizer: "AdamW"
-    learning_rate: 1.0e-4
+    learning_rate: 8.0e-5
     lr_scheduler: "cosine"
-    lr_warmup_steps: 200
+    lr_warmup_steps: 500
     seed: 0
-  
+
   batch_and_steps:
-    train_batch_size: 4
-    gradient_accumulation_steps: 4
+    train_batch_size: 8
+    gradient_accumulation_steps: 2
     effective_batch_size: 16
-    max_train_steps: 5000 # Scaled across realized dataset passes
-  
+    max_train_steps: 27500 # 2.01 epochs across 218,791 pairs (~15.2h on A6000 Ada)
+
   lora:
     rank: 64
     lora_alpha: 32

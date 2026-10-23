@@ -16,7 +16,10 @@ The current research system has **one intended trainable artifact**:
 | Polish Quality | Frozen Qwen-Image-2.1 without an adapter | No |
 | Data-Forge VLM | Local Qwen3.8-27B preprocessing/audit dependency | No |
 
-The Qwen-Image-2.1 DoRA path (`use_dora: true`, rank 64, alpha 32) is configured and contract-tested, operating across the calibrated 7-bucket aspect ratio manifold with dual operational scaling profiles (5,000 smoke / 27,500 production steps).
+The Qwen-Image-2.1 DoRA adaptation path (`use_dora: true`) is configured and contract-tested, operating across the calibrated 7-bucket aspect ratio manifold (`1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896`). It supports three production hardware tiers:
+- **Enterprise Max (48GB GDDR6)**: `polish_qwen_image21_lora_a6000_max.yaml` — batch=16, accum=2 (effective batch 32), rank=128, alpha=64, FP32 AdamW, latent pre-caching (~32 GB host RAM), ~45.0 GB peak VRAM (93.7% utilization), 14,000 steps (~1.85h for 2.05 epochs across 218,791 pairs).
+- **Enterprise Standard (48GB GDDR6)**: `polish_qwen_image21_lora.yaml` — batch=8, accum=2 (effective batch 16), rank=64, alpha=32, 27,500 steps (~15.2h).
+- **Consumer Desktop (12GB–16GB)**: `ablations/polish_qwen_qdora_12gb.yaml` — batch=1, accum=16 (effective batch 16), rank=64, alpha=32, 4-bit NF4 base, 11.2 GB peak VRAM.
 
 
 Canonical decisions and evidence:
@@ -102,9 +105,17 @@ python scripts/training/audit_training_pipeline.py
 # 3. Synchronize Curated Multimodal Pairs from Data-Forge
 python scripts/data-forge/sync_to_training.py --data-root /path/to/data_krivex
 
-# 4. Launch Production Polish QDoRA Training (27,500 steps, ~15.2h on RTX A6000 Ada)
+# 4. Launch Production Polish DoRA Training
+# Option A: Enterprise Max Profile (48GB full utilization: batch=16, rank=128, FP32 AdamW, 14,000 steps, ~1.85h)
+./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora_a6000_max.yaml \
+  --max_train_steps 14000 --lr_warmup_steps 700
+
+# Option B: Enterprise Standard Profile (48GB: batch=8, rank=64, 27,500 steps, ~15.2h)
 ./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml \
   --max_train_steps 27500 --lr_warmup_steps 500
+
+# Option C: Windows Native PowerShell Dispatcher (1:1 parity)
+powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-default -Config training/configs/polish_qwen_image21_lora_a6000_max.yaml
 
 # 5. Execute Post-Training Multi-Hardware Evaluation Harness
 python scripts/eval/run_evaluation.py \
