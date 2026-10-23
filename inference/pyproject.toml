@@ -26,7 +26,7 @@ dev = [
 backends = [
     "torch>=2.11.0",
     "transformers>=5.17.0",
-    "diffusers>=0.41.0,<=0.42.0",
+    "diffusers @ git+https://github.com/huggingface/diffusers.git@d26bb61231c349cf6b7896fa83353113880e1ba3",
     "bitsandbytes>=0.43",
     "pillow>=10.4",
     "torchvision>=0.26.0",
