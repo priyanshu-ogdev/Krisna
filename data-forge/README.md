@@ -247,21 +247,25 @@ Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 
 See `../docs/data-forge/DATA_SOURCES.md` and
 `../docs/research/DATASET_ACCEPTANCE_MATRIX.md` for the full evidence table.
-The production portfolio consists of **13 active sources (356,721 total records / ~480 GB)**:
+The production portfolio consists of **13 active sources (346,221 total records / ~470 GB)**:
 
-- **Supervised UI & Design Pairs (329,317 records):**
+- **Supervised SFT Polish Pairs (218,791 realized image records across 6 datasets):**
   - Editorial & Multi-Column Publishing: `doclaynet` (80,000)
   - Mobile Application View Hierarchies: `rico_semantic` (66,000)
-  - Graphic Design & Marketing: `crello` (25,000), `pku_poster` (10,000), `abo_ecommerce` (35,000)
-  - Localized Instruction Inpainting: `magicbrush` (10,500)
+  - Commercial Product Photography: `abo_ecommerce` (35,000)
+  - Graphic Design & Marketing: `crello` (25,000)
+  - Commercial Advertising Posters: `pku_poster` (9,974)
   - Production Web UI Components: `figma2code` (2,817)
-  - Human Aesthetic Preference Pairs: `pickapic_v2` (50,000), `hpdv2` (50,000)
-- **Held-Out Evaluation Benchmarks (27,404 records):**
+- **Human Aesthetic Preference Pairs (100,000 records):**
+  - Human Preference Rankings: `pickapic_v2` (50,000), `hpdv2` (50,000)
+- **Held-Out Evaluation Benchmarks (27,430 records):**
+  - Localized Edit Reference (Eval Only): `magicbrush` (10,500)
   - Design Aesthetics & Quality: `taste` (14,500)
-  - Visual GUI Grounding: `ui_vision` (10,000), `screenspot` (1,272)
+  - Visual GUI Grounding: `screenspot` (1,272)
   - Typography & Composition Prompts: `partiprompts` (1,632)
 - **Quarantined & Purged Sources:**
-  - `pd12m`, `publaynet`, `docbank`, `websight`, `atomblock_webui` — general web crawl or synthetic scrapings irrelevant to UI generation and unnecessary given frozen base weights (`base_weights_frozen: true`).
+  - `pd12m`, `publaynet`, `docbank`, `websight`, `atomblock_webui`, `ui_vision` — general web crawl, synthetic scrapings, or monochrome academic PDFs irrelevant to UI generation and eliminated to prevent Model Autophagy Disorder (*Shumailov et al., Nature 2024*) and aesthetic desaturation.
+
 
 ## Known Issues, Fixed This Revision (v16)
 

@@ -12,13 +12,12 @@ The current research system has **one intended trainable artifact**:
 |---|---|---:|
 | Planner | Frozen `Qwen3.5-9B`, multimodal review contract | No |
 | Structure | Deterministic `krivex.layout.v1` Layout IR and renderer | No |
-| Polish Default | `Qwen/Qwen-Image-2.1` native image-conditioned pipeline plus optional LoRA | LoRA only |
+| Polish Default | `Qwen/Qwen-Image-2.1` native image-conditioned pipeline plus DoRA adapter | DoRA only |
 | Polish Quality | Frozen Qwen-Image-2.1 without an adapter | No |
 | Data-Forge VLM | Local Qwen3.8-27B preprocessing/audit dependency | No |
 
-The Qwen-Image-2.1 LoRA path is configured and contract-tested, but it is not
-considered trained until a real source-disjoint pair manifest, native one-batch
-GPU smoke test, adapter receipt, and evaluation receipt exist.
+The Qwen-Image-2.1 DoRA path (`use_dora: true`, rank 64, alpha 32) is configured and contract-tested, operating across the calibrated 7-bucket aspect ratio manifold with dual operational scaling profiles (5,000 smoke / 27,500 production steps).
+
 
 Canonical decisions and evidence:
 

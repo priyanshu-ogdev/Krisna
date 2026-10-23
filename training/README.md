@@ -164,14 +164,26 @@ Reports active model IDs, source contracts, realized dataset pair counts, and ha
 python scripts/data-forge/sync_to_training.py --data-root D:\data_krivex
 ```
 
-### 6.3 Primary Production Target: Launch Supervised Polish LoRA / DoRA Training
+### 6.3 Primary Production Target: Launch Supervised Polish DoRA Training
+
+The primary training configuration (`training/configs/polish_qwen_image21_lora.yaml`) trains Weight-Decomposed Low-Rank Adaptation (DoRA, rank 64, alpha 32) across the calibrated 7-bucket aspect ratio manifold (`1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896`), reducing geometric distortion on mobile (9:16) and web (16:9) to $\le 1.5\%$.
+
+Supports dual operational profiles:
+- **Fast Smoke/Test Profile (Default)**: 5,000 steps ($80,000$ exposures $= 0.365$ epochs on 218,791 pairs; $\sim 2.7\text{h}$ on RTX A6000 Ada).
+- **Production SFT Convergence Profile**: 27,500 steps ($440,000$ exposures $= 2.01$ epochs; $\sim 15.2\text{h}$ on RTX A6000 Ada; optimal straight-line velocity adaptation window per Esser et al., ICML 2024).
+
 ```bash
-# Linux / WSL (Accelerate + Diffusers)
+# 1. Fast Smoke/Test Run (5,000 steps default):
 ./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml
+
+# 2. Production SFT Convergence Run (27,500 steps):
+./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml \
+  --max_train_steps 27500 --lr_warmup_steps 500
 
 # Windows (Native PowerShell Dispatcher)
 powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier polish-default
 ```
+
 
 ### 6.4 Deferred Research Extension: Launch Flow-Matching DPO Preference Training
 > [!CAUTION]

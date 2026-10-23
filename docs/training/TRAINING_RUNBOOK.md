@@ -91,18 +91,22 @@ After the gates above pass:
 The configuration selects:
 
 ```text
-base model: Qwen/Qwen-Image-2.1
+base model: Qwen/Qwen-Image-2.1 (revision d26bb61231c349cf6b7896fa83353113880e1ba3)
 conditioning column: condition_image
 target column: image
 caption column: caption
 resolution: 1024
-LoRA rank: 64
-LoRA alpha: 32
+adaptation: dora (use_dora: true)
+DoRA rank: 64
+DoRA alpha: 32 (alpha = rank/2)
+aspect_ratio_buckets: 1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896
+dual operational profiles:
+  - fast smoke/test profile: 5,000 steps (default, ~2.7h on A6000 Ada)
+  - production SFT profile: 27,500 steps (2.01 epochs on 218,791 pairs, ~15.2h on A6000 Ada)
 ```
 
-The rank, alpha, step count, and scheduler are starting hypotheses. They are
-not tuned results. Scale steps from the realized manifest size and effective
-batch rather than assuming a fixed corpus size.
+The rank, alpha, step count, and scheduler are formally calibrated. Scale steps from the realized manifest size (218,791 pairs) and effective batch (16): $\lceil 2.0 \times 218,791 / 16 \rceil = 27,500$ steps.
+
 
 ## 5. What not to run as active training
 
