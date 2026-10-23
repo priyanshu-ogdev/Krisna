@@ -182,12 +182,26 @@ async def test_polish_backend_consumes_segmentation_map(tmp_path):
     polish_backend = QwenImage21Backend(spec_polish)
     await polish_backend.load()
 
+    # 1. Canonical production default: single-stream wireframe
+    polish_result_default = await polish_backend.run(
+        handoff_image_ref=sketch_result["wireframe_ref"],
+        segmentation_ref=sketch_result["segmentation_ref"],
+        prompt="A clean UI with polished cards",
+        constraints={"style": "clean"},
+        locked_regions=[],
+    )
+    receipt_default = polish_result_default["run_receipt"]
+    assert receipt_default["segmentation_used"] is False
+    assert receipt_default["spatial_conditioning_mode"] == "single_stream_wireframe"
+
+    # 2. Developer opt-in: SPADE multi-stream
     polish_result = await polish_backend.run(
         handoff_image_ref=sketch_result["wireframe_ref"],
         segmentation_ref=sketch_result["segmentation_ref"],
         prompt="A clean UI with polished cards",
         constraints={"style": "clean"},
         locked_regions=[],
+        enable_spade_stream=True,
     )
 
     receipt = polish_result["run_receipt"]

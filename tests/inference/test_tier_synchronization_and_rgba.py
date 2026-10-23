@@ -1365,11 +1365,25 @@ async def test_image_to_image_spatial_conditioning_receipts(tmp_path, monkeypatc
     backend = QwenImage21Backend(spec)
     await backend.load()
 
+    # 1. Canonical production default: single-stream wireframe
+    result_default = await backend.run(
+        handoff_image_ref=src_ref,
+        segmentation_ref=seg_ref,
+        mask_ref=mask_ref,
+        prompt="Cyberpunk female character portrait",
+    )
+    receipt_default = result_default["receipt"]
+    assert receipt_default["segmentation_used"] is False
+    assert receipt_default["mask_used"] is True
+    assert receipt_default["spatial_conditioning_mode"] == "single_stream_wireframe"
+
+    # 2. Developer opt-in: SPADE multi-stream conditioning
     result = await backend.run(
         handoff_image_ref=src_ref,
         segmentation_ref=seg_ref,
         mask_ref=mask_ref,
         prompt="Cyberpunk female character portrait",
+        enable_spade_stream=True,
     )
 
     receipt = result["receipt"]
