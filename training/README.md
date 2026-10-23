@@ -265,7 +265,7 @@ Reports active model IDs, source contracts, realized dataset pair counts, and ha
 ### 7.2 Synchronize Exported Data from Data-Forge
 ```bash
 # Sync Polish pairs, preference pairs, and Planner RAG corpus:
-python scripts/data-forge/sync_to_training.py --data-root D:\data_krivex
+python scripts/data-forge/sync_to_training.py --data-root ./data_krivex
 ```
 
 ### 7.3 Enterprise Max Production Target: Full 48GB VRAM Launch

@@ -22,7 +22,7 @@
     Run Data-Forge -> Training bridge sync (sync_to_training.py) before training.
 
 .PARAMETER DataRoot
-    Root directory where Data-Forge exported data lives (default: $env:DATA_ROOT or D:\data_krivex).
+    Root directory where Data-Forge exported data lives (default: $env:DATA_ROOT or .\data_krivex).
 
 .PARAMETER DryRun
     Perform pre-flight verification without executing training commands.
@@ -36,7 +36,7 @@
 .EXAMPLE
     .\scripts\training\train_all.ps1 -List
     .\scripts\training\train_all.ps1 -All -DryRun
-    .\scripts\training\train_all.ps1 -Sync -DataRoot "D:\data_krivex" -All
+    .\scripts\training\train_all.ps1 -Sync -DataRoot ".\data_krivex" -All
     .\scripts\training\train_all.ps1 -Tier sketch-stage1
 #>
 
@@ -55,25 +55,44 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$RepoRoot = (Resolve-Path (Join-Path $ScriptDir "..\..")).Path
 Set-Location $RepoRoot
 
-# Resolve Python executable
-$Python = "python"
+# Configure PYTHONPATH with relative workspace sources
+$TrainingSrc = Join-Path $RepoRoot "training\src"
+$DataForgeSrc = Join-Path $RepoRoot "data-forge\src"
+$InferenceSrc = Join-Path $RepoRoot "inference\src"
+if ($env:PYTHONPATH) {
+    $env:PYTHONPATH = "$TrainingSrc;$DataForgeSrc;$InferenceSrc;$RepoRoot;" + $env:PYTHONPATH
+} else {
+    $env:PYTHONPATH = "$TrainingSrc;$DataForgeSrc;$InferenceSrc;$RepoRoot"
+}
+
+# Resolve Python executable prioritizing workspace-relative virtualenvs and active environment
+$Python = ""
 if ($env:PYTHON_EXECUTABLE -and (Test-Path $env:PYTHON_EXECUTABLE)) {
     $Python = $env:PYTHON_EXECUTABLE
-} elseif (Test-Path "C:\Users\anubh\miniconda3\envs\torch_env\python.exe") {
-    $Python = "C:\Users\anubh\miniconda3\envs\torch_env\python.exe"
-} elseif (Test-Path "$RepoRoot\.venv\Scripts\python.exe") {
-    $Python = "$RepoRoot\.venv\Scripts\python.exe"
-} elseif (Test-Path "$RepoRoot\.venv-forge\Scripts\python.exe") {
-    $Python = "$RepoRoot\.venv-forge\Scripts\python.exe"
+} elseif (Test-Path (Join-Path $RepoRoot ".venv\Scripts\python.exe")) {
+    $Python = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+} elseif (Test-Path (Join-Path $RepoRoot ".venv-forge\Scripts\python.exe")) {
+    $Python = Join-Path $RepoRoot ".venv-forge\Scripts\python.exe"
+} elseif ($env:CONDA_PREFIX -and (Test-Path (Join-Path $env:CONDA_PREFIX "python.exe"))) {
+    $Python = Join-Path $env:CONDA_PREFIX "python.exe"
+} else {
+    $cmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $Python = $cmd.Source
+    } else {
+        $Python = "python"
+    }
 }
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
 
 function Show-Help {
-    Get-Help $MyInvocation.MyCommand.Path -Detailed
+    $scriptFile = if ($PSCommandPath) { $PSCommandPath } elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path } else { Join-Path $ScriptDir "train_all.ps1" }
+    Get-Help $scriptFile -Detailed
 }
 
 function Show-Tiers {

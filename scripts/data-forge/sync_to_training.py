@@ -14,7 +14,7 @@ Bridges the data-forge output to the training tier configurations:
 
 Usage:
     python scripts/data-forge/sync_to_training.py
-    python scripts/data-forge/sync_to_training.py --data-root D:\\data_krivex
+    python scripts/data-forge/sync_to_training.py --data-root ./data_krivex
     python scripts/data-forge/sync_to_training.py --check-only
     python scripts/data-forge/sync_to_training.py --no-sketch-512
 """
