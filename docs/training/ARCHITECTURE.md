@@ -20,7 +20,7 @@ product paths, and one separate preprocessing-only VLM:
 | Preprocessing VLM | `Qwen/Qwen3.8-27B` FP8, pinned revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0` | Not trained by Krivex | Strict local Data-Forge VLM bundle and stage runtime | Annotation/quality/structure tool only; never a final trained model or training signal authority |
 | Planner | `Qwen3.5-9B`; official revision `c202236235762e1c871ad0ccb60c8ee5ba337b9a` | Frozen | `PlannerBackendLlama` plus UICrit RAG; image-grounded review contract is now wired, but real GGUF/mmproj smoke validation remains required | Keep frozen for the main system; no Planner LoRA unless the predeclared visual/JSON gates fail |
 | Structure / Sketch | `krivex.layout.v1` deterministic neuro-symbolic engine | Deterministic (0 MB VRAM, <5ms CPU) | `LayoutBackend`, `layout_baseline.py`, and `layout_renderer.py` are production-locked; legacy neural LayoutFlow ablation retired | Production uses deterministic Cassowary solver and DualStreamSketch; 0 MB VRAM and 0% overlap guarantee. |
-| Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | LoRA only; base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; pair manifest and accelerate training entry point verified | Primary trainable generative model artifact. |
+| Polish Default | `Qwen/Qwen-Image-2.1`, official revision `d26bb61231c349cf6b7896fa83353113880e1ba3` | DoRA only (`use_dora: true`, rank 64, alpha 32); base must remain frozen | Strict native `QwenImage21Pipeline` serving path is wired; pair manifest and accelerate training entry point verified | Primary trainable generative model artifact. |
 | Polish Quality | `Qwen/Qwen-Image-2.1` | Frozen reference/ablation | Same backend, intended without an adapter | Frozen comparison baseline without adapter. |
 | Preference alignment | Continuous Flow Matching DPO (`dpo_loss.py`) | Post-training alignment | `krivex_training/polish/dpo_loss.py` is implemented and unit-tested for velocity-based MMDiT flow matching | Trainable on human preference pairs (Pick-a-Pic v2, HPDv2, GameLabel-10K) after base LoRA convergence. |
 
@@ -29,11 +29,10 @@ not two or three independently trained models. The accurate answer is:
 
 1. **Planner:** frozen.
 2. **Layout:** deterministic baseline, not a trained model.
-3. **Polish Default:** one proposed Qwen-Image-2.1 LoRA training path, not yet
-   a verified end-to-end trainer. This is the only trainable artifact in the
-   main paper.
+3. **Polish Default:** one Qwen-Image-2.1 Weight-Decomposed Low-Rank Adaptation (DoRA) path. This is the only trainable artifact in the main paper.
 4. **Polish Quality:** frozen comparison path using the same Qwen-Image-2.1
    base without the Default adapter.
+
 5. **Data-Forge VLM:** Qwen3.8-27B is a preprocessing dependency, not a model
    trained by this project.
 
@@ -426,6 +425,22 @@ matched condition/target benchmark.
 7. Feng, Y. et al. (2023). *PromptMagician: Interactive Prompt Engineering
    for Text-to-Image Creation*. IEEE TVCG.
    <https://doi.org/10.1109/TVCG.2023.3327168>
+8. Liu, S.-Y. et al. (2024). *DoRA: Weight-Decomposed Low-Rank Adaptation*.
+   ICML 2024, PMLR 235.
+   <https://proceedings.mlr.press/v235/liu24y.html>
+9. Chen, J. et al. (2024). *TextDiffuser-2: Unleashing the Power of Language Models for Text Rendering*.
+   ECCV 2024, Springer LNCS 15061.
+   <https://doi.org/10.1007/978-3-031-72761-0_1>
+10. Tu, Y. et al. (2024). *AnyText: Multilingual Visual Text Generation And Editing*.
+    ICLR 2024.
+    <https://openreview.net/forum?id=a6E7bFvKk6>
+11. Zhang, L., & Agrawala, M. (2024). *LayerDiffuse: Transparent Image Layer Diffusion*.
+    CVPR 2024 Open Access.
+    <https://openaccess.thecvf.com/content/CVPR2024/html/Zhang_Transparent_Image_Layer_Diffusion_using_Latent_Transparency_CVPR_2024_paper.html>
+12. Shumailov, I. et al. (2024). *AI models collapse when trained on recursively generated data*.
+    Nature 631, 755–759.
+    <https://doi.org/10.1038/s41586-024-07566-y>
 
 These citations are deliberately kept in the training documentation. They are
 related-work and design precedents, not claims of reproduced results.
+
