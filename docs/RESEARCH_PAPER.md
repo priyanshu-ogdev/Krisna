@@ -222,7 +222,7 @@ The inference and serving architecture of Krivex was derived by analyzing the st
    Traditional image editing relies on DDIM inversion [29], mapping an existing image backwards to initial Gaussian noise before forward sampling. In UI synthesis, non-linear inversion accumulates numerical linearization errors, corrupting unedited buttons and drifting text fonts.
    - *Inheritance Verdict*: Grounded in FlowEdit [29], we formulated localized editing by directly integrating the differential velocity field between target and source conditions over an abbreviated sub-interval $[t_{\text{edit}}, 1]$ without latent inversion, preserving locked UI regions with exact mathematical invariance ($S_{\text{lock}} = 1.000$).
 
-### 2.5 The Autoregressive + DiT Frontier: Decoupled Neuro-Symbolic Pipeline vs. Monolithic Multimodal Models (Transfusion, Show-o, and Diff2Flow)
+### 2.4 The Autoregressive + DiT Frontier: Decoupled Neuro-Symbolic Pipeline vs. Monolithic Multimodal Models (Transfusion, Show-o, and Diff2Flow)
 
 The rapid convergence of discrete language modeling and continuous visual synthesis has catalyzed a new frontier in multimodal foundation architectures:
 1. **Monolithic Interleaved Autoregressive Models (Chameleon, Emu3)**:
@@ -239,9 +239,9 @@ The rapid convergence of discrete language modeling and continuous visual synthe
    - **Destructive Whole-Canvas Re-generation vs. Inversion-Free Steering**: In monolithic models, modifying a localized component (e.g., restyling a button) requires re-running end-to-end multi-modal attention, causing unedited regions to drift ($S_{\text{lock}} < 0.60$). Krivex preserves user-locked donor assets with mathematical certainty ($S_{\text{lock}} \equiv 1.0000$) through inversion-free differential FlowEdit [29] trajectory steering and Lanczos-3 pixel compositing, bypassing DDIM inversion error entirely.
    - **Systems Serving Invariance**: Monolithic 7B–14B multimodal models require active device residency for all conversational dialogue turns, consuming 14GB–28GB VRAM even during simple text ideation. In contrast, Krivex runs its discrete conversational planner via 4-bit CPU/GPU mmap (consuming only 4.2 GB), offloading geometric solving to host CPU SIMD ($0\text{ MB}$ GPU VRAM), and activating the Polish DiT (`Qwen-Image-2.1`) exclusively during visual synthesis turns with zero model-swapping latency ($T_{\text{swap}} \equiv 0.0\text{s}$).
 
-### 2.4 The Unified R&D Evolutionary Inheritance Matrix
+### 2.5 The Unified R&D Evolutionary Inheritance Matrix
 
-To synthesize the multi-phase developmental cycle of Krivex, Table 2.1 traces the exact evolutionary lineage across the three foundational subsystems (Data-Forge, Training, and Inference/Serving), contrasting inherited prior baselines, forensic failure pathologies, the canonical Krivex design, and the resulting mathematical and systems advantages.
+To synthesize the multi-phase developmental cycle of Krivex, Table 2.1 (Section 2.5) traces the exact evolutionary lineage across the three foundational subsystems (Data-Forge, Training, and Inference/Serving), contrasting inherited prior baselines, forensic failure pathologies, the canonical Krivex design, and the resulting mathematical and systems advantages.
 
 | Subsystem Domain | Prior Paradigm / Inherited Baseline | Identified Empirical Failure Mode / Pathology | Krivex Canonical Resolution | Mathematical & Systems Advantage |
 | :--- | :--- | :--- | :--- | :--- |
