@@ -89,20 +89,30 @@ case "${COMMAND}" in
         echo -e "${COLOR_CYAN}[*] Querying Data-Forge Manifest SQLite Database...${COLOR_RESET}"
         "${PYTHON_CMD}" -m data_forge.cli manifest "$@"
         ;;
-    registry)
-        echo -e "${COLOR_CYAN}[*] Inspecting upstream Hugging Face & GitHub asset registry...${COLOR_RESET}"
+    audit|registry)
+        echo -e "${COLOR_CYAN}[*] Auditing dataset & model registry preflight contracts...${COLOR_RESET}"
         "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/audit_registry.py" "$@"
+        ;;
+    pin-revisions)
+        echo -e "${COLOR_CYAN}[*] Resolving unpinned revisions to immutable commit SHAs...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/pin_revisions.py" "$@"
+        ;;
+    verify-schemas)
+        echo -e "${COLOR_CYAN}[*] Verifying JSON schemas against Pydantic definitions...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/verify_schemas.py" "$@"
         ;;
     sync-training)
         echo -e "${COLOR_CYAN}[*] Synchronizing processed model data into training directory...${COLOR_RESET}"
         "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/sync_to_training.py" "$@"
         ;;
     all)
-        echo -e "${COLOR_CYAN}[Step 1/3] Pre-flight Environment Validation (doctor)...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}[Step 1/4] Pre-flight Environment Validation (doctor)...${COLOR_RESET}"
         "${PYTHON_CMD}" -m data_forge.cli doctor || echo -e "${COLOR_YELLOW}[!] Doctor reported warnings; continuing...${COLOR_RESET}"
-        echo -e "${COLOR_CYAN}[Step 2/3] Pipeline Execution...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}[Step 2/4] Running forensic registry audit...${COLOR_RESET}"
+        "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/audit_registry.py"
+        echo -e "${COLOR_CYAN}[Step 3/4] Pipeline Execution...${COLOR_RESET}"
         "${PYTHON_CMD}" -m data_forge.cli run "$@"
-        echo -e "${COLOR_CYAN}[Step 3/3] Synchronizing Exported Datasets to Training Pool...${COLOR_RESET}"
+        echo -e "${COLOR_CYAN}[Step 4/4] Synchronizing Exported Datasets to Training Pool...${COLOR_RESET}"
         "${PYTHON_CMD}" "${REPO_ROOT}/scripts/data-forge/sync_to_training.py"
         echo -e "${COLOR_GREEN}================================================================${COLOR_RESET}"
         echo -e "${COLOR_GREEN}   Data-Forge Complete Workflow Finished Successfully!         ${COLOR_RESET}"
@@ -116,14 +126,19 @@ case "${COMMAND}" in
         echo ""
         echo "Commands:"
         echo "  doctor         Run pre-flight checks (stage graph, toolchains, APIs)"
+        echo "  audit          Run forensic registry audit & contract validation"
+        echo "  registry       Check models and datasets upstream releases / audit"
+        echo "  pin-revisions  Resolve & pin model/dataset revisions to immutable git SHAs"
+        echo "  verify-schemas Validate JSON schemas against Pydantic models"
         echo "  run            Run the data pipeline (supports --dry-run, --resume, --stages)"
         echo "  manifest       Inspect SQLite database (stats, query, export)"
-        echo "  registry       Check models and datasets upstream releases"
         echo "  sync-training  Bridge model_data/ into training directory"
-        echo "  all            Complete flow: doctor -> run -> sync-training"
+        echo "  all            Complete flow: doctor -> audit -> run -> sync-training"
         echo "  setup          Set up Linux/WSL2 environment"
         echo ""
         echo "Examples:"
+        echo "  ./scripts/data-forge/run_data_forge.sh audit"
+        echo "  ./scripts/data-forge/run_data_forge.sh pin-revisions --apply"
         echo "  ./scripts/data-forge/run_data_forge.sh run --dry-run"
         echo "  ./scripts/data-forge/run_data_forge.sh run --stages 0,1,2"
         echo "  ./scripts/data-forge/run_data_forge.sh sync-training"

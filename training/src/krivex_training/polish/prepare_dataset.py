@@ -246,6 +246,7 @@ def prepare_qwen_pairs_from_manifest(
         }, indent=2) + "\n",
         encoding="utf-8",
     )
+    shutil.copy2(manifest_path, output_dir / "manifest.jsonl")
     return output_dir
 
 

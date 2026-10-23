@@ -118,28 +118,69 @@ not through Stage 12.
 ## Setup & Verification
 
 ### 1. Environment Bootstrap
+
+Run the native environment setup script for your operating system:
+
 ```powershell
-cd data-forge
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\scripts\setup_env.ps1
-conda activate krivex-forge
+# Windows (PowerShell)
+.\scripts\data-forge\run_data_forge.ps1 setup
 ```
-Installs Python 3.10, `torch+cu124`, `faiss-gpu`, `pandas`/`pyarrow` (needed for
+
+```bash
+# Linux / WSL2 (Bash)
+./scripts/data-forge/run_data_forge.sh setup
+```
+
+Installs Python 3.10/3.11, `torch+cu124`, `faiss-gpu`, `pandas`/`pyarrow` (needed for
 `preference_pairs/`, `ui_critique/`, and DPO-latent metadata output), then
 `pip install -e .[dev]`.
 
-### 2. Pre-Flight Schema Verification
+### 2. Pre-Flight Verification & Forensic Audit
+
+Run structural schema verification and forensic registry contract audits:
+
 ```powershell
-python scripts/verify_schemas.py
+# Windows (PowerShell)
+.\scripts\data-forge\run_data_forge.ps1 verify-schemas
+.\scripts\data-forge\run_data_forge.ps1 audit
+```
+
+```bash
+# Linux / WSL2 (Bash)
+./scripts/data-forge/run_data_forge.sh verify-schemas
+./scripts/data-forge/run_data_forge.sh audit
 ```
 
 ### 3. Pipeline Dry-Run Validation
+
 ```powershell
+# Windows (PowerShell)
 $env:DATA_ROOT="D:\kf_data"
-data-forge run --dry-run
+.\scripts\data-forge\run_data_forge.ps1 run --dry-run
+```
+
+```bash
+# Linux / WSL2 (Bash)
+export DATA_ROOT="/mnt/kf_data"
+./scripts/data-forge/run_data_forge.sh run --dry-run
 ```
 
 ## Usage
+
+The master launchers (`run_data_forge.ps1` on Windows, `run_data_forge.sh` on Linux) provide a unified interface that automatically configures environment variables, loads virtual environments, and sets up `PYTHONPATH`:
+
+### Master Launcher Commands
+
+| PowerShell (Windows) | Bash (Linux) | Function |
+| :--- | :--- | :--- |
+| `.\scripts\data-forge\run_data_forge.ps1 doctor` | `./scripts/data-forge/run_data_forge.sh doctor` | Toolchain & stage graph validation |
+| `.\scripts\data-forge\run_data_forge.ps1 audit` | `./scripts/data-forge/run_data_forge.sh audit` | Registry contract audit & SHA verification |
+| `.\scripts\data-forge\run_data_forge.ps1 pin-revisions --apply` | `./scripts/data-forge/run_data_forge.sh pin-revisions --apply` | Pin unpinned models/datasets to full git SHAs |
+| `.\scripts\data-forge\run_data_forge.ps1 verify-schemas` | `./scripts/data-forge/run_data_forge.sh verify-schemas` | Check JSON Schemas against Pydantic models |
+| `.\scripts\data-forge\run_data_forge.ps1 run` | `./scripts/data-forge/run_data_forge.sh run` | Execute pipeline engine |
+| `.\scripts\data-forge\run_data_forge.ps1 manifest stats` | `./scripts/data-forge/run_data_forge.sh manifest stats` | Query SQLite manifest stats |
+| `.\scripts\data-forge\run_data_forge.ps1 sync-training` | `./scripts/data-forge/run_data_forge.sh sync-training` | Bridge `model_data/` exports into training dir |
+| `.\scripts\data-forge\run_data_forge.ps1 all` | `./scripts/data-forge/run_data_forge.sh all` | End-to-end: doctor -> audit -> run -> sync |
 
 ### Local-only source preprocessing
 
@@ -147,8 +188,8 @@ For downloaded Figma2Code or MobileViews artifacts, normalize them without
 starting vLLM, CUDA models, license-page fetches, or synthetic labeling:
 
 ```powershell
-data-forge preprocess --dataset figma2code --source-path D:\datasets\Figma2Code --limit 2500
-data-forge preprocess --dataset mobileviews --source-path D:\datasets\MobileViews --limit 2500
+.\scripts\data-forge\run_data_forge.ps1 preprocess --dataset figma2code --source-path D:\datasets\Figma2Code --limit 2500
+.\scripts\data-forge\run_data_forge.ps1 preprocess --dataset mobileviews --source-path D:\datasets\MobileViews --limit 2500
 ```
 
 The command writes canonical images, source IDs/groups/revisions, source
@@ -165,10 +206,10 @@ requires CUDA and vLLM before startup and rejects every VLM-stage fallback:
 
 ```powershell
 # Bounded VLM contract smoke test over already-fetched records
-data-forge preprocess-vlm --dataset figma2code --status fetched --limit 100
+.\scripts\data-forge\run_data_forge.ps1 preprocess-vlm --dataset figma2code --status fetched --limit 100
 
 # Governed final-data pipeline using the strict local profile
-data-forge run --profile local-vlm --resume --limit 100
+.\scripts\data-forge\run_data_forge.ps1 run --profile local-vlm --resume --limit 100
 ```
 
 For the complete hardware allocation, stage contract, receipts, and validation
@@ -180,30 +221,30 @@ $env:DATA_ROOT="D:\kf_data"
 $env:HF_TOKEN="your_huggingface_token"
 
 # Smoke test (100-record micro-batch)
-data-forge run --chunk-size 100 --limit 100
+.\scripts\data-forge\run_data_forge.ps1 run --chunk-size 100 --limit 100
 
 # Full strict local-VLM pipeline run (the default profile)
-data-forge run --profile local-vlm
+.\scripts\data-forge\run_data_forge.ps1 run --profile local-vlm
 
 # Resume from checkpoint
-data-forge run --profile local-vlm --resume
+.\scripts\data-forge\run_data_forge.ps1 run --profile local-vlm --resume
 
 # Run specific stages
-data-forge run --stages 0,1,2
+.\scripts\data-forge\run_data_forge.ps1 run --stages 0,1,2
 
 # Run just the preference-pair post-processing (dedup/blur/safety)
-data-forge run --stages 1.6
+.\scripts\data-forge\run_data_forge.ps1 run --stages 1.6
 
 # Run just the DPO latent encoding (disabled by default — see the note
 # above; only useful if you've re-enabled it for a specific reason)
-data-forge run --stages 8.5
+.\scripts\data-forge\run_data_forge.ps1 run --stages 8.5
 
 # Registry watcher (schedule via Task Scheduler) — also watches for
 # DesignSense-10k/DesignPref public releases, see configs/datasets.yaml
-data-forge registry check
+.\scripts\data-forge\run_data_forge.ps1 registry check
 
-data-forge manifest stats
-data-forge manifest query --status excluded_pending_review
+.\scripts\data-forge\run_data_forge.ps1 manifest stats
+.\scripts\data-forge\run_data_forge.ps1 manifest query --status excluded_pending_review
 ```
 
 ## Configuration

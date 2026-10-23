@@ -50,12 +50,27 @@ param(
     [switch]$DryRun,
     [string]$Log = "",
     [switch]$List,
+    [switch]$Audit,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
 Set-Location $RepoRoot
+
+# Resolve Python executable
+$Python = "python"
+if ($env:PYTHON_EXECUTABLE -and (Test-Path $env:PYTHON_EXECUTABLE)) {
+    $Python = $env:PYTHON_EXECUTABLE
+} elseif (Test-Path "C:\Users\anubh\miniconda3\envs\torch_env\python.exe") {
+    $Python = "C:\Users\anubh\miniconda3\envs\torch_env\python.exe"
+} elseif (Test-Path "$RepoRoot\.venv\Scripts\python.exe") {
+    $Python = "$RepoRoot\.venv\Scripts\python.exe"
+} elseif (Test-Path "$RepoRoot\.venv-forge\Scripts\python.exe") {
+    $Python = "$RepoRoot\.venv-forge\Scripts\python.exe"
+}
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 
 function Show-Help {
     Get-Help $MyInvocation.MyCommand.Path -Detailed
@@ -65,21 +80,14 @@ function Show-Tiers {
     Write-Host @'
 Tier            Status       Design intent (see docs/training/ARCHITECTURE.md)
 --------------  -----------  ------------------------------------------------
+audit           DIAGNOSTIC   Run read-only audit of training sources, datasets, and contracts.
+polish-default  PRODUCTION   Phase 1: Qwen/Qwen-Image-2.1 paired image-conditioned LoRA/DoRA.
+ablations       PRODUCTION   Phase 2: Scientific Component Ablation Matrix (ablation_runner.py).
+polish-dpo      PRODUCTION   Phase 3: Flow-Matching DPO preference alignment (Wallace et al. 2024).
+polish-cfm      PRODUCTION   Phase 4: Consistency Flow Matching fast preview distillation (Luo et al. 2024).
 sketch-stage1   PRODUCTION   Deterministic Layout IR engine (krivex.layout.v1; 0 MB VRAM, <5ms CPU).
 sketch-stage2   RETIRED      Legacy LayoutFlow neural ablation deleted; production mainline is deterministic.
-
-polish-default  ACTIVE       Qwen/Qwen-Image-2.1 paired image-conditioned LoRA. The
-                              local code prepares pairs and delegates to an external
-                              trainer that must be pinned and one-batch validated.
-
-polish-dpo      ACTIVE       Phase 3: Flow-Matching DPO preference alignment
-                              (Wallace et al., CVPR 2024; Kim et al., NeurIPS 2024).
-
-polish-cfm      ACTIVE       Phase 4: Consistency Flow Matching fast preview distillation
-                              (Luo et al., ECCV 2024; Song et al., ICML 2023).
-
 planner         FROZEN       Qwen3.5-9B GGUF + UICrit RAG. No Planner LoRA training.
-
 critic          FROZEN       No Critic training in the active no-RLHF pipeline.
 '@ -ForegroundColor Cyan
 }
@@ -89,15 +97,15 @@ if ($Help) {
     exit 0
 }
 
+if ($Audit -or $Tier -eq "audit") {
+    Write-Host "Running Krivex training pipeline audit (read-only)..." -ForegroundColor Cyan
+    & $Python "$RepoRoot\scripts\training\audit_training_pipeline.py"
+    exit $LASTEXITCODE
+}
+
 if ($List -or (-not $All -and -not $Tier -and -not $Sync)) {
     Show-Tiers
     exit 0
-}
-
-# Resolve Python executable
-$Python = "python"
-if (Test-Path "$RepoRoot\.venv\Scripts\python.exe") {
-    $Python = "$RepoRoot\.venv\Scripts\python.exe"
 }
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
@@ -196,6 +204,15 @@ function Test-Preflight {
                 Write-Host "  [PRE-FLIGHT OK] Preference pairs DB and DPO config verified." -ForegroundColor Green
             }
         }
+        "ablations" {
+            $runner = "$RepoRoot\training\src\krivex_training\polish\ablation_runner.py"
+            if (-not (Test-Path $runner)) {
+                Write-Host "  [PRE-FLIGHT FAILED] Ablation runner not found: $runner" -ForegroundColor Red
+                $failed = $true
+            } else {
+                Write-Host "  [PRE-FLIGHT OK] Ablation runner verified: $runner" -ForegroundColor Green
+            }
+        }
         "polish-cfm" {
             $cfg = if ($ConfigPath) { $ConfigPath } else { "$RepoRoot\training\configs\cfm_distill_qwen_image21.yaml" }
             if (-not (Test-Path $cfg)) {
@@ -283,22 +300,47 @@ function Execute-Tier {
         "polish-default" {
             $defaultCfg = "training/configs/polish_qwen_image21_lora.yaml"
             $cfg = if ($CustomConfig) { $CustomConfig } else { $defaultCfg }
-            $pyScript = @'
-import subprocess, sys, yaml
-from pathlib import Path
-from krivex_training.polish.qwen_trainer_contract import build_accelerate_command, format_command
-config_path = sys.argv[1]
-cfg = yaml.safe_load(Path(config_path).read_text(encoding='utf-8'))
-diffusers_dir = Path(cfg.get('diffusers_dir', './third_party/diffusers'))
-args = build_accelerate_command(cfg, diffusers_dir)
-print('Running:', format_command(args))
-subprocess.run(args, check=True)
-'@
             if ($DryRun) {
-                Write-Host "  [DRY RUN] Would launch diffusers dreambooth LoRA via accelerate using $cfg" -ForegroundColor Magenta
+                Write-Host "  [DRY RUN] Executing CPU-only contract preflight for $cfg..." -ForegroundColor Magenta
+                & $Python -m krivex_training.polish.train_preflight $cfg --dry-run
                 return
             }
-            & $Python -c $pyScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+            Write-Host "  [PREFLIGHT] Validating dataset receipts, hashes, and starting accelerate trainer..." -ForegroundColor Cyan
+            & $Python -m krivex_training.polish.train_preflight $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  [POST-TRAINING] Writing dataset provenance & model manifest..." -ForegroundColor Cyan
+                $writeManifestScript = @'
+import json, subprocess, sys, yaml
+from pathlib import Path
+
+config = yaml.safe_load(Path(sys.argv[1]).read_text(encoding="utf-8"))
+receipt_file = Path(config["dataset_name"]) / "dataset_receipt.json"
+if receipt_file.is_file():
+    receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+    args = [
+        sys.executable, "scripts/training/write_qwen_image21_manifest.py",
+        config["output_dir"], "--dataset-dir", config["dataset_name"],
+        "--base-revision", config["pretrained_model_revision"],
+        "--resolution", str(config.get("resolution", 1024)),
+        "--inference-steps", str(config.get("validation_num_inference_steps", 40)),
+        "--rank", str(config["rank"]), "--lora-alpha", str(config["lora_alpha"]),
+        "--lora-target-modules", config.get("lora_layers", ""),
+        "--adaptation", "dora" if config.get("use_dora", True) else "lora",
+        "--dataset-manifest-sha256", receipt["manifest_sha256"],
+        "--split-counts-json", json.dumps(receipt["split_counts"], sort_keys=True),
+    ]
+    subprocess.run(args, check=True)
+    print("[POST-TRAINING] Successfully wrote manifest.json to " + config["output_dir"])
+'@
+                & $Python -c $writeManifestScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+            }
+        }
+        "ablations" {
+            if ($DryRun) {
+                Write-Host "  [DRY RUN] Would execute component ablation matrix (ablation_runner.py)" -ForegroundColor Magenta
+                return
+            }
+            & $Python -m krivex_training.polish.ablation_runner --all 2>&1 | Tee-Object -FilePath $Log -Append
         }
         "polish-dpo" {
             $defaultCfg = "training/configs/polish_qwen_image21_dpo.yaml"
@@ -307,7 +349,37 @@ subprocess.run(args, check=True)
                 Write-Host "  [DRY RUN] Would launch Flow-Matching DPO training using $cfg" -ForegroundColor Magenta
                 return
             }
-            & $Python scripts/training/compare_dpo_betas.py --config $cfg 2>&1 | Tee-Object -FilePath $Log -Append
+            $dpoLaunchScript = @'
+import subprocess, sys, yaml
+from pathlib import Path
+sys.path.insert(0, "scripts/training")
+from dpo_lora_autodetect import resolve_lora_adapter_path
+
+config_path = sys.argv[1]
+base_lora_output_dir = sys.argv[2] if len(sys.argv) > 2 else "./checkpoints/polish_default_lora"
+cfg = yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+cfg, msg = resolve_lora_adapter_path(cfg, base_lora_output_dir)
+print(msg)
+
+args = ["accelerate", "launch", "-m", "krivex_training.polish.train_dpo"]
+IGNORED_KEYS = {"pipeline_class", "conditioning_contract", "ablation_id", "ablation_hypothesis"}
+for k, v in cfg.items():
+    if k in IGNORED_KEYS or v is None:
+        continue
+    flag = f"--{k.replace('_', '-')}"
+    if isinstance(v, bool):
+        if v:
+            args.append(flag)
+        continue
+    if isinstance(v, list):
+        for item in v:
+            args.append(f"{flag}={item}")
+        continue
+    args.append(f"{flag}={v}")
+print("Running:", " ".join(args))
+subprocess.run(args, check=True)
+'@
+            & $Python -c $dpoLaunchScript $cfg 2>&1 | Tee-Object -FilePath $Log -Append
         }
         "polish-cfm" {
             $defaultCfg = "training/configs/cfm_distill_qwen_image21.yaml"

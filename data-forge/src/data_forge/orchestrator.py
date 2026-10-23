@@ -300,13 +300,25 @@ class Orchestrator:
             if dry_run:
                 log.info("stage_dry_run", stage="s01_fetch")
             else:
-                from data_forge.inference.engine import ModelEngine
-                async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                needs_license_engine = any(
+                    ds.enabled and ds.license_status == "unverified"
+                    for ds in self.config.datasets.values()
+                )
+                if needs_license_engine:
+                    from data_forge.inference.engine import ModelEngine
+                    async with ModelEngine.vllm_session(self.config, "tier1") as engine:
+                        await self._run_stage(
+                            "s01_fetch",
+                            record_ids=[],
+                            chunk_id="global",
+                            engine=engine,
+                        )
+                else:
                     await self._run_stage(
                         "s01_fetch",
                         record_ids=[],
                         chunk_id="global",
-                        engine=engine,
+                        engine=None,
                     )
 
         # ── Stage 1.5: UICrit Join (runs once, global, after fetch) ─────

@@ -41,10 +41,14 @@ gradient_accumulation_steps: 16
 gradient_checkpointing: true
 learning_rate: 1.0e-4
 lr_scheduler: "cosine"
-lr_warmup_steps: 200
-max_train_steps: 5000
+max_train_steps: 2
+num_train_epochs: 1
+lr_warmup_steps: 0
 mixed_precision: "bf16"
 seed: 0
+use_8bit_adam: true
+cache_latents: true
+report_to: "none"
 
 # Rank reduced from 64 → 32: NF4 introduces quantization noise that limits the
 # effective representational capacity per rank-k update. rank=32 with DoRA
@@ -66,8 +70,9 @@ lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.ou
 pipeline_class: "QwenImage21Pipeline"
 conditioning_contract: "image_conditioned_edit"
 base_weights_frozen: true
-validation_prompt: null
-validation_image: null
-validation_epochs: 25
+validation_prompt: "a polished production UI mobile application screen"
+validation_image: "data_krivex/heldout/external_eval/ui_vision/images/element_grounding/005431ca34edef88193038142c2466fe.png"
+validation_epochs: 1
+num_validation_images: 1
 val_fraction: null
 val_every: null

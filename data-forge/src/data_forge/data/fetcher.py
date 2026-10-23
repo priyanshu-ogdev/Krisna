@@ -137,14 +137,15 @@ class DatasetFetcher:
         # This preserves source structure/metadata and gives Figma2Code and
         # MobileViews deterministic identities without changing any remote
         # source's default fetch behavior.
-        adapter = build_local_adapter(
-            key=key,
-            spec=spec,
-            output_root=dataset_dir,
-            data_root=self._config.data_root,
-        )
-        if adapter is not None:
-            return await asyncio.to_thread(adapter.fetch)
+        if spec.source_type not in ("huggingface", "url", "github") or spec.fetch_config.get("local_path"):
+            adapter = build_local_adapter(
+                key=key,
+                spec=spec,
+                output_root=dataset_dir,
+                data_root=self._config.data_root,
+            )
+            if adapter is not None:
+                return await asyncio.to_thread(adapter.fetch)
 
         # Remote adapter modes use Hugging Face only as an acquisition layer;
         # parsing, identity assignment, structure retention, and image hashing

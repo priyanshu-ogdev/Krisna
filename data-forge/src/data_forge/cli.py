@@ -201,6 +201,9 @@ def main() -> None:
 @click.option("--stages", default=None, help="Comma-separated stage numbers to run (e.g., '0,1,2')")
 @click.option("--chunk-size", default=None, type=int, help="Override chunk size from config")
 @click.option("--limit", default=None, type=int, help="Cap total records processed this run (smoke tests)")
+@click.option("--datasets-yaml", default=None, type=click.Path(exists=True, path_type=Path), help="Path to datasets.yaml")
+@click.option("--pipeline-yaml", default=None, type=click.Path(exists=True, path_type=Path), help="Path to pipeline.yaml")
+@click.option("--models-yaml", default=None, type=click.Path(exists=True, path_type=Path), help="Path to models.yaml")
 @click.option("--log-level", default="INFO", help="Logging level")
 def run(
     dry_run: bool,
@@ -209,12 +212,20 @@ def run(
     stages: str | None,
     chunk_size: int | None,
     limit: int | None,
+    datasets_yaml: Path | None,
+    pipeline_yaml: Path | None,
+    models_yaml: Path | None,
     log_level: str,
 ) -> None:
     """Execute the data pipeline."""
     from data_forge.logging_setup import setup_logging
 
-    config = _load_pipeline_config(profile)
+    config = _load_pipeline_config(
+        profile,
+        pipeline_yaml=pipeline_yaml,
+        datasets_yaml=datasets_yaml,
+        models_yaml=models_yaml,
+    )
     config.dry_run = dry_run
 
     if chunk_size:

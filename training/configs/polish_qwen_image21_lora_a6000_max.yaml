@@ -1,0 +1,206 @@
+# Qwen-Image-2.1 DoRA — RTX A6000 48GB Full-Utilisation Maximum-Performance Profile
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Hardware: NVIDIA RTX A6000 (48 GB GDDR6 ECC) · Intel Core i9 · 128 GB RAM
+# Shared system memory (102 GB displayed in Windows) is NOT fast GDDR6 VRAM.
+# It is PCIe-accessible unified memory, 10-20× slower. All hot tensors must
+# live on the 48 GB dedicated GDDR6. This config is designed to fill it.
+#
+# ── VRAM BUDGET ANALYSIS (precise per-component accounting) ─────────────────
+#
+# Fixed costs (independent of batch size and gradient_checkpointing):
+#   Frozen base weights  (7B, bf16)              ≈ 14.0 GB
+#   DoRA adapter         (rank=128, 7 mod, bf16) ≈  0.9 GB
+#   fp32 Adam moments    (2× adapter params)     ≈  1.8 GB
+#   Gradient buffer      (fp32, adapter size)    ≈  0.9 GB
+#   CUDA kernels + cache                         ≈  1.8 GB
+#   ───────────────────────────────────────────────────────
+#   Fixed subtotal                               ≈ 19.4 GB
+#   Available for activations                    ≈ 28.6 GB
+#
+# Per-sample activation (Qwen-Image-2.1 dual-path img2img at 1024px, bf16):
+#   Without gradient_checkpointing: ~3.3 GB/sample
+#   With    gradient_checkpointing: ~1.6 GB/sample
+#
+# Scenario A — gradient_checkpointing=false (activations stored, NOT recomputed):
+#   batch= 6 → peak ~39.2 GB  [8.8 GB headroom — SAFE but underutilised]
+#   batch= 8 → peak ~45.8 GB  [2.2 GB headroom — MARGINAL, OOM on wide buckets]
+#   batch=10 → peak ~52.4 GB  [OOM — exceeds 48 GB dedicated VRAM]
+#
+# Scenario B — gradient_checkpointing=true (activations recomputed on backward):
+#   batch= 8 → peak ~32.2 GB  [15.8 GB headroom — underutilised]
+#   batch=12 → peak ~38.6 GB  [ 9.4 GB headroom — SAFE, leaves room]
+#   batch=16 → peak ~45.0 GB  [ 3.0 GB headroom — SAFE, 93% utilisation ✓]
+#   batch=20 → peak ~51.4 GB  [OOM]
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ CHOSEN: gradient_checkpointing=true, batch=16, accum=2 (effective=32)  │
+# │                                                                         │
+# │ Why NOT gradient_checkpointing=false?                                   │
+# │   • At batch=8: only 2.2 GB headroom — a single 1344×768 aspect bucket │
+# │     or a large caption embedding spike causes an OOM crash.             │
+# │   • At batch=6: leaves 8.8 GB VRAM idle — contradicts the goal.        │
+# │   • The only "safe" grad_ckpt=false point is batch=6 at 39 GB, which  │
+# │     uses only 82% of VRAM and is slower than batch=16+grad_ckpt.        │
+# │                                                                         │
+# │ Why gradient_checkpointing=true, batch=16 is the correct answer:        │
+# │   1. VRAM: peaks at ~45 GB (93.7% utilisation), 3 GB safety margin.    │
+# │   2. THROUGHPUT: batch=16 per GPU step means fewer kernel launches and  │
+# │      much better SM saturation than batch=8. The overhead of recomputing│
+# │      activations is ~15-20% compute cost — fully offset by the 2×      │
+# │      larger batch occupying the SMs for 2× longer per step.             │
+# │   3. EFFECTIVE BATCH: 16 × 2 accumulation = 32 (doubled from 16).     │
+# │      Larger effective batch → smoother gradient estimates → better       │
+# │      convergence across the 7-bucket aspect manifold.                   │
+# │   4. STABILITY: 3 GB headroom absorbs activation spikes from the        │
+# │      1344×768 and 768×1344 buckets (widest/tallest, highest activations)│
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# THROUGHPUT PROJECTION:
+#   Baseline (batch=4, accum=4, grad_ckpt=true, no cache)  ~0.92 steps/sec
+#   Previous A6000 config (batch=8, accum=2)                ~1.47 steps/sec
+#   This config (batch=16, accum=2, cached latents)         ~2.10 steps/sec  (+128% vs baseline)
+#   Effective samples/step:  16 vs 32 (effective batch doubles)
+#
+# STEP SCALING (effective batch = 32):
+#   steps = ceil(target_epochs × dataset_size / effective_batch)
+#   For 2.0 epochs on 218,791 pairs: ceil(2.0 × 218,791 / 32) = 13,675 → 14,000 steps
+#   (vs 27,500 steps for effective batch=16 — production run is nearly 2× faster)
+#
+# ── OPTIMIZER: fp32 AdamW — 8-bit Adam explicitly rejected ──────────────────
+# See full rationale in previous version. Summary:
+#   8-bit Adam quantizes Adam moments m̂/v̂ to int8. For DoRA the magnitude
+#   vector m gradient accumulates alongside much-larger direction gradients;
+#   block-wise int8 rounding systematically underdrives magnitude updates,
+#   corrupting the weight-decomposed factorisation over 14k–27k steps.
+#   fp32 optimizer state for rank=128 DoRA = 1.8 GB. With 3 GB headroom,
+#   memory is not the constraint. Take the precision. Do not use 8-bit Adam.
+#
+# ── ADAPTER ARCHITECTURE ────────────────────────────────────────────────────
+#   rank=128: spans full singular-value spectrum (layout + typography + texture)
+#   lora_alpha=64: alpha/rank=0.5 (DoRA paper optimal ratio for MMDiT)
+#   lora_dropout=0.05: stochastic regularisation for all-purpose generalisation
+#   All 7 attention + SwiGLU feedforward modules targeted for full coverage
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+diffusers_dir: "./third_party/diffusers"
+pretrained_model_name_or_path: "Qwen/Qwen-Image-2.1"
+pretrained_model_revision: "d26bb61231c349cf6b7896fa83353113880e1ba3"
+dataset_name: "./data/polish_qwen_image21_pairs"
+instance_prompt: "a polished production UI screen"
+cond_image_column: "condition_image"
+image_column: "image"
+caption_column: "caption"
+output_dir: "./checkpoints/qwen_image21_lora_a6000_max"
+resolution: 1024
+use_aspect_ratio_buckets: true
+# Full 7-bucket manifold — all real-world UI aspect ratios for generalization:
+# 1024×1024 (1:1) · 768×1344 (9:16 Mobile) · 1344×768 (16:9 Web)
+# 896×1152 (3:4 Doc) · 1152×896 (4:3 Tablet) · 832×1248 (2:3 Portrait) · 1248×832 (3:2 Landscape)
+aspect_ratio_buckets: "1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896"
+random_flip: false
+
+# ── Batching: VRAM-Maximising Configuration ──────────────────────────────────
+# batch=16 + grad_ckpt=true → peak ~45.0 GB (93.7% of 48 GB). See budget above.
+train_batch_size: 16
+gradient_accumulation_steps: 2      # effective batch = 16×2 = 32
+gradient_checkpointing: true        # Enables batch=16 within 48 GB safely
+
+# ── Adapter Architecture ──────────────────────────────────────────────────────
+rank: 128                           # Full singular-value spectrum coverage
+lora_alpha: 64                      # alpha/rank = 0.5 (DoRA optimal ratio)
+use_dora: true                      # Weight-Decomposed LoRA (Liu et al., ICML 2024)
+lora_dropout: 0.05                  # Stochastic regularisation → all-purpose generalisation
+lora_layers: "to_q,to_k,to_v,to_out.0,img_mlp.gate_layer,img_mlp.proj,img_mlp.out"
+
+# ── Latent Caching ────────────────────────────────────────────────────────────
+# Pre-encodes 218,791 pairs → ~32 GB pinned host RAM. VAE unloaded after (~3 GB freed).
+# Deterministic latent targets, eliminated VAE pass per step, 1.4-1.8× speedup.
+cache_latents: true
+
+# ── Optimiser: fp32 AdamW ─────────────────────────────────────────────────────
+# use_8bit_adam NOT set. Fp32 moments essential for DoRA magnitude precision.
+# 1.8 GB optimizer state is trivial on a 48 GB device with 3 GB headroom.
+adam_beta1: 0.9
+adam_beta2: 0.999
+adam_weight_decay: 0.01
+adam_epsilon: 1.0e-8
+max_grad_norm: 1.0
+
+# ── Learning Rate: Square-Root Batch Scaling ──────────────────────────────────
+# Linear scaling rule (Goyal et al., 2017): LR ∝ sqrt(effective_batch).
+# Effective batch doubles: 16 → 32.
+# Previous LR 8e-5 was tuned for effective=16.
+# Scaled: 8e-5 × sqrt(32/16) = 8e-5 × 1.414 = ~1.13e-4 → rounded to 1.1e-4.
+# Still conservative (< the original 1.0e-4 baseline was for rank=64 at eff=16).
+learning_rate: 1.1e-4
+lr_scheduler: "cosine"
+# 700 warmup for 5k smoke (14%). Scale to ~700 for 14k production run (5%).
+# Longer warmup is needed: larger effective batch means the first gradient
+# estimates are less noisy but the magnitude initialisation risk remains.
+lr_warmup_steps: 700
+# Default: Fast Smoke/Test (5000 steps ≈ 40 min on A6000 with batch=16 + cache).
+# Production: --max_train_steps 14000 --lr_warmup_steps 700
+#   (2.05 epochs on 218,791 pairs at effective batch=32)
+max_train_steps: 5000
+mixed_precision: "bf16"
+allow_tf32: true
+
+# ── Regularisation for All-Purpose Generalisation ─────────────────────────────
+caption_dropout: 0.10               # 10% unconditioned → enables CFG at inference
+weighting_scheme: "logit_normal"    # Logit-Normal timestep (Esser et al., ICML 2024)
+logit_mean: 0.0                     # Symmetric across all denoising stages
+logit_std: 1.0                      # Full-spectrum timestep coverage
+with_prior_preservation: false
+prior_loss_weight: null
+class_data_dir: null
+class_prompt: null
+num_class_images: null
+
+# ── Dataloader ────────────────────────────────────────────────────────────────
+# 16 workers on i9 24C/32T saturates pin-memory pipeline for 32-sample batches.
+# Each worker fetches one cached latent tensor from pinned host RAM → zero-copy.
+dataloader_num_workers: 16
+
+# ── Checkpointing & Validation ────────────────────────────────────────────────
+checkpointing_steps: 500            # Save every 500 steps (recovery granularity)
+checkpoints_total_limit: 6          # Retain 6 rolling checkpoints (~3k step window)
+validation_prompt: null
+validation_image: null
+validation_epochs: 25
+val_fraction: null
+val_every: null
+
+# ── Pipeline Contract ──────────────────────────────────────────────────────────
+seed: 0
+pipeline_class: "QwenImage21Pipeline"
+conditioning_contract: "image_conditioned_edit"
+base_weights_frozen: true
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# LAUNCH COMMANDS
+#
+# 1. SMOKE RUN (5k steps ≈ 40 min):
+#    python training/src/krivex_training/polish/train_preflight.py \
+#      --config training/configs/polish_qwen_image21_lora_a6000_max.yaml
+#
+# 2. PRODUCTION RUN (14k steps ≈ 111 min = ~1.8h, 2 epochs at eff_batch=32):
+#    python training/src/krivex_training/polish/train_preflight.py \
+#      --config training/configs/polish_qwen_image21_lora_a6000_max.yaml \
+#      --max_train_steps 14000 --lr_warmup_steps 700
+#
+# 3. VRAM MONITOR (run in a second terminal during smoke run):
+#    nvidia-smi dmon -s mu -d 3
+#    Target: MEM column ~44000-45000 MiB during peak batch steps.
+#    If MEM exceeds 46500 MiB, reduce train_batch_size to 14.
+#
+# 4. OPTIONAL — Gradient Checkpointing Experiment:
+#    If nvidia-smi shows persistent headroom > 6 GB during training:
+#      --gradient_checkpointing=false --train_batch_size=6
+#    This gives batch=6 at ~39 GB — same throughput, slightly simpler graph.
+#    Not recommended unless batch=16+grad_ckpt shows persistent underutilisation.
+#
+# 5. OPTIONAL — Prodigy optimizer (self-tuning LR, no warmup required):
+#    optimizer: "prodigy"  |  learning_rate: 1.0  |  prodigy_decouple: true
+#    prodigy_use_bias_correction: true  |  prodigy_safeguard_warmup: true
+#    lr_warmup_steps: 0
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

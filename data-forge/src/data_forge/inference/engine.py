@@ -85,7 +85,6 @@ class ModelEngine:
             "--enable-chunked-prefill",  # SOTA: prevents OOM during long multimodal vision prefill
             "--enable-prefix-caching",   # SOTA: caches system prompts & vision prefixes across pipeline stages
             "--max-num-seqs", str(server_cfg.max_num_seqs),
-            "--swap-space", str(getattr(server_cfg, "swap_space_gb", 32)),
             "--enforce-eager",
             "--no-enable-log-requests",  # SOTA: removes stdout/disk IO bottleneck
             "--disable-uvicorn-access-log",  # SOTA: eliminates high-concurrency access log spam

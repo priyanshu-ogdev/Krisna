@@ -2,17 +2,33 @@
 set -euo pipefail
 
 CONFIG="${1:-training/configs/polish_qwen_image21_lora.yaml}"
+shift || true
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-source .venv/bin/activate
+
+# Detect and activate virtualenv if present
+for venv_candidate in "$ROOT/.venv" "$ROOT/.venv-forge"; do
+    if [ -f "$venv_candidate/bin/activate" ]; then
+        source "$venv_candidate/bin/activate"
+        break
+    fi
+done
+
+PYTHON_CMD="python3"
+if ! command -v python3 &>/dev/null; then
+    PYTHON_CMD="python"
+fi
+
 export PYTHONPATH="$ROOT/training/src${PYTHONPATH:+:$PYTHONPATH}"
 
-echo -e "\033[1;36mRunning CPU-only Qwen-Image-2.1 training preflight...\033[0m"
-# This performs all receipt, split, path, image-hash, and pinned-HEAD checks
-# before accelerate is started.  Its command rendering redacts hub_token.
-python3 -m krivex_training.polish.train_preflight "$CONFIG"
+echo -e "\033[1;36mRunning Qwen-Image-2.1 training preflight and launcher...\033[0m"
+# Preflight validates dataset receipts, split isolation, cryptographic hashes,
+# diffusers pinned HEAD, and starts the accelerate trainer.
+"${PYTHON_CMD}" -m krivex_training.polish.train_preflight "$CONFIG" "$@"
 
-python3 - "$CONFIG" <<'PYEOF'
+echo -e "\033[1;36mWriting dataset provenance & model manifest...\033[0m"
+"${PYTHON_CMD}" - "$CONFIG" <<'PYEOF'
 import json
 import subprocess
 import sys

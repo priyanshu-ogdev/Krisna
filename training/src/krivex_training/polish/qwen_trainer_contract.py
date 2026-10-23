@@ -99,6 +99,7 @@ SUPPORTED_OPTIONS = {
     "mixed_precision",
     "upcast_before_saving",
     "offload",
+    "bnb_quantization_config_path",
 }
 
 METADATA_ONLY_KEYS = {
@@ -169,6 +170,16 @@ def prepare_trainer_config(raw: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError(f"unsupported bnb_4bit_compute_dtype {compute_dtype!r}; choose 'bfloat16' or 'float16'")
             if "bnb_4bit_use_double_quant" in cfg and not isinstance(cfg["bnb_4bit_use_double_quant"], bool):
                 raise ValueError("bnb_4bit_use_double_quant must be a boolean")
+            out_dir = Path(cfg.get("output_dir", "./checkpoints/qwen_image21_qdora_12gb"))
+            out_dir.mkdir(parents=True, exist_ok=True)
+            quant_config_file = out_dir / "bnb_quant_config.json"
+            quant_dict = {
+                "load_in_4bit": True,
+                "bnb_4bit_quant_type": quant_type,
+                "bnb_4bit_use_double_quant": bool(cfg.get("bnb_4bit_use_double_quant", True)),
+            }
+            quant_config_file.write_text(json.dumps(quant_dict, indent=2), encoding="utf-8")
+            cfg["bnb_quantization_config_path"] = str(quant_config_file.resolve())
         cfg.pop("load_in_4bit", None)
         cfg.pop("bnb_4bit_quant_type", None)
         cfg.pop("bnb_4bit_compute_dtype", None)
@@ -280,8 +291,18 @@ def verify_diffusers_checkout(diffusers_dir: str | Path) -> tuple[Path, bool]:
 def build_accelerate_command(config: dict[str, Any], diffusers_dir: str | Path) -> list[str]:
     """Build the exact native command, with no subprocess side effects."""
     prepared = prepare_trainer_config(config)
+    import shutil, sys
+    accel_bin = "accelerate"
+    if shutil.which("accelerate") is None:
+        candidate = Path(sys.executable).parent / "Scripts" / "accelerate.exe"
+        if candidate.is_file():
+            accel_bin = str(candidate)
+        else:
+            candidate_nix = Path(sys.executable).parent / "accelerate"
+            if candidate_nix.is_file():
+                accel_bin = str(candidate_nix)
     script = trainer_script(diffusers_dir)
-    args = ["accelerate", "launch", str(script)]
+    args = [accel_bin, "launch", str(script)]
     for key, value in prepared.items():
         if value is None:
             continue

@@ -49,13 +49,20 @@ case "${1:-}" in
         exit 0
         ;;
     polish-default)
-        exec "${REPO_ROOT}/scripts/training/train_polish_default_lora.sh" "${2:-}"
+        shift || true
+        exec "${REPO_ROOT}/scripts/training/train_polish_default_lora.sh" "$@"
+        ;;
+    ablations)
+        shift || true
+        exec python3 -m krivex_training.polish.ablation_runner --all "$@"
         ;;
     polish-dpo)
-        exec "${REPO_ROOT}/scripts/training/train_polish_dpo.sh" "${2:-}"
+        shift || true
+        exec "${REPO_ROOT}/scripts/training/train_polish_dpo.sh" "$@"
         ;;
     polish-cfm)
-        exec "${REPO_ROOT}/scripts/training/train_polish_fast_preview.sh" "${2:-}"
+        shift || true
+        exec "${REPO_ROOT}/scripts/training/train_polish_fast_preview.sh" "$@"
         ;;
     planner)
         echo "Planner tier is 100% frozen (Qwen3.5-9B GGUF + UICrit RAG). No training occurs under PRD §6." >&2
