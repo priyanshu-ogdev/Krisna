@@ -221,8 +221,19 @@ def render_wireframe(layout: LayoutIR, output_path: str | Path, *, style: str = 
         h = max(1, y2 - y1)
         node_type = str(node.type).lower()
 
+        # 0. Modal / Dialog / Floating Overlay with Ambient Scrim & Strong Elevation
+        if node_type in ("modal", "dialog", "popup", "overlay") or int(getattr(node, "z_index", 0)) >= 20:
+            scrim = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 75))
+            image.paste(Image.alpha_composite(image.convert("RGBA"), scrim).convert("RGB"))
+            draw = ImageDraw.Draw(image)
+            elevation = 5
+            shadow_offset_y = 6
+            shadow_radius = 16
+            draw.rounded_rectangle((x1 + 1, y1 + shadow_offset_y, x2 + 1, y2 + shadow_offset_y + 4), radius=shadow_radius, fill=shadow_color)
+            draw.rounded_rectangle((x1, y1, x2, y2), radius=12, fill=surface_color, outline=border_color, width=2)
+
         # 1. Card / Content Container with Elevation Drop Shadow
-        if node_type in ("card", "container", "list", "table", "region"):
+        elif node_type in ("card", "container", "list", "table", "region"):
             if w > 16 and h > 16:
                 elevation = max(1, min(5, int(getattr(node, "z_index", 0)) // 10 + 1))
                 shadow_offset_y = 2 + elevation * 2

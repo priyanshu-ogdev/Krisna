@@ -174,6 +174,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier 
 ```
 
 ### 6.4 Deferred Research Extension: Launch Flow-Matching DPO Preference Training
+> [!CAUTION]
+> **Advisory on DPO Preference Data Domain:**
+> The active DPO training pipeline requires true condition-image-paired triplets $(x_w, x_l, c)$. Unconditioned general photography datasets (`pickapic_v2`, `hpdv2`) lack wireframe condition images and risk catastrophic forgetting of wireframe conditioning layers if run naively on top of the SFT adapter. Run Phase 2 DPO **only** after Phase 1 convergence, utilizing synthetic UI preference pairs generated via Resident Critic spatial perturbation.
+
 ```bash
 # Linux / WSL
 ./scripts/training/train_polish_dpo.sh training/configs/polish_qwen_image21_dpo.yaml

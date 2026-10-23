@@ -604,6 +604,22 @@ def layout_from_constraints(
                         adj_x1 = max(0.0, adj_x2 - bw_adj)
                         adj_y1 = max(0.0, adj_y2 - bh_adj)
                         new_bbox = BBox(x1=round(adj_x1, 4), y1=round(adj_y1, 4), x2=round(adj_x2, 4), y2=round(adj_y2, 4))
+                elif comp_type in ("button", "badge", "input", "headline", "subhead", "text"):
+                    # Legibility & Token Floor:
+                    # Prevent sub-pixel micro-text collapse. Elements bearing interactive text
+                    # must meet minimum dimension floors (min 32px width, min 20px height).
+                    min_w = max(32.0 / canvas_w, 0.03)
+                    min_h = max(20.0 / canvas_h, 0.02)
+                    bw_cur = new_bbox.x2 - new_bbox.x1
+                    bh_cur = new_bbox.y2 - new_bbox.y1
+                    if bw_cur < min_w or bh_cur < min_h:
+                        bw_adj = max(bw_cur, min_w)
+                        bh_adj = max(bh_cur, min_h)
+                        adj_x2 = min(1.0, new_bbox.x1 + bw_adj)
+                        adj_y2 = min(1.0, new_bbox.y1 + bh_adj)
+                        adj_x1 = max(0.0, adj_x2 - bw_adj)
+                        adj_y1 = max(0.0, adj_y2 - bh_adj)
+                        new_bbox = BBox(x1=round(adj_x1, 4), y1=round(adj_y1, 4), x2=round(adj_x2, 4), y2=round(adj_y2, 4))
 
                 is_locked = bool(
                     act_dict.get("locked")
