@@ -370,11 +370,9 @@ class TorchBackend(ModelBackend):
 
 
 def default_backend_factory(spec: ModelSpec) -> ModelBackend:
-    """Production backend factory. Returns real model backends (TorchBackend) by default,
-    or MockBackend when mock mode is enabled via KRIVEX_MOCK_INFERENCE=1."""
+    """Production backend factory. Returns real model backends (TorchBackend) when
+    KRIVEX_USE_REAL_BACKENDS=1; MockBackend in all other cases (CI, local dev)."""
     if os.environ.get("KRIVEX_USE_REAL_BACKENDS", "0") == "1":
         return TorchBackend(spec=spec)
-    if os.environ.get("KRIVEX_MOCK_INFERENCE", "0") == "1":
-        return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
     return MockBackend(spec=spec, load_latency_s=0.01 + random.random() * 0.01)
 

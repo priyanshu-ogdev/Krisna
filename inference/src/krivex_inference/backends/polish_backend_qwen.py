@@ -421,6 +421,14 @@ class QwenImage21Backend(ModelBackend):
 
         blobs = get_blob_store()
 
+        # Resolve segmentation_ref early — must precede the handoff_ref block because
+        # the LayoutIR JSON branch (below) auto-generates a segmentation_img when
+        # segmentation_ref is None. Reading segmentation_ref after that block causes
+        # a NameError that is silently swallowed inside the broad except, dropping
+        # both the wireframe and the segmentation signal.
+        segmentation_ref = kwargs.get("segmentation_ref")
+        segmentation_img = None
+
         # Load input wireframe / conditioning image (supporting native RGB and RGBA)
         source_img = None
         if handoff_ref:
@@ -523,9 +531,9 @@ class QwenImage21Backend(ModelBackend):
             donor_img = lock_donor_img if lock_donor_img is not None else source_img
 
         # Resolve semantic segmentation conditioning map (NVIDIA SPADE / Sana / ControlNet style)
-        segmentation_ref = kwargs.get("segmentation_ref")
-        segmentation_img = None
-        if segmentation_ref:
+        # Note: segmentation_ref and segmentation_img are initialised above the handoff_ref block
+        # so the LayoutIR auto-generation path can check segmentation_ref safely.
+        if segmentation_ref and segmentation_img is None:
             if isinstance(segmentation_ref, str) and segmentation_ref.startswith("blob://"):
                 try:
                     loaded_s = blobs.load_image(segmentation_ref)
