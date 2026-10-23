@@ -308,22 +308,22 @@ datasets:
     revision: 6c254560879df7851233ea0fd2ae2a62764d0ef2
     category: instruction_image_editing
     expected_record_count: 10500
-    training_eligible: true
+    training_eligible: false
     synthetic: false
     synthetic_status: real
     provenance_url: https://huggingface.co/datasets/osunlp/MagicBrush
     quality_tier: gold
-    training_targets:
-      - polish_qwen_image21
+    training_targets: []
     license_url: https://creativecommons.org/licenses/by/4.0/
     license_status: verified
     license_notes: "CC-BY-4.0. Peer-reviewed human-annotated image-to-image editing benchmark (NeurIPS 2023 Oral). Pairs include source photo, editing instruction, and target photo over real people, animals, objects, and natural scenes."
-    note: "Primary instruction-based image-to-image editing corpus for Polish tier multimodal generalization."
+    note: "Evaluation and conversational editing benchmark; isolated from wireframe-to-UI screenshot SFT exports."
     fetch_config:
-      download_mode: hf_parquet_images
+      download_mode: eval_reference
       file_patterns:
         - 'data/*.parquet'
       sample_size: 10500
+    eval_only: true
   ui_vision:
     enabled: true
     display_name: UI-Vision
