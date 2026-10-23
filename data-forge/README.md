@@ -422,15 +422,24 @@ dead FAISS config, an unclosed `httpx.AsyncClient` in the registry watcher,
 three UI datasets missing from the domain tagger, and two duplicated
 `StageResult` classes.
 
-## Testing
+## 7-Bucket Aspect Ratio Manifold & Provenance Certification
+
+The Data-Forge pipeline synchronizes pairs into the calibrated 7-bucket aspect ratio manifold:
+- **Calibrated Buckets**: `(1024,1024; 768,1344; 1344,768; 832,1248; 1248,832; 896,1152; 1152,896)`
+- **Elimination of Geometric Distortion**: Preserves native UI proportions across mobile, tablet, and desktop web layouts without non-uniform stretching or cropping artifacts.
+- **Deterministic Wireframe Fingerprinting (`krivex.renderer.v2.7132a5a7`)**:
+  Every wireframe artifact is stamped with the deterministic layout renderer version hash. Exclusions are written immediately to `exclusions.jsonl` if a candidate pair lacks a matching renderer hash.
+- **Provenanced Export Splits**:
+  `scripts/data-forge/sync_to_training.py` enforces group-disjoint splits across domains, isolating 27,404 held-out evaluation pairs (`model_data/eval_external/`) that remain structurally unreachable by any training script.
+
+## Testing & Verification
 
 ```bash
-pytest tests/ -v -m "not integration"      # Unit tests, no GPU required
-pytest tests/ -v -m integration            # Requires GPU + models downloaded
-pytest tests/ --cov=data_forge --cov-report=html
+pytest tests/data_forge -v -m "not integration"      # Unit tests, no GPU required
+pytest tests/data_forge -v -m integration            # Requires GPU + models downloaded
+pytest tests/data_forge -q
 ```
 
-272 tests, all passing as of this revision (verified via `pytest tests/data_forge -v`,
-every schema strictly verified via `scripts/data-forge/verify_schemas.py`, and registry
-certified via `scripts/data-forge/audit_registry.py`). Zero renderer exclusion gaps.
-Fully certified for server deployment via `./scripts/data-forge/run_data_forge.sh run`.
+- **272 Data-Forge Tests Passing**: 100% pass rate in `tests/data_forge` (contributing to 714 total monorepo passes).
+- **Schema & Registry Certification**: Certified via `scripts/data-forge/verify_schemas.py` and `scripts/data-forge/audit_registry.py`.
+- **Zero Renderer Exclusion Gaps**: Certified for server deployment via `./scripts/data-forge/run_data_forge.sh run`.

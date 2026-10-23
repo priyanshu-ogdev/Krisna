@@ -221,6 +221,12 @@ class QwenImage21Backend(ModelBackend):
             if not torch.cuda.is_available() and self.device == "cuda":
                 log.info("CUDA unavailable; running QwenImage21Backend in CPU synthetic test mode.")
                 return None
+            if not self.strict and (
+                os.environ.get("KRIVEX_POLISH_SYNTHETIC", "").lower() in ("1", "true", "yes")
+                or os.environ.get("KRIVEX_FORCE_SYNTHETIC", "").lower() in ("1", "true", "yes")
+            ):
+                log.info("Synthetic polish mode requested via environment; bypassing live pipeline load.")
+                return None
 
             try:
                 resolved_dtype = resolve_dtype(self.dtype)

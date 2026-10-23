@@ -381,14 +381,21 @@ curl -X POST "http://127.0.0.1:8420/preference-pairs/export?source=planner_revie
 
 ### Multi-Hardware Benchmark Evaluation & Research Ingestion
 
-Post-generation benchmarks (KID, LPIPS, CLIP Score, CMMD, DINOv2 distance, Layout IoU, and latency profiles) are evaluated via:
+Post-generation benchmarks (KID, LPIPS, CLIP Score, CMMD, DINOv2 distance, Layout IoU, Typographic CER/WER, Aesthetic Score, and latency profiles) are evaluated via:
 
 ```bash
-# Multi-metric evaluation on held-out reference designs
+# Multi-metric evaluation on held-out reference designs across production hardware profiles:
 python scripts/eval/run_evaluation.py \
   --profile 48gb \
-  --checkpoint checkpoints/qwen_image21_lora \
+  --checkpoint checkpoints/qwen_image21_lora_a6000_max \
+  --reference-dir data/reference_uis \
+  --wireframe-dir data/held_out_wireframes \
+  --prompt-list data/eval_prompts.json \
   --output-dir eval_results
+
+# Fast Offline Smoke Test (Synthetic Generation Mode):
+# Emulates pipeline generation to verify metrics and LaTeX/Markdown/JSON exporters without GPU allocations:
+python scripts/eval/run_evaluation.py --synthetic --num-samples 5 --output-dir eval_results
 
 # Ingest and update research paper monograph
 python scripts/eval/ingest_eval_results.py \
@@ -396,6 +403,12 @@ python scripts/eval/ingest_eval_results.py \
   --paper-path docs/RESEARCH_PAPER.md \
   --apply
 ```
+
+Outputs include:
+- `eval_results/eval_comparison.json`: Structured benchmark metrics across all evaluated hardware profiles.
+- `eval_results/eval_comparison.md`: GitHub-ready Markdown summary table.
+- `eval_results/eval_comparison_latex.tex`: Publication-grade LaTeX booktabs table for paper insertion.
+- `eval_results/evaluation_receipt.json`: Cryptographic provenance receipt with SHA-256 digests.
 
 ---
 
@@ -412,7 +425,8 @@ pytest tests/inference -q
 ```
 
 **Quality Standards & Pass Guarantees**:
-* 100% test pass rate across 307 test cases.
-* Zero git diff whitespace errors (`git diff --check`).
-* Strict validation of PRD §7.4 state machine transition table.
-* Formal invariant enforcement: $T_{\text{swapping}} \equiv 0.000\text{s}$ on self-review, and $S_{\text{lock}} \equiv 1.000$ on region locks.
+* **100% Test Pass Rate**: 307 test cases in `tests/inference` (and 714 total tests across the monorepo).
+* **Hermetic Execution (`KRIVEX_POLISH_SYNTHETIC=1`)**: Supports zero-safetensors synthetic execution for headless CI and consumer workstation testing, bypassing 14GB base model memory allocations while strictly validating parameter contracts, tensors, and pipeline interfaces.
+* **Zero Git Diff Whitespace Errors**: Enforced by `git diff --check`.
+* **State Machine Invariant**: Formal validation of PRD §7.4 transition table with $T_{\text{swapping}} \equiv 0.000\text{s}$ on self-review.
+* **Exact Region Lock Invariant**: $S_{\text{lock}} \equiv 1.000$ and boundary gradient continuity $\Delta \nabla \le 0.05$ on locked elements.

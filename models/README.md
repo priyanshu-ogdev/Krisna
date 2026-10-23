@@ -13,4 +13,4 @@ models/planner/
 
 Use `scripts/inference/download_planner_models.py` with an exact publisher
 filename. The downloader refuses accidental overwrites and records hashes.
-Training outputs retain their subdirectories (`polish_default_lora/` and `dpo_checkpoints/`; the Sketch tier is deterministic layout code and requires no weights).
+Downloaded base model weights (`Qwen/Qwen-Image-2.1`) are cached in `models/` or HF cache, while fine-tuned adapters are placed in `checkpoints/` (`qwen_image21_lora_a6000_max/` or `qwen_image21_lora/`). The Sketch tier is deterministic layout code and requires no weights.

@@ -138,6 +138,11 @@ def verify_hypotheses(eval_data: Dict[str, Any]) -> Tuple[bool, List[str]]:
     verdicts = []
 
     profiles = eval_data.get("profiles", {})
+    if not profiles and isinstance(eval_data, dict):
+        profiles = {
+            k: v for k, v in eval_data.items()
+            if isinstance(v, dict) and any(m in v for m in ("layout_iou", "kid_mean", "kid", "lpips_mean", "lpips", "ocr_readability"))
+        }
     if not profiles:
         log.warning("No profiles found in evaluation data!")
         return False, ["No profiles in evaluation data."]

@@ -130,6 +130,9 @@ Distills 30-step teacher trajectory down to 4–6 steps ($<1.0\text{s}$ latency 
 - **`dpo_lora_autodetect.py`**: Automatically resolves and validates the base fine-tuned LoRA checkpoint path for DPO training continuation.
 - **`compare_dpo_betas.py`**: Sweeps inverse-temperature $\beta \in [500, 2000, 5000]$ on validation pairs and writes `training_receipt.json`.
 - **`compare_cfm_steps.py`**: Evaluates few-step consistency distillation trajectories ($N \in \{1, 2, 4, 6, 8\}$) and emits `distillation_receipt.json`.
-- **`inspect_qwen_modules.py`**: Introspects Qwen-Image-2.1 transformer layers to verify target sublayer projections.
+### Post-Training Benchmark Evaluation & Paper Synchronization
+- **`scripts/eval/run_evaluation.py`**: Multi-hardware benchmark suite evaluating KID, LPIPS, CMMD, DINOv2, Layout-IoU, CER/WER, Aesthetic Score, and Latency.
+- **`scripts/eval/ingest_eval_results.py`**: Ingests benchmark results, verifies pre-registered hypotheses H1–H7, issues `evaluation_receipt.json`, and updates `docs/RESEARCH_PAPER.md`.
+- See [scripts/eval/README.md](../eval/README.md) for full evaluation documentation.
 
 See [training/README.md](file:///d:/Krisna/training/README.md) for full architectural specifications and mathematical formulations.

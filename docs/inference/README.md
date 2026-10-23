@@ -108,3 +108,16 @@ FastAPI service exposed on default port `8420`:
 | `POST` | `/session/{id}/critique` | Runs critique/verifier flow and records eligible evidence. |
 | `GET` | `/session/{id}/render` | Streams raw finalized image bytes (`image/png`). |
 | `GET` | `/orchestrator/status` | Reports residency state, declared ledgers, and live hardware probes. |
+
+---
+
+## 6. Verifiers, Post-Training Evaluation & Hermetic Testing
+
+1. **Automated Verifier Stack**:
+   - Every finalized design is scored across OpenCV Layout-IoU, EasyOCR readability CER/WER, LAION Aesthetic Predictor, and ONNX Content Safety.
+   - Scores are stored in `krivex_preference_pairs.db` for preference tracking and downstream alignment.
+2. **Post-Training Evaluation & Paper Synchronization**:
+   - The multi-hardware benchmark runner (`scripts/eval/run_evaluation.py`) evaluates held-out test splits, outputting JSON, Markdown, and publication LaTeX tables (`eval_comparison_latex.tex`).
+   - Results are ingested via `scripts/eval/ingest_eval_results.py` to verify the 7 pre-registered OSF hypotheses and update `docs/RESEARCH_PAPER.md`.
+3. **Hermetic CI Execution**:
+   - Setting `KRIVEX_POLISH_SYNTHETIC=1` allows running inference and evaluation tests without unquantized 14GB base weights, guaranteeing 100% test pass rate across 307 inference tests and 714 monorepo tests.

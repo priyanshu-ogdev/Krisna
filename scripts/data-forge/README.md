@@ -66,6 +66,6 @@ python scripts/data-forge/verify_schemas.py
 ```
 
 ### `sync_to_training.py`
-Bridges exported `model_data/polish_qwen_image21` records into HuggingFace dataset format with metadata receipts, SHA-256 target/condition hash manifests, and group-disjoint train/validation splits for direct consumption by training scripts.
+Bridges exported `model_data/polish_qwen_image21` records into HuggingFace dataset format with metadata receipts, SHA-256 target/condition hash manifests, 7-bucket aspect ratio manifold binning (`1024,1024;768,1344;1344,768;832,1248;1248,832;896,1152;1152,896`), and wireframe renderer fingerprinting (`krivex.renderer.v2.7132a5a7`). Enforces group-disjoint train/validation splits for direct consumption by training and post-training evaluation scripts.
 
 See [data-forge/README.md](file:///d:/Krisna/data-forge/README.md) for complete architecture and stage references.

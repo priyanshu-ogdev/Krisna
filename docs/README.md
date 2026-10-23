@@ -61,7 +61,9 @@ docs/
 - **Data-Forge Academic Literature Survey & Prior Research Attribution**: See [data-forge/LITERATURE_SURVEY.md](data-forge/LITERATURE_SURVEY.md).
 - **Canonical Peer-Reviewed Citations Matrix (Zero arXiv)**: See [citations.md](citations.md).
 - **Qwen-Image-2.1 Foundations & Finalization Roadmap**: See [research/QWEN_IMAGE_2_1_RESEARCH_FOUNDATIONS.md](research/QWEN_IMAGE_2_1_RESEARCH_FOUNDATIONS.md).
-- **Hardware Runbook (RTX A6000 48GB)**: See [training/TRAINING_RUNBOOK.md](training/TRAINING_RUNBOOK.md).
+- **Enterprise Max A6000 Hardware Runbook & VRAM Blueprint**: See [training/TRAINING_RUNBOOK.md](training/TRAINING_RUNBOOK.md) and [training/ARCHITECTURE.md](training/ARCHITECTURE.md).
+- **Post-Training Evaluation & LaTeX Export Guide**: See [scripts/eval/README.md](../scripts/eval/README.md).
+- **Hermetic Inference Testing & Synthetic Mode**: See [inference/README.md](inference/README.md#9-verification--automated-test-suite).
 
 
 Each package's own `README.md` is the source of truth for that package —

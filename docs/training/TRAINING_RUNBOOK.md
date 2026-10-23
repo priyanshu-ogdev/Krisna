@@ -180,7 +180,7 @@ Once the training run completes and writes `training_receipt.json`:
 # 1. Execute the multi-hardware evaluation harness across held-out benchmarks
 python scripts/eval/run_evaluation.py \
   --profile 48gb \
-  --checkpoint checkpoints/qwen_image21_lora \
+  --checkpoint checkpoints/qwen_image21_lora_a6000_max \
   --reference-dir data/reference_uis \
   --wireframe-dir data/held_out_wireframes \
   --prompt-list data/eval_prompts.json \
