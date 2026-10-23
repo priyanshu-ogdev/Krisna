@@ -151,14 +151,18 @@ class TestResolveModelRevisions:
 
     def test_apply_produces_minimal_diff_on_real_file_copy(self, tmp_path):
         target = tmp_path / "models.yaml"
-        target.write_text(REAL_MODELS_YAML.read_text())
-        original_lines = target.read_text().splitlines()
+        content = REAL_MODELS_YAML.read_text(encoding="utf-8")
+        encoder_spec = pin_revisions._load(REAL_MODELS_YAML)[1]["encoders"]["z_image_vae"]
+        current_rev = encoder_spec.get("revision", "main")
+        unpinned = content.replace(f'revision: "{current_rev}"', 'revision: "main"', 1)
+        target.write_text(unpinned, encoding="utf-8")
+        original_lines = target.read_text(encoding="utf-8").splitlines()
 
         with patch("huggingface_hub.HfApi", return_value=_fake_api("modelTestSha777")):
             results = pin_revisions.resolve_model_revisions(target, only={"encoders.z_image_vae"}, apply=True)
 
         assert results[0]["status"] == "resolved"
-        new_lines = target.read_text().splitlines()
+        new_lines = target.read_text(encoding="utf-8").splitlines()
         diff_lines = [i for i, (a, b) in enumerate(zip(original_lines, new_lines)) if a != b]
         assert len(diff_lines) == 1
         assert "modelTestSha777" in new_lines[diff_lines[0]]

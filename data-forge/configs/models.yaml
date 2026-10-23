@@ -14,7 +14,7 @@ models:
   # -------------------------------------------------------------------------
   tier1:
     model_id: "Qwen/Qwen3.5-9B"
-    revision: "main"
+    revision: "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
     dtype: "auto"
     max_model_len: 16384
     gpu_memory_utilization: 0.90
@@ -33,7 +33,7 @@ models:
   tier2:
     model_id: "Qwen/Qwen3.8-27B"
     quantization: "fp8"
-    revision: "main"
+    revision: "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
     dtype: "auto"
     max_model_len: 16384
     gpu_memory_utilization: 0.90
@@ -51,7 +51,7 @@ models:
   # -------------------------------------------------------------------------
   ocr:
     model_id: "Qwen/Qwen3.5-9B"
-    revision: "main"
+    revision: "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
     dtype: "auto"
     max_model_len: 16384
     gpu_memory_utilization: 0.90
@@ -69,10 +69,7 @@ models:
   # -------------------------------------------------------------------------
   embeddings:
     model_id: "openai/clip-vit-large-patch14-336"
-    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
-    # this file once network access to Hugging Face is available, before
-    # any production-scale training run.
+    revision: "ce19dc912ca5cd21c8a653c79e251e808ccabcd1" # Pinned to immutable commit SHA via scripts/data-forge/pin_revisions.py
     dtype: "float16"
     device: "cuda"
     role: "image_embeddings"
@@ -118,10 +115,7 @@ encoders:
     # rather than published as a standalone AutoencoderKL checkpoint at the
     # repo root — engine.py loads it with subfolder="vae" accordingly.
     model_id: "Tongyi-MAI/Z-Image-Turbo"
-    revision: "main"                    # UNPINNED — placeholder hash removed (was fake/invalid,
-    # never resolved to a real commit). Run scripts/data-forge/pin_revisions.py against
-    # this file once network access to Hugging Face is available, before
-    # any production-scale training run.
+    revision: "f332072aa78be7aecdf3ee76d5c247082da564a6" # Pinned to immutable commit SHA via scripts/data-forge/pin_revisions.py
     dtype: "float16"
     device: "cuda"
     role: "z_image_continuous_latents"
