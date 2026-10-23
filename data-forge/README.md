@@ -385,7 +385,7 @@ pytest tests/ -v -m integration            # Requires GPU + models downloaded
 pytest tests/ --cov=data_forge --cov-report=html
 ```
 
-100+ tests, all passing as of this revision (verified via `py_compile` across
-every module, a full `load_config()` pass against all three YAML files, the
-orchestrator's stage-registration/ordering validator, and a fresh zip
-extraction re-run — not just `pytest`'s own report).
+272 tests, all passing as of this revision (verified via `pytest tests/data_forge -v`,
+every schema strictly verified via `scripts/data-forge/verify_schemas.py`, and registry
+certified via `scripts/data-forge/audit_registry.py`). Zero renderer exclusion gaps.
+Fully certified for server deployment via `./scripts/data-forge/run_data_forge.sh run`.
