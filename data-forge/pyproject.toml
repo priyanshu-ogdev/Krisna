@@ -87,6 +87,9 @@ data-forge = "data_forge.cli:main"
 where = ["src"]
 include = ["data_forge*"]
 
+[tool.setuptools.package-data]
+data_forge = ["assets/**/*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

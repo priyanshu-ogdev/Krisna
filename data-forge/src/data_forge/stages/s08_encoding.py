@@ -77,6 +77,7 @@ class EncodingStage(Stage):
         paths = config.paths.resolve(config.data_root) if config.paths else config.resolved_paths
         paths["latents_zimage"].mkdir(parents=True, exist_ok=True)
         paths["control_tokens"].mkdir(parents=True, exist_ok=True)
+        paths.get("wireframes", config.data_root / "processed" / "wireframes").mkdir(parents=True, exist_ok=True)
         processed = failed = 0
         total_bytes = 0
 
@@ -220,6 +221,8 @@ class EncodingStage(Stage):
                         "exclusion_reason": "image_missing",
                     }
                 fingerprint = _record_fingerprint(rec, img_path)
+                wireframes_dir = paths.get("wireframes", config.data_root / "processed" / "wireframes")
+                wireframe_path = wireframes_dir / f"{rec.id}.png"
                 if (
                     z_path.is_file()
                     and control_path.is_file()
@@ -236,6 +239,18 @@ class EncodingStage(Stage):
                     if control_data.get("canny_edges_path"):
                         encoding_paths["canny_edges"] = _rel(edges_path)
                         record_bytes += edges_path.stat().st_size
+                    if wireframe_path.is_file() and wireframe_path.stat().st_size > 0:
+                        encoding_paths["condition_image"] = _rel(wireframe_path)
+                        record_bytes += wireframe_path.stat().st_size
+                    elif getattr(rec, "domain", None) == "ui_first" and isinstance(getattr(rec, "structure_output", None), dict) and getattr(rec, "structure_output", {}).get("elements"):
+                        try:
+                            from data_forge.utils.wireframe_renderer import synthesize_record_wireframe
+                            out_wf = synthesize_record_wireframe(rec, config, output_path=wireframe_path)
+                            if out_wf and out_wf.is_file():
+                                encoding_paths["condition_image"] = _rel(out_wf)
+                                record_bytes += out_wf.stat().st_size
+                        except Exception as e:
+                            log.warning("wireframe_synthesis_failed", record_id=rec.id, error=str(e))
                     return {
                         "type": "done",
                         "id": rec.id,
@@ -314,6 +329,17 @@ class EncodingStage(Stage):
                     record_bytes += control_path.stat().st_size
                 except Exception as e:
                     log.warning("control_map_failed", record_id=rec.id, error=str(e))
+
+                # Branch 2b: Deterministic Wireframe Synthesis for UI records
+                if getattr(rec, "domain", None) == "ui_first" and isinstance(getattr(rec, "structure_output", None), dict) and getattr(rec, "structure_output", {}).get("elements"):
+                    try:
+                        from data_forge.utils.wireframe_renderer import synthesize_record_wireframe
+                        out_wf = synthesize_record_wireframe(rec, config, output_path=wireframe_path)
+                        if out_wf and out_wf.is_file():
+                            encoding_paths["condition_image"] = _rel(out_wf)
+                            record_bytes += out_wf.stat().st_size
+                    except Exception as e:
+                        log.warning("wireframe_synthesis_failed", record_id=rec.id, error=str(e))
 
                 # Needs batched VAE forward pass
                 tensor = normalize_for_vae(image_to_tensor(image))

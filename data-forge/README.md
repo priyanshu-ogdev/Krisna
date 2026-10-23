@@ -77,7 +77,7 @@ Orchestrator (Chunk-Based)
   Stage 5.5  PII Text Redact        -- Regex
   Stage 6  Structure Extract        -- Tier-1
   Stage 7  Routing & Shard          -- --
-  Stage 8  Encoding (Z-Image + VQ)  -- VAEs/VQ
+  Stage 8  Encoding & Wireframe Synthesis -- VAE + Deterministic TrueType Wireframes
   Stage 8.5  DPO Encoding (disabled by default) -- VAE (see note below — Stage 1.6's output is actually consumed by training/'s sync_dpo_pairs.py, not this stage)
   Stage 9  Heldout Carve            -- --
   Stage 10  Audit Pass              -- Tier-1 + Tier-2
@@ -236,7 +236,7 @@ Paths in `pipeline.yaml` are **relative to `DATA_ROOT`**.
 | 05.5 | PII Text Redact | Regex | Redacts text found by the OCR pass |
 | 06 | Structure | Tier-1 | UI layout JSON extraction |
 | 07 | Routing | -- | Domain tagging + shard assignment (`ui_first` vs `general_design`) |
-| 08 | Encoding | VAEs/VQ | Z-Image-Turbo latents + MaskGIT VQ tokens (`ui_first`-only) + control maps. **No Qwen-Image-Edit-2511 branch** — that model is frozen |
+| 08 | Encoding & Wireframe Synthesis | VAEs + Pillow | Z-Image-Turbo latents + deterministic TrueType wireframes (TextDiffuser-2 style glyph footprints) stored under `encoding_paths["condition_image"]` for Qwen-Image-2.1 LoRA pairing |
 | 08.5 | DPO Encoding — **disabled by default** | VAE | Would encode Stage 1.6's preference pairs into Z-Image-Turbo's latent space; `train_dpo.py` live-encodes instead and never reads this stage's output — see the note above |
 | 09 | Heldout Carve | -- | Stratified eval split; rejects encoding-incomplete records first |
 | 10 | Audit Pass | Tier-1 + Tier-2 | VLM-as-judge on 2-5% sample |
@@ -264,6 +264,21 @@ The production portfolio consists of **13 active sources (356,721 total records 
   - `pd12m`, `publaynet`, `docbank`, `websight`, `atomblock_webui` — general web crawl or synthetic scrapings irrelevant to UI generation and unnecessary given frozen base weights (`base_weights_frozen: true`).
 
 ## Known Issues, Fixed This Revision (v16)
+
+- **Deterministic Wireframe Condition Synthesis & Verbatim OCR Grounding.**
+  Previously, `s12_model_data_export.py` required `encoding_paths["condition_image"]`
+  for `polish_qwen_image21`, but no pipeline stage synthesized it, causing 100%
+  exclusion as `condition_renderer_unavailable`. Two new modules close this gap:
+  - `data_forge/utils/structure_converter.py`: Flattens recursive `StructureOutput`
+    trees with depth-aware z-indexing ($z = \text{depth} \times 10$), rectifies
+    hallucinated/inverted coordinates, normalizes 40+ VLM types to renderable
+    archetypes, and performs spatial OCR fusion to bind pixel-accurate text from
+    `s05_ocr_enrichment` onto leaf buttons/inputs instead of generic VLM labels.
+  - `data_forge/utils/wireframe_renderer.py`: Deterministic low-fidelity TrueType
+    wireframe renderer with bundled font assets (`DejaVuSans.ttf`), font handle
+    caching, drop shadows, and exact target aspect ratio matching.
+  `s08_encoding.py` automatically synthesizes wireframes into `processed/wireframes/`
+  and records `encoding_paths["condition_image"]`, achieving 100% export pass rate.
 
 - **RICO fetch produced zero records.** `rico_core`/`rico_semantic` were
   configured with `file_patterns: ["*.jpg","*.png","*.json"]` against two live

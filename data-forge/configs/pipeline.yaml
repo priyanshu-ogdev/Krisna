@@ -18,6 +18,7 @@ paths:
     vq_tokens_sketch: processed/vq_tokens_sketch/
     control_tokens: processed/control_tokens/
     dpo_latents: processed/dpo_latents/
+    wireframes: processed/wireframes/
   training_pool: training_pool/
   heldout: heldout/
   manifests: manifests/

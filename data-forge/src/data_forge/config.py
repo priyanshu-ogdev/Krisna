@@ -345,6 +345,7 @@ class PathsConfig:
     # s08_encoding.py's maskgit_vq branch, deleted along with the dead
     # encoder (see models.yaml, inference/engine.py).
     control_tokens: str = "processed/control_tokens/"
+    wireframes: str = "processed/wireframes/"
     training_pool: str = "training_pool/"
     heldout: str = "heldout/"
     manifests: str = "manifests/"
@@ -581,6 +582,7 @@ def _parse_paths(data: dict[str, Any]) -> PathsConfig:
         pc.latents_zimage = processed.get("latents_zimage", pc.latents_zimage)
         pc.control_tokens = processed.get("control_tokens", pc.control_tokens)
         pc.dpo_latents = processed.get("dpo_latents", pc.dpo_latents)
+        pc.wireframes = processed.get("wireframes", pc.wireframes)
     for key in (
         "training_pool", "heldout", "manifests", "checkpoints",
         "logs", "registry_reports", "audit_reports", "compliance_briefs",
