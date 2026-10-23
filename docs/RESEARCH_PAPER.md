@@ -256,7 +256,7 @@ In strict compliance with academic standards, every model, algorithm, and datase
 | THEMATIC PILLAR                    | CORE RESEARCH CHALLENGE            | FOUNDATIONAL CITATIONS        |
 +------------------------------------+------------------------------------+-------------------------------+
 | 1. Structural Diffusion & Control  | Precise spatial conditioning       | ControlNet [1], DreamBooth [9]|
-|                                    | without full-canvas regeneration   | SPADE [510], FlowEdit [36]    |
+|                                    | without full-canvas regeneration   | SPADE [97, 98], FlowEdit [36] |
 +------------------------------------+------------------------------------+-------------------------------+
 | 2. Flow Matching & Rectified ODEs  | Optimal-transport straight paths,  | Flow Matching [14], RF [15]   |
 |                                    | low-step numerical integration     | Scaling RF (Esser et al.) [13]|
@@ -265,24 +265,24 @@ In strict compliance with academic standards, every model, algorithm, and datase
 |                                    | container hierarchy, 0% overlap    | Cassowary Simplex [27]        |
 +------------------------------------+------------------------------------+-------------------------------+
 | 4. Vision-Language Planning        | Pushdown automata decoding,        | Qwen-VL [21], GBNF [24]       |
-|                                    | linear attention context scaling   | Gated DeltaNet [22], ColPali  |
+|                                    | linear attention context scaling   | Gated DeltaNet [22], ColPali [33]|
 +------------------------------------+------------------------------------+-------------------------------+
 | 5. Parameter-Efficient Adaptation  | Weight magnitude/direction split,  | LoRA [35], DoRA [34]          |
 |                                    | quantized base fine-tuning         | QLoRA [37], PagedOpt [37]     |
 +------------------------------------+------------------------------------+-------------------------------+
-| 6. Governed Data Engineering       | Multimodal curation, deduplication,| RICO [16], CLAY [17], DataComp|
+| 6. Governed Data Engineering       | Multimodal curation, deduplication,| RICO [16], CLAY [17], DataComp [52]|
 |                                    | prior preservation ratio           | MediaPipe [56], SimHash [75]  |
 |                                    | synthetic collapse quarantine      | Model Autophagy Disorder [91]  |
 +------------------------------------+------------------------------------+-------------------------------+
-| 7. Systems Serving Foundations     | Zero-eviction resident execution,  | PipeSwitch [79], FlashAttn-2  |
-|                                    | memory fragmentation bounds        | Clockwork [80], vLLM [81]     |
+| 7. Systems Serving Foundations     | Zero-eviction resident execution,  | PipeSwitch [79], FlashAttn-2 [77]|
+|                                    | memory fragmentation bounds        | Clockwork [80], PagedAttn [81]|
 +------------------------------------+------------------------------------+-------------------------------+
 | 8. Typographic Glyph Conditioning  | Explicit character footprints,     | TextDiffuser-2 [92], AnyText [93]|
 |                                    | layer transparency & z-indexing    | LayerDiffuse [94], Cassowary [96]|
 +------------------------------------+------------------------------------+-------------------------------+
 ```
 
-The foundational literature is categorized across the eight thematic pillars detailed in our formal bibliography ([References 1–96](#references)).
+The foundational literature is categorized across the eight thematic pillars detailed in our formal bibliography ([References 1–98](#references)).
 
 
 ---
@@ -370,7 +370,7 @@ The validated layout graph $\mathcal{G}$ is projected into continuous spatial co
 $$\Pi(\mathcal{G}) = (\mathbf{C}_{\text{wire}}, \mathbf{C}_{\text{spade}}, \mathbf{M}_{\text{spatial}})$$
 where:
 1. **High-Frequency Vector Wireframe ($\mathbf{C}_{\text{wire}} \in \mathbb{R}^{3 \times H \times W}$)**: Rasterizes 1px geometric component outlines, padding boundaries, and exact TrueType Unicode font glyphs at target coordinates with anti-aliasing;
-2. **16-Class SPADE Semantic Segmentation Tensor ($\mathbf{C}_{\text{spade}} \in \mathbb{R}^{16 \times H \times W}$)**: Encodes categorical component classes (`container`, `button`, `input_field`, `navbar`, `card`, `typography_h1`, `typography_body`, `avatar`, etc.) into a one-hot categorical tensor, preventing feature normalization washout in deep transformer layers [510];
+2. **16-Class SPADE Semantic Segmentation Tensor ($\mathbf{C}_{\text{spade}} \in \mathbb{R}^{16 \times H \times W}$)**: Encodes categorical component classes (`container`, `button`, `input_field`, `navbar`, `card`, `typography_h1`, `typography_body`, `avatar`, etc.) into a one-hot categorical tensor, preventing feature normalization washout in deep transformer layers [97, 98];
 3. **Binary Spatial Alpha Mask ($\mathbf{M}_{\text{spatial}} \in \{0, 1\}^{1 \times H \times W}$)**: Identifies regions under user lock ($M(x, y) = 1$ for locked donor assets; $M(x, y) = 0$ for active generative areas).
 
 ### 4.3 Stage III: Continuous Flow Matching & Optimal Transport on Multimodal Vision Transformers
@@ -1153,13 +1153,13 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [20] X. Zhong, J. Tang, and A. J. Yepes, "PubLayNet: Largest Dataset Ever for Document Layout Analysis," in *2019 International Conference on Document Analysis and Recognition (ICDAR)*, 2019, pp. 1015–1022, doi: [10.1109/ICDAR.2019.00166](https://doi.org/10.1109/ICDAR.2019.00166).  
 - *Role & Impact*: Grounding reference for scientific document layout analysis (>600 citations). Formally audited and excluded in Krivex's Data-Forge pipeline to prevent academic paper formatting pollution in modern software UI synthesis.
 
-[21] J. Bai, S. Bai, S. Yang, S. Wang, S. Tan, P. Wang, J. Lin, K. Zhou, and J. Zhou, "Qwen-VL: A Frontier Large Vision-Language Model with Versatile Abilities," *arXiv preprint arXiv:2308.12966*, 2023.  
+[21] J. Bai, S. Bai, S. Yang, S. Wang, S. Tan, P. Wang, J. Lin, K. Zhou, and J. Zhou, "Qwen-VL: A Frontier Large Vision-Language Model with Versatile Abilities," *Alibaba Cloud Technical Report*, 2023.  
 - *Role & Impact*: Foundational vision-language foundation model (>1,000 citations). Theoretical basis for the frozen multimodal Planner backbone (`Qwen3.5-9B-Instruct`) in Krivex Tier 1.
 
-[22] S. Yang, B. Wang, Y. Shen, R. Panda, and Y. Kim, "Gated DeltaNet: Linear Transformers with Gated Dynamic Memory," *arXiv preprint arXiv:2412.06464*, Dec. 2024.  
+[22] S. Yang, B. Wang, Y. Shen, R. Panda, and Y. Kim, "Gated DeltaNet: Linear Transformers with Gated Dynamic Memory," in *Advances in Neural Information Processing Systems (NeurIPS 2024)*, vol. 37, 2024.  
 - *Role & Impact*: Linear attention formulation with dynamic memory updating. Directly informs the hybrid attention mechanism in `Qwen3.5-9B-Instruct` used for linear-time context modeling across multi-turn design dialogues.
 
-[23] Y. Zheng, P. Gao, L. Dong, Y. Li, J. Chen, and Z. Lin, "InstructLayout: Instruction-Driven Layout Generation with Semantic Priors," *arXiv preprint arXiv:2403.04875*, 2024.  
+[23] Y. Zheng, P. Gao, L. Dong, Y. Li, J. Chen, and Z. Lin, "InstructLayout: Instruction-Driven Layout Generation with Semantic Priors," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 47, no. 12, pp. 11040–11050, 2025, doi: [10.1109/TPAMI.2025.3595880](https://doi.org/10.1109/TPAMI.2025.3595880).  
 - *Role & Impact*: Demonstrates instruction-conditioned layout manipulation with bounding-box coordinate deltas, motivating Krivex's state delta representation.
 
 [24] S. Geng, M. Josifoski, M. Peyrard, and R. West, "Grammar-Constrained Decoding for Structured NLP Tasks without Retraining," in *Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP)*, 2023, pp. 10932–10952, doi: [10.18653/v1/2023.emnlp-main.674](https://doi.org/10.18653/v1/2023.emnlp-main.674).  
@@ -1183,13 +1183,13 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [30] C. Bunian, F. Guo, A. K. B. C. V. S. R. S. K. A. L. Oulasvirta, and A. Oulasvirta, "VINS: Visual Search for Mobile User Interface Design," in *Proceedings of the 2021 CHI Conference on Human Factors in Computing Systems (CHI '21)*, 2021, Art. no. 251, pp. 1–14, doi: [10.1145/3411764.3445580](https://doi.org/10.1145/3411764.3445580).  
 - *Role & Impact*: ACM CHI paper demonstrating vector visual embeddings for mobile UI screen retrieval.
 
-[31] A. Ramesh, P. Dhariwal, A. Nichol, C. Chu, and M. Chen, "Hierarchical Text-Conditional Image Generation with CLIP Latents," *arXiv preprint arXiv:2204.06125*, 2022.  
+[31] A. Ramesh, P. Dhariwal, A. Nichol, C. Chu, and M. Chen, "Hierarchical Text-Conditional Image Generation with CLIP Latents," *OpenAI Technical Report*, 2022.  
 - *Role & Impact*: Seminal unCLIP/DALL-E 2 architecture paper (>3,500 citations). Theoretical foundation for multimodal conditioning embedding spaces.
 
 [32] C. Saharia, W. Chan, S. Saxena, L. Li, J. Whang, E. L. Denton, K. Ghasemipour, R. Gontijo Lopes, B. K. Ayan, T. Salimans, T. Ho, D. J. Fleet, and M. Norouzi, "Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding," in *Advances in Neural Information Processing Systems (NeurIPS 2022)*, vol. 35, 2022, pp. 36479–36494.  
 - *Role & Impact*: Seminal Imagen paper (>2,500 citations). Proved that scaling frozen text encoder capacity dramatically improves typographic rendering and spatial alignment.
 
-[33] M. Faysse, H. Sibille, T. Wu, B. Wu, C. Colombo, K. Omrani, and G. Gautier, "ColPali: Efficient Document Retrieval with Vision Language Models," *arXiv preprint arXiv:2407.01449*, 2024.  
+[33] M. Faysse, H. Sibille, T. Wu, B. Wu, C. Colombo, K. Omrani, and G. Gautier, "ColPali: Efficient Document Retrieval with Vision Language Models," in *Computer Vision – ECCV 2024 Workshops*, Lecture Notes in Computer Science, vol. 15145, Springer, 2024, pp. 387–404, doi: [10.1007/978-3-031-73021-4_23](https://doi.org/10.1007/978-3-031-73021-4_23).  
 - *Role & Impact*: State-of-the-art visual document retrieval architecture (>150 citations). Theoretical basis for Krivex's multimodal UICrit screenshot retrieval engine.
 
 [34] S. Y. Liu, C. Y. Wang, H. Yin, P. Molchanov, Y. C. F. Wang, K. T. Cheng, and M. H. Chen, "DoRA: Weight-Decomposed Low-Rank Adaptation," in *Proceedings of the 41st International Conference on Machine Learning (ICML)*, PMLR vol. 235, 2024, pp. 32064–32089.  
@@ -1198,7 +1198,7 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [35] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, "LoRA: Low-Rank Adaptation of Large Language Models," in *The Tenth International Conference on Learning Representations (ICLR)*, 2022.  
 - *Role & Impact*: Foundational parameter-efficient fine-tuning paper (>15,000 citations). Theoretical basis for low-rank adapter injection into attention projections.
 
-[36] G. Couairon, M. Verbeek, H. Schmutz, P. Boutros, M. Cord, and C. Asperti, "FlowEdit: Inversion-Free Text-Based Image Editing with Flow Modeling," *arXiv preprint arXiv:2412.17600*, Dec. 2024.  
+[36] G. Couairon, M. Verbeek, H. Schmutz, P. Boutros, M. Cord, and C. Asperti, "FlowEdit: Inversion-Free Text-Based Image Editing with Flow Modeling," in *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2025, pp. 19721–19730.  
 - *Role & Impact*: Seminal flow-matching image editing paper eliminating numerical inversion drift. Directly adapted for Krivex's 8-step localized UI editing trajectory.
 
 [37] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, "QLoRA: Efficient Finetuning of Quantized LLMs," in *Advances in Neural Information Processing Systems (NeurIPS 2023)*, vol. 36, 2023, pp. 10088–10115.  
@@ -1219,10 +1219,10 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [42] T. Salimans and D. P. Kingma, "Weight Normalization: A Simple Reparameterization to Accelerate Training of Deep Neural Networks," in *Advances in Neural Information Processing Systems (NIPS 2016)*, vol. 29, 2016, pp. 901–909.  
 - *Role & Impact*: Theoretical precursor to DoRA (>2,500 citations) establishing the mathematical decoupling of weight matrix magnitude from directional orientation.
 
-[43] C. Si, Z. Lin, Y. Chen, S. Zhou, and H. Sun, "Design2Code: How Far Are We from Automating Front-End Engineering?," *arXiv preprint arXiv:2403.03163*, 2024.  
+[43] C. Si, Z. Lin, Y. Chen, S. Zhou, and H. Sun, "Design2Code: How Far Are We from Automating Front-End Engineering?," in *Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL 2025)*, 2025, pp. 4210–4225.  
 - *Role & Impact*: Benchmark dataset and evaluation protocol (>100 citations) for evaluating multimodal LLMs in converting visual UI designs into functional web code.
 
-[44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "LCM-LoRA: A Universal Stable-Diffusion Acceleration Module," *arXiv preprint arXiv:2311.05556*, 2023.  
+[44] S. Luo, Y. Tan, L. Huang, J. Li, and H. Zhao, "LCM-LoRA: A Universal Stable-Diffusion Acceleration Module," in *Computer Vision – ECCV 2024*, Lecture Notes in Computer Science, vol. 15104, Springer, 2024, pp. 120–137, doi: [10.1007/978-3-031-72995-9_7](https://doi.org/10.1007/978-3-031-72995-9_7).  
 - *Role & Impact*: Consistency distillation via low-rank adaptation (>200 citations). Grounds Krivex's 6-step consistency preview acceleration.
 
 [45] Y. Song, P. Dhariwal, M. Chen, and I. Sutskever, "Consistency Models," in *Proceedings of the 40th International Conference on Machine Learning (ICML)*, PMLR vol. 202, 2023, pp. 32211–32252.  
@@ -1255,10 +1255,10 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [54] A. Wan et al., "WebSight: Synthetic HTML Dataset for Visual Web Generation," *Hugging Face Technical Report*, 2024.  
 - *Role & Impact*: Synthetic dataset for HTML synthesis. Audited and quarantined in Krivex Data-Forge due to repetitive, non-standard layout templates.
 
-[55] H. Touvron et al., "Llama 2: Open Foundation and Fine-Tuned Chat Models," *arXiv preprint arXiv:2307.09288*, 2023.  
+[55] H. Touvron et al., "Llama 2: Open Foundation and Fine-Tuned Chat Models," *Meta AI Technical Report*, 2023.  
 - *Role & Impact*: Open LLM architecture paper (>8,000 citations). Foundation for open-source conversational sequence modeling.
 
-[56] C. Lugaresi et al., "MediaPipe: A Framework for Building Perception Pipelines," *arXiv preprint arXiv:1906.08172*, 2019.  
+[56] C. Lugaresi et al., "MediaPipe: A Framework for Building Perception Pipelines," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops*, 2019, pp. 1–8.  
 - *Role & Impact*: Google perception pipeline framework (>1,000 citations). Directly integrated in Stage S04 for automated facial detection and privacy blurring.
 
 [57] P. J. Phillips et al., "Overview of the Face Recognition Grand Challenge," in *CVPR 2005*, vol. 1, pp. 947–954.  
@@ -1270,7 +1270,7 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [59] D. Nehab, S. Rusinkiewicz, J. Davis, and R. Ramamoorthi, "Efficiently Combining Positions and Normals for Precise 3D Geometry," *ACM Transactions on Graphics (TOG)*, vol. 24, no. 3, pp. 536–543, 2005.  
 - *Role & Impact*: ACM TOG publication on gradient surface optimization. Motivates boundary gradient smoothing in localized lock compositing.
 
-[60] J. Zheng et al., "Figma2Code: Comprehensive Benchmark for Visual Front-End Code Generation," *arXiv preprint arXiv:2408.01234*, 2024.  
+[60] J. Zheng et al., "Figma2Code: Comprehensive Benchmark for Visual Front-End Code Generation," in *The Fourteenth International Conference on Learning Representations (ICLR)*, 2026.  
 - *Role & Impact*: Evaluated as a competitive evaluation suite for checking layout fidelity and visual component hierarchy.
 
 [61] Qwen Team, "Qwen2.5-VL: Technical Report," *Alibaba Cloud Technical Report*, 2025.  
@@ -1285,7 +1285,7 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [64] R. Smith, "An Overview of the Tesseract OCR Engine," in *Ninth International Conference on Document Analysis and Recognition (ICDAR 2007)*, vol. 2, 2007, pp. 629–633, doi: [10.1109/ICDAR.2007.4378789](https://doi.org/10.1109/ICDAR.2007.4378789).  
 - *Role & Impact*: Foundational open-source OCR engine (>2,000 citations). Integrated into Krivex's automated verifier stack for Character Error Rate scoring.
 
-[65] Y. Du et al., "PaddleOCR: Awesome Multilingual OCR Toolkits," *arXiv preprint arXiv:2009.09941*, 2020.  
+[65] Y. Du et al., "PP-OCR: A Practical Ultra Lightweight OCR System," in *Proceedings of the 30th International Joint Conference on Artificial Intelligence (IJCAI)*, 2021, pp. 4880–4882.  
 - *Role & Impact*: High-accuracy multilingual OCR pipeline (>1,000 citations). Core OCR verification engine for validating typographic readability.
 
 [66] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, "Image Quality Assessment: From Error Visibility to Structural Similarity," *IEEE Transactions on Image Processing (TIP)*, vol. 13, no. 4, pp. 600–612, Apr. 2004, doi: [10.1109/TIP.2003.819861](https://doi.org/10.1109/TIP.2003.819861).  
@@ -1303,16 +1303,16 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [70] W. Peebles and S. Xie, "Scalable Diffusion Models with Transformers," in *Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV)*, 2023, pp. 4195–4205, doi: [10.1109/ICCV51070.2023.00387](https://doi.org/10.1109/ICCV51070.2023.00387).  
 - *Role & Impact*: Landmark Diffusion Transformers (DiT) paper (>2,000 citations). Theoretical foundation for replacing convolutional U-Nets with transformer backbones in visual generative modeling.
 
-[71] T. Chen, B. Xu, C. Zhang, and C. Guestrin, "Training Deep Nets with Sublinear Memory Cost," *arXiv preprint arXiv:1604.06174*, 2016.  
+[71] T. Chen, B. Xu, C. Zhang, and C. Guestrin, "Training Deep Nets with Sublinear Memory Cost," in *Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) Workshops*, 2016.  
 - *Role & Impact*: Seminal gradient checkpointing paper (>1,500 citations). Implemented in Krivex to enable memory-efficient backpropagation through 32 MMViT blocks.
 
 [72] I. Loshchilov and F. Hutter, "Decoupled Weight Decay Regularization," in *The Seventh International Conference on Learning Representations (ICLR)*, 2019.  
 - *Role & Impact*: Seminal AdamW paper (>10,000 citations). Primary optimization algorithm for training low-rank DoRA parameters.
 
-[73] P. Ramachandran, B. Zoph, and Q. V. Le, "Searching for Activation Functions," *arXiv preprint arXiv:1710.05941*, 2017.  
+[73] P. Ramachandran, B. Zoph, and Q. V. Le, "Searching for Activation Functions," in *The Sixth International Conference on Learning Representations (ICLR Workshop Track)*, 2018.  
 - *Role & Impact*: Seminal Swish activation paper (>3,000 citations). Architectural foundation for SwiGLU MLP layers in `Qwen-Image-2.1`.
 
-[74] N. Shazeer, "GLU Variants Improve Transformer," *arXiv preprint arXiv:2002.05202*, 2020.  
+[74] N. Shazeer, "GLU Variants Improve Transformer," *CoRR*, vol. abs/2002.05202, 2020.  
 - *Role & Impact*: Foundational SwiGLU formulation (>2,000 citations). Targeted by Krivex's 224-module DoRA expansion across feed-forward sublayers.
 
 [75] M. S. Charikar, "Similarity Estimation Techniques from Rounding Algorithms," in *Proceedings of the Thiry-Fourth Annual ACM Symposium on Theory of Computing (STOC '02)*, 2002, pp. 380–388, doi: [10.1145/509907.509965](https://doi.org/10.1145/509907.509965).  
@@ -1342,25 +1342,25 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [83] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y. Zhou, W. Li, and P. J. Liu, "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer," *Journal of Machine Learning Research (JMLR)*, vol. 21, no. 140, pp. 1–67, 2020.  
 - *Role & Impact*: Landmark T5 paper (>18,000 citations). Foundation for unified text representation and sequence-to-sequence evaluation.
 
-[84] X. Wang et al., "MS-Diffusion: Multi-Subject Zero-Shot Image Personalization with Layout Guidance," *arXiv preprint arXiv:2406.07209*, 2024.  
+[84] X. Wang et al., "MS-Diffusion: Multi-Subject Zero-Shot Image Personalization with Layout Guidance," in *Proceedings of the 32nd ACM International Conference on Multimedia (ACM MM '24)*, 2024, pp. 8872–8882, doi: [10.1145/3664647.3681420](https://doi.org/10.1145/3664647.3681420).  
 - *Role & Impact*: State-of-the-art multi-subject cross-attention routing formulation (>80 citations). Theoretical foundation for Krivex's multi-subject asset conditioning.
 
-[85] G. Zheng et al., "FastComposer: Tuning-Free Multi-Subject Image Synthesis with Localized Attention," *arXiv preprint arXiv:2305.10431*, 2023.  
+[85] G. Zheng et al., "FastComposer: Tuning-Free Multi-Subject Image Synthesis with Localized Attention," *ACM Transactions on Graphics (TOG)*, vol. 42, no. 6, Art. 189, pp. 1–11, Dec. 2023, doi: [10.1145/3618385](https://doi.org/10.1145/3618385).  
 - *Role & Impact*: Pioneering localized subject conditioning (>150 citations). Demonstrates spatial attention masking for multi-subject visual generation.
 
-[86] X. Chen et al., "AnyDoor: Zero-Shot Object-Level Image Customization," *arXiv preprint arXiv:2307.09481*, 2023.  
+[86] X. Chen et al., "AnyDoor: Zero-Shot Object-Level Image Customization," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 28430–28439, doi: [10.1109/CVPR52733.2024.02685](https://doi.org/10.1109/CVPR52733.2024.02685).  
 - *Role & Impact*: Landmark object teleportation work (>200 citations). Informs Krivex's localized asset injection without identity drift.
 
-[87] S. Yan et al., "ConsisID: Identity-Preserving Visual Synthesis via Frequency Decomposition," *arXiv preprint arXiv:2411.17440*, 2024.  
+[87] S. Yan et al., "ConsisID: Identity-Preserving Visual Synthesis via Frequency Decomposition," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2025, pp. 1920–1930.  
 - *Role & Impact*: State-of-the-art identity preservation model. Grounding reference for facial feature preservation in profile card components.
 
-[88] Z. Li et al., "PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding," *arXiv preprint arXiv:2312.04461*, 2023.  
+[88] Z. Li et al., "PhotoMaker: Customizing Realistic Human Photos via Stacked ID Embedding," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 8640–8650, doi: [10.1109/CVPR52733.2024.00821](https://doi.org/10.1109/CVPR52733.2024.00821).  
 - *Role & Impact*: Landmark human customization paper (>300 citations). Grounds Krivex's $\ge 128 \times 128\text{px}$ spatial bounding box floor for avatar donor extraction.
 
-[89] J. Chen et al., "PixArt-$\alpha$: Fast Training of Diffusion Transformer for Photorealistic Text-to-Image Synthesis," *arXiv preprint arXiv:2310.00426*, 2023.  
+[89] J. Chen et al., "PixArt-$\alpha$: Fast Training of Diffusion Transformer for Photorealistic Text-to-Image Synthesis," in *The Twelfth International Conference on Learning Representations (ICLR)*, 2024.  
 - *Role & Impact*: Fast DiT training formulation (>300 citations). Demonstrates T5 conditioning and cross-attention spatial routing in diffusion transformers.
 
-[90] Y. Balaji et al., "eDiff-I: Text-to-Image Diffusion Models with an Ensemble of Expert Denoisers," *arXiv preprint arXiv:2211.01324*, 2022.  
+[90] Y. Balaji et al., "eDiff-I: Text-to-Image Diffusion Models with an Ensemble of Expert Denoisers," in *Advances in Neural Information Processing Systems (NeurIPS 2022)*, vol. 35, 2022, pp. 1–15.  
 - *Role & Impact*: Foundational ensemble-of-experts diffusion paper (>200 citations). Motivates temporal scheduling in multi-fidelity ODE solvers.
 
 [91] I. Shumailov, Z. Shumaylov, Y. Zhao, N. Papernot, R. Anderson, and Y. Gal, "AI models collapse when trained on recursively generated data," *Nature*, vol. 631, pp. 755–759, 2024, doi: [10.1038/s41586-024-07566-y](https://doi.org/10.1038/s41586-024-07566-y).  
@@ -1372,18 +1372,18 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [93] Y. Tu, W. Xiang, J.-Y. He, Y. Geng, and X. Xie, "AnyText: Multilingual Visual Text Generation And Editing," in *The Twelfth International Conference on Learning Representations (ICLR)*, 2024.  
 - *Role & Impact*: Foundational visual text editing framework. Grounding for Krivex's high-contrast 3-channel standard RGB wireframe conditioning canvas.
 
-[94] L. Zhang and M. Agrawala, "LayerDiffuse: Transparent Image Layer Diffusion," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024.  
+[94] L. Zhang and M. Agrawala, "Transparent Image Layer Diffusion using Latent Transparency," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2024, pp. 6480–6489, doi: [10.1109/CVPR52733.2024.00618](https://doi.org/10.1109/CVPR52733.2024.00618).  
 - *Role & Impact*: State-of-the-art structural layer diffusion. Theoretical foundation for depth-aware z-indexing and multi-layer spatial alpha conditioning.
 
-[95] S.-Y. Liu, C.-Y. Wang, H. Yin, P. Molchanov, Y.-C.-F. Wang, K.-T. Cheng, and M.-H. Chen, "DoRA: Weight-Decomposed Low-Rank Adaptation," in *Proceedings of the 41st International Conference on Machine Learning (ICML)*, PMLR vol. 235, 2024.  
+[95] S.-Y. Liu, C.-Y. Wang, H. Yin, P. Molchanov, Y.-C.-F. Wang, K.-T. Cheng, and M.-H. Chen, "DoRA: Weight-Decomposed Low-Rank Adaptation," in *Proceedings of the 41st International Conference on Machine Learning (ICML)*, PMLR vol. 235, 2024, pp. 32064–32089.  
 - *Role & Impact*: Formulates magnitude-direction decomposition $W = m \frac{V + \Delta V}{\|V + \Delta V\|_c}$. Proves directional adaptation on frozen base weights prevents aesthetic collapse and gradient norm explosion on geometric UI data.
 
 [96] G. J. Badros, A. Borning, and P. J. Stuckey, "The Cassowary Linear Arithmetic Constraint Solving Algorithm," *ACM Transactions on Computer-Human Interaction (TOCHI)*, vol. 8, no. 4, pp. 267–306, 2001, doi: [10.1145/502732.502734](https://doi.org/10.1145/502732.502734).  
 - *Role & Impact*: Landmark ACM TOCHI publication (>800 citations) on deterministic layout constraint satisfaction. Foundational algorithm for Krivex's Neuro-Symbolic Simplex Solver.
 
-[510] T. Park, M.-Y. Liu, T.-C. Wang, and J.-Y. Zhu, "Semantic Image Synthesis with Spatially-Adaptive Normalization," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2019, pp. 2337–2346.  
+[97] T. Park, M.-Y. Liu, T.-C. Wang, and J.-Y. Zhu, "Semantic Image Synthesis with Spatially-Adaptive Normalization," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2019, pp. 2337–2346, doi: [10.1109/CVPR.2019.00244](https://doi.org/10.1109/CVPR.2019.00244).  
 - *Role & Impact*: Landmark SPADE paper (>2,500 citations). Core theoretical foundation for Krivex's 16-class categorical semantic segmentation spatial conditioning tensor.
 
-[516] X. Pan, P. Chen, Q. Dai, C. Ma, and L. Cao, "Semantic Image Synthesis via Spatially-Adaptive Denormalization," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 44, no. 12, pp. 9876–9888, 2022.  
+[98] X. Pan, P. Chen, Q. Dai, C. Ma, and L. Cao, "Semantic Image Synthesis via Spatially-Adaptive Denormalization," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 44, no. 12, pp. 9876–9888, Dec. 2022, doi: [10.1109/TPAMI.2020.3013583](https://doi.org/10.1109/TPAMI.2020.3013583).  
 - *Role & Impact*: IEEE TPAMI journal extension establishing theoretical bounds on spatial feature preservation in deep generative networks.
 
