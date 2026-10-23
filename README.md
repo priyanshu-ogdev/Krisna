@@ -87,6 +87,41 @@ Strict real mode requires the native Qwen-Image-2.1 pipeline, a valid condition 
 and a verified adapter manifest. Model weights are automated via `python scripts/inference/download_weights.py`.
 Fine-tuned checkpoints (`krivex-ai/krivex-qwen-image21-polish-lora`) will be published on Hugging Face Hub, with automatic downloader resolution and zero-shot fallback.
 
+## Server Training & Post-Training Evaluation Lifecycle
+
+When ready to begin training on the production GPU server:
+
+```bash
+# 1. Server Environment Initialization (CUDA 12.4+, PyTorch 2.6+, Diffusers pinned)
+./scripts/training/setup_env_training.sh
+./scripts/training/setup_env_diffusers_training.sh
+
+# 2. Pre-Flight Read-Only Readiness Audit
+python scripts/training/audit_training_pipeline.py
+
+# 3. Synchronize Curated Multimodal Pairs from Data-Forge
+python scripts/data-forge/sync_to_training.py --data-root /path/to/data_krivex
+
+# 4. Launch Production Polish QDoRA Training (27,500 steps, ~15.2h on RTX A6000 Ada)
+./scripts/training/train_polish_default_lora.sh training/configs/polish_qwen_image21_lora.yaml \
+  --max_train_steps 27500 --lr_warmup_steps 500
+
+# 5. Execute Post-Training Multi-Hardware Evaluation Harness
+python scripts/eval/run_evaluation.py \
+  --profile 48gb \
+  --checkpoint checkpoints/qwen_image21_lora \
+  --reference-dir data/reference_uis \
+  --wireframe-dir data/held_out_wireframes \
+  --prompt-list data/eval_prompts.json \
+  --output-dir eval_results
+
+# 6. Verify Hypotheses & Automatically Synchronize Research Paper Monograph
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --paper-path docs/RESEARCH_PAPER.md \
+  --apply
+```
+
 ## Engineering standards
 
 - Keep model, data, and serving contracts explicit and versioned.

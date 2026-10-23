@@ -18,3 +18,6 @@ run_service.sh`, not `cd scripts/inference && ./run_service.sh`).
   and Planner/Critic training launchers are deprecated/sealed frozen).
 - **`inference/`** — env setup (`setup_env.sh`, `setup_env_inference.sh`,
   `setup_env_verifiers.sh`), `run_tests.sh`, `run_service.sh`.
+- **`eval/`** — post-training evaluation and paper update harness:
+  - `run_evaluation.py`: multi-hardware benchmark evaluation across KID, LPIPS, CMMD, DINOv2, OCR CER, Layout IoU, and latency profiles.
+  - `ingest_eval_results.py`: validates empirical results against pre-registered hypothesis bounds, issues cryptographic receipts (`eval_results/evaluation_receipt.json`), and automatically populates post-training tables in `docs/RESEARCH_PAPER.md`.

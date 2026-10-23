@@ -379,6 +379,24 @@ curl -X POST "http://127.0.0.1:8420/preference-pairs/export?source=planner_revie
 # Generates krivex_dpo_export_planner_review.jsonl for training
 ```
 
+### Multi-Hardware Benchmark Evaluation & Research Ingestion
+
+Post-generation benchmarks (KID, LPIPS, CLIP Score, CMMD, DINOv2 distance, Layout IoU, and latency profiles) are evaluated via:
+
+```bash
+# Multi-metric evaluation on held-out reference designs
+python scripts/eval/run_evaluation.py \
+  --profile 48gb \
+  --checkpoint checkpoints/qwen_image21_lora \
+  --output-dir eval_results
+
+# Ingest and update research paper monograph
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --paper-path docs/RESEARCH_PAPER.md \
+  --apply
+```
+
 ---
 
 ## 9. Verification & Automated Test Suite

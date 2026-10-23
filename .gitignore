@@ -105,6 +105,7 @@ temp/
 .huggingface/
 vllm_outputs/
 preflight_results/
+eval_results/
 
 # Generated reports and receipts (source-controlled fixtures remain safe)
 data-forge/audit_reports/

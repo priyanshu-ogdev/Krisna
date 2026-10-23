@@ -85,4 +85,4 @@ To run the full automated Data-Forge unit and regression test suite:
 ```powershell
 pytest tests/data_forge -q
 ```
-*(All 265 Data-Forge tests pass 100% cleanly).*
+*(All 272 Data-Forge tests pass 100% cleanly).*

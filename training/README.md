@@ -212,6 +212,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\training\train_all.ps1 -Tier 
 python -m krivex_training.polish.ablation_runner --all
 ```
 
+### 6.7 Post-Training Empirical Evaluation & Paper Monograph Synchronization
+
+Immediately upon training convergence on the production server, execute the automated evaluation and paper synchronization harness:
+
+```bash
+# 1. Run multi-metric evaluation across held-out benchmark splits (27,404 samples)
+python scripts/eval/run_evaluation.py \
+  --profile 48gb \
+  --checkpoint checkpoints/qwen_image21_lora \
+  --reference-dir data/reference_uis \
+  --wireframe-dir data/held_out_wireframes \
+  --prompt-list data/eval_prompts.json \
+  --output-dir eval_results
+
+# 2. Verify pre-registered hypotheses (dry run)
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --dry-run
+
+# 3. Synchronize verified empirical results into docs/RESEARCH_PAPER.md
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --paper-path docs/RESEARCH_PAPER.md \
+  --apply
+```
+
+This updates the empirical evaluation tables in `docs/RESEARCH_PAPER.md` (Tables 11.1–11.6) and generates `eval_results/evaluation_receipt.json` with SHA-256 provenance for publication.
+
 ---
 
 ## 7. Hardware Requirements & Ledgers

@@ -11,7 +11,8 @@ training run.
    data contracts, agentic image/VL training boundary, research comparisons, and
    the recommended gate sequence.
 2. **[TRAINING_RUNBOOK.md](TRAINING_RUNBOOK.md)** — read-only readiness checks,
-   data preparation, and the one supported Polish launcher.
+   data preparation, the supported Polish launcher, and post-training evaluation.
+3. **[Evaluation Ingestion Harness](../../scripts/eval/ingest_eval_results.py)** — automated evaluation ingestion, pre-registered hypothesis testing, and research paper synchronization.
 
 ## Current training decision
 

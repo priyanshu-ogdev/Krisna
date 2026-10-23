@@ -47,6 +47,7 @@ docs/
 - **Master Final System Design**: See [FINAL_SYSTEM_DESIGN.md](FINAL_SYSTEM_DESIGN.md) for the consolidated, authoritative specification compiled from all 71 forensic review gates, systems serving literature, and peer-reviewed algorithms.
 - **Developer Notes & Feature Retention Audit**: See [DEV_NOTES.md](DEV_NOTES.md) for engineering history, component contracts, memory ledgers, and feature audit.
 - **Scientific Research Paper Specification**: See [RESEARCH_PAPER.md](RESEARCH_PAPER.md) for formal problem formulation, mathematical models, empirical evaluation, and ablation studies.
+- **Post-Training Evaluation & Ingestion Pipeline**: See [RESEARCH_PAPER.md §11.5](RESEARCH_PAPER.md#115-post-training-evaluation-ingestion-pipeline-automated-verification--paper-update-protocol) and [scripts/eval/ingest_eval_results.py](../scripts/eval/ingest_eval_results.py) for automated hypothesis validation and paper table synchronization.
 - **Current training status and model trainability**: See [training/ARCHITECTURE.md](training/ARCHITECTURE.md).
 - **Single-GPU Swap Orchestrator**: See [inference/README.md](inference/README.md) and [PRD.md §7](PRD.md#7-inference-orchestration).
 - **Production Docker & Dual-Venv Isolation**: See [inference/README.md §5](inference/README.md#5-production-docker-containerization--dual-venv-isolation) and [PRD.md §7.7](PRD.md#77-production-docker-containerization-dual-venv-isolation).

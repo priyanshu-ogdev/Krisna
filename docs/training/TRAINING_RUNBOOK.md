@@ -138,14 +138,37 @@ validation**, not trained or measured.
 
 Evaluate the supervised Polish adapter before preference alignment:
 
-1. exact text/OCR error;
-2. layout/node and box adherence;
-3. protected-pixel equality for locked regions;
-4. prompt and constraint following;
-5. handoff consistency;
-6. safety;
-7. human preference and perceptual metrics;
-8. latency and peak memory.
+1. exact text/OCR error (Character Error Rate CER <= 0.050);
+2. layout/node and box adherence (Mean IoU >= 0.850, Overlap = 0.0%, OOB = 0.0%);
+3. protected-pixel equality for locked regions (S_lock = 1.000, Seam <= 0.050);
+4. prompt and constraint following (CLIP Score, CMMD);
+5. perceptual realism (KID <= 0.004, LPIPS <= 0.180, Aesthetic >= 0.850);
+6. inference latency and peak memory (TTFT <= 120ms, T_swap = 0.0s, preview <= 1.0s).
 
-Preference alignment is a separate experiment. It must not be used to hide an
-unvalidated supervised trainer or a missing condition-image path.
+## 8. Post-Training Evaluation & Research Paper Ingestion
+
+Once the training run completes and writes `training_receipt.json`:
+
+```bash
+# 1. Execute the multi-hardware evaluation harness across held-out benchmarks
+python scripts/eval/run_evaluation.py \
+  --profile 48gb \
+  --checkpoint checkpoints/qwen_image21_lora \
+  --reference-dir data/reference_uis \
+  --wireframe-dir data/held_out_wireframes \
+  --prompt-list data/eval_prompts.json \
+  --output-dir eval_results
+
+# 2. Validate metrics against pre-registered hypotheses
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --dry-run
+
+# 3. Apply verified empirical findings to the research paper
+python scripts/eval/ingest_eval_results.py \
+  --input eval_results/eval_comparison.json \
+  --paper-path docs/RESEARCH_PAPER.md \
+  --apply
+```
+
+This ensures zero manual transcription errors, generates `eval_results/evaluation_receipt.json` with cryptographic SHA-256 hashes, and populates the paper monograph's post-training result tables.
