@@ -757,9 +757,9 @@ where $\|\cdot\|_c$ denotes column-wise vector $L_2$ normalization:
 $$\|\mathbf{X}\|_c = \left[ \|\mathbf{X}_{1, :}\|_2, \, \|\mathbf{X}_{2, :}\|_2, \dots, \|\mathbf{X}_{d_{\text{out}}, :}\|_2 \right]^T$$
 During gradient backpropagation, updates to $\mathbf{m}$ independently modulate feature scale, while updates to $\mathbf{B}$ and $\mathbf{A}$ adjust feature orientation. This decoupling stabilizes optimization when adapting to dense multi-stream spatial conditions, closing the empirical performance gap between PEFT and full-model fine-tuning while modifying $<0.7\%$ of total model parameters.
 
-### 8.2 Dual Hardware Execution Profiles: Enterprise Workstation vs. Consumer Desktop
+### 8.2 Hardware Execution Profiles: Enterprise Workstation vs. Consumer Desktop
 
-To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krivex formalizes two verified training configurations directly materialized in `training/configs/`:
+To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krivex formalizes three verified training configurations directly materialized in `training/configs/`:
 
 | Hyperparameter / Dimension | Enterprise Max Profile (`polish_qwen_image21_lora_a6000_max.yaml`) | Enterprise Standard Profile (`polish_qwen_image21_lora.yaml`) | Consumer Desktop Profile (`polish_qwen_qdora_12gb.yaml`) | Theoretical / Systems Rationale |
 | :--- | :---: | :---: | :---: | :--- |
@@ -773,7 +773,7 @@ To guarantee rigorous reproducibility across both industrial research clusters a
 | **Micro Batch Size / Device** | **16** | 8 | 1 | Micro-batch 16 fills 48GB VRAM with SM saturation; Micro-batch 1 fits in 11.2 GB |
 | **Gradient Accumulation** | 2 steps | 2 steps | 16 steps | Matched gradient accumulation cadence |
 | **Effective Batch Size** | **32** ($16 \times 2$) | **16** ($8 \times 2$) | **16** ($1 \times 16$) | Scaled effective batch yields smoother gradient estimates across 7-bucket manifold |
-| **Optimizer** | **Native FP32 AdamW** (`lr=1.1e-4`, decay `0.01`) | AdamW (`lr=8.0e-5`, decay `0.01`) | AdamW Paged 8-bit (`lr=1.0e-4`, decay `0.01`) | Unquantized FP32 moments prevent DoRA magnitude drift; 8-bit for low VRAM |
+| **Optimizer** | **Native FP32 AdamW** [60] (`lr=1.1e-4`, decay `0.01`) | AdamW [60] (`lr=8.0e-5`, decay `0.01`) | AdamW Paged 8-bit [60] (`lr=1.0e-4`, decay `0.01`) | Unquantized FP32 moments prevent DoRA magnitude drift; 8-bit for low VRAM |
 | **Learning Rate Schedule** | Cosine Annealing (700 warmup steps) | Cosine Annealing (500 warmup steps) | Cosine Annealing (200 warmup steps) | Warmup initializes magnitude vector $m$; smooth cosine decay |
 | **Maximum Training Steps** | **14,000** (2.05 epochs on 218k pairs) | 27,500 (2.01 epochs on 218k pairs) | 27,500 (2.01 epochs on 218k pairs) | Calibrated for complete gradient coverage over multi-aspect buckets |
 | **Estimated Wall Clock** | **~1.85 hours** ($\sim 2.10\text{ st/s}$) | ~15.2 hours ($\sim 1.47\text{ st/s}$) | ~38.0 hours | Latent pre-caching + batch 16 yields $4.5\times$ speedup over baseline |
