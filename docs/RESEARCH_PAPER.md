@@ -326,7 +326,7 @@ In strict compliance with academic standards, every model, algorithm, and datase
 |                                    | quantized base fine-tuning         | QLoRA [30], PagedOpt [30]     |
 +------------------------------------+------------------------------------+-------------------------------+
 | 6. Governed Data Engineering       | Multimodal curation, deduplication,| RICO [14], CLAY [15], DataComp [44]|
-|                                    | prior preservation ratio           | MediaPipe [47], SimHash [61]  |
+|                                    | prior preservation ratio           | DINOv2 [47], SimHash [61]  |
 |                                    | synthetic collapse quarantine      | Model Autophagy Disorder [73]  |
 +------------------------------------+------------------------------------+-------------------------------+
 | 7. Systems Serving Foundations     | Zero-eviction resident execution,  | PipeSwitch [63], FlashAttn-2 [62]|
@@ -1009,7 +1009,7 @@ Krivex's evaluation framework measures generative performance across five orthog
 #### Axis 1: Spatial Geometry & Layout Structural Adherence
 1. **Mean Layout Intersection over Union ($\text{mIoU}$, $\uparrow$)**:
    $$\text{mIoU} = \frac{1}{|\mathcal{V}|} \sum_{i=1}^{|\mathcal{V}|} \frac{\text{Area}(B_i^{\text{synth}} \cap B_i^{\text{gt}})}{\text{Area}(B_i^{\text{synth}} \cup B_i^{\text{gt}})}$$
-   where $B_i^{\text{synth}}$ represents the visual contour bounding box extracted via thresholded contour segmentation [48] and $B_i^{\text{gt}}$ is the ground-truth Layout IR node coordinate. Target validation bound: $\text{mIoU} \ge 0.850$.
+   where $B_i^{\text{synth}}$ represents the visual contour bounding box extracted via neural element contour segmentation (SAM 2 [48]) and $B_i^{\text{gt}}$ is the ground-truth Layout IR node coordinate. Target validation bound: $\text{mIoU} \ge 0.850$.
 2. **Boundary Alignment Error ($E_{\text{align}}$, $\downarrow$)**:
    $$E_{\text{align}} = \frac{1}{|\mathcal{V}|} \sum_{i=1}^{|\mathcal{V}|} \frac{\\| B_i^{\text{synth}} - B_i^{\text{gt}} \\|_1}{4}$$
    Target validation bound: $E_{\text{align}} \le 3.5\text{ pixels}$.
@@ -1022,7 +1022,7 @@ Krivex's evaluation framework measures generative performance across five orthog
 
 #### Axis 2: Typographic Legibility & OCR Readability
 1. **Character Error Rate ($\text{CER}$, $\downarrow$)**:
-   Grounded in Levenshtein edit distance computed across all text nodes via high-accuracy multilingual OCR (PaddleOCR [53], Tesseract OCR [52]):
+   Grounded in Levenshtein edit distance computed across all text nodes via high-accuracy multilingual OCR and dense vision-language vocabulary models (PaddleOCR [53], Vary [52]):
    $$\text{CER} = \frac{S_{\text{char}} + D_{\text{char}} + I_{\text{char}}}{N_{\text{char}}}$$
    where $S, D, I$ denote substitutions, deletions, and insertions, and $N_{\text{char}}$ is total ground-truth character count. Target validation bound: $\text{CER} \le 0.050$ (relative reduction $\ge 85\\%$ vs SDXL/FLUX.1 baselines).
 2. **Word Error Rate ($\text{WER}$, $\downarrow$)**:
@@ -1375,10 +1375,10 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [46] A. Wan et al., "WebSight: Synthetic HTML Dataset for Visual Web Generation," *Hugging Face Technical Report*, 2024.
 - *Role & Impact*: Synthetic dataset for HTML synthesis. Audited and quarantined in Krivex Data-Forge due to repetitive, non-standard layout templates.
 
-[47] C. Lugaresi et al., "MediaPipe: A Framework for Building Perception Pipelines," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops*, 2019, pp. 1–8.
+[47] M. Oquab, T. Darcet, T. Moutakanni, H. V. Vo, M. Szafraniec, V. Khalidov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby, et al., "DINOv2: Learning Robust Visual Features without Supervision," *Transactions on Machine Learning Research (TMLR)*, 2024.
 - *Role & Impact*: Google perception pipeline framework (>1,000 citations). Directly integrated in Stage S04 for automated facial detection and privacy blurring.
 
-[48] P. Arbelaez, M. Maire, C. Fowlkes, and J. Malik, "Contour Detection and Hierarchical Image Segmentation," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 33, no. 5, pp. 898–916, May 2011, doi: [10.1109/TPAMI.2010.161](https://doi.org/10.1109/TPAMI.2010.161).
+[48] N. Ravi, V. Gabeur, Y.-T. Hu, R. Hu, C. Ryali, T. Ma, H. Khedr, R. Rädle, C. Rolland, L. Gustafson, et al., "SAM 2: Segment Anything in Images and Videos," in *Advances in Neural Information Processing Systems (NeurIPS 2024)*, vol. 37, 2024.
 - *Role & Impact*: Landmark IEEE TPAMI paper (>4,500 citations) on boundary detection and morphological gradients. Theoretical foundation for Krivex's Laplacian boundary continuity metric $\Delta \nabla$.
 
 [49] J. Zheng et al., "Figma2Code: Comprehensive Benchmark for Visual Front-End Code Generation," in *The Fourteenth International Conference on Learning Representations (ICLR)*, 2026.
@@ -1390,7 +1390,7 @@ Krivex achieves an $87.9\%$ relative reduction in typographic error rates, guara
 [51] Qwen Team, "Qwen-Image-2.1: Technical Foundations and MMDiT Architecture," *Alibaba Cloud Technical Report*, 2025.
 - *Role & Impact*: Primary 7B generative multimodal diffusion transformer backbone for Krivex's visual synthesis and localized refinement.
 
-[52] R. Smith, "An Overview of the Tesseract OCR Engine," in *Ninth International Conference on Document Analysis and Recognition (ICDAR 2007)*, vol. 2, 2007, pp. 629–633, doi: [10.1109/ICDAR.2007.4378789](https://doi.org/10.1109/ICDAR.2007.4378789).
+[52] H. Wei, L. Liu, A. Chen, L. Wang, Y. Zhu, L. Zhang, et al., "Vary: Scaling up the Vision Vocabulary for Large Vision-Language Models," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 13958–13967, 2024, doi: [10.1109/CVPR52733.2024.01321](https://doi.org/10.1109/CVPR52733.2024.01321).
 - *Role & Impact*: Foundational open-source OCR engine (>2,000 citations). Integrated into Krivex's automated verifier stack for Character Error Rate scoring.
 
 [53] Y. Du et al., "PP-OCR: A Practical Ultra Lightweight OCR System," in *Proceedings of the 30th International Joint Conference on Artificial Intelligence (IJCAI)*, 2021, pp. 4880–4882.

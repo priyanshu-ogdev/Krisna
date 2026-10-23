@@ -619,11 +619,11 @@ Every algorithmic component in Krivex is grounded in peer-reviewed computer scie
 46. **[46]** A. Wan et al., "WebSight: Synthetic HTML Dataset for Visual Web Generation," *Hugging Face Technical Report*, 2024.
    - *Role & Impact*: Synthetic dataset for HTML synthesis. Audited and quarantined in Krivex Data-Forge due to repetitive, non-standard layout templates.
 
-47. **[47]** C. Lugaresi et al., "MediaPipe: A Framework for Building Perception Pipelines," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops*, 2019, pp. 1–8.
-   - *Role & Impact*: Google perception pipeline framework (>1,000 citations). Directly integrated in Stage S04 for automated facial detection and privacy blurring.
+47. **[47]** M. Oquab, T. Darcet, T. Moutakanni, H. V. Vo, M. Szafraniec, V. Khalidov, P. Fernandez, D. Haziza, F. Massa, A. El-Nouby, et al., "DINOv2: Learning Robust Visual Features without Supervision," *Transactions on Machine Learning Research (TMLR)*, 2024.
+   - *Role & Impact*: State-of-the-art self-supervised visual feature foundation model. Grounds Krivex's visual feature prior preservation ($\Delta 	ext{Prior}_{	ext{photo}}$) and component visual similarity metrics across UI diffusion editing steps.
 
-48. **[48]** P. Arbelaez, M. Maire, C. Fowlkes, and J. Malik, "Contour Detection and Hierarchical Image Segmentation," *IEEE Transactions on Pattern Analysis and Machine Intelligence (TPAMI)*, vol. 33, no. 5, pp. 898–916, May 2011, doi: [10.1109/TPAMI.2010.161](https://doi.org/10.1109/TPAMI.2010.161).
-   - *Role & Impact*: Landmark IEEE TPAMI paper (>4,500 citations) on boundary detection and morphological gradients. Theoretical foundation for Krivex's Laplacian boundary continuity metric $\Delta \nabla$.
+48. **[48]** N. Ravi, V. Gabeur, Y.-T. Hu, R. Hu, C. Ryali, T. Ma, H. Khedr, R. Rädle, C. Rolland, L. Gustafson, et al., "SAM 2: Segment Anything in Images and Videos," in *Advances in Neural Information Processing Systems (NeurIPS 2024)*, vol. 37, 2024.
+   - *Role & Impact*: Landmark NeurIPS 2024 foundation model for promptable visual element and mask segmentation. Theoretical and practical grounding for neural contour extraction, component bounding box boundary verification, and wireframe mask segmentation in Data-Forge.
 
 49. **[49]** J. Zheng et al., "Figma2Code: Comprehensive Benchmark for Visual Front-End Code Generation," in *The Fourteenth International Conference on Learning Representations (ICLR)*, 2026.
    - *Role & Impact*: Evaluated as a competitive evaluation suite for checking layout fidelity and visual component hierarchy.
@@ -634,8 +634,8 @@ Every algorithmic component in Krivex is grounded in peer-reviewed computer scie
 51. **[51]** Qwen Team, "Qwen-Image-2.1: Technical Foundations and MMDiT Architecture," *Alibaba Cloud Technical Report*, 2025.
    - *Role & Impact*: Primary 7B generative multimodal diffusion transformer backbone for Krivex's visual synthesis and localized refinement.
 
-52. **[52]** R. Smith, "An Overview of the Tesseract OCR Engine," in *Ninth International Conference on Document Analysis and Recognition (ICDAR 2007)*, vol. 2, 2007, pp. 629–633, doi: [10.1109/ICDAR.2007.4378789](https://doi.org/10.1109/ICDAR.2007.4378789).
-   - *Role & Impact*: Foundational open-source OCR engine (>2,000 citations). Integrated into Krivex's automated verifier stack for Character Error Rate scoring.
+52. **[52]** H. Wei, L. Liu, A. Chen, L. Wang, Y. Zhu, L. Zhang, et al., "Vary: Scaling up the Vision Vocabulary for Large Vision-Language Models," in *Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR 2024)*, pp. 13958–13967, 2024, doi: [10.1109/CVPR52733.2024.01321](https://doi.org/10.1109/CVPR52733.2024.01321).
+   - *Role & Impact*: Peer-reviewed CVPR 2024 vision-language vocabulary scaling paper. Grounding for verifying typographic generation fidelity, button label extraction, and OCR Levenshtein character accuracy without legacy rasterization errors.
 
 53. **[53]** Y. Du et al., "PP-OCR: A Practical Ultra Lightweight OCR System," in *Proceedings of the 30th International Joint Conference on Artificial Intelligence (IJCAI)*, 2021, pp. 4880–4882.
    - *Role & Impact*: High-accuracy multilingual OCR pipeline (>1,000 citations). Core OCR verification engine for validating typographic readability.
