@@ -58,31 +58,16 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path))
 Set-Location $RepoRoot
 
-# Configure PYTHONPATH
-$TrainingSrc = Join-Path $RepoRoot "training\src"
-$DataForgeSrc = Join-Path $RepoRoot "data-forge\src"
-$InferenceSrc = Join-Path $RepoRoot "inference\src"
-$env:PYTHONPATH = "$TrainingSrc;$DataForgeSrc;$InferenceSrc;$RepoRoot;" + $env:PYTHONPATH
-
 # Resolve Python executable
-$Python = ""
+$Python = "python"
 if ($env:PYTHON_EXECUTABLE -and (Test-Path $env:PYTHON_EXECUTABLE)) {
     $Python = $env:PYTHON_EXECUTABLE
+} elseif (Test-Path "C:\Users\anubh\miniconda3\envs\torch_env\python.exe") {
+    $Python = "C:\Users\anubh\miniconda3\envs\torch_env\python.exe"
 } elseif (Test-Path "$RepoRoot\.venv\Scripts\python.exe") {
     $Python = "$RepoRoot\.venv\Scripts\python.exe"
 } elseif (Test-Path "$RepoRoot\.venv-forge\Scripts\python.exe") {
     $Python = "$RepoRoot\.venv-forge\Scripts\python.exe"
-} elseif (Test-Path "C:\Users\anubh\miniconda3\envs\torch_env\python.exe") {
-    $Python = "C:\Users\anubh\miniconda3\envs\torch_env\python.exe"
-} elseif (Test-Path "$env:USERPROFILE\miniconda3\envs\torch_env\python.exe") {
-    $Python = "$env:USERPROFILE\miniconda3\envs\torch_env\python.exe"
-} else {
-    $cmd = Get-Command python -ErrorAction SilentlyContinue
-    if ($cmd) {
-        $Python = $cmd.Source
-    } else {
-        $Python = "python"
-    }
 }
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
