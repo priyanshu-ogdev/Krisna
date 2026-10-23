@@ -309,7 +309,7 @@ def check_inference_config(
         cfg.sketch_checkpoint_exists = Path(sketch_ckpt).exists()
 
     # Check Polish LoRA if configured
-    polish_lora = os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH")
+    polish_lora = os.environ.get("KRIVEX_POLISH_DEFAULT_LORA_PATH") or os.environ.get("KRIVEX_POLISH_LORA_PATH")
     if polish_lora:
         cfg.polish_lora_path = polish_lora
         cfg.polish_lora_exists = Path(polish_lora).exists()
@@ -324,7 +324,7 @@ def check_inference_config(
         if sketch_ckpt and not cfg.sketch_checkpoint_exists:
             cfg.errors.append(f"Configured KRIVEX_SKETCH_CHECKPOINT does not exist: {sketch_ckpt}")
         if polish_lora and not cfg.polish_lora_exists:
-            cfg.errors.append(f"Configured KRIVEX_POLISH_DEFAULT_LORA_PATH does not exist: {polish_lora}")
+            cfg.errors.append(f"Configured Polish LoRA path does not exist: {polish_lora}")
 
     cfg.is_ready = len(cfg.errors) == 0
     return cfg

@@ -342,7 +342,7 @@ class QwenImage21Backend(ModelBackend):
                     rv = manifest.get("renderer_version")
                     if rv is not None and not (rv == "krivex.renderer.v2" or str(rv).startswith("krivex.renderer.v2.")):
                         raise ValueError(f"adapter renderer_version mismatch: {manifest.get('renderer_version')}")
-                    if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2"):
+                    if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2", "krivex.polish_prompt.v3.pe_prose"):
                         raise ValueError(f"adapter prompt_template_version mismatch: {manifest.get('prompt_template_version')}")
                 log.info("Verified LoRA adapter manifest: %s (run_id=%s)", adapter_path, manifest.get("run_id"))
             except Exception as e:

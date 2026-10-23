@@ -86,7 +86,7 @@ def validate_manifest(manifest: dict[str, Any], *, strict: bool = True) -> dict[
         rv = manifest.get("renderer_version")
         if rv is not None and not (rv == "krivex.renderer.v2" or str(rv).startswith("krivex.renderer.v2.")):
             raise QwenManifestError(f"renderer_version mismatch: {manifest.get('renderer_version')}")
-        if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2"):
+        if manifest.get("prompt_template_version") not in (None, "krivex.polish_prompt.v2", "krivex.polish_prompt.v3.pe_prose"):
             raise QwenManifestError(f"prompt_template_version mismatch: {manifest.get('prompt_template_version')}")
     return manifest
 
