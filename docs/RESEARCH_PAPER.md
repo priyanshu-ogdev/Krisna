@@ -221,7 +221,7 @@ The inference and serving architecture of Krivex was derived by analyzing the st
    In conventional multi-agent systems, pipeline stages invoke distinct multi-billion parameter foundation models. As demonstrated by USENIX OSDI systems research (PipeSwitch [56], Clockwork [57]), loading weights across system buses introduces severe bandwidth bottlenecks ($45\text{s}$ to $48\text{s}$ per turn).
    - *Inheritance Verdict*: Krivex establishes a **Single Resident Model Architecture**. The 7B MMViT backbone remains permanently pinned in device memory. Interactive draft previews, high-fidelity final renders, and localized edits are all executed on the same resident model by modulating the numerical ODE solver schedule, reducing inter-tier model swapping latency to exactly **0.0 seconds**.
 5. **Inversion-Free Localized Editing (FlowEdit Inheritance)**:
-   Traditional image editing relies on DDIM inversion [27], mapping an existing image backwards to initial Gaussian noise before forward sampling. In UI synthesis, non-linear inversion accumulates numerical linearization errors, corrupting unedited buttons and drifting text fonts.
+   Traditional image editing relies on DDIM inversion (Song et al. [36]), mapping an existing image backwards to initial Gaussian noise before forward sampling. In UI synthesis, non-linear inversion accumulates numerical linearization errors, corrupting unedited buttons and drifting text fonts.
    - *Inheritance Verdict*: Grounded in FlowEdit [27], we formulated localized editing by directly integrating the differential velocity field between target and source conditions over an abbreviated sub-interval $[t_{\text{edit}}, 1]$ without latent inversion, preserving locked UI regions with exact mathematical invariance ($S_{\text{lock}} = 1.000$).
 
 ### 2.4 The Autoregressive + DiT Frontier: Decoupled Neuro-Symbolic Pipeline vs. Monolithic Multimodal Models (Transfusion, Show-o, and Diff2Flow)
@@ -315,7 +315,7 @@ In strict compliance with academic standards, every model, algorithm, and datase
 | 2. Flow Matching & Rectified ODEs  | Optimal-transport straight paths,  | Flow Matching [11], RF [12]   |
 |                                    | low-step numerical integration     | Scaling RF [10], Diff2Flow [70]|
 +------------------------------------+------------------------------------+-------------------------------+
-| 3. Layout Modeling & Constraints   | Continuous coordinate optimization,| LayoutFlow [4], LayoutDM [6] [20]|
+| 3. Layout Modeling & Constraints   | Continuous coordinate optimization,| LayoutFlow [4], LayoutDM [6], InstructLayout [20]|
 |                                    | container hierarchy, 0% overlap    | Cassowary Simplex [23]        |
 +------------------------------------+------------------------------------+-------------------------------+
 | 4. Vision-Language Planning        | Pushdown automata decoding,        | Qwen-VL [18], GBNF [21]       |

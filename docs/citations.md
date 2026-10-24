@@ -620,7 +620,7 @@ Krivex decomposes conversational agentic UI design into decoupled, mathematicall
 - **Albergo, M. S., & Vanden-Eijnden, E. (ICLR 2023)**  
   *Building Normalizing Flows with Stochastic Interpolants*.  
   In *The Eleventh International Conference on Learning Representations*.  
-  *Technical Role in Krivex*: Co-foundational formulation with Lipman et al. [14] regressing generative velocity fields along arbitrary time-dependent interpolants $x_t = I_t(x_0, x_1)$.
+  *Technical Role in Krivex*: Co-foundational formulation with Lipman et al. [11] regressing generative velocity fields along arbitrary time-dependent interpolants $x_t = I_t(x_0, x_1)$.
 
 - **Rafailov, R., Sharma, A., Mitchell, E., Ermon, S., Manning, C. D., & Finn, C. (NeurIPS 2023)**  
   *Direct Preference Optimization: Your Language Model is Secretly a Reward Model*.  
@@ -642,7 +642,7 @@ Krivex decomposes conversational agentic UI design into decoupled, mathematicall
 
 Fine-tuning `Qwen-Image-2.1` within consumer GPU envelopes (12GB VRAM) introduces specific architectural requirements:
 
-1. **4-bit NormalFloat (NF4) Quantization Scheme (Dettmers et al. [37])**:
+1. **4-bit NormalFloat (NF4) Quantization Scheme (Dettmers et al. [28])**:
    - Optimal quantile quantization for standard normal distributions $W \sim \mathcal{N}(0, \sigma^2)$, with 16 discrete levels $q_i \in [-1, 1]$ allocating equal probability mass per bin.
    - Preserves 16-bit dynamic range without the rounding distortion of uniform INT4 or FP4 formats.
    - Combined with **Double Quantization (DQ)**, quantizing block scale constants $c_1$ ($B_1=64$) using secondary 8-bit representations ($B_2=256$), saving $0.373$ bits/parameter (~320MB VRAM).
@@ -650,12 +650,12 @@ Fine-tuning `Qwen-Image-2.1` within consumer GPU envelopes (12GB VRAM) introduce
 2. **Qwen Sublayer Adaptation & Target Module Decomposition**:
    - In standard LLM fine-tuning, low-rank adapters target only attention projections ($W_q, W_v$).
    - For `Qwen-Image-2.1` MMDiT joint attention blocks, empirical ablation proves that adapting only attention projections causes severe loss of subtle UI styling, border anti-aliasing, and color gradients (dropping aesthetic scores by $-0.050$).
-   - Krivex targets all 7 linear projections across attention and SwiGLU MLP sublayers (Esser et al. [13]):
+   - Krivex targets all 7 linear projections across attention and SwiGLU MLP sublayers (Esser et al. [10]):
      $$\mathcal{W}_{\text{target}} = \{\text{to\_q}, \text{to\_k}, \text{to\_v}, \text{to\_out.0}, \text{img\_mlp.gate\_layer}, \text{img\_mlp.proj}, \text{img\_mlp.out}\}$$
      amounting to exactly $7 \times 32 = 224$ adapted modules, protected by a strict count assertion.
 
 3. **QDoRA (Weight-Decomposed Adaptation on NF4 Base)**:
-   - To counteract the quantization noise introduced by NF4 base weights, Krivex applies DoRA (Liu et al. [38]):
+   - To counteract the quantization noise introduced by NF4 base weights, Krivex applies DoRA (Liu et al. [25]):
      $$W = m \frac{W_0^{\text{NF4}} + \frac{\alpha}{r} B A}{\|W_0^{\text{NF4}} + \frac{\alpha}{r} B A\|_F}$$
    - Decouples magnitude updates $m$ from directional updates $B A$, preventing quantization noise from destabilizing weight magnitude.
 
@@ -723,8 +723,8 @@ To prevent distribution collapse, format corruption, domain distortion, and intr
 6. **Task Mismatch & 3D CAD Void Containment (`ABO`)**: Restricted raw isolated 3D models to e-commerce product thumbnail inserts within structured container wireframes; barred from pure UI layout representation.
 7. **Placeholder Text & Outdoor Scene OCR Purge (`Crello` & `AnyWord-3M`)**: Regex-purged "Lorem Ipsum" and placeholder boxes from Crello; purged outdoor street-scene/billboard OCR from AnyWord-3M, retaining exclusively digital posters and packaging.
 8. **UltraEdit Inpainting Seam Pruning**: UltraEdit's synthetic SDXL inpainting pairs were filtered via Laplacian edge continuity ($\Delta \nabla \le 0.05$) to eliminate boundary seams and waxy skin artifacts.
-9. **Native RGBA Transparency Grounding (Real Assets vs. Unreleased Data)**: While LayerDiffuse (Zhang & Agrawala [38]) formulated mathematical latent transparency, its 1M training dataset was never released upstream. Krivex grounds 4-channel RGBA supervision in **real, permissive assets already verified in our stack**: Crello's isolated transparent layer PNGs (Yamaguchi [63], CDLA-Permissive-2.0, providing over $60,000$ transparent cutouts, badges, and typography containers with ground-truth alpha) and Figma2Code's vector components (Gui et al. [43], MIT) rendered with transparent canvas alpha.
-10. **Modern Web & Responsive Desktop UI Grounding**: Rectified the desktop UI deficit by anchoring modern interfaces in Design2Code (Si et al. [60], ACL 2025; 484 real SaaS web pages), curated above-the-fold desktop viewports from Mind2Web (Deng et al. [59], NeurIPS 2023; 15,000 viewports with viewport cropping), and Figma2Code (2,817 vector design systems), while excising unsourced generic placeholders.
+9. **Native RGBA Transparency Grounding (Real Assets vs. Unreleased Data)**: While LayerDiffuse (Zhang & Agrawala [66]) formulated mathematical latent transparency, its 1M training dataset was never released upstream. Krivex grounds 4-channel RGBA supervision in **real, permissive assets already verified in our stack**: Crello's isolated transparent layer PNGs (Yamaguchi [63], CDLA-Permissive-2.0, providing over $60,000$ transparent cutouts, badges, and typography containers with ground-truth alpha) and Figma2Code's vector components (Gui et al. [43], MIT) rendered with transparent canvas alpha.
+10. **Modern Web & Responsive Desktop UI Grounding**: Rectified the desktop UI deficit by anchoring modern interfaces in Design2Code (Si et al. [32], ACL 2025; 484 real SaaS web pages), curated above-the-fold desktop viewports from Mind2Web (Deng et al. [59], NeurIPS 2023; 15,000 viewports with viewport cropping), and Figma2Code (2,817 vector design systems), while excising unsourced generic placeholders.
 
 ---
 
