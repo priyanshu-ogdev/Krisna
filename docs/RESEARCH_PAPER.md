@@ -709,6 +709,8 @@ Raw Multimodal Repositories (HuggingFace / S3 / Zenodo)
 
 The authoritative multimodal portfolio is partitioned across four specialized training pillars and a held-out evaluation suite bounded strictly under a $1.0\text{ TB}$ workstation storage ceiling (~480 GB, preserving a ~520 GB safe buffer and calibrated for a 14–15h execution ceiling on an NVIDIA A6000):
 
+**Table 7.1: The Calibrated Multimodal Training and Evaluation Portfolio (356,721 Records / ~481.5 GB)**
+
 | Pillar / Track | Domain & Modality | Record Count | Storage Volume | Mass % | Source Datasets (datasets.yaml) |
 | :--- | :--- | :---: | :---: | :---: | :--- |
 | **Pillar 1** | **Mobile UI Applications** (Android & Cross-Platform) | 66,000 | 89.1 GB | 18.5% | `rico_semantic` (66,000 sample cap) |
@@ -718,6 +720,27 @@ The authoritative multimodal portfolio is partitioned across four specialized tr
 | **Eval Suite** | **Held-Out Evaluation & Benchmarking Anchors** | 27,404 | 36.9 GB | 7.7% | `taste` (14,500), `ui_vision` (10,000), `screenspot` (1,272), `partiprompts` (1,632) |
 | **TOTAL** | **All 13 Active Sources Combined (Train + Eval)** | **356,721** | **~481.5 GB** | **100.0%** | **Calibrated Certified Portfolio (329,317 train + 27,404 eval / ~480 GB)** |
 
+#### Multi-Scale Dataset Portfolio Regimes
+To accommodate diverse industrial training infrastructures while supporting fast local developer experimentation, Krivex formalizes two distinct dataset configurations directly checked into version control:
+1. **Production Cluster Profile (`data-forge/configs/datasets.yaml`)**: The complete 356,721-record portfolio (~481.5 GB) spanning all 4 core training pillars and held-out benchmarks. Formatted for high-throughput multi-GPU and workstation execution (NVIDIA A6000 48GB), this corpus provides dense geometric and typographic supervision across the entirety of digital UI design.
+2. **Developer Fast-Prototyping Profile (`data-forge/configs/datasets_5gb.yaml`)**: A calibrated 5,200-sample subset (~5.2 GB) balanced across Mobile UI (`rico_semantic`, 600 records), Web UI (`figma2code`, 800 records), Graphic Design (`crello`, 2,500 records), DPO Preference Alignment (`pickapic_v2`, 300 records), and Held-Out Benchmark Anchors (`ui_vision`, `screenspot`, `taste`, `partiprompts`, 1,000 records). This regime enables rapid end-to-end smoke testing, automated CI/CD pipeline preflights, and local single-GPU execution without requiring massive disk provisioning.
+
+#### Data-Forge Ingestion Governance & Filtering Invariants
+Every sample entering the training and evaluation corpus must successfully traverse the 22-stage Data-Forge ingestion pipeline (`data-forge/src/data_forge/stages/`). Table 7.2 formalizes the quantitative gate thresholds and invariance policies enforced across all modalities:
+
+**Table 7.2: Data-Forge Governance, Filtering Invariants, and Quality Gate Thresholds**
+
+| Dimension / Stage | Gate Threshold & Invariant Specification | Theoretical & Systems Justification |
+| :--- | :--- | :--- |
+| **Laplacian Blur Variance** | $\text{Var}(\nabla^2 I) \ge 120.0$ | Discards defocused, blurry, or low-contrast captures that degrade typography sharpness. |
+| **Spatial Resolution Floor** | $\min(H, W) \ge 512\text{ px}$ | Prevents sub-resolution artifacts; low-res assets are either rejected or Lanczos-3 upscaled. |
+| **Near-Duplicate Purge** | SimHash 64-bit Hamming distance $\le 3$; CLIP cosine $\ge 0.95$ | Eliminates dataset memorization and ensures diverse visual layout distributions [74]. |
+| **PII & Safety Cleansing** | Detoxify toxicity score $\le 0.05$; Regex PII sanitization | Replaces phone numbers, email addresses, and IP identifiers with synthetic tokens. |
+| **Typographic Floor** | Detected OCR tokens $N_{\text{tokens}} \ge 3$ per screen | Filters empty blank screens or abstract wallpaper devoid of semantic UI controls. |
+| **Coordinate Quantization** | Bounding boxes normalized to $[y_1, x_1, y_2, x_2] \in [0, 1000]^4$ | Unifies mobile, web, and editorial coordinate systems into standard integer grids. |
+| **Scale-Clamping Floor** | Bounding box element area $\text{Area}(b) \ge 128\text{ px}^2$ | ConsisID [72] scale floor; prevents sub-pixel noise from destabilizing cross-attention maps. |
+| **CFG Caption Dropout** | $p_{\text{drop}} = 0.10$ ($10\%$ unconditional caption dropout) | Enables Classifier-Free Guidance [35] visual steering during inference sampling. |
+
 ### 7.3 Prior Preservation Invariant via Frozen Base Weights
 
 While naive full-model fine-tuning on synthetic UI layouts induces catastrophic prior forgetting of natural textures and photorealism, Krivex solves this architecturally:
@@ -726,6 +749,8 @@ While naive full-model fine-tuning on synthetic UI layouts induces catastrophic 
 - Consequently, downloading external stock photography or enabling DreamBooth-style auxiliary prior loss is unnecessary (`with_prior_preservation: false`), dedicating $100\%$ of the rank-64 adapter capacity to UI and typography geometry without domain dilution or wasted storage.
 
 ### 7.4 Forensic Negative Purges: Excluded & Banned Corpora
+
+**Table 7.3: Forensic Negative Purges: Excluded and Banned Corpora**
 
 | Banned Dataset | Original Volume | Forensic Justification for Permanent Exclusion |
 | :--- | :---: | :--- |
@@ -773,6 +798,8 @@ During gradient backpropagation, updates to $\mathbf{m}$ independently modulate 
 ### 8.2 Hardware Execution Profiles: Enterprise Workstation vs. Consumer Desktop
 
 To guarantee rigorous reproducibility across both industrial research clusters and accessible consumer hardware, Krivex formalizes three verified training configurations directly materialized in `training/configs/`:
+
+**Table 8.1: Hardware Execution Profiles: Enterprise Max vs. Standard vs. Consumer Desktop**
 
 | Hyperparameter / Dimension | Enterprise Max Profile (`polish_qwen_image21_lora_a6000_max.yaml`) | Enterprise Standard Profile (`polish_qwen_image21_lora.yaml`) | Consumer Desktop Profile (`polish_qwen_qdora_12gb.yaml`) | Theoretical / Systems Rationale |
 | :--- | :---: | :---: | :---: | :--- |
@@ -856,6 +883,15 @@ $$\mathcal{L}_{\text{CFM-Distill}}(\theta) = \mathbb{E}_{t, x_0, x_1} \left[ \sq
 where $c = 0.001$ provides robust outlier suppression against gradient explosions during rapid numerical discretization.
 - Distillation executes over 4,000 steps with learning rate $5.0 \times 10^{-5}$, rank $r=32$, $\alpha=16$, and guidance scale swept in $[1.0, 3.0]$;
 - **Empirical Serving Performance**: Produces instant visual previews in **$N = 6$ steps** ($\sim 0.9\text{s}$ latency on A6000, $\sim 2.5\text{s}$ on consumer 12GB GPUs) while retaining $\ge 92\%$ of final spatial layout fidelity and typography placement.
+
+### 8.7 Open Science, Training Information Disclosure, and Reproducibility Protocol
+
+In accordance with the peer-reviewed machine learning reproducibility standards established by IEEE, NeurIPS, and ICML, full transparency regarding training data provenance, foundation model parameters, optimization recipes, and execution environments is an indispensable scientific requirement:
+- **Base Foundation Model Pinned Revision**: Base weights are cryptographically locked to HuggingFace commit `d26bb61231c349cf6b7896fa83353113880e1ba3` of `Qwen/Qwen-Image-2.1`. No undocumented checkpoint drifts or implicit online updates are permitted.
+- **Deterministic Random Seed**: All pseudo-random number generators across PyTorch (`torch.manual_seed(0)`), CUDA (`torch.cuda.manual_seed_all(0)`), NumPy (`np.random.seed(0)`), and Python standard libraries are pinned strictly to `seed: 0`. Deterministic cuDNN algorithms are enforced where applicable.
+- **Explicit Parameter Targeting Envelope**: Base transformer weights ($W_0$, 7.0B parameters) are 100% frozen (`base_weights_frozen: true`). Trainable DoRA adapter parameters are strictly confined to 224 targeted linear projections across 32 transformer blocks ($q, k, v, \text{out}, \text{gate}, \text{up}, \text{down}$), encompassing $48,234,496$ parameters ($0.69\%$ parameter envelope).
+- **Automated Preflight Contract Verification**: Prior to initiating gradient descent, the training pipeline executes `krivex_training.polish.train_preflight` and `qwen_trainer_contract.py`. This contract check validates GPU VRAM allocations, verifies that zero base parameters require gradients, inspects aspect ratio bucket distributions, and asserts that optimizer learning rates match the certified hardware profile.
+- **Pre-Registered Evaluation Ingestion**: While the complete architecture, data curation pipelines, optimization recipes, and serving dynamics are fully formalized and verified in this monograph, empirical downstream benchmark metrics (Section 11) remain pre-registered awaiting the completion of the enterprise training run. The automated evaluation ingestion script `scripts/eval/ingest_eval_results.py` guarantees that post-run metrics populate directly into Section 11 tables without intermediate manual modification.
 
 ---
 
